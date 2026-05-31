@@ -48,12 +48,6 @@ cd SillyTavern/public/scripts/extensions/third-party/
 git clone https://github.com/WindySora/SillyTavern-GroupDirector.git
 ```
 
-### 方式三：下载 ZIP
-
-1. 前往 [Releases](https://github.com/WindySora/SillyTavern-GroupDirector/releases) 下载最新版
-2. 解压到 `SillyTavern/public/scripts/extensions/third-party/SillyTavern-GroupDirector/`
-3. 重启 SillyTavern
-
 ---
 
 ## 使用
