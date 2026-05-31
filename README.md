@@ -36,7 +36,7 @@
 3. 粘贴仓库地址：
 
 ```
-https://github.com/WindySora/SillyTavern-GroupDirector
+https://github.com/Windy-Sora/SillyTavern-GroupDirector
 ```
 
 4. 点击 Install，重启 SillyTavern
@@ -45,7 +45,7 @@ https://github.com/WindySora/SillyTavern-GroupDirector
 
 ```bash
 cd SillyTavern/public/scripts/extensions/third-party/
-git clone https://github.com/WindySora/SillyTavern-GroupDirector.git
+git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
 ```
 
 ---
