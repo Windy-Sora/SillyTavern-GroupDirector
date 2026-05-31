@@ -1,0 +1,34 @@
+.group-director-settings h4 {
+    margin: 8px 0 4px 0;
+    font-size: 0.95em;
+    color: var(--SmartThemeBodyColor);
+}
+
+.group-director-settings label {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.9em;
+}
+
+.group-director-settings small {
+    display: block;
+    color: var(--grey70a, #999);
+    margin: 4px 0;
+    font-size: 0.85em;
+}
+
+.group-director-settings hr {
+    margin: 10px 0;
+    border-color: var(--SmartThemeBorderColor);
+    opacity: 0.4;
+}
+
+.group-director-settings input[type="number"] {
+    width: 100%;
+    margin-top: 2px;
+}
+
+.group-director-settings textarea {
+    font-family: monospace;
+    font-size: 0.85em;
+}

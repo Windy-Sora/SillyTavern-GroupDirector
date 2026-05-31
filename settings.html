@@ -1,0 +1,113 @@
+<div class="group-director-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Group Director</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <small>解决群聊中所有角色抢话的问题。两种判断模式互斥，一次只能启用一种。</small>
+
+            <hr>
+            <h4>判断模式（单选）</h4>
+
+            <label class="checkbox_label" for="gd-mode-off">
+                <input type="radio" name="gd-mode" value="off" id="gd-mode-off">
+                <span><b>关闭</b> — 不干预 SillyTavern 默认行为</span>
+            </label>
+
+            <label class="checkbox_label" for="gd-mode-formula">
+                <input type="radio" name="gd-mode" value="formula" id="gd-mode-formula">
+                <span><b>公式判断</b> — 使用关键词、提名、近期发言、主动性等本地评分（无 API 调用）</span>
+            </label>
+
+            <label class="checkbox_label" for="gd-mode-llm">
+                <input type="radio" name="gd-mode" value="llm" id="gd-mode-llm">
+                <span><b>大模型判断</b> — 调用当前主模型，结合上下文决定谁发言、按什么顺序（消耗 token）</span>
+            </label>
+
+            <label class="checkbox_label" for="gd-debug">
+                <input type="checkbox" id="gd-debug">
+                <span>调试日志（浏览器控制台）</span>
+            </label>
+
+            <div id="gd-off-hint" style="display:none;">
+                <hr>
+                <small><i>当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言（即抢话行为不被抑制）。</i></small>
+            </div>
+
+            <!-- ─── 公式模式配置 ─────────────────────────────── -->
+            <div id="gd-formula-section">
+                <hr>
+                <h4>Top-N 设置</h4>
+
+                <label for="gd-topn">每轮允许发言人数 (Top-N)</label>
+                <input type="number" id="gd-topn" class="text_pole" min="1" max="20" step="1">
+
+                <label for="gd-recent-count">分析最近消息条数</label>
+                <input type="number" id="gd-recent-count" class="text_pole" min="1" max="100" step="1">
+
+                <label for="gd-consecutive-penalty">连续发言惩罚分（每条）</label>
+                <input type="number" id="gd-consecutive-penalty" class="text_pole" min="0" max="200" step="1">
+
+                <hr>
+                <h4>评分权重</h4>
+
+                <label for="gd-mention-weight">名字被提及权重</label>
+                <input type="number" id="gd-mention-weight" class="text_pole" min="0" step="1">
+
+                <label for="gd-keyword-weight">关键词匹配权重</label>
+                <input type="number" id="gd-keyword-weight" class="text_pole" min="0" step="1">
+
+                <label for="gd-recency-weight">近期未发言加权</label>
+                <input type="number" id="gd-recency-weight" class="text_pole" min="0" step="1">
+
+                <label for="gd-talkativeness-weight">Talkativeness 权重</label>
+                <input type="number" id="gd-talkativeness-weight" class="text_pole" min="0" step="1">
+
+                <hr>
+                <h4>触发器引擎</h4>
+                <label class="checkbox_label" for="gd-trigger-enabled">
+                    <input type="checkbox" id="gd-trigger-enabled">
+                    <span>启用关键词触发器（基于角色描述切词）</span>
+                </label>
+                <label for="gd-trigger-score">触发器命中加分</label>
+                <input type="number" id="gd-trigger-score" class="text_pole" min="0" step="1">
+
+                <hr>
+                <h4>主动性 (Initiative)</h4>
+                <label class="checkbox_label" for="gd-initiative-enabled">
+                    <input type="checkbox" id="gd-initiative-enabled">
+                    <span>启用主动性系统（每轮随机扰动）</span>
+                </label>
+                <label for="gd-initiative-base">主动性基础值（每轮随机 0~该值）</label>
+                <input type="number" id="gd-initiative-base" class="text_pole" min="0" step="1">
+            </div>
+
+            <!-- ─── 大模型模式配置 ─────────────────────────────── -->
+            <div id="gd-llm-section" style="display:none;">
+                <hr>
+                <h4>Director LLM 参数</h4>
+
+                <label for="gd-llm-max-speakers">每轮最多发言人数</label>
+                <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
+
+                <label class="checkbox_label" for="gd-llm-respect-order">
+                    <input type="checkbox" id="gd-llm-respect-order">
+                    <span>严格按 LLM 指定的顺序发言（关闭则只过滤集合，不约束顺序）</span>
+                </label>
+
+                <hr>
+                <label for="gd-llm-prompt">Director Prompt 模板</label>
+                <small>可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code><br>
+                    模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。
+                    <code>speakers</code> 数组**顺序就是发言顺序**。</small>
+                <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="14" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-llm-prompt-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> 恢复默认 Prompt
+                </div>
+
+                <small style="margin-top:8px;"><i>注意：每轮群聊生成会额外调用一次主模型来做导演决策。LLM 调用失败时插件会透明放行（不影响聊天）。</i></small>
+            </div>
+        </div>
+    </div>
+</div>
