@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { saveSettingsDebounced, characters, chat } from '../../../../script.js';
+import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName } from '../../../../script.js';
 import { groups, selected_group } from '../../../group-chats.js';
 
 // ─── Settings Defaults ───────────────────────────────────────────────
@@ -26,8 +26,10 @@ const DEFAULT_SETTINGS = {
     initiativeBaseScore: 5,
     // LLM mode
     llmPrompt: '',
-    llmMaxSpeakers: 3,      // LLM 一轮最多挑几个发言者
-    llmRespectOrder: true,  // 按 LLM 给的顺序过滤（true=严格顺序；false=只过滤集合）
+    llmMaxSpeakers: 3,
+    llmRespectOrder: true,
+    llmCharDescMode: 'slice',   // 'full' | 'slice' — 角色描述全量还是切片
+    llmCharDescLength: 200,     // 切片模式下的最大字符数
     debugLogging: false,
 };
 
@@ -53,10 +55,12 @@ let roundTriggeredAvatars = new Set();
 let roundInitiative = {};
 let llmPickedAvatars = null;        // ordered Array<avatar> from LLM, null if not used
 let llmPickedSet = null;            // Set<avatar> for O(1) membership
-let llmSpokenSet = new Set();       // avatars that already spoke this round (for ordered mode)
-let llmCursor = 0;                  // index into llmPickedAvatars — controls strict order
+let llmSpokenSet = new Set();
+let llmCursor = 0;
 let roundInitialized = false;
 let isGroupChat = false;
+let takeoverPending = false;
+let takeoverGenCount = 0;
 
 function saveSettings() {
     extension_settings[EXT_KEY] = settings;
@@ -275,8 +279,20 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
     // ─── Mode: LLM ──────────────────────────────────────────────────
     if (settings.mode === MODE_LLM) {
+        // Manual ordered generation in progress — let through without filtering
+        if (takeoverGenCount > 0) {
+            takeoverGenCount--;
+            roundSpeakerCount++;
+            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount})`);
+            return;
+        }
+        // ST's activation loop is being suppressed — abort all
+        if (takeoverPending) {
+            console.warn(`[GroupDirector] TAKEOVER-BLOCK ${char.name} (ST order suppressed, director will drive order)`);
+            abort(false);
+            return;
+        }
         if (!llmPickedSet) {
-            // No decision available — let everyone speak (don't break the chat)
             return;
         }
         if (!llmPickedSet.has(avatar)) {
@@ -284,21 +300,21 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             abort(false);
             return;
         }
+        // Best-effort order tracking (non-takeover mode)
         if (settings.llmRespectOrder) {
-            // Enforce strict order: only let through when this avatar matches the cursor
-            // Skip past any already-spoken entries at the cursor
             while (llmCursor < llmPickedAvatars.length && llmSpokenSet.has(llmPickedAvatars[llmCursor])) {
                 llmCursor++;
             }
             const expected = llmPickedAvatars[llmCursor];
-            if (expected !== avatar) {
-                log(`BLOCKED ${char.name} (out-of-order; expected ${characters.find(c => c.avatar === expected)?.name || expected})`);
-                abort(false);
-                return;
+            if (expected && expected !== avatar) {
+                log(`OUT-OF-ORDER: ${char.name} speaking before ${characters.find(c => c.avatar === expected)?.name || expected}. Still allowed.`);
+                llmCursor = llmPickedAvatars.findIndex(a => !llmSpokenSet.has(a));
+                if (llmCursor === -1) llmCursor = llmPickedAvatars.length;
+            } else if (expected === avatar) {
+                llmCursor++;
             }
-            llmSpokenSet.add(avatar);
-            llmCursor++;
         }
+        llmSpokenSet.add(avatar);
         roundSpeakerCount++;
         log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
         return;
@@ -322,8 +338,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 };
 
 // ─── Event Listeners ─────────────────────────────────────────────────
+let roundGenerateType = 'normal'; // captured from GROUP_WRAPPER_STARTED
+
 eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
+    // If manual ordered generation is in progress (force_chid sub-calls),
+    // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
+    if (takeoverGenCount > 0) {
+        console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
+        return;
+    }
     isGroupChat = true;
+    roundGenerateType = data?.type || 'normal';
     roundScores = {};
     roundSpeakerCount = 0;
     roundTriggeredAvatars.clear();
@@ -333,13 +358,60 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     llmSpokenSet = new Set();
     llmCursor = 0;
     roundInitialized = false;
-    log(`Group generation started (mode=${settings.mode})`);
+    takeoverPending = false;
+    takeoverGenCount = 0;
+    log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
-eventSource.on(event_types.GROUP_WRAPPER_FINISHED, () => {
+eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     isGroupChat = false;
     log('Group generation finished');
+
+    if (takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
+        await runManualOrderedGeneration();
+    }
+    takeoverPending = false;
 });
+
+// ─── Manual Ordered Generation (takeover) ─────────────────────────────
+async function runManualOrderedGeneration() {
+    takeoverPending = false;
+    const orderedList = [...llmPickedAvatars];
+    takeoverGenCount = orderedList.length;
+    const ctx = getContext();
+
+    console.warn('[GroupDirector] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
+    console.warn('[GroupDirector] takeoverGenCount:', takeoverGenCount);
+
+    try {
+        for (let i = 0; i < orderedList.length; i++) {
+            const avatar = orderedList[i];
+            const chId = characters.findIndex(c => c.avatar === avatar);
+            if (chId === -1) {
+                takeoverGenCount--;
+                console.warn('[GroupDirector] SKIP unknown avatar, takeoverGenCount→', takeoverGenCount);
+                continue;
+            }
+            setCharacterId(chId);
+            setCharacterName(characters[chId].name);
+            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
+
+            try {
+                await ctx.generate('normal', { force_chid: chId });
+                console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
+            } catch (e) {
+                console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
+                takeoverGenCount = 0;
+                return;
+            }
+        }
+
+        console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
+    } finally {
+        console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
+        takeoverGenCount = 0;
+    }
+}
 
 // ─── LLM Mode (Director) ──────────────────────────────────────────────
 async function initRoundWithLLM() {
@@ -352,7 +424,13 @@ async function initRoundWithLLM() {
         const memberList = enabledMembers
             .map(a => {
                 const c = characters.find(c => c.avatar === a);
-                return c ? `- ${c.name}: ${(c.description || '').slice(0, 200)}` : null;
+                if (!c) return null;
+                const desc = c.description || '';
+                const showDesc = settings.llmCharDescMode === 'full'
+                    ? desc
+                    : desc.slice(0, settings.llmCharDescLength);
+                const truncated = showDesc.length < desc.length ? `${showDesc}…` : showDesc;
+                return `- ${c.name}: ${truncated}`;
             })
             .filter(Boolean)
             .join('\n');
@@ -368,11 +446,11 @@ async function initRoundWithLLM() {
             .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers));
 
         const ctx = getContext();
-        const response = await ctx.generateQuietPrompt({
-            quietPrompt: filled,
-            skipWIAN: true,
-            quietToLoud: false,
-            quietName: 'GroupDirector',
+        // Use generateRaw to bypass character persona injection chain.
+        // generateQuietPrompt would prepend "Write <char>'s next reply..." causing
+        // the LLM to self-identify as the character instead of the director.
+        const response = await ctx.generateRaw({
+            prompt: filled,
         });
 
         log('LLM raw response:', response);
@@ -387,12 +465,12 @@ async function initRoundWithLLM() {
         const orderedAvatars = [];
         const seen = new Set();
         for (const name of parsed.speakers) {
-            const c = characters.find(c =>
-                c.name === name && enabledMembers.includes(c.avatar)
-            );
+            const c = matchCharacterByName(name, enabledMembers);
             if (c && !seen.has(c.avatar)) {
                 seen.add(c.avatar);
                 orderedAvatars.push(c.avatar);
+            } else if (!c) {
+                log(`LLM returned unrecognized name: "${name}" — skipped`);
             }
         }
 
@@ -400,13 +478,20 @@ async function initRoundWithLLM() {
         const capped = orderedAvatars.slice(0, settings.llmMaxSpeakers);
 
         if (capped.length === 0) {
-            log('LLM names did not match any group member');
+            log('LLM names did not match any group member. Speakers returned:', parsed.speakers);
             return;
         }
 
         llmPickedAvatars = capped;
         llmPickedSet = new Set(capped);
         llmCursor = 0;
+
+        // If strict order requested, takeover the round: suppress ST's loop
+        // then manually drive generation in LLM's declared order.
+        if (settings.llmRespectOrder) {
+            takeoverPending = true;
+            console.warn('[GroupDirector] TAKEOVER SET — suppressing ST order, picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
+        }
 
         log('LLM picked order:', capped.map(a =>
             characters.find(c => c.avatar === a)?.name).join(' → '),
@@ -418,16 +503,137 @@ async function initRoundWithLLM() {
 
 function parseLlmResponse(text) {
     if (!text) return null;
-    // Strip code fences if present
-    const cleaned = text.replace(/```(?:json)?\s*|\s*```/g, '');
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    try {
-        return JSON.parse(jsonMatch[0]);
-    } catch (e) {
-        log('Failed to parse LLM JSON:', e.message);
+
+    // Strategy 1: extract the outermost JSON object with balanced braces
+    const extracted = extractJsonObject(text);
+    if (!extracted) {
+        log('parseLlmResponse: no JSON object found in response');
         return null;
     }
+
+    // Normalize: trailing commas, single→double quotes, unquoted keys
+    const sanitized = sanitizeJson(extracted);
+
+    try {
+        return JSON.parse(sanitized);
+    } catch (e1) {
+        log('parseLlmResponse: JSON.parse failed after sanitize:', e1.message);
+
+        // Strategy 2: try extracting the speakers array directly
+        const arrMatch = sanitized.match(/\[([\s\S]*?)\]/);
+        if (arrMatch) {
+            const items = arrMatch[1]
+                .split(/["'],\s*["']/)
+                .map(s => s.replace(/^["'\s]+|["'\s]+$/g, '').trim())
+                .filter(Boolean);
+            if (items.length > 0) {
+                log('parseLlmResponse: extracted speakers array directly:', items);
+                return { speakers: items, reason: '' };
+            }
+        }
+
+        return null;
+    }
+}
+
+/**
+ * Extract a balanced JSON object from text that may contain code fences, markdown, or extra prose.
+ */
+function extractJsonObject(text) {
+    // Remove code fences (non-globally, fence by fence)
+    let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+
+    const firstBrace = cleaned.indexOf('{');
+    if (firstBrace === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = firstBrace; i < cleaned.length; i++) {
+        const ch = cleaned[i];
+
+        if (escape) { escape = false; continue; }
+        if (ch === '\\') { escape = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) {
+                return cleaned.slice(firstBrace, i + 1);
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Fix common JSON formatting errors from LLM output.
+ */
+function sanitizeJson(raw) {
+    let s = raw;
+
+    // Remove trailing commas before closing brackets/braces
+    s = s.replace(/,(\s*[}\]])/g, '$1');
+
+    // Convert single-quoted keys/values to double-quoted (carefully)
+    // Match single-quoted strings that are keys or values
+    // First, replace single-quoted keys: 'key':
+    s = s.replace(/'([^']+)'(\s*:)/g, '"$1"$2');
+    // Then, replace single-quoted values: : 'value'
+    s = s.replace(/(:\s*)'([^']+)'/g, '$1"$2"');
+
+    // Remove BOM / zero-width characters
+    s = s.replace(/[​-‍﻿]/g, '');
+
+    // Remove control characters (except \n, \r, \t) that break JSON
+    s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
+
+    return s.trim();
+}
+
+/**
+ * Match a name from LLM output to a group member character.
+ * Tries exact match first, then case-insensitive, then substring (longest wins).
+ * Returns the character object or null.
+ */
+function matchCharacterByName(name, enabledMembers) {
+    if (!name || typeof name !== 'string') return null;
+
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+
+    // 1. Exact match (case-sensitive)
+    for (const avatar of enabledMembers) {
+        const c = characters.find(c => c.avatar === avatar);
+        if (c && c.name === trimmed) return c;
+    }
+
+    // 2. Case-insensitive exact match
+    const lower = trimmed.toLowerCase();
+    for (const avatar of enabledMembers) {
+        const c = characters.find(c => c.avatar === avatar);
+        if (c && c.name.toLowerCase() === lower) return c;
+    }
+
+    // 3. Substring match — character name contains the LLM name or vice versa
+    let best = null;
+    let bestLen = 0;
+    for (const avatar of enabledMembers) {
+        const c = characters.find(c => c.avatar === avatar);
+        if (!c) continue;
+        const cLower = c.name.toLowerCase();
+        if (cLower.includes(lower) || lower.includes(cLower)) {
+            if (c.name.length > bestLen) {
+                best = c;
+                bestLen = c.name.length;
+            }
+        }
+    }
+
+    return best;
 }
 
 function getDefaultLlmPrompt() {
@@ -491,6 +697,9 @@ async function loadSettingsUI() {
     $c('llm-prompt').val(settings.llmPrompt || getDefaultLlmPrompt());
     $c('llm-max-speakers').val(settings.llmMaxSpeakers);
     $c('llm-respect-order').prop('checked', settings.llmRespectOrder);
+    $(`input[name="gd-llm-char-desc-mode"][value="${settings.llmCharDescMode}"]`).prop('checked', true);
+    $c('llm-char-desc-length').val(settings.llmCharDescLength);
+    toggleCharDescLength(settings.llmCharDescMode);
 
     // Formula bindings
     $c('topn').on('input', function () { settings.topN = parseInt($(this).val()) || 1; saveSettings(); });
@@ -510,6 +719,12 @@ async function loadSettingsUI() {
     $c('llm-prompt').on('input', function () { settings.llmPrompt = $(this).val(); saveSettings(); });
     $c('llm-max-speakers').on('input', function () { settings.llmMaxSpeakers = parseInt($(this).val()) || 3; saveSettings(); });
     $c('llm-respect-order').on('input', function () { settings.llmRespectOrder = !!$(this).prop('checked'); saveSettings(); });
+    $('input[name="gd-llm-char-desc-mode"]').on('change', function () {
+        settings.llmCharDescMode = $(this).val();
+        toggleCharDescLength(settings.llmCharDescMode);
+        saveSettings();
+    });
+    $c('llm-char-desc-length').on('input', function () { settings.llmCharDescLength = parseInt($(this).val()) || 200; saveSettings(); });
 
     // Reset prompt button
     $c('llm-prompt-reset').on('click', function () {
@@ -524,6 +739,10 @@ function applyModeVisibility(mode) {
     $('#gd-formula-section').toggle(mode === MODE_FORMULA);
     $('#gd-llm-section').toggle(mode === MODE_LLM);
     $('#gd-off-hint').toggle(mode === MODE_OFF);
+}
+
+function toggleCharDescLength(mode) {
+    $('#gd-llm-char-desc-length').prop('disabled', mode !== 'slice');
 }
 
 // ─── Slash Commands ───────────────────────────────────────────────────

@@ -93,8 +93,25 @@
 
                 <label class="checkbox_label" for="gd-llm-respect-order">
                     <input type="checkbox" id="gd-llm-respect-order">
-                    <span>严格按 LLM 指定的顺序发言（关闭则只过滤集合，不约束顺序）</span>
+                    <span>严格按 LLM 顺序发言（接管 ST 激活循环，手动按导演决定的顺序逐人生成）</span>
                 </label>
+
+                <hr>
+                <h4>角色描述控制</h4>
+                <small>控制传入 Director LLM 的角色描述长度（`{{characters}}` 占位符）。过长可能超出上下文，过短可能不够判断。</small>
+
+                <label class="checkbox_label" for="gd-llm-char-desc-full">
+                    <input type="radio" name="gd-llm-char-desc-mode" value="full" id="gd-llm-char-desc-full">
+                    <span>全量传入（角色简介不作截断）</span>
+                </label>
+
+                <label class="checkbox_label" for="gd-llm-char-desc-slice">
+                    <input type="radio" name="gd-llm-char-desc-mode" value="slice" id="gd-llm-char-desc-slice">
+                    <span>切片截断（保留前 N 个字符）</span>
+                </label>
+
+                <label for="gd-llm-char-desc-length">切片长度（字符数）</label>
+                <input type="number" id="gd-llm-char-desc-length" class="text_pole" min="50" max="2000" step="50">
 
                 <hr>
                 <label for="gd-llm-prompt">Director Prompt 模板</label>

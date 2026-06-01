@@ -6,9 +6,9 @@
     "generate_interceptor": "groupDirector_Interceptor",
     "js": "index.js",
     "css": "style.css",
-    "author": "WindySora",
-    "version": "0.4.0",
-    "homePage": "https://github.com/WindySora/SillyTavern-GroupDirector",
+    "author": "Windy-Sora",
+    "version": "0.4.6",
+    "homePage": "https://github.com/Windy-Sora/SillyTavern-GroupDirector",
     "auto_update": true,
     "i18n": {}
 }
