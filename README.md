@@ -55,7 +55,7 @@ git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
 
 ### 方式三：下载 ZIP
 
-1. 前往 [Releases](https://github.com/Windy-Sora/SillyTavern-GroupDirector/releases/tag/v0.4.6) 下载最新版
+1. 前往 [Releases](https://github.com/Windy-Sora/SillyTavern-GroupDirector/releases) 下载最新版
 2. 解压到 `SillyTavern/public/scripts/extensions/third-party/SillyTavern-GroupDirector/`
 3. 重启 SillyTavern
 
