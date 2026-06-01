@@ -1,6 +1,7 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName } from '../../../../script.js';
+import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
+import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
 
 // ─── Settings Defaults ───────────────────────────────────────────────
@@ -446,12 +447,13 @@ async function initRoundWithLLM() {
             .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers));
 
         const ctx = getContext();
-        // Use generateRaw to bypass character persona injection chain.
-        // generateQuietPrompt would prepend "Write <char>'s next reply..." causing
-        // the LLM to self-identify as the character instead of the director.
         const response = await ctx.generateRaw({
             prompt: filled,
         });
+
+        // Clear quiet prompt extension to prevent Director text leaking
+        // into subsequent character generation prompts.
+        setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
         log('LLM raw response:', response);
 
@@ -661,10 +663,7 @@ Reply with ONLY a JSON object, no prose, no code fences:
 
 // ─── Settings UI ──────────────────────────────────────────────────────
 async function loadSettingsUI() {
-    const html = await renderExtensionTemplateAsync(
-        'third-party/SillyTavern-GroupDirector',
-        'settings'
-    );
+    const html = await renderExtensionTemplateAsync('third-party/group-director', 'settings');
     $('#extensions_settings').append(html);
 
     const $c = (sel) => $(`#gd-${sel}`);
