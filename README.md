@@ -274,6 +274,28 @@ Group Director 特别适合：
 
 ---
 
+# 其他可拓展用法
+
+1. 连续剧情
+{{previousPlan}} 包含上一轮剧情状态和发言顺序
+下一轮导演可参考更新故事进度
+
+2. 自定义剧情账本
+{
+  "speakers": ["Alice", "Bob"],
+  "reason": "Alice先发言",
+  "scripts": {"Alice":"紧张", "Bob":"观察"},
+  "story_state": {"chapter":3, "progress":42},
+  "relationship_state": {"Alice-Bob":50}
+}
+上述字段不会影响原有解析，但会自动作为多轮状态存储，实现剧情账本。
+
+3. 剧情风格控制
+- 剧情要温馨治愈，突出姐妹情深
+- 保持紧张悬疑氛围
+- 加入搞笑吐槽元素
+也可以指定章节目标、伏笔或角色弧光，Director 会自动安排角色演绎。
+
 # 技术特点
 
 * 基于官方 Extension API
