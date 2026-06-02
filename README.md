@@ -1,5 +1,11 @@
 # SillyTavern Group Director
 
+🌏 Language
+
+- English: [README_EN.md](README_EN.md)
+- 中文: 当前页面
+
+---
 一个为 SillyTavern 群聊设计的「导演系统」。
 
 Group Director 不只是决定谁发言。
