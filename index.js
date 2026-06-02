@@ -1,7 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
-import { inject_ids } from '../../../constants.js';
+import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName } from '../../../../script.js';
 import { groups, selected_group } from '../../../group-chats.js';
 
 // ─── Settings Defaults ───────────────────────────────────────────────
@@ -264,16 +263,12 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
     const avatar = char.avatar;
 
-    // First speaker of the round: initialize state (run rules or call LLM)
+    // First speaker of the round: init formula scoring. LLM init is already
+    // done in GROUP_WRAPPER_STARTED (before any Generate call, to prevent
+    // prompt contamination between director and character generation).
     if (!roundInitialized) {
         roundInitialized = true;
-        if (settings.mode === MODE_LLM) {
-            await initRoundWithLLM();
-            // If LLM failed and returned nothing, fall back transparently — allow all
-            if (!llmPickedAvatars || llmPickedAvatars.length === 0) {
-                log('LLM produced no decision; falling back to transparent (allow all)');
-            }
-        } else {
+        if (settings.mode === MODE_FORMULA) {
             initFormulaRound();
         }
     }
@@ -341,7 +336,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 // ─── Event Listeners ─────────────────────────────────────────────────
 let roundGenerateType = 'normal'; // captured from GROUP_WRAPPER_STARTED
 
-eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
+eventSource.on(event_types.GROUP_WRAPPER_STARTED, async (data) => {
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
     if (takeoverGenCount > 0) {
@@ -362,6 +357,16 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverPending = false;
     takeoverGenCount = 0;
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
+
+    // Call Director LLM BEFORE the for-loop, outside Generate's prompt context.
+    // This prevents the Director prompt from contaminating character generation.
+    if (settings.mode === MODE_LLM) {
+        roundInitialized = true;
+        await initRoundWithLLM();
+        if (!llmPickedAvatars || llmPickedAvatars.length === 0) {
+            log('LLM produced no decision; falling back to transparent (allow all)');
+        }
+    }
 });
 
 eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
@@ -450,10 +455,6 @@ async function initRoundWithLLM() {
         const response = await ctx.generateRaw({
             prompt: filled,
         });
-
-        // Clear quiet prompt extension to prevent Director text leaking
-        // into subsequent character generation prompts.
-        setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
         log('LLM raw response:', response);
 
