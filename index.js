@@ -38,7 +38,10 @@ const DEFAULT_SETTINGS = {
     llmScriptPrompt: '',
     llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
     llmScriptContinuity: false,
+    llmScriptContinuityMode: 'last',   // 'last' = only previous round; 'history' = full recorded history
+    llmScriptContinuityCount: 0,       // history mode: 0 = all rounds, N = last N rounds
     llmScriptContinuityWrapper: '[Previous round\'s director plan — reference this for continuity, but update for the current situation:\n{{previousPlan}}\n]',
+    llmScriptContinuityHistoryWrapper: '[Director plans from previous rounds:\n{{previousPlans}}\n]',
     // World Info injection into Director prompt
     llmWorldInfoEnabled: false,
     llmWorldInfoWrapper: '[Current world context / lorebook entries:\n{{worldInfo}}\n]',
@@ -74,7 +77,7 @@ let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
 let directorScripts = {};           // { characterName: scriptText } from LLM
-let lastDirectorResponse = '';      // raw LLM response from previous round
+let directorHistory = [];            // Array of parsed LLM JSON responses, newest last
 let roundWorldInfo = '';            // cached WI text for this round
 let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
 
@@ -542,10 +545,24 @@ async function initRoundWithLLM() {
             contextPrefix += wiWrapper.replace('{{worldInfo}}', roundWorldInfo) + '\n\n';
         }
 
-        // Inject previous round's director plan for script continuity
-        if (settings.llmScriptContinuity && lastDirectorResponse) {
-            const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
-            contextPrefix += wrapper.replace('{{previousPlan}}', lastDirectorResponse) + '\n\n';
+        // Inject previous director plans for script continuity
+        if (settings.llmScriptContinuity && directorHistory.length > 0) {
+            if (settings.llmScriptContinuityMode === 'history') {
+                // Full history mode: provide N recent rounds as JSON array
+                const count = settings.llmScriptContinuityCount > 0
+                    ? Math.min(settings.llmScriptContinuityCount, directorHistory.length)
+                    : directorHistory.length;
+                const recentPlans = directorHistory.slice(-count);
+                const plansJson = JSON.stringify(recentPlans, null, 2);
+                const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
+                contextPrefix += wrapper.replace('{{previousPlans}}', plansJson) + '\n\n';
+            } else {
+                // Last-round mode (default): provide only the most recent plan
+                const lastPlan = directorHistory[directorHistory.length - 1];
+                const lastJson = JSON.stringify(lastPlan, null, 2);
+                const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
+                contextPrefix += wrapper.replace('{{previousPlan}}', lastJson) + '\n\n';
+            }
         }
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
@@ -564,11 +581,6 @@ async function initRoundWithLLM() {
             prompt: filled,
         });
 
-        // Save this response for next round's continuity
-        if (settings.llmScriptContinuity) {
-            lastDirectorResponse = response || '';
-        }
-
         // Clear quiet prompt extension to prevent Director text leaking
         // into subsequent character generation prompts.
         setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
@@ -579,6 +591,11 @@ async function initRoundWithLLM() {
         if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
             log('LLM returned no valid speakers');
             return;
+        }
+
+        // Save full parsed JSON to history for future rounds (preserves all custom fields)
+        if (settings.llmScriptContinuity) {
+            directorHistory.push(parsed);
         }
 
         // Map names → avatars in declared order; dedupe
@@ -870,8 +887,12 @@ async function loadSettingsUI() {
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
     $c('llm-script-continuity').prop('checked', settings.llmScriptContinuity);
     $c('llm-script-continuity-wrapper').val(settings.llmScriptContinuityWrapper);
+    $(`input[name="gd-llm-script-continuity-mode"][value="${settings.llmScriptContinuityMode}"]`).prop('checked', true);
+    $c('llm-script-continuity-count').val(settings.llmScriptContinuityCount);
+    $c('llm-script-continuity-history-wrapper').val(settings.llmScriptContinuityHistoryWrapper);
     $c('llm-world-info-enabled').prop('checked', settings.llmWorldInfoEnabled);
     $c('llm-world-info-wrapper').val(settings.llmWorldInfoWrapper);
+    toggleContinuityMode(settings.llmScriptContinuityMode);
     toggleCharDescLength(settings.llmCharDescMode);
 
     // Formula bindings
@@ -903,6 +924,13 @@ async function loadSettingsUI() {
     $c('llm-script-wrapper').on('input', function () { settings.llmScriptWrapper = $(this).val(); saveSettings(); });
     $c('llm-script-continuity').on('input', function () { settings.llmScriptContinuity = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-script-continuity-wrapper').on('input', function () { settings.llmScriptContinuityWrapper = $(this).val(); saveSettings(); });
+    $('input[name="gd-llm-script-continuity-mode"]').on('change', function () {
+        settings.llmScriptContinuityMode = $(this).val();
+        toggleContinuityMode(settings.llmScriptContinuityMode);
+        saveSettings();
+    });
+    $c('llm-script-continuity-count').on('input', function () { settings.llmScriptContinuityCount = parseInt($(this).val()) || 0; saveSettings(); });
+    $c('llm-script-continuity-history-wrapper').on('input', function () { settings.llmScriptContinuityHistoryWrapper = $(this).val(); saveSettings(); });
     $c('llm-world-info-enabled').on('input', function () { settings.llmWorldInfoEnabled = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-world-info-wrapper').on('input', function () { settings.llmWorldInfoWrapper = $(this).val(); saveSettings(); });
 
@@ -923,6 +951,12 @@ function applyModeVisibility(mode) {
 
 function toggleCharDescLength(mode) {
     $('#gd-llm-char-desc-length').prop('disabled', mode !== 'slice');
+}
+
+function toggleContinuityMode(mode) {
+    $('#gd-llm-script-continuity-count').prop('disabled', mode !== 'history');
+    $('#gd-llm-script-continuity-history-wrapper').prop('disabled', mode !== 'history');
+    $('#gd-llm-script-continuity-wrapper').prop('disabled', mode !== 'last');
 }
 
 // ─── Slash Commands ───────────────────────────────────────────────────

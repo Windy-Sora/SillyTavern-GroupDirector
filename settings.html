@@ -128,12 +128,34 @@
 
                 <label class="checkbox_label" for="gd-llm-script-continuity">
                     <input type="checkbox" id="gd-llm-script-continuity">
-                    <span>连贯剧本（将上一轮导演的完整计划注入当前 prompt，保持剧本连续性）</span>
+                    <span>连贯剧本（将过往导演计划注入当前 prompt，保持剧本连续性）</span>
                 </label>
 
-                <label for="gd-llm-script-continuity-wrapper">连贯剧本包装模板</label>
+                <hr>
+                <h4>连贯剧本模式</h4>
+                <small>选择只注入上一轮计划，还是注入完整历史记录。</small>
+
+                <label class="checkbox_label" for="gd-llm-script-continuity-mode-last">
+                    <input type="radio" name="gd-llm-script-continuity-mode" value="last" id="gd-llm-script-continuity-mode-last">
+                    <span><b>仅上一轮</b> — 只注入最近一次的导演 JSON（当前默认行为）</span>
+                </label>
+
+                <label class="checkbox_label" for="gd-llm-script-continuity-mode-history">
+                    <input type="radio" name="gd-llm-script-continuity-mode" value="history" id="gd-llm-script-continuity-mode-history">
+                    <span><b>完整历史</b> — 永久记录每轮导演输出，注入指定数量的 JSON 数组（保留所有自定义字段）</span>
+                </label>
+
+                <label for="gd-llm-script-continuity-count">历史轮数（0 = 全部）</label>
+                <small>指定注入最近 N 轮导演计划的 JSON 数量。设为 0 则注入全部记录。</small>
+                <input type="number" id="gd-llm-script-continuity-count" class="text_pole" min="0" max="100" step="1">
+
+                <label for="gd-llm-script-continuity-wrapper">连贯剧本包装模板（仅上一轮模式）</label>
                 <small><code>{{previousPlan}}</code> 占位符会被替换为上一轮导演的完整 JSON 回复。</small>
                 <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+
+                <label for="gd-llm-script-continuity-history-wrapper">连贯剧本包装模板（完整历史模式）</label>
+                <small><code>{{previousPlans}}</code> 占位符会被替换为过往导演计划的 JSON 数组。</small>
+                <textarea id="gd-llm-script-continuity-history-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
 
                 <hr>
                 <h4>世界书注入 (World Info)</h4>
