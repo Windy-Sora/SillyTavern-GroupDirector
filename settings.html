@@ -114,9 +114,27 @@
                 <input type="number" id="gd-llm-char-desc-length" class="text_pole" min="50" max="2000" step="50">
 
                 <hr>
+                <h4>导演剧本 (Director Script)</h4>
+                <small>让导演不仅决定谁发言，还生成一段场景剧本，注入到角色生成 prompt 中指导内容创作。</small>
+
+                <label class="checkbox_label" for="gd-llm-script-enabled">
+                    <input type="checkbox" id="gd-llm-script-enabled">
+                    <span>启用导演剧本（Director 为每个发言角色输出独立剧本，注入角色 prompt 指导表演，角色不会暴露剧本存在）</span>
+                </label>
+
+                <label for="gd-llm-script-prompt">剧本要求提示（Script Prompt）</label>
+                <small>告诉导演你希望什么样的剧本风格。例如："剧情要温馨治愈，突出姐妹情深"、"保持紧张悬疑的氛围"、"加入搞笑吐槽元素"等。留空则只要求基本场景描述。</small>
+                <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+
+                <label for="gd-llm-script-wrapper">剧本注入包装模板（Script Wrapper）</label>
+                <small>控制剧本如何包裹后注入角色 prompt。<code>{{script}}</code> 占位符会被替换为实际剧本内容。</small>
+                <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+
+                <hr>
                 <label for="gd-llm-prompt">Director Prompt 模板</label>
                 <small>可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code><br>
                     模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。
+                    启用剧本后还需包含 <code>"script": "..."</code>。
                     <code>speakers</code> 数组**顺序就是发言顺序**。</small>
                 <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="14" style="width:100%;"></textarea>
                 <div class="menu_button menu_button_icon" id="gd-llm-prompt-reset" style="margin-top:4px;">

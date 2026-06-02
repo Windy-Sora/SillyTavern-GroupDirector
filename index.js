@@ -29,8 +29,12 @@ const DEFAULT_SETTINGS = {
     llmPrompt: '',
     llmMaxSpeakers: 3,
     llmRespectOrder: true,
-    llmCharDescMode: 'slice',   // 'full' | 'slice' — 角色描述全量还是切片
-    llmCharDescLength: 200,     // 切片模式下的最大字符数
+    llmCharDescMode: 'slice',
+    llmCharDescLength: 200,
+    // Director script — inject stage direction into character prompts
+    llmScriptEnabled: false,
+    llmScriptPrompt: '',
+    llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
     debugLogging: false,
 };
 
@@ -62,6 +66,16 @@ let roundInitialized = false;
 let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
+let directorScripts = {};           // { characterName: scriptText } from LLM
+
+// Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
+const DIRECTOR_SCRIPT_KEY = 'group_director_script';
+
+function getScriptForChar(charName) {
+    const script = directorScripts[charName];
+    if (!script) return '';
+    return (settings.llmScriptWrapper || '{{script}}').replace('{{script}}', script);
+}
 
 function saveSettings() {
     extension_settings[EXT_KEY] = settings;
@@ -317,6 +331,11 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         }
         llmSpokenSet.add(avatar);
         roundSpeakerCount++;
+        // Inject per-character director script
+        const charScript = getScriptForChar(char.name);
+        if (charScript) {
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+        }
         log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
         return;
     }
@@ -361,6 +380,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundInitialized = false;
     takeoverPending = false;
     takeoverGenCount = 0;
+    directorScripts = {};
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
@@ -397,6 +417,11 @@ async function runManualOrderedGeneration() {
             setCharacterName(characters[chId].name);
             console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
 
+            // Inject per-character director script
+            const charScript = getScriptForChar(characters[chId].name);
+            if (charScript) {
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+            }
             try {
                 await ctx.generate('normal', { force_chid: chId });
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
@@ -404,6 +429,10 @@ async function runManualOrderedGeneration() {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
                 takeoverGenCount = 0;
                 return;
+            } finally {
+                if (charScript) {
+                    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
+                }
             }
         }
 
@@ -487,6 +516,26 @@ async function initRoundWithLLM() {
         llmPickedAvatars = capped;
         llmPickedSet = new Set(capped);
         llmCursor = 0;
+
+        // Store director script if present
+        // Store per-character scripts from LLM response
+        directorScripts = {};
+        if (settings.llmScriptEnabled && parsed.scripts && typeof parsed.scripts === 'object') {
+            for (const [name, script] of Object.entries(parsed.scripts)) {
+                if (script && typeof script === 'string') {
+                    // Match to actual character name
+                    const c = matchCharacterByName(name, enabledMembers);
+                    if (c) directorScripts[c.name] = script;
+                }
+            }
+        }
+        // Fallback: single script field → assign to all picked characters
+        if (Object.keys(directorScripts).length === 0 && settings.llmScriptEnabled && parsed.script) {
+            for (const a of capped) {
+                const c = characters.find(c => c.avatar === a);
+                if (c) directorScripts[c.name] = parsed.script;
+            }
+        }
 
         // If strict order requested, takeover the round: suppress ST's loop
         // then manually drive generation in LLM's declared order.
@@ -639,7 +688,7 @@ function matchCharacterByName(name, enabledMembers) {
 }
 
 function getDefaultLlmPrompt() {
-    return `You are a Group Chat Director. Read the recent conversation and decide which characters should respond next, and in what order.
+    let base = `You are a Group Chat Director. Read the recent conversation and decide which characters should respond next, and in what order.
 
 Recent messages:
 {{recentMessages}}
@@ -651,19 +700,46 @@ Rules:
 - Pick at most {{maxSpeakers}} character(s).
 - Order them by who should speak FIRST, SECOND, etc.
 - Only pick characters who have a meaningful reason to respond now.
-- It is OK to pick just one character if only one fits.
+- It is OK to pick just one character if only one fits.`;
+
+    if (settings.llmScriptEnabled) {
+        base += `
+- Also write a SHORT stage direction for EACH picked character. The script tells the character HOW to act, not WHAT to say.
+- Write scripts in imperative stage-direction style (e.g. "你紧张地搓着手，不敢直视对方"). Do NOT write long prose or dialogue.
+- The character will see ONLY their own script, NOT the full plan. They are instructed to follow it without revealing its existence.`;
+
+        if (settings.llmScriptPrompt) {
+            base += `\n- Script theme / requirements: ${settings.llmScriptPrompt}`;
+        }
+    }
+
+    base += `
 
 Reply with ONLY a JSON object, no prose, no code fences:
 {
   "speakers": ["NameOfFirstSpeaker", "NameOfSecondSpeaker"],
-  "reason": "short justification"
+  "reason": "short justification"`;
+
+    if (settings.llmScriptEnabled) {
+        base += `,
+  "scripts": {
+    "NameOfFirstSpeaker": "short imperative stage direction",
+    "NameOfSecondSpeaker": "short imperative stage direction"
+  }`;
+    }
+
+    base += `
 }`;
+    return base;
 }
 
 
 // ─── Settings UI ──────────────────────────────────────────────────────
 async function loadSettingsUI() {
-    const html = await renderExtensionTemplateAsync('third-party/group-director', 'settings');
+    const html = await renderExtensionTemplateAsync(
+    'third-party/SillyTavern-GroupDirector',
+    'settings'
+);
     $('#extensions_settings').append(html);
 
     const $c = (sel) => $(`#gd-${sel}`);
@@ -698,6 +774,9 @@ async function loadSettingsUI() {
     $c('llm-respect-order').prop('checked', settings.llmRespectOrder);
     $(`input[name="gd-llm-char-desc-mode"][value="${settings.llmCharDescMode}"]`).prop('checked', true);
     $c('llm-char-desc-length').val(settings.llmCharDescLength);
+    $c('llm-script-enabled').prop('checked', settings.llmScriptEnabled);
+    $c('llm-script-prompt').val(settings.llmScriptPrompt);
+    $c('llm-script-wrapper').val(settings.llmScriptWrapper);
     toggleCharDescLength(settings.llmCharDescMode);
 
     // Formula bindings
@@ -724,6 +803,9 @@ async function loadSettingsUI() {
         saveSettings();
     });
     $c('llm-char-desc-length').on('input', function () { settings.llmCharDescLength = parseInt($(this).val()) || 200; saveSettings(); });
+    $c('llm-script-enabled').on('input', function () { settings.llmScriptEnabled = !!$(this).prop('checked'); saveSettings(); });
+    $c('llm-script-prompt').on('input', function () { settings.llmScriptPrompt = $(this).val(); saveSettings(); });
+    $c('llm-script-wrapper').on('input', function () { settings.llmScriptWrapper = $(this).val(); saveSettings(); });
 
     // Reset prompt button
     $c('llm-prompt-reset').on('click', function () {
