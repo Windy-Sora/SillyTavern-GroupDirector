@@ -3,6 +3,8 @@ import { extension_settings, getContext, renderExtensionTemplateAsync } from '..
 import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
+import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
+import { power_user } from '../../../power-user.js';
 
 // ─── Settings Defaults ───────────────────────────────────────────────
 const EXT_KEY = 'group-director';
@@ -37,6 +39,9 @@ const DEFAULT_SETTINGS = {
     llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
     llmScriptContinuity: false,
     llmScriptContinuityWrapper: '[Previous round\'s director plan — reference this for continuity, but update for the current situation:\n{{previousPlan}}\n]',
+    // World Info injection into Director prompt
+    llmWorldInfoEnabled: false,
+    llmWorldInfoWrapper: '[Current world context / lorebook entries:\n{{worldInfo}}\n]',
     debugLogging: false,
 };
 
@@ -70,6 +75,8 @@ let takeoverPending = false;
 let takeoverGenCount = 0;
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let lastDirectorResponse = '';      // raw LLM response from previous round
+let roundWorldInfo = '';            // cached WI text for this round
+let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -383,6 +390,8 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverPending = false;
     takeoverGenCount = 0;
     directorScripts = {};
+    roundWorldInfo = '';
+    roundWorldInfoEntries = [];
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
@@ -446,6 +455,56 @@ async function runManualOrderedGeneration() {
 }
 
 // ─── LLM Mode (Director) ──────────────────────────────────────────────
+async function buildDirectorWorldInfo(enabledMembers) {
+    if (!settings.llmWorldInfoEnabled) {
+        return { text: '', entries: [] };
+    }
+
+    try {
+        // Replicate Generate's chatForWI exactly (script.js:4535)
+        const coreChat = chat.filter(x => !x.is_system);
+        const chatForWI = coreChat.map(x => world_info_include_names ? `${x.name}: ${x.mes}` : x.mes).reverse();
+        const maxCtx = Number(getContext().maxContext) || 100000;
+
+        // Build global scan data from all enabled members + persona (script.js:4537-4545)
+        const personaText = power_user.persona_description || '';
+        const allDesc = enabledMembers
+            .map(a => characters.find(c => c.avatar === a))
+            .filter(Boolean)
+            .map(c => [c.description, c.personality, c.scenario].filter(Boolean).join(' '))
+            .join(' ');
+        const firstMember = characters.find(c => enabledMembers.includes(c.avatar));
+
+        // Call checkWorldInfo directly — getWorldInfoPrompt wraps it but
+        // discards allActivatedEntries (returns new Set()) in its result.
+        const activated = await checkWorldInfo(chatForWI, maxCtx, false, {
+            trigger: 'normal',
+            personaDescription: personaText,
+            characterDescription: allDesc,
+            characterPersonality: firstMember?.personality || '',
+            characterDepthPrompt: '',
+            scenario: firstMember?.scenario || '',
+            creatorNotes: '',
+        });
+
+        const entries = Array.from(activated?.allActivatedEntries || []);
+        const text = entries.length > 0
+            ? entries.map(e => {
+                const label = e.comment || e.uid || 'entry';
+                const content = e.content || '';
+                return `[${label}]\n${content}`;
+            }).join('\n')
+            : ((activated?.worldInfoBefore || '') + (activated?.worldInfoAfter || ''));
+
+        log(`World Info: ${entries.length} entries activated`, entries.map(e => e.comment || e.uid));
+
+        return { text, entries };
+    } catch (e) {
+        console.warn('[GroupDirector] World Info fetch failed:', e.message);
+        return { text: '', entries: [] };
+    }
+}
+
 async function initRoundWithLLM() {
     const group = getCurrentGroup();
     if (!group) return;
@@ -471,16 +530,33 @@ async function initRoundWithLLM() {
             .map(m => `${m.name || (m.is_user ? 'User' : 'Char')}: ${m.mes || ''}`)
             .join('\n');
 
+        // One-shot WI scan per round, cached for the director stage
+        let contextPrefix = '';
+        if (!roundWorldInfo && settings.llmWorldInfoEnabled) {
+            const wi = await buildDirectorWorldInfo(enabledMembers);
+            roundWorldInfo = wi.text;
+            roundWorldInfoEntries = wi.entries;
+        }
+        if (roundWorldInfo) {
+            const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
+            contextPrefix += wiWrapper.replace('{{worldInfo}}', roundWorldInfo) + '\n\n';
+        }
+
+        // Inject previous round's director plan for script continuity
+        if (settings.llmScriptContinuity && lastDirectorResponse) {
+            const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
+            contextPrefix += wrapper.replace('{{previousPlan}}', lastDirectorResponse) + '\n\n';
+        }
+
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
         let filled = promptTemplate
             .replace('{{recentMessages}}', recentText)
             .replace('{{characters}}', memberList)
             .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers));
 
-        // Inject previous round's director plan for script continuity
-        if (settings.llmScriptContinuity && lastDirectorResponse) {
-            const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
-            filled += '\n\n' + wrapper.replace('{{previousPlan}}', lastDirectorResponse);
+        // Prepend context (WI, continuity) so instruction/format stays at bottom
+        if (contextPrefix) {
+            filled = contextPrefix + filled;
         }
 
         const ctx = getContext();
@@ -701,13 +777,15 @@ function matchCharacterByName(name, enabledMembers) {
 }
 
 function getDefaultLlmPrompt() {
-    let base = `You are a Group Chat Director. Read the recent conversation and decide which characters should respond next, and in what order.
-
-Recent messages:
+    // Context at TOP — instruction/format at BOTTOM for maximum adherence in long contexts
+    let base = `Recent messages:
 {{recentMessages}}
 
 Available characters:
 {{characters}}
+
+---
+You are a Group Chat Director. Decide which characters should respond next, and in what order.
 
 Rules:
 - Pick at most {{maxSpeakers}} character(s).
@@ -792,6 +870,8 @@ async function loadSettingsUI() {
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
     $c('llm-script-continuity').prop('checked', settings.llmScriptContinuity);
     $c('llm-script-continuity-wrapper').val(settings.llmScriptContinuityWrapper);
+    $c('llm-world-info-enabled').prop('checked', settings.llmWorldInfoEnabled);
+    $c('llm-world-info-wrapper').val(settings.llmWorldInfoWrapper);
     toggleCharDescLength(settings.llmCharDescMode);
 
     // Formula bindings
@@ -823,6 +903,8 @@ async function loadSettingsUI() {
     $c('llm-script-wrapper').on('input', function () { settings.llmScriptWrapper = $(this).val(); saveSettings(); });
     $c('llm-script-continuity').on('input', function () { settings.llmScriptContinuity = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-script-continuity-wrapper').on('input', function () { settings.llmScriptContinuityWrapper = $(this).val(); saveSettings(); });
+    $c('llm-world-info-enabled').on('input', function () { settings.llmWorldInfoEnabled = !!$(this).prop('checked'); saveSettings(); });
+    $c('llm-world-info-wrapper').on('input', function () { settings.llmWorldInfoWrapper = $(this).val(); saveSettings(); });
 
     // Reset prompt button
     $c('llm-prompt-reset').on('click', function () {

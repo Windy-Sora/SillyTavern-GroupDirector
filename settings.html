@@ -132,8 +132,21 @@
                 </label>
 
                 <label for="gd-llm-script-continuity-wrapper">连贯剧本包装模板</label>
-                <small><code>{{previousPlan}}</code> 占位符会被替换为上一轮导演的完整 JSON 回复（含 reason 和 scripts）。</small>
+                <small><code>{{previousPlan}}</code> 占位符会被替换为上一轮导演的完整 JSON 回复。</small>
                 <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+
+                <hr>
+                <h4>世界书注入 (World Info)</h4>
+                <small>将当前激活的世界书/ lorebook 条目注入 Director prompt，让导演了解世界背景设定。</small>
+
+                <label class="checkbox_label" for="gd-llm-world-info-enabled">
+                    <input type="checkbox" id="gd-llm-world-info-enabled">
+                    <span>启用世界书注入（将激活的 lorebook 内容传递给 Director）</span>
+                </label>
+
+                <label for="gd-llm-world-info-wrapper">世界书包装模板</label>
+                <small><code>{{worldInfo}}</code> 占位符会被替换为当前激活的世界书条目文本。</small>
+                <textarea id="gd-llm-world-info-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
 
                 <label for="gd-llm-script-wrapper">剧本注入包装模板（Script Wrapper）</label>
                 <small>控制剧本如何包裹后注入角色 prompt。<code>{{script}}</code> 占位符会被替换为实际剧本内容。</small>
