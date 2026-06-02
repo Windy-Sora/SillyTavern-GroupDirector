@@ -663,7 +663,10 @@ Reply with ONLY a JSON object, no prose, no code fences:
 
 // ─── Settings UI ──────────────────────────────────────────────────────
 async function loadSettingsUI() {
-    const html = await renderExtensionTemplateAsync('third-party/group-director', 'settings');
+    const html = await renderExtensionTemplateAsync(
+    'third-party/SillyTavern-GroupDirector',
+    'settings'
+);
     $('#extensions_settings').append(html);
 
     const $c = (sel) => $(`#gd-${sel}`);
