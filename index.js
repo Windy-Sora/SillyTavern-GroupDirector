@@ -175,17 +175,16 @@ function scoreCharacter(chId, recentMessages) {
 }
 
 function findLastSpokenIndex(avatar, recentMessages) {
-    // Returns index in recentMessages where this avatar last spoke (0 = most recent)
-    // -1 if never spoke in recent messages
-    for (let i = 0; i < recentMessages.length; i++) {
+    // Iterate from newest to oldest. Returns 0 for most recent speaker,
+    // N-1 for earliest speaker in the window, -1 if never spoke.
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
         const msg = recentMessages[i];
         if (!msg.is_user && !msg.is_system) {
-            // Match by avatar or name
             const msgAvatar = msg.avatar || '';
             const msgName = msg.name || '';
             const char = characters.find(c => c.avatar === avatar);
             if (msgAvatar === avatar || (char && msgName === char.name)) {
-                return i;
+                return recentMessages.length - 1 - i;
             }
         }
     }
