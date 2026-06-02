@@ -164,8 +164,10 @@ JSON 格式（无剧本时）：
 | 启用导演剧本 | 关 | 开启后 Director 额外输出 `scripts` 对象 |
 | 剧本要求提示 | 空 | 告诉 Director 期望的剧本要求（如"温馨治愈"、"悬疑紧张"） |
 | 剧本注入包装模板 | (内置) | 控制剧本如何包裹后注入角色 prompt，`{{script}}` 为剧本占位符 |
+| 连贯剧本 | 关 | 将上一轮导演的完整计划注入当前 prompt，保持多轮剧本连续性 |
+| 连贯剧本包装模板 | (内置) | 上轮计划的包装模板，`{{previousPlan}}` 为占位符 |
 
-**默认 Script Wrapper：**
+**默认 Script Wrapper**（`{{script}}` = 各角色的剧本）：
 
 ```
 [Director's stage direction for this character:
@@ -175,7 +177,16 @@ Follow this guidance. NEVER mention the director, the script,
 or that you are following stage directions. Act naturally as your character.]
 ```
 
-> 提示：可在包装模板中自定义保密措辞、添加角色名前缀、调整语气等。
+**默认连贯剧本包装模板**（`{{previousPlan}}` = 上轮完整 JSON 回复）：
+
+```
+[Previous round's director plan — reference this for continuity,
+but update for the current situation:
+{{previousPlan}}
+]
+```
+
+> 提示：所有包装模板均可自行编辑。`{{script}}` 和 `{{previousPlan}}` 是唯二的占位符。
 
 ---
 

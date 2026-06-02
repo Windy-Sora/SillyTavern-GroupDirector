@@ -68,18 +68,29 @@ score(c) = mention(c) * w_mention
 
 ### 5.3 `llm` — 大模型判断
 
-- 第一个角色进入 interceptor 时调用一次 `getContext().generateQuietPrompt({...})`。
+- 第一个角色进入 interceptor 时调用 `getContext().generateRaw({...})` 获取导演决策（绕过角色 persona 注入）。
 - Prompt 模板可在 UI 配置，占位符 `{{recentMessages}}` / `{{characters}}` / `{{maxSpeakers}}`。
-- 模型必须返回严格 JSON：
+- 模型必须返回严格 JSON（启用剧本时含 `scripts` 字段）：
   ```json
-  { "speakers": ["Alice", "Bob"], "reason": "..." }
+  { "speakers": ["Alice", "Bob"], "reason": "...", "scripts": { "Alice": "...", "Bob": "..." } }
   ```
   `speakers` 数组的**顺序就是发言顺序**。
 - 按 `llmMaxSpeakers` 截断。
 - 两种执行策略（由 `llmRespectOrder` 控制）：
-  - **严格顺序**（默认）：interceptor 维护游标 `llmCursor`，只放行当前游标位置的角色，强制 SillyTavern 按 LLM 指定顺序发言。已发言的入 `llmSpokenSet`，游标自动跳过。
+  - **严格顺序**（默认）：接管 ST 循环，通过 `force_chid` 按导演决定的顺序逐人生成。
   - **仅过滤集合**：只看是否在 picked 集合里，顺序由 SillyTavern activation 决定。
 - LLM 失败 / JSON 解析失败 / 返回空 → 透明放行（不影响聊天）。
+
+### 5.4 导演剧本 (Director Script)
+
+可选子功能——启用后 Director 不仅决定谁发言，还为每个角色单独生成舞台剧本，注入到角色生成的 prompt 中。
+
+- 剧本按角色名分发：`scripts: { "Alice": "stage dir", "Bob": "stage dir" }`
+- 每个角色只收到自己的剧本，通过 `setExtensionPrompt(DIRECTOR_SCRIPT_KEY, ...)` 注入
+- 注入前包裹用户可编辑的 **Script Wrapper**（`llmScriptWrapper`），默认含保密指令
+- 剧本风格可通过 **Script Prompt**（`llmScriptPrompt`）定制
+- **连贯剧本**（`llmScriptContinuity`）：将上一轮导演完整回复注入当前 prompt，通过 **连贯剧本包装模板**（`llmScriptContinuityWrapper`）包裹，`{{previousPlan}}` 为占位符
+- 连贯数据存于 `lastDirectorResponse`，每轮更新
 
 **两种模式互斥**：UI 用 radio 强制单选，运行时由 `settings.mode` 派发，绝不可能同时启用。
 
@@ -93,7 +104,8 @@ score(c) = mention(c) * w_mention
 | `eventSource.on(GROUP_WRAPPER_STARTED)` | 一轮群聊生成开始，重置状态 |
 | `eventSource.on(GROUP_WRAPPER_FINISHED)` | 一轮结束，清理 |
 | `getContext().characterId` | 当前正要生成的角色索引 |
-| `getContext().generateQuietPrompt(...)` | Director LLM 调用 |
+| `getContext().generateRaw(...)` | Director LLM 调用（绕过 persona 注入） |
+| `setExtensionPrompt(key, ...)` + `extension_prompt_types` | 剧本注入到角色 prompt |
 | `extension_settings[EXT_KEY]` + `saveSettingsDebounced()` | 配置持久化 |
 | `renderExtensionTemplateAsync(name, id)` | 加载 settings.html |
 | `groups`, `selected_group` (live binding) | 当前群组成员列表 |
@@ -118,6 +130,13 @@ score(c) = mention(c) * w_mention
 | `llmPrompt` | (内置模板) | Director Prompt，留空用默认 |
 | `llmMaxSpeakers` | 3 | LLM 模式每轮最多发言人数 |
 | `llmRespectOrder` | true | 是否严格按 LLM 给的顺序发言 |
+| `llmCharDescMode` | `slice` | 角色描述全量(`full`)或切片(`slice`) |
+| `llmCharDescLength` | 200 | 切片模式最大字符数 |
+| `llmScriptEnabled` | false | 启用导演剧本 |
+| `llmScriptPrompt` | '' | 剧本风格要求提示 |
+| `llmScriptWrapper` | (内置) | 剧本注入包装模板，`{{script}}` 为占位符 |
+| `llmScriptContinuity` | false | 连贯剧本——每轮注入上轮导演计划 |
+| `llmScriptContinuityWrapper` | (内置) | 连贯剧本包装模板，`{{previousPlan}}` 为占位符 |
 | `debugLogging` | false | 控制台调试输出 |
 
 > 兼容性：v0.3 的 `enabled` / `directorLlmEnabled` / `directorLlmPrompt` 旧字段会在加载时自动迁移到 `mode` / `llmPrompt`。

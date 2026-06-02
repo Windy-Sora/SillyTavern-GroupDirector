@@ -126,6 +126,15 @@
                 <small>告诉导演你希望什么样的剧本风格。例如："剧情要温馨治愈，突出姐妹情深"、"保持紧张悬疑的氛围"、"加入搞笑吐槽元素"等。留空则只要求基本场景描述。</small>
                 <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
 
+                <label class="checkbox_label" for="gd-llm-script-continuity">
+                    <input type="checkbox" id="gd-llm-script-continuity">
+                    <span>连贯剧本（将上一轮导演的完整计划注入当前 prompt，保持剧本连续性）</span>
+                </label>
+
+                <label for="gd-llm-script-continuity-wrapper">连贯剧本包装模板</label>
+                <small><code>{{previousPlan}}</code> 占位符会被替换为上一轮导演的完整 JSON 回复（含 reason 和 scripts）。</small>
+                <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+
                 <label for="gd-llm-script-wrapper">剧本注入包装模板（Script Wrapper）</label>
                 <small>控制剧本如何包裹后注入角色 prompt。<code>{{script}}</code> 占位符会被替换为实际剧本内容。</small>
                 <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>

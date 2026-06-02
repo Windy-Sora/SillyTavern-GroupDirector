@@ -35,6 +35,8 @@ const DEFAULT_SETTINGS = {
     llmScriptEnabled: false,
     llmScriptPrompt: '',
     llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmScriptContinuity: false,
+    llmScriptContinuityWrapper: '[Previous round\'s director plan — reference this for continuity, but update for the current situation:\n{{previousPlan}}\n]',
     debugLogging: false,
 };
 
@@ -67,6 +69,7 @@ let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
 let directorScripts = {};           // { characterName: scriptText } from LLM
+let lastDirectorResponse = '';      // raw LLM response from previous round
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -469,15 +472,26 @@ async function initRoundWithLLM() {
             .join('\n');
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-        const filled = promptTemplate
+        let filled = promptTemplate
             .replace('{{recentMessages}}', recentText)
             .replace('{{characters}}', memberList)
             .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers));
+
+        // Inject previous round's director plan for script continuity
+        if (settings.llmScriptContinuity && lastDirectorResponse) {
+            const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
+            filled += '\n\n' + wrapper.replace('{{previousPlan}}', lastDirectorResponse);
+        }
 
         const ctx = getContext();
         const response = await ctx.generateRaw({
             prompt: filled,
         });
+
+        // Save this response for next round's continuity
+        if (settings.llmScriptContinuity) {
+            lastDirectorResponse = response || '';
+        }
 
         // Clear quiet prompt extension to prevent Director text leaking
         // into subsequent character generation prompts.
@@ -776,6 +790,8 @@ async function loadSettingsUI() {
     $c('llm-script-enabled').prop('checked', settings.llmScriptEnabled);
     $c('llm-script-prompt').val(settings.llmScriptPrompt);
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
+    $c('llm-script-continuity').prop('checked', settings.llmScriptContinuity);
+    $c('llm-script-continuity-wrapper').val(settings.llmScriptContinuityWrapper);
     toggleCharDescLength(settings.llmCharDescMode);
 
     // Formula bindings
@@ -805,6 +821,8 @@ async function loadSettingsUI() {
     $c('llm-script-enabled').on('input', function () { settings.llmScriptEnabled = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-script-prompt').on('input', function () { settings.llmScriptPrompt = $(this).val(); saveSettings(); });
     $c('llm-script-wrapper').on('input', function () { settings.llmScriptWrapper = $(this).val(); saveSettings(); });
+    $c('llm-script-continuity').on('input', function () { settings.llmScriptContinuity = !!$(this).prop('checked'); saveSettings(); });
+    $c('llm-script-continuity-wrapper').on('input', function () { settings.llmScriptContinuityWrapper = $(this).val(); saveSettings(); });
 
     // Reset prompt button
     $c('llm-prompt-reset').on('click', function () {
