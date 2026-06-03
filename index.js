@@ -904,6 +904,15 @@ async function loadSettingsUI() {
     $c('llm-script-prompt').val(settings.llmScriptPrompt);
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
     $c('llm-history-enabled').prop('checked', settings.llmHistoryEnabled);
+    // Show persisted script prompt from chat metadata (if any)
+    const persistedScript = chat_metadata?.[EXT_KEY]?.historyMeta?.scriptPrompt;
+    const $metaDisplay = $('#gd-history-meta-display');
+    if (persistedScript) {
+        $('#gd-history-meta-script').text(persistedScript);
+        $metaDisplay.show();
+    } else {
+        $metaDisplay.hide();
+    }
     $c('llm-script-continuity').prop('checked', settings.llmScriptContinuity);
     $c('llm-script-continuity-wrapper').val(settings.llmScriptContinuityWrapper);
     $(`input[name="gd-llm-script-continuity-mode"][value="${settings.llmScriptContinuityMode}"]`).prop('checked', true);
