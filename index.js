@@ -402,16 +402,48 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
 
     // Regenerate / swipe: reuse the existing director decision — only reset
     // per-speaker tracking. Don't re-trigger takeover; let ST decide which
-    // messages to regenerate. The interceptor's llmPickedSet filter still
-    // applies, but ST's own regenerate logic controls the scope.
+    // messages to regenerate. Reconstruct state from chat_metadata so it
+    // survives browser restarts (in-memory state is gone on reload).
     if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
-        llmSpokenSet = new Set();
-        llmCursor = 0;
-        roundSpeakerCount = 0;
-        takeoverPending = false;
-        takeoverGenCount = 0;
-        log(`Regenerate/swipe — reusing existing director plan, no takeover`);
-        return;
+        if (!llmPickedSet) {
+            const history = getDirectorHistory();
+            const lastPlan = history[history.length - 1];
+            if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
+                const group = getCurrentGroup();
+                const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
+                const avatars = [];
+                for (const name of lastPlan.speakers) {
+                    const c = matchCharacterByName(name, members);
+                    if (c) avatars.push(c.avatar);
+                }
+                if (avatars.length > 0) {
+                    llmPickedAvatars = avatars;
+                    llmPickedSet = new Set(avatars);
+                    directorScripts = {};
+                    if (lastPlan.scripts && typeof lastPlan.scripts === 'object') {
+                        for (const [name, script] of Object.entries(lastPlan.scripts)) {
+                            const c = matchCharacterByName(name, members);
+                            if (c) directorScripts[c.name] = script;
+                        }
+                    }
+                    roundInitialized = true;
+                    log('Regenerate/swipe — reconstructed director plan from chat_metadata');
+                }
+            }
+        }
+        if (!llmPickedSet) {
+            // No history to reconstruct from — let it fall through to normal init
+            // so the interceptor doesn't operate on null state.
+            log('Regenerate/swipe — no persisted plan found, falling through to normal round init');
+        } else {
+            llmSpokenSet = new Set();
+            llmCursor = 0;
+            roundSpeakerCount = 0;
+            takeoverPending = false;
+            takeoverGenCount = 0;
+            log('Regenerate/swipe — reusing director plan, no takeover');
+            return;
+        }
     }
 
     roundScores = {};
