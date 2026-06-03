@@ -97,8 +97,13 @@ function getDirectorHistory() {
 
 function addToDirectorHistory(entry) {
     if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
+    if (!chat_metadata[EXT_KEY].historyMeta) chat_metadata[EXT_KEY].historyMeta = {};
     if (!chat_metadata[EXT_KEY].directorHistory) chat_metadata[EXT_KEY].directorHistory = [];
     chat_metadata[EXT_KEY].directorHistory.push(entry);
+    // Persist current script prompt once (only if changed), so exported chats carry the directing style
+    if (chat_metadata[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
+        chat_metadata[EXT_KEY].historyMeta.scriptPrompt = settings.llmScriptPrompt;
+    }
     saveChatConditional();
 }
 
