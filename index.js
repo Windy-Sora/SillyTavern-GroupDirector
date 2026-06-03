@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
         talkativeness: 10,
     },
     recentMessageCount: 10,
+    llmContextDepth: 10,               // LLM-only: how many recent messages to send to Director
     consecutivePenalty: 15,
     triggerEnabled: true,
     triggerScore: 40,
@@ -83,6 +84,8 @@ const I18N = {
 
         llmParamsTitle: 'Director LLM 参数',
         llmMaxSpeakers: '每轮最多发言人数',
+        llmContextDepth: '传入上下文层数（最近 N 条消息）',
+        llmContextDepthHint: '控制发送给 Director 的最近消息数量。减少可节省 token，但可能影响判断准确性。',
         llmRespectOrder: '严格按 LLM 顺序发言（接管 ST 激活循环，手动按导演决定的顺序逐人生成）',
 
         charDescTitle: '角色描述控制',
@@ -159,6 +162,8 @@ const I18N = {
 
         llmParamsTitle: 'Director LLM Parameters',
         llmMaxSpeakers: 'Max speakers per round',
+        llmContextDepth: 'Context depth (recent N messages)',
+        llmContextDepthHint: 'Number of recent messages sent to the Director. Reduce to save tokens; may affect decision quality.',
         llmRespectOrder: 'Strict LLM order (take over ST activation loop, generate in director-determined order)',
 
         charDescTitle: 'Character Description Control',
@@ -736,7 +741,8 @@ async function initRoundWithLLM() {
     if (!group) return;
 
     try {
-        const recentMessages = getRecentMessages();
+        const llmDepth = Math.min(settings.llmContextDepth, chat.length);
+        const recentMessages = chat.slice(-llmDepth);
         const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
         const memberList = enabledMembers
             .map(a => {
@@ -1112,6 +1118,7 @@ async function loadSettingsUI() {
     // LLM values
     $c('llm-prompt').val(settings.llmPrompt || getDefaultLlmPrompt());
     $c('llm-max-speakers').val(settings.llmMaxSpeakers);
+    $c('llm-context-depth').val(settings.llmContextDepth);
     $c('llm-respect-order').prop('checked', settings.llmRespectOrder);
     $(`input[name="gd-llm-char-desc-mode"][value="${settings.llmCharDescMode}"]`).prop('checked', true);
     $c('llm-char-desc-length').val(settings.llmCharDescLength);
@@ -1155,6 +1162,7 @@ async function loadSettingsUI() {
     // LLM bindings
     $c('llm-prompt').on('input', function () { settings.llmPrompt = $(this).val(); saveSettings(); });
     $c('llm-max-speakers').on('input', function () { settings.llmMaxSpeakers = parseInt($(this).val()) || 3; saveSettings(); });
+    $c('llm-context-depth').on('input', function () { settings.llmContextDepth = parseInt($(this).val()) || 10; saveSettings(); });
     $c('llm-respect-order').on('input', function () { settings.llmRespectOrder = !!$(this).prop('checked'); saveSettings(); });
     $('input[name="gd-llm-char-desc-mode"]').on('change', function () {
         settings.llmCharDescMode = $(this).val();
