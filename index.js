@@ -948,13 +948,25 @@ async function loadSettingsUI() {
     });
     $c('llm-char-desc-length').on('input', function () { settings.llmCharDescLength = parseInt($(this).val()) || 200; saveSettings(); });
     $c('llm-script-enabled').on('input', function () { settings.llmScriptEnabled = !!$(this).prop('checked'); saveSettings(); });
-    $c('llm-script-prompt').on('input', function () { settings.llmScriptPrompt = $(this).val(); saveSettings(); });
+    $c('llm-script-prompt').on('input', function () {
+        settings.llmScriptPrompt = $(this).val();
+        const val = $(this).val();
+        if (val) {
+            $('#gd-history-meta-script').text(val);
+            $('#gd-history-meta-display').show();
+        }
+        saveSettings();
+    });
     $c('llm-script-wrapper').on('input', function () { settings.llmScriptWrapper = $(this).val(); saveSettings(); });
     $c('llm-history-enabled').on('input', function () { settings.llmHistoryEnabled = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-history-clear').on('click', function () {
         if (chat_metadata[EXT_KEY]) {
             chat_metadata[EXT_KEY].directorHistory = [];
+            if (chat_metadata[EXT_KEY].historyMeta) {
+                chat_metadata[EXT_KEY].historyMeta.scriptPrompt = '';
+            }
         }
+        $('#gd-history-meta-display').hide();
         saveChatConditional();
         toastr.info('导演账本已清空');
     });
