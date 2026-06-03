@@ -400,17 +400,17 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundGenerateType = data?.type || 'normal';
     isGroupChat = true;
 
-    // Regenerate / swipe: reuse the existing director decision, only reset
-    // per-speaker tracking so the same characters can be generated again.
-    // No new LLM call, no new history entry, no pollution.
+    // Regenerate / swipe: reuse the existing director decision — only reset
+    // per-speaker tracking. Don't re-trigger takeover; let ST decide which
+    // messages to regenerate. The interceptor's llmPickedSet filter still
+    // applies, but ST's own regenerate logic controls the scope.
     if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
         llmSpokenSet = new Set();
         llmCursor = 0;
         roundSpeakerCount = 0;
-        // Re-trigger takeover so strict order is enforced again
-        takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
+        takeoverPending = false;
         takeoverGenCount = 0;
-        log(`Regenerate/swipe — reusing existing director plan (keep llmPickedAvatars, directorScripts, roundWorldInfo)`);
+        log(`Regenerate/swipe — reusing existing director plan, no takeover`);
         return;
     }
 
