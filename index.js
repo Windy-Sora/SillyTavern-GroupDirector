@@ -262,12 +262,25 @@ function addToDirectorHistory(entry) {
     if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
     if (!chat_metadata[EXT_KEY].historyMeta) chat_metadata[EXT_KEY].historyMeta = {};
     if (!chat_metadata[EXT_KEY].directorHistory) chat_metadata[EXT_KEY].directorHistory = [];
+    // Tag with chat length so we can prune stale entries when messages are deleted
+    entry._chatLength = chat.length;
     chat_metadata[EXT_KEY].directorHistory.push(entry);
     // Persist current script prompt once (only if changed), so exported chats carry the directing style
     if (chat_metadata[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
         chat_metadata[EXT_KEY].historyMeta.scriptPrompt = settings.llmScriptPrompt;
     }
     saveChatConditional();
+}
+
+function pruneDirectorHistory(newChatLength) {
+    const history = getDirectorHistory();
+    if (!history.length) return;
+    const pruned = history.filter(e => (e._chatLength || 0) <= newChatLength);
+    if (pruned.length < history.length) {
+        chat_metadata[EXT_KEY].directorHistory = pruned;
+        saveChatConditional();
+        log(`Pruned ${history.length - pruned.length} stale director history entries (chatLength=${newChatLength})`);
+    }
 }
 
 function saveSettings() {
@@ -634,6 +647,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         await runManualOrderedGeneration();
     }
     takeoverPending = false;
+});
+
+// Prune stale director history when messages are deleted from chat
+eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
+    pruneDirectorHistory(newChatLength);
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
