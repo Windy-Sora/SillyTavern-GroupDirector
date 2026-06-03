@@ -126,6 +126,14 @@
                 <small>告诉导演你希望什么样的剧本风格。例如："剧情要温馨治愈，突出姐妹情深"、"保持紧张悬疑的氛围"、"加入搞笑吐槽元素"等。留空则只要求基本场景描述。</small>
                 <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
 
+                <label class="checkbox_label" for="gd-llm-history-enabled">
+                    <input type="checkbox" id="gd-llm-history-enabled">
+                    <span><b>永久记录导演账本</b> — 每次 LLM 决策后将完整 JSON 保存到聊天元数据，跟随对话导出/导入/分支</span>
+                </label>
+                <div class="menu_button menu_button_icon" id="gd-llm-history-clear" style="margin-top:4px;">
+                    <i class="fa-solid fa-trash"></i> 清空当前导演账本
+                </div>
+
                 <label class="checkbox_label" for="gd-llm-script-continuity">
                     <input type="checkbox" id="gd-llm-script-continuity">
                     <span>连贯剧本（将过往导演计划注入当前 prompt，保持剧本连续性）</span>

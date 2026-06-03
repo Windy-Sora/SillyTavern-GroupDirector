@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { saveSettingsDebounced, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
+import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
 import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS = {
     llmScriptEnabled: false,
     llmScriptPrompt: '',
     llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmHistoryEnabled: true,           // always record director decisions to chat_metadata (independent of continuity injection)
     llmScriptContinuity: false,
     llmScriptContinuityMode: 'last',   // 'last' = only previous round; 'history' = full recorded history
     llmScriptContinuityCount: 0,       // history mode: 0 = all rounds, N = last N rounds
@@ -77,7 +78,6 @@ let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
 let directorScripts = {};           // { characterName: scriptText } from LLM
-let directorHistory = [];            // Array of parsed LLM JSON responses, newest last
 let roundWorldInfo = '';            // cached WI text for this round
 let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
 
@@ -88,6 +88,18 @@ function getScriptForChar(charName) {
     const script = directorScripts[charName];
     if (!script) return '';
     return (settings.llmScriptWrapper || '{{script}}').replace('{{script}}', script);
+}
+
+// ─── Director History (persisted in chat_metadata, survives reload & export) ──
+function getDirectorHistory() {
+    return chat_metadata?.[EXT_KEY]?.directorHistory || [];
+}
+
+function addToDirectorHistory(entry) {
+    if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
+    if (!chat_metadata[EXT_KEY].directorHistory) chat_metadata[EXT_KEY].directorHistory = [];
+    chat_metadata[EXT_KEY].directorHistory.push(entry);
+    saveChatConditional();
 }
 
 function saveSettings() {
@@ -546,19 +558,20 @@ async function initRoundWithLLM() {
         }
 
         // Inject previous director plans for script continuity
-        if (settings.llmScriptContinuity && directorHistory.length > 0) {
+        const history = getDirectorHistory();
+        if (settings.llmScriptContinuity && history.length > 0) {
             if (settings.llmScriptContinuityMode === 'history') {
                 // Full history mode: provide N recent rounds as JSON array
                 const count = settings.llmScriptContinuityCount > 0
-                    ? Math.min(settings.llmScriptContinuityCount, directorHistory.length)
-                    : directorHistory.length;
-                const recentPlans = directorHistory.slice(-count);
+                    ? Math.min(settings.llmScriptContinuityCount, history.length)
+                    : history.length;
+                const recentPlans = history.slice(-count);
                 const plansJson = JSON.stringify(recentPlans, null, 2);
                 const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
                 contextPrefix += wrapper.replace('{{previousPlans}}', plansJson) + '\n\n';
             } else {
                 // Last-round mode (default): provide only the most recent plan
-                const lastPlan = directorHistory[directorHistory.length - 1];
+                const lastPlan = history[history.length - 1];
                 const lastJson = JSON.stringify(lastPlan, null, 2);
                 const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
                 contextPrefix += wrapper.replace('{{previousPlan}}', lastJson) + '\n\n';
@@ -593,9 +606,9 @@ async function initRoundWithLLM() {
             return;
         }
 
-        // Save full parsed JSON to history for future rounds (preserves all custom fields)
-        if (settings.llmScriptContinuity) {
-            directorHistory.push(parsed);
+        // Save full parsed JSON to history (independent of continuity injection)
+        if (settings.llmHistoryEnabled) {
+            addToDirectorHistory(parsed);
         }
 
         // Map names → avatars in declared order; dedupe
@@ -885,6 +898,7 @@ async function loadSettingsUI() {
     $c('llm-script-enabled').prop('checked', settings.llmScriptEnabled);
     $c('llm-script-prompt').val(settings.llmScriptPrompt);
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
+    $c('llm-history-enabled').prop('checked', settings.llmHistoryEnabled);
     $c('llm-script-continuity').prop('checked', settings.llmScriptContinuity);
     $c('llm-script-continuity-wrapper').val(settings.llmScriptContinuityWrapper);
     $(`input[name="gd-llm-script-continuity-mode"][value="${settings.llmScriptContinuityMode}"]`).prop('checked', true);
@@ -922,6 +936,14 @@ async function loadSettingsUI() {
     $c('llm-script-enabled').on('input', function () { settings.llmScriptEnabled = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-script-prompt').on('input', function () { settings.llmScriptPrompt = $(this).val(); saveSettings(); });
     $c('llm-script-wrapper').on('input', function () { settings.llmScriptWrapper = $(this).val(); saveSettings(); });
+    $c('llm-history-enabled').on('input', function () { settings.llmHistoryEnabled = !!$(this).prop('checked'); saveSettings(); });
+    $c('llm-history-clear').on('click', function () {
+        if (chat_metadata[EXT_KEY]) {
+            chat_metadata[EXT_KEY].directorHistory = [];
+        }
+        saveChatConditional();
+        toastr.info('导演账本已清空');
+    });
     $c('llm-script-continuity').on('input', function () { settings.llmScriptContinuity = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-script-continuity-wrapper').on('input', function () { settings.llmScriptContinuityWrapper = $(this).val(); saveSettings(); });
     $('input[name="gd-llm-script-continuity-mode"]').on('change', function () {
