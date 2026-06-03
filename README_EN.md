@@ -1,182 +1,212 @@
 # SillyTavern Group Director
 
-A director layer for SillyTavern group chats.
+An AI Narrative Director for SillyTavern Group Roleplay.
 
-Group Director does more than deciding who speaks next.
+Group Director does more than decide who speaks next.
 
-It acts as a scene director that can:
+It acts as a narrative layer above group chat generation, helping coordinate characters, maintain story continuity, direct performances, and manage long-running roleplay campaigns.
 
-* Decide which characters should respond
-* Control speaking order
-* Suppress unnecessary interruptions
-* Generate character-specific stage directions
-* Maintain multi-turn narrative continuity
-* Inject World Info into decision making
-
-All without modifying SillyTavern core code.
+No core modifications required. Built entirely on SillyTavern's Extension API.
 
 ---
 
-## Why?
+# What is Group Director?
 
-Most group chats eventually suffer from one problem:
+Traditional group chat systems answer one question:
 
-Everyone talks.
+> Which characters are active?
 
-A single user message can trigger responses from every activated character, causing:
+Group Director answers a different question:
 
-* Conversation spam
-* Repetitive reactions
-* Broken pacing
-* Important characters getting buried
+> Which characters should respond right now, in what order, and for what narrative purpose?
 
-Group Director introduces a decision layer between activation and generation.
+Before any character generates a reply, the Director evaluates the scene and decides:
 
-Instead of asking:
+* Who should speak
+* Who should stay silent
+* Speaking order
+* Scene pacing
+* Character guidance
+* Narrative continuity
 
-> "Who is activated?"
-
-it asks:
-
-> "Who actually has a reason to speak right now?"
+The result is a cleaner, more focused and more story-driven group roleplay experience.
 
 ---
 
-# Features
+# Core Features
 
 ## Formula Director
 
-Local scoring-based speaker selection.
+A lightweight local scoring system.
 
 No API calls.
-No extra token cost.
+No additional token cost.
 
-Characters are scored using:
+The Director evaluates:
 
-* Mentions
-* Context triggers
-* Speaking recency
+* Character mentions
+* Trigger keywords
+* Recent activity
 * Consecutive speaking penalties
 * Talkativeness
-* Initiative randomness
+* Initiative rolls
 
-Only the highest-scoring characters are allowed to speak.
+Then selects the most relevant speakers.
 
-Perfect for large groups and long-running chats.
+Best for:
+
+* Large group chats
+* Long-running sessions
+* Low-cost setups
 
 ---
 
 ## LLM Director
 
-Use an LLM as a scene director.
+Uses a language model as a narrative director.
 
-The Director receives:
+The Director evaluates:
 
-* Recent conversation
+* Recent conversation context
 * Character descriptions
-* World information
-* Previous plans (optional)
+* World Info / Lorebooks
+* Previous Director plans
+* Story state
 
 And decides:
 
 * Who should speak
-* In what order
-* Why
+* Speaking order
+* How the scene should progress
 
 Example:
 
-```json
 {
-  "speakers": [
-    "Knight",
-    "Mage",
-    "King"
-  ],
-  "reason": "The king should respond last after hearing advice."
+"speakers": [
+"Knight",
+"Mage",
+"King"
+],
+"reason": "The King should make the final decision after hearing both perspectives."
 }
-```
 
 ---
 
-## Ordered Generation
+## Director Scripts
 
-Group Director can enforce Director-selected speaking order.
-
-Instead of relying on activation order:
-
-```text
-Knight
-Mage
-King
-```
-
-The Director can explicitly produce:
-
-```text
-Mage
-Knight
-King
-```
-
-and generation will follow that order.
-
----
-
-## Director Script
-
-The Director can provide private stage directions to each character.
+The Director can provide hidden stage directions for each selected character.
 
 Example:
 
-```json
 {
-  "scripts": {
-    "Alice": "Remain calm externally, but show subtle hesitation.",
-    "Bob": "Attempt to hide your frustration."
-  }
+"scripts": {
+"Alice": "Remain calm on the surface, but gradually reveal anxiety.",
+"Bob": "Suppress your anger and avoid direct confrontation."
 }
-```
+}
 
-Each character receives only their own script.
+Each character only receives their own instructions.
 
 Characters never see:
 
 * Other scripts
-* Director reasoning
-* Full planning data
+* Director plans
+* Internal reasoning
 
-This allows the Director to shape performance without breaking immersion.
+This enables:
+
+* Emotional control
+* Scene direction
+* Dramatic pacing
+* Coordinated multi-character performances
 
 ---
 
-## Script Continuity
+## Director Ledger
 
-The Director can remember and continue previous plans.
+Director decisions can be permanently stored inside chat metadata.
 
-Instead of treating every generation round independently, the Director can maintain scene-level continuity across multiple turns.
+Unlike ordinary speaker selection systems, the Director can maintain persistent narrative state across sessions.
 
-Useful for:
+Example:
+
+{
+"speakers": ["Alice"],
+"story_state": {
+"chapter": 3
+},
+"relationship_state": {
+"Alice-Bob": 75
+}
+}
+
+Custom fields are preserved automatically.
+
+This allows users to build:
+
+* Story progression systems
+* Relationship tracking
+* Quest states
+* Campaign metadata
+* Custom narrative memory
+
+without modifying the extension itself.
+
+---
+
+## Story Continuity
+
+The Director can reference previous plans when making future decisions.
+
+Instead of treating every round independently, the Director can maintain:
 
 * Story arcs
-* Investigations
-* Romance scenes
-* Political intrigue
-* Long-running campaigns
+* Character relationships
+* Emotional development
+* Long-term goals
+* Narrative consistency
+
+Ideal for long-running roleplay campaigns.
 
 ---
 
 ## World Info Integration
 
-Group Director can automatically include activated Lorebook / World Info entries when making decisions.
+The Director can perform a World Info scan before making decisions.
 
-The Director gains awareness of:
+Activated lore entries become part of the Director's reasoning context.
 
-* Setting lore
-* Faction information
-* Character relationships
-* Current world state
+This allows the Director to understand:
 
-before deciding who should speak.
+* Setting information
+* Political factions
+* Historical events
+* Locations
+* Current environmental conditions
+
+before assigning speakers.
+
+---
+
+## Ordered Generation
+
+Group Director can fully control generation order.
+
+Instead of:
+
+Knight
+Mage
+King
+
+The Director may decide:
+
+Mage
+Knight
+King
+
+and enforce that order during generation.
+
+This allows scenes to unfold naturally according to narrative logic rather than activation order.
 
 ---
 
@@ -188,47 +218,54 @@ No intervention.
 
 SillyTavern behaves normally.
 
----
+## Formula Director
 
-## Formula
-
-Local scoring system.
-
-* Fast
-* Deterministic
-* Zero token cost
+Fast.
+Stable.
+Token-free.
 
 Recommended for most users.
 
----
+## LLM Director
 
-## LLM
+Narrative-aware decision making.
 
-Director-driven scene management.
-
-* Context-aware
-* Order-aware
-* Narrative-focused
-
-Recommended for roleplay-heavy groups.
+Recommended for story-focused roleplay.
 
 ---
 
-# Architecture
+# Example Workflow
 
-Group Director uses SillyTavern's official Extension API.
+User Message
+↓
+Director Evaluation
+↓
+World Info Scan
+↓
+Story Ledger Lookup
+↓
+Speaker Selection
+↓
+Director Scripts
+↓
+Character Generation
 
-No core modifications.
+---
 
-Key integrations:
+# Ideal Use Cases
 
-* Generate Interceptor
-* Group Wrapper Events
-* generateRaw()
-* Extension Prompt Injection
-* World Info APIs
+Group Director is especially effective for:
 
-The extension remains fully compatible with future SillyTavern updates.
+* Tavern scenes
+* School settings
+* Adventure parties
+* Political intrigue
+* Family roleplay
+* Long-form campaigns
+* Ensemble casts
+* Multi-character storytelling
+
+The more characters involved, the more noticeable the benefits become.
 
 ---
 
@@ -236,21 +273,17 @@ The extension remains fully compatible with future SillyTavern updates.
 
 Extension Manager:
 
-```text
 https://github.com/Windy-Sora/SillyTavern-GroupDirector
-```
 
-Or clone manually:
+Manual Installation:
 
-```bash
 git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
-```
 
-into:
+Place inside:
 
-```text
 SillyTavern/public/scripts/extensions/third-party/
-```
+
+Restart SillyTavern.
 
 ---
 
@@ -258,8 +291,10 @@ SillyTavern/public/scripts/extensions/third-party/
 
 Group Director is not a speaker filter.
 
-It is a narrative control layer.
+It is a narrative director.
 
 The goal is not to make fewer characters speak.
 
-The goal is to make the right characters speak, at the right time, for the right reason.
+The goal is to make the right characters speak,
+at the right moment,
+for the right reason.
