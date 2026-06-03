@@ -396,8 +396,24 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
         return;
     }
-    isGroupChat = true;
+
     roundGenerateType = data?.type || 'normal';
+    isGroupChat = true;
+
+    // Regenerate / swipe: reuse the existing director decision, only reset
+    // per-speaker tracking so the same characters can be generated again.
+    // No new LLM call, no new history entry, no pollution.
+    if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
+        llmSpokenSet = new Set();
+        llmCursor = 0;
+        roundSpeakerCount = 0;
+        // Re-trigger takeover so strict order is enforced again
+        takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
+        takeoverGenCount = 0;
+        log(`Regenerate/swipe — reusing existing director plan (keep llmPickedAvatars, directorScripts, roundWorldInfo)`);
+        return;
+    }
+
     roundScores = {};
     roundSpeakerCount = 0;
     roundTriggeredAvatars.clear();
