@@ -559,7 +559,7 @@ async function initRoundWithLLM() {
 
         // Inject previous director plans for script continuity
         const history = getDirectorHistory();
-        if (settings.llmScriptContinuity && history.length > 0) {
+        if (settings.llmHistoryEnabled && settings.llmScriptContinuity && history.length > 0) {
             if (settings.llmScriptContinuityMode === 'history') {
                 // Full history mode: provide N recent rounds as JSON array
                 const count = settings.llmScriptContinuityCount > 0
