@@ -721,6 +721,8 @@ async function runManualOrderedGeneration() {
     const orderedList = [...llmPickedAvatars];
     takeoverGenCount = orderedList.length;
     const ctx = getContext();
+    const savedChId = ctx.characterId;
+    const savedChName = characters[savedChId]?.name || '';
 
     console.warn('[GroupDirector] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
     console.warn('[GroupDirector] takeoverGenCount:', takeoverGenCount);
@@ -785,6 +787,12 @@ async function runManualOrderedGeneration() {
     } finally {
         console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
         takeoverGenCount = 0;
+        // Restore the original character context so ST doesn't stay stuck
+        // on the last generated character after takeover
+        if (savedChId !== undefined && savedChId !== null) {
+            setCharacterId(savedChId);
+            setCharacterName(savedChName);
+        }
     }
 }
 
