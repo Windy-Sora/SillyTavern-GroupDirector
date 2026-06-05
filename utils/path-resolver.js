@@ -1,22 +1,21 @@
 /**
  * Parse a JSON path string into segments.
- * Supports: dot notation, array indices, quoted keys.
+ * Supports: dot notation, array indices (including negative), quoted keys,
+ * and property filters.
  *
  * Examples:
  *   "memory.location"       → ["memory", "location"]
  *   "events[0].title"       → ["events", 0, "title"]
+ *   "events[-1].title"      → ["events", {idx:-1}, "title"]
  *   '["key.with.dots"]'     → ["key.with.dots"]
- *   "items[2]"              → ["items", 2]
+ *   "entries[active=true]"  → ["entries", {key:"active", val:"true"}]
  */
 export function parsePath(path) {
     const segments = [];
     let i = 0;
 
     while (i < path.length) {
-        // Skip leading dots
         if (path[i] === '.') { i++; continue; }
-
-        // Whitespace
         if (path[i] === ' ') { i++; continue; }
 
         // Quoted key: "key" or 'key'
@@ -25,29 +24,39 @@ export function parsePath(path) {
             i++;
             let key = '';
             while (i < path.length && path[i] !== quote) {
-                if (path[i] === '\\' && i + 1 < path.length) {
-                    key += path[++i];
-                } else {
-                    key += path[i];
-                }
+                if (path[i] === '\\' && i + 1 < path.length) key += path[++i];
+                else key += path[i];
                 i++;
             }
-            if (i < path.length) i++; // skip closing quote
+            if (i < path.length) i++;
             segments.push(key);
             continue;
         }
 
-        // Array index: [n]
+        // Bracket: [n], [-n], or [key=value]
         if (path[i] === '[') {
             i++;
-            let num = '';
+            let inner = '';
             while (i < path.length && path[i] !== ']') {
-                num += path[i];
+                inner += path[i];
                 i++;
             }
             if (i < path.length) i++; // skip ]
-            const n = parseInt(num, 10);
-            if (!isNaN(n)) segments.push(n);
+
+            const eqIdx = inner.indexOf('=');
+            if (eqIdx !== -1) {
+                // Property filter: [key=value]
+                const k = inner.slice(0, eqIdx).trim();
+                const v = inner.slice(eqIdx + 1).trim();
+                if (k) segments.push({ key: k, val: v });
+                continue;
+            }
+
+            const n = parseInt(inner, 10);
+            if (!isNaN(n)) {
+                // Negative index: wrap so resolvePath knows it's a relative index
+                segments.push(n < 0 ? { idx: n } : n);
+            }
             continue;
         }
 
@@ -64,13 +73,37 @@ export function parsePath(path) {
 }
 
 /**
- * Walk an object along parsed segments. Returns undefined if any step is missing.
+ * Walk an object along parsed segments.
+ *
+ * Segment types:
+ *   string       → object property access
+ *   number       → array index (0-based, forward)
+ *   {idx: -n}    → array index from end (-1 = last)
+ *   {key, val}   → find first array element where e[key] == val
  */
 export function resolvePath(obj, segments) {
     if (obj === null || obj === undefined) return undefined;
     let current = obj;
     for (const seg of segments) {
         if (current === null || current === undefined) return undefined;
+
+        if (typeof seg === 'object' && seg !== null && 'key' in seg) {
+            // Property filter: find first matching element
+            if (!Array.isArray(current)) return undefined;
+            current = current.find(e =>
+                e != null && String(e[seg.key]) === seg.val
+            );
+            continue;
+        }
+
+        if (typeof seg === 'object' && seg !== null && 'idx' in seg) {
+            // Negative index
+            if (!Array.isArray(current)) return undefined;
+            const i = seg.idx < 0 ? current.length + seg.idx : seg.idx;
+            current = (i >= 0 && i < current.length) ? current[i] : undefined;
+            continue;
+        }
+
         if (typeof seg === 'number') {
             if (!Array.isArray(current)) return undefined;
             current = current[seg];

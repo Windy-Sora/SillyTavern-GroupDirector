@@ -65,6 +65,24 @@ Group Director 的模板系统支持两种占位符语法：
 
 等价于 `data.events[0].title`。下标从 0 开始。
 
+#### 负下标（倒数）
+
+```
+{{?directorLedger:events[-1].title}}
+{{?history:plans[-2].reason}}
+```
+
+`[-1]` 取数组最后一个元素，`[-2]` 取倒数第二个。等价于 `array[array.length - 1]`。
+
+#### 属性过滤
+
+```
+{{?worldInfo:entries[active=true].content}}
+{{?history:plans[reason=开场].scripts}}
+```
+
+`[key=value]` 在数组中查找第一个 `e.key === value` 的元素，然后继续后续路径。值比较为字符串相等。
+
 #### 引号键名
 
 用于 key 中包含 `.`、`-`、空格等特殊字符时：
