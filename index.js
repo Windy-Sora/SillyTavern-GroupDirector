@@ -1228,12 +1228,14 @@ async function loadSettingsUI() {
         const btn = $('#gd-profile-regenerate-all');
         btn.prop('disabled', true);
         const lang = settings.lang || 'zh';
-        toastr.info(lang === 'zh' ? `正在为 ${members.length} 个角色生成档案...` : `Generating profiles for ${members.length} characters...`);
-        try {
-            await generateProfilesBatch(members);
+        toastr.info(lang === 'zh' ? `正在后台为 ${members.length} 个角色生成档案...` : `Generating profiles for ${members.length} characters in background...`);
+        // Fire-and-forget: don't block the UI thread
+        generateProfilesBatch(members).then(() => {
             const profiles = getProfiles();
             const ready = Object.values(profiles).filter(p => p.state === 'ready').length;
             const failed = Object.values(profiles).filter(p => p.state === 'failed').length;
+            btn.prop('disabled', false);
+            refreshProfileManagementUI();
             if (failed > 0) {
                 toastr.warning(lang === 'zh'
                     ? `${ready} 个就绪, ${failed} 个失败 — 查看控制台了解详情`
@@ -1243,12 +1245,11 @@ async function loadSettingsUI() {
                     ? `${ready} 个角色档案已更新`
                     : `${ready} character profiles updated`);
             }
-        } catch (e) {
+        }).catch(e => {
+            btn.prop('disabled', false);
             toastr.error(lang === 'zh' ? '生成失败，请查看控制台' : 'Generation failed, check console');
             console.error('[GroupDirector] Batch profile generation failed:', e);
-        } finally {
-            btn.prop('disabled', false);
-        }
+        });
     });
 
     // Initial render and status check

@@ -426,7 +426,7 @@ function buildProfileLoaderPanel() {
     else $('#gd-profile-management-list').before(html);
 
     // Bind buttons
-    $('.gd-loader-btn-apply').off('click').on('click', async function () {
+    $('.gd-loader-btn-apply').off('click').on('click', function () {
         const btn = $(this);
         btn.prop('disabled', true);
         const toRegen = [];
@@ -442,24 +442,28 @@ function buildProfileLoaderPanel() {
             }
         });
         if (toRegen.length > 0) {
-            toastr.info(isZh ? `正在生成 ${toRegen.length} 个档案...` : `Generating ${toRegen.length} profile(s)...`);
-            await generateProfilesBatch(toRegen);
+            toastr.info(isZh ? `后台生成 ${toRegen.length} 个档案...` : `Generating ${toRegen.length} profile(s) in background...`);
+            generateProfilesBatch(toRegen).then(() => {
+                $('#gd-profile-loader').remove();
+                refreshProfileManagementUI();
+                toastr.success(isZh ? '档案已更新' : 'Profiles updated');
+            }).finally(() => btn.prop('disabled', false));
+        } else {
+            $('#gd-profile-loader').remove();
+            toastr.info(isZh ? '未选择任何操作' : 'No actions selected');
+            btn.prop('disabled', false);
         }
-        $('#gd-profile-loader').remove();
-        refreshProfileManagementUI();
-        toastr.success(isZh ? '档案已更新' : 'Profiles updated');
-        btn.prop('disabled', false);
     });
 
-    $('.gd-loader-btn-all').off('click').on('click', async function () {
+    $('.gd-loader-btn-all').off('click').on('click', function () {
         const btn = $(this);
         btn.prop('disabled', true);
-        toastr.info(isZh ? `正在为 ${members.length} 个角色生成档案...` : `Generating profiles for ${members.length} characters...`);
-        await generateProfilesBatch(members);
-        $('#gd-profile-loader').remove();
-        refreshProfileManagementUI();
-        toastr.success(isZh ? '全部档案已更新' : 'All profiles updated');
-        btn.prop('disabled', false);
+        toastr.info(isZh ? `后台生成 ${members.length} 个角色档案...` : `Generating ${members.length} profiles in background...`);
+        generateProfilesBatch(members).then(() => {
+            $('#gd-profile-loader').remove();
+            refreshProfileManagementUI();
+            toastr.success(isZh ? '全部档案已更新' : 'All profiles updated');
+        }).finally(() => btn.prop('disabled', false));
     });
 }
 
