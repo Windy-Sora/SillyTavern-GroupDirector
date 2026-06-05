@@ -10,6 +10,11 @@ import { registerProvider, getProviders, getAvailablePlaceholders } from './prov
 import { renderPrompt } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
+import { register as registerRecentMessages } from './providers/recent-messages.js';
+import { register as registerCharacters } from './providers/characters.js';
+import { register as registerCharacterProfiles } from './providers/character-profiles.js';
+import { register as registerWorldInfoProvider } from './providers/world-info.js';
+import { register as registerHistoryProviders } from './providers/history.js';
 
 // ─── Settings ─────────────────────────────────────────────────────────
     mode: MODE_FORMULA,     // 'off' | 'formula' | 'llm' — 互斥单选
@@ -288,8 +293,7 @@ let takeoverPending = false;
 let takeoverGenCount = 0;
 let takeoverFailed = false;          // set when manual generation fails mid-round
 let directorScripts = {};           // { characterName: scriptText } from LLM
-let roundWorldInfo = '';            // cached WI text for this round
-let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
+const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -1079,8 +1083,8 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverGenCount = 0;
     takeoverFailed = false;
     directorScripts = {};
-    roundWorldInfo = '';
-    roundWorldInfoEntries = [];
+    wiState.text = '';
+    wiState.entries = [];
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
@@ -1111,8 +1115,8 @@ eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
     takeoverGenCount = 0;
     takeoverFailed = false;
     directorScripts = {};
-    roundWorldInfo = '';
-    roundWorldInfoEntries = [];
+    wiState.text = '';
+    wiState.entries = [];
     pruneDirectorHistory(newChatLength);
 });
 
@@ -2076,104 +2080,19 @@ function applyI18n(lang) {
 // TODO: Register slash commands for manual director control
 
 // ─── Register Built-in Providers ──────────────────────────────────────
+registerRecentMessages();
+registerCharacters(settings, characters, buildCharacterProfilesText);
+registerCharacterProfiles(buildCharacterProfilesText);
 
-// RecentMessagesProvider — formats chat history for the Director
-registerProvider({
-    id: 'recentMessages',
-    placeholder: '{{recentMessages}}',
-    render: (ctx) => {
-        const msgs = ctx.recentMessages || [];
-        return { content: msgs.map(m => `${m.name || (m.is_user ? 'User' : 'Char')}: ${m.mes || ''}`).join('\n') };
-    },
-});
-
-// CharactersProvider — builds the character list with optional truncation
-registerProvider({
-    id: 'characters',
-    placeholder: '{{characters}}',
-    render: (ctx) => {
-        const members = ctx.enabledMembers || [];
-        const profilesActive = settings.profileEnabled && !!buildCharacterProfilesText();
-        return {
-            content: members.map(a => {
-                const c = characters.find(c => c.avatar === a);
-                if (!c) return '';
-                if (profilesActive) {
-                    // Profiles are active — suppress bulky descriptions to save tokens
-                    return `- ${c.name}`;
-                }
-                const desc = c.description || '';
-                const showDesc = settings.llmCharDescMode === 'full'
-                    ? desc
-                    : desc.slice(0, settings.llmCharDescLength);
-                const truncated = showDesc.length < desc.length ? `${showDesc}…` : showDesc;
-                return `- ${c.name}: ${truncated}`;
-            }).filter(Boolean).join('\n'),
-        };
-    },
-});
-
-// CharacterProfilesProvider — renders structured character profiles
-registerProvider({
-    id: 'character_profiles',
-    placeholder: '{{character_profiles}}',
-    render: () => ({ content: buildCharacterProfilesText() }),
-});
-
-// MaxSpeakersProvider — simple number
+// MaxSpeakersProvider — kept inline (single-line, no deps needed)
 registerProvider({
     id: 'maxSpeakers',
     placeholder: '{{maxSpeakers}}',
     render: (ctx) => ({ content: String(ctx.maxSpeakers || 1) }),
 });
 
-// WorldInfoProvider — handles WI scanning + caching internally
-registerProvider({
-    id: 'worldInfo',
-    placeholder: '{{worldInfo}}',
-    enabled: () => settings.llmWorldInfoEnabled,
-    render: async (ctx) => {
-        if (!roundWorldInfo) {
-            const members = ctx.enabledMembers || [];
-            const wi = await buildDirectorWorldInfo(members);
-            roundWorldInfo = wi.text;
-            roundWorldInfoEntries = wi.entries;
-        }
-        if (!roundWorldInfo) return { content: '' };
-        const wrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-        return { content: wrapper.replace('{{worldInfo}}', roundWorldInfo) };
-    },
-});
-
-// DirectorHistoryProvider — previous director plans for continuity
-registerProvider({
-    id: 'previousPlan',
-    placeholder: '{{previousPlan}}',
-    render: () => {
-        const history = getDirectorHistory();
-        if (!settings.llmHistoryEnabled || !settings.llmScriptContinuity || !history.length) return { content: '' };
-        if (settings.llmScriptContinuityMode === 'history') return { content: '' }; // handled by previousPlans
-        const lastPlan = history[history.length - 1];
-        const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
-        return { content: wrapper.replace('{{previousPlan}}', JSON.stringify(lastPlan, null, 2)) };
-    },
-});
-
-registerProvider({
-    id: 'previousPlans',
-    placeholder: '{{previousPlans}}',
-    render: () => {
-        const history = getDirectorHistory();
-        if (!settings.llmHistoryEnabled || !settings.llmScriptContinuity || !history.length) return { content: '' };
-        if (settings.llmScriptContinuityMode !== 'history') return { content: '' };
-        const count = settings.llmScriptContinuityCount > 0
-            ? Math.min(settings.llmScriptContinuityCount, history.length)
-            : history.length;
-        const plansJson = JSON.stringify(history.slice(-count), null, 2);
-        const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
-        return { content: wrapper.replace('{{previousPlans}}', plansJson) };
-    },
-});
+registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
+registerHistoryProviders(settings, getDirectorHistory);
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
