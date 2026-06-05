@@ -648,10 +648,15 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             }
         }
         if (!llmPickedSet) {
-            // No history to reconstruct from — let it fall through to normal init
-            // so the interceptor doesn't operate on null state.
-            log('Regenerate/swipe — no persisted plan found, falling through to normal round init');
-        } else {
+            // No history to reconstruct — transparent pass-through: let ST handle
+            // the regenerate/swipe without director filtering. Must NOT fall through
+            // to normal init, which would trigger a new LLM call.
+            roundInitialized = true;
+            log('Regenerate/swipe — no persisted plan, transparent pass-through');
+            return;
+        }
+        // Reuse existing plan (reconstructed or in-memory)
+        {
             llmSpokenSet = new Set();
             llmCursor = 0;
             roundSpeakerCount = 0;
