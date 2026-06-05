@@ -262,8 +262,8 @@ async function getScriptForChar(charName) {
     // Protect {{script}} from renderPrompt's Phase 2 — it matches \w+ but
     // has no registered provider, so it gets replaced with empty string.
     const placeholder = '\x00SCRIPT\x00';
-    const protected = wrapper.replace('{{script}}', placeholder);
-    const rendered = await renderPrompt(protected, { character: charName });
+    const guarded = wrapper.replace('{{script}}', placeholder);
+    const rendered = await renderPrompt(guarded, { character: charName });
     return rendered.replace(placeholder, script);
 }
 
