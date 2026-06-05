@@ -11,16 +11,18 @@ function getProfileContainer() {
     const existed = !!chat_metadata[EXT_KEY];
     if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
     const meta = chat_metadata[EXT_KEY];
-    const hadProfiles = !!meta.characterProfiles && Object.keys(meta.characterProfiles).length > 0;
+    // Diagnostic: dump all keys in the container
+    console.log('[GroupDirector] getProfileContainer: EXT_KEY keys:', Object.keys(meta).join(', '));
+    if (meta.characterProfiles) {
+        const names = Object.values(meta.characterProfiles).map(p => p?.name || '?').join(', ');
+        console.log('[GroupDirector] getProfileContainer: characterProfiles exists with', Object.keys(meta.characterProfiles).length, 'entries:', names);
+    } else {
+        console.log('[GroupDirector] getProfileContainer: characterProfiles is UNDEFINED — creating empty');
+    }
     if (!meta.characterProfiles) meta.characterProfiles = {};
     if (!meta.archivedProfiles) meta.archivedProfiles = {};
     if (meta.profileVersion === undefined) meta.profileVersion = 1;
     if (meta.profileSchemaHash === undefined) meta.profileSchemaHash = '';
-    if (!existed || !hadProfiles) {
-        console.log('[GroupDirector] getProfileContainer: EXT_KEY existed:', existed, 'existing profiles:', hadProfiles ? Object.keys(meta.characterProfiles).length : 0);
-    } else {
-        console.log('[GroupDirector] getProfileContainer: loaded', Object.keys(meta.characterProfiles).length, 'profiles from save');
-    }
     return meta;
 }
 
