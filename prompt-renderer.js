@@ -3,13 +3,19 @@ import { providers } from './provider-registry.js';
 export async function renderPrompt(template, context) {
     let result = template;
     for (const provider of providers.values()) {
-        if (provider.enabled && !provider.enabled(context)) continue;
+        const hasPlaceholder = result.includes(provider.placeholder);
+        if (provider.enabled && !provider.enabled(context)) {
+            if (hasPlaceholder) console.log(`[GroupDirector] renderPrompt: "${provider.id}" skipped by enabled()=false (placeholder in template: yes)`);
+            continue;
+        }
         try {
             const rendered = await provider.render(context);
-            // Support both { content } object and bare string return
             const text = (rendered && typeof rendered === 'object') ? (rendered.content ?? '') : (rendered ?? '');
-            // Global replace — same placeholder may appear multiple times
+            const beforeLen = result.length;
             result = result.split(provider.placeholder).join(text);
+            if (hasPlaceholder || text) {
+                console.log(`[GroupDirector] renderPrompt: "${provider.id}" → placeholder ${hasPlaceholder ? 'replaced' : 'absent'}, content: ${text.length} chars, template: ${beforeLen}→${result.length} chars`);
+            }
         } catch (e) {
             console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
         }
