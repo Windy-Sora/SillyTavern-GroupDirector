@@ -502,8 +502,14 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     if (settings.mode === MODE_LLM) {
         // Manual ordered generation in progress — validate identity, inject script, let through
         if (takeoverGenCount > 0) {
-            takeoverGenCount--;
-            roundSpeakerCount++;
+            // Auto-swipe/regenerate during takeover: same character re-rolling,
+            // don't consume the takeover count. Detected via roundGenerateType
+            // which is now captured before the nested START guard.
+            const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+            if (!isReroll) {
+                takeoverGenCount--;
+                roundSpeakerCount++;
+            }
             // Verify the character ST is about to generate matches the expected speaker
             const expectedAvatar = llmPickedAvatars?.[roundSpeakerCount - 1];
             if (expectedAvatar && avatar !== expectedAvatar) {
@@ -516,7 +522,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             if (takeoverScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, extension_prompt_types.IN_PROMPT, 0, true);
             }
-            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount})`);
+            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
             return;
         }
         // ST's activation loop is being suppressed — abort all
@@ -585,6 +591,10 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 let roundGenerateType = 'normal'; // captured from GROUP_WRAPPER_STARTED
 
 eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
+    // Always capture the generation type, even for nested wrappers.
+    // Auto-swipes during takeover need to be visible to the interceptor.
+    roundGenerateType = data?.type || 'normal';
+
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
     if (takeoverGenCount > 0) {
@@ -607,7 +617,6 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         return;
     }
 
-    roundGenerateType = data?.type || 'normal';
     isGroupChat = true;
 
     // Regenerate / swipe: reuse the existing director decision — only reset
@@ -748,12 +757,19 @@ async function runManualOrderedGeneration() {
                 setCharacterId(chId);
                 setCharacterName(characters[chId].name);
                 await ctx.generate('normal', { force_chid: chId });
-                // Post-generation: verify the new message has the correct character name
-                if (chat.length > 0) {
-                    const lastMsg = chat[chat.length - 1];
-                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
-                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
-                    }
+                // Detect empty/think-only responses: ST may auto-retry on these,
+                // which would fire a new GROUP_WRAPPER_STARTED and corrupt state.
+                const lastMsg = chat.length > 0 ? chat[chat.length - 1] : null;
+                const isCharMsg = lastMsg && !lastMsg.is_user && !lastMsg.is_system;
+                const isEmptyReply = isCharMsg && (!lastMsg.mes || lastMsg.mes.trim() === '');
+                if (isCharMsg && lastMsg.name !== characters[chId].name) {
+                    console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
+                }
+                if (isEmptyReply) {
+                    console.warn(`[GroupDirector] EMPTY REPLY from ${characters[chId].name} (think-only or blank) — removing stub to prevent ST auto-retry`);
+                    // Remove the empty stub message so ST doesn't see a partial round
+                    chat.length = chat.length - 1;
+                    await saveChatConditional();
                 }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
             } catch (e) {
