@@ -8,116 +8,273 @@
 
 完全通过 SillyTavern 官方 Extension API 实现，**零修改核心代码**。
 
-核心机制：
-
-- 在 `manifest.json` 声明 `generate_interceptor: "groupDirector_Interceptor"`。
-- 该函数会在 `Generate()` 内部、**每个被激活角色生成前**被调用一次（见 `public/script.js:4475` 的 `runGenerationInterceptors`）。
-- 在 interceptor 内对当前角色（`getContext().characterId`）打分，分数不达标就调用 `abort(false)` —— 当前角色被静默跳过，群聊循环继续处理下一个角色。
-- 监听 `GROUP_WRAPPER_STARTED` / `GROUP_WRAPPER_FINISHED` 维护每轮状态。
+- 在 `manifest.json` 声明 `generate_interceptor: "groupDirector_Interceptor"`
+- 该函数在 `Generate()` 内部、**每个被激活角色生成前**被调用一次
+- 在 interceptor 内对当前角色打分，分数不达标就调用 `abort(false)` 跳过
+- 监听 `GROUP_WRAPPER_STARTED` / `GROUP_WRAPPER_FINISHED` 维护每轮状态
 
 ## 3. 目录结构
 
 ```
-third-party/group-director/
-├── manifest.json     # 插件元数据 + interceptor 声明
-├── index.js          # 主逻辑（评分、触发器、主动性、Director LLM、UI 绑定）
-├── settings.html     # 设置面板模板
-├── style.css         # UI 样式
-└── DESIGN.md         # 本文件
+SillyTavern-GroupDirector/
+├── manifest.json              # 插件元数据 + interceptor 声明
+├── index.js                   # 入口：运行时状态、拦截器、事件监听、UI、组装
+├── settings.js                # 常量 + 默认设置（单一真相源）
+├── settings.html              # 设置面板模板
+├── style.css                  # UI 样式
+├── prompt-renderer.js         # 模板引擎：遍历 Provider 替换占位符
+├── provider-registry.js       # Provider 注册表（Map 存储）
+├── providers/                 # 每个 Prompt 占位符一个文件
+│   ├── recent-messages.js     # {{recentMessages}}
+│   ├── characters.js          # {{characters}}
+│   ├── character-profiles.js  # {{character_profiles}}
+│   ├── world-info.js          # {{worldInfo}}
+│   └── history.js             # {{previousPlan}} + {{previousPlans}}
+├── systems/                   # 有状态的业务逻辑（工厂函数 + 显式依赖注入）
+│   ├── history-system.js      # 导演历史 CRUD
+│   ├── world-info-system.js   # World Info / lorebook 注入
+│   └── profile-system.js      # 角色档案全流程
+├── utils/                     # 纯函数工具（无副作用，可直接 import）
+│   ├── json-utils.js          # extractJsonObject / sanitizeJson / parseLlmResponse
+│   └── string-utils.js        # djb2Hash / hashChar
+└── DESIGN.md                  # 本文件
 ```
 
-## 4. 评分公式
-
-对群组中每个未禁言的成员，每轮计算一次：
+### 3.1 分层架构
 
 ```
-score(c) = mention(c) * w_mention
-        + (trigger(c) ? w_trigger : 0)
-        + recency(c) * w_recency
-        - consecutive(c) * w_consecutive_penalty
-        + talkativeness(c) * w_talkativeness
-        + initiative(c)   // random [0, initiativeBase]
+┌────────────────────────────────────────────┐
+│  index.js  — 组装层                         │
+│  运行时状态 · 拦截器 · 事件监听 · UI · 组装    │
+├────────────────────────────────────────────┤
+│  prompt-renderer.js  — 渲染引擎             │
+│  遍历 Provider 注册表，异步替换占位符          │
+├──────────────┬─────────────────────────────┤
+│  providers/  │  systems/       utils/      │
+│  数据注入     │  业务逻辑       纯函数       │
+│  (无状态)     │  (工厂+依赖注入)  (无副作用)   │
+└──────────────┴─────────────────────────────┘
+```
+
+## 4. Provider 系统（Prompt 占位符扩展机制）
+
+### 4.1 设计原则
+
+每个 Prompt 占位符对应一个独立的 Provider。Provider 负责从运行时上下文取数据并渲染为文本。
+
+**彻底解耦**：新增 Provider 只需创建文件 + 注册。不需要改 `initRoundWithLLM`、`prompt-renderer.js` 或任何核心代码。
+
+### 4.2 Provider 接口
+
+```js
+{
+    id: string,              // 唯一标识
+    placeholder: string,     // 如 '{{myFeature}}'
+    enabled: (ctx) => bool,  // 可选；返回 false 则跳过（不推荐——占位符不替换会残留字面文本）
+    render: (ctx) => {       // 可 async；ctx 为运行时上下文
+        content: string      // 返回 { content: '...' } 或直接返回字符串
+    }
+}
+```
+
+> 如果 Provider 有开关（`settings.xxxEnabled`），在 `render()` 内判断，关闭时返回 `{ content: '' }`，确保占位符始终被替换。
+
+### 4.3 新增 Provider 步骤
+
+**Step 1** — 创建 `providers/my-feature.js`：
+
+```js
+import { registerProvider } from '../provider-registry.js';
+
+export function register(settings, someDep) {
+    registerProvider({
+        id: 'myFeature',
+        placeholder: '{{myFeature}}',
+        render: (ctx) => {
+            if (!settings.myFeatureEnabled) return { content: '' };
+            const data = ctx.enabledMembers || [];
+            return { content: `...` };
+        },
+    });
+}
+```
+
+**Step 2** — 在 `index.js` 底部注册：
+
+```js
+import { register as registerMyFeature } from './providers/my-feature.js';
+registerMyFeature(settings, someDep);
+```
+
+**Step 3** — 在任何模板中使用 `{{myFeature}}`（默认 Prompt、Script Wrapper、自定义 Prompt 均可）。
+
+### 4.4 运行时上下文 (runtimeContext)
+
+`initRoundWithLLM` 构建并传给 `renderPrompt()`：
+
+```js
+const runtimeContext = {
+    recentMessages,       // 最近 N 条消息对象数组
+    enabledMembers,       // 当前群聊启用的成员 avatar 数组
+    maxSpeakers: number,  // 每轮最多发言人数
+};
+```
+
+新增 Provider 如需额外上下文字段，在 `runtimeContext` 中添加即可。
+
+### 4.5 依赖注入规范
+
+- **不变值**（settings、函数引用）：直接传入
+- **运行时可变值**（`llmPickedSet`、`chat`、`chat_metadata`、`characters`）：传入 **getter 函数**
+
+```js
+// ✅ 正确：可变值用 getter
+createMySystem({
+    getChat: () => chat,
+    getLlmPickedSet: () => llmPickedSet,
+});
+
+// ❌ 错误：直接传入（捕获的是创建时刻的快照）
+createMySystem({ chat, llmPickedSet });
+```
+
+`chat`、`characters`、`chat_metadata` 是 ST 导出的 `let` 绑定，聊天加载时会被整体替换。System 内部全部通过 getter 访问，确保始终读取当前引用。
+
+## 5. 剧本注入管道 (Script Wrapper Pipeline) — 上下游打通
+
+### 5.1 概述
+
+剧本注入是 Group Director 中**唯一同时触及 Director 层和 Character 层的管道**。`llmScriptWrapper` 不再只是一个带 `{{script}}` 占位符的静态模板——它可以包含**任何已注册的 Provider 占位符**，在注入角色 prompt 前全部被 `renderPrompt()` 解析。
+
+```
+Director 层                          Character 层
+──────────                          ────────────
+LLM 返回 scripts 对象
+  ↓
+getScriptForChar(charName)
+  ↓
+renderPrompt(wrapper, {})     ← 解析 {{previousPlans}}、{{worldInfo}} 等
+  ↓
+.replace('{{script}}', script) ← 注入具体角色的舞台指导
+  ↓
+setExtensionPrompt(...)       → 注入到角色 prompt
+```
+
+### 5.2 实现
+
+```js
+async function getScriptForChar(charName) {
+    const script = directorScripts[charName];
+    if (!script) return '';
+    // wrapper 先经过 Provider 系统渲染，再注入 script
+    const wrapper = settings.llmScriptWrapper || '{{script}}';
+    const rendered = await renderPrompt(wrapper, {});
+    return rendered.replace('{{script}}', script);
+}
+```
+
+### 5.3 用途示例
+
+默认 `llmScriptWrapper`：
+```
+[Director's stage direction for this character:
+{{script}}
+
+Follow this guidance. NEVER mention the director, the script,
+or that you are following stage directions. Act naturally as your character.]
+```
+
+用户可以扩展为：
+```
+[当前世界观背景：
+{{worldInfo}}
+
+前几轮的剧情发展：
+{{previousPlans}}
+
+本角色的舞台指导：
+{{script}}
+
+结合以上信息自然表演，不要暴露剧本存在。]
+```
+
+此时**每个角色的 prompt 都能看到世界书状态和过往导演计划**，而不只是孤立的舞台指导。
+
+### 5.4 设计意义
+
+- **上游打通**：Director LLM 的决策结果（账本 JSON、世界书）可以穿透到角色层
+- **零额外开发成本**：任何新增 Provider 自动在 Script Wrapper 中可用
+- **用户可自定义**：`llmScriptWrapper` 在设置面板可编辑，用户可以自由组合任何 `{{占位符}}` 来定制角色收到的上下文
+
+## 6. 评分配方
+
+```
+score(c) = mention(c) × w_mention
+         + (trigger(c) ? triggerScore : 0)
+         + recency(c) × w_recency
+         − consecutive(c) × w_consecutivePenalty
+         + talkativeness(c) × w_talkativeness
+         + initiative(c)   // random [0, initiativeBaseScore]
 ```
 
 | 项 | 含义 |
 |---|---|
 | `mention(c)` | 最近 N 条消息中角色名出现次数 |
-| `trigger(c)` | 关键词（从角色描述切词）是否在最近消息中命中 |
-| `recency(c)` | 越久没发言加分越高（未发言=满分，刚发言=0） |
+| `trigger(c)` | 关键词（从角色描述切词）是否在最近消息命中 |
+| `recency(c)` | 越久没发言加分越高（未发言=满分，刚发言≈0） |
 | `consecutive(c)` | 最近连续发言次数（线性惩罚） |
-| `talkativeness(c)` | 角色卡 talkativeness 字段（0~1） |
-| `initiative(c)` | 每轮独立的随机扰动，防止永远沉默 |
+| `talkativeness(c)` | 角色卡 talkativeness 字段（0~1，NaN 取 0.5） |
+| `initiative(c)` | 每轮独立随机扰动 [0, base]，防止永远沉默 |
 
-所有权重在 Settings UI 可调，并持久化到 `extension_settings['group-director']`。
+## 7. 模式（互斥单选）
 
-## 5. 模式（互斥单选）
+### 7.1 `off` — 关闭
+不干预 ST 默认行为。
 
-设置项 `mode` 只能取以下三个值之一：
+### 7.2 `formula` — 公式判断
+- `GROUP_WRAPPER_STARTED` 时清空状态，第一个角色进入时一次性计算全员分数
+- 按分排序取前 `topN` 个放行
+- **无 API 调用**，零额外 token 成本
 
-### 5.1 `off` — 关闭
+### 7.3 `llm` — 大模型判断
+- 第一个角色进入时调用 `ctx.generateRaw()` 获取导演决策
+- Prompt 由 Provider 系统渲染：`renderPrompt(template, runtimeContext)`
+- 模型返回 JSON：`{"speakers": ["Alice", "Bob"], "reason": "...", "scripts": {...}}`
+- `speakers` 顺序即发言顺序；按 `llmMaxSpeakers` 截断
+- **严格顺序模式**（`llmRespectOrder`）：接管 ST 循环，`force_chid` 逐人生成
+- **仅过滤模式**：只过滤集合，顺序由 ST activation 决定
+- LLM 失败 / JSON 解析失败 → 透明放行
 
-插件 interceptor 直接返回，SillyTavern 默认行为不变。
+### 7.4 导演剧本 (Director Script)
+- Director 为每个角色生成独立舞台剧本：`scripts: { "Alice": "...", "Bob": "..." }`
+- 通过 `setExtensionPrompt` 注入角色 prompt，每个角色只看到自己的剧本
+- 剧本注入前经 Script Wrapper Pipeline 渲染（见第 5 节）
+- **连贯剧本**（`llmScriptContinuity`）：注入过往导演决策保持剧情连续性
 
-### 5.2 `formula` — 公式判断
-
-- 每轮 `GROUP_WRAPPER_STARTED` 时清空状态。
-- 第一个角色进入 interceptor 时一次性计算全员分数。
-- 按分排序，取前 `topN` 个作为放行集合 `allowedAvatars`。
-- `topN = 1` 即题目中的"Top-1 Speaker Filter"。
-- **无 API 调用**，零额外 token 成本。
-
-### 5.3 `llm` — 大模型判断
-
-- 第一个角色进入 interceptor 时调用 `getContext().generateRaw({...})` 获取导演决策（绕过角色 persona 注入）。
-- Prompt 模板可在 UI 配置，占位符 `{{recentMessages}}` / `{{characters}}` / `{{maxSpeakers}}`。
-- 模型必须返回严格 JSON（启用剧本时含 `scripts` 字段）：
-  ```json
-  { "speakers": ["Alice", "Bob"], "reason": "...", "scripts": { "Alice": "...", "Bob": "..." } }
-  ```
-  `speakers` 数组的**顺序就是发言顺序**。
-- 按 `llmMaxSpeakers` 截断。
-- 两种执行策略（由 `llmRespectOrder` 控制）：
-  - **严格顺序**（默认）：接管 ST 循环，通过 `force_chid` 按导演决定的顺序逐人生成。
-  - **仅过滤集合**：只看是否在 picked 集合里，顺序由 SillyTavern activation 决定。
-- LLM 失败 / JSON 解析失败 / 返回空 → 透明放行（不影响聊天）。
-
-### 5.4 导演剧本 (Director Script)
-
-可选子功能——启用后 Director 不仅决定谁发言，还为每个角色单独生成舞台剧本，注入到角色生成的 prompt 中。
-
-- 剧本按角色名分发：`scripts: { "Alice": "stage dir", "Bob": "stage dir" }`
-- 每个角色只收到自己的剧本，通过 `setExtensionPrompt(DIRECTOR_SCRIPT_KEY, ...)` 注入
-- 注入前包裹用户可编辑的 **Script Wrapper**（`llmScriptWrapper`），默认含保密指令
-- 剧本风格可通过 **Script Prompt**（`llmScriptPrompt`）定制
-- **连贯剧本**（`llmScriptContinuity`）：将上一轮导演完整回复注入当前 prompt，通过 **连贯剧本包装模板**（`llmScriptContinuityWrapper`）包裹，`{{previousPlan}}` 为占位符
-- 连贯数据存于 `lastDirectorResponse`，每轮更新
-
-**两种模式互斥**：UI 用 radio 强制单选，运行时由 `settings.mode` 派发，绝不可能同时启用。
-
-> ⚠️ **关于发言顺序的约束**：插件只能从 SillyTavern 已 activate 的成员里挑人/排序，无法激活原本未被 activation 选中的角色。建议在群聊设置里把 activation strategy 设为 **List**，让所有成员每轮都进入候选池，导演就能在全员中自由排序。
-
-## 6. 关键 ST API / 事件
+## 8. 关键 ST API
 
 | API / Event | 用途 |
 |---|---|
-| `manifest.generate_interceptor` | 每角色生成前的拦截点（核心） |
-| `eventSource.on(GROUP_WRAPPER_STARTED)` | 一轮群聊生成开始，重置状态 |
-| `eventSource.on(GROUP_WRAPPER_FINISHED)` | 一轮结束，清理 |
+| `manifest.generate_interceptor` | 每角色生成前的拦截点 |
+| `eventSource.on(GROUP_WRAPPER_STARTED)` | 一轮开始，重置状态 |
+| `eventSource.on(GROUP_WRAPPER_FINISHED)` | 一轮结束，触发 takeover 或清理 |
+| `eventSource.on(MESSAGE_DELETED)` | 消息删除，裁剪导演历史 + 清空状态 |
 | `getContext().characterId` | 当前正要生成的角色索引 |
 | `getContext().generateRaw(...)` | Director LLM 调用（绕过 persona 注入） |
-| `setExtensionPrompt(key, ...)` + `extension_prompt_types` | 剧本注入到角色 prompt |
+| `setExtensionPrompt(key, ...)` | 剧本注入到角色 prompt |
 | `extension_settings[EXT_KEY]` + `saveSettingsDebounced()` | 配置持久化 |
 | `renderExtensionTemplateAsync(name, id)` | 加载 settings.html |
-| `groups`, `selected_group` (live binding) | 当前群组成员列表 |
-| `characters`, `chat` (live binding) | 角色数据、聊天历史 |
+| `groups`, `selected_group` | 当前群组成员（live binding） |
+| `characters`, `chat`, `chat_metadata` | 角色数据、聊天历史、元数据（live binding） |
+| `checkWorldInfo(...)` | World Info / lorebook 激活条目查询 |
 
-## 7. 配置项总览
+## 9. 配置项总览
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `mode` | `formula` | `off` \| `formula` \| `llm`，互斥单选 |
+| `mode` | `formula` | `off` \| `formula` \| `llm` |
 | `topN` | 1 | 公式模式每轮放行人数 |
-| `recentMessageCount` | 10 | 分析最近多少条消息 |
+| `recentMessageCount` | 10 | 分析最近消息条数 |
 | `consecutivePenalty` | 15 | 连续发言惩罚 |
 | `scoreWeights.mention` | 30 | 提名权重 |
 | `scoreWeights.keyword` | 15 | 关键词权重 |
@@ -127,35 +284,57 @@ score(c) = mention(c) * w_mention
 | `triggerScore` | 40 | 触发器命中加分 |
 | `initiativeEnabled` | true | 启用主动性扰动 |
 | `initiativeBaseScore` | 5 | 主动性上限 |
-| `llmPrompt` | (内置模板) | Director Prompt，留空用默认 |
+| `llmPrompt` | (内置) | Director Prompt，留空用默认 |
 | `llmMaxSpeakers` | 3 | LLM 模式每轮最多发言人数 |
-| `llmRespectOrder` | true | 是否严格按 LLM 给的顺序发言 |
-| `llmCharDescMode` | `slice` | 角色描述全量(`full`)或切片(`slice`) |
-| `llmCharDescLength` | 200 | 切片模式最大字符数 |
+| `llmRespectOrder` | true | 严格按 LLM 顺序发言 |
+| `llmContextDepth` | 10 | 传入 LLM 的最近消息条数 |
+| `llmCharDescMode` | `slice` | `full` \| `slice` |
+| `llmCharDescLength` | 200 | 切片最大字符数 |
 | `llmScriptEnabled` | false | 启用导演剧本 |
-| `llmScriptPrompt` | '' | 剧本风格要求提示 |
-| `llmScriptWrapper` | (内置) | 剧本注入包装模板，`{{script}}` 为占位符 |
-| `llmScriptContinuity` | false | 连贯剧本——每轮注入上轮导演计划 |
-| `llmScriptContinuityWrapper` | (内置) | 连贯剧本包装模板，`{{previousPlan}}` 为占位符 |
+| `llmScriptPrompt` | '' | 剧本风格要求 |
+| `llmScriptWrapper` | (内置) | 剧本注入包装模板，可包含任意 Provider 占位符 |
+| `llmHistoryEnabled` | true | 记录导演账本到 chat_metadata |
+| `llmScriptContinuity` | false | 连贯剧本 |
+| `llmScriptContinuityMode` | `last` | `last` \| `history` |
+| `llmScriptContinuityCount` | 0 | 历史模式轮数（0=全部） |
+| `llmScriptContinuityWrapper` | (内置) | 仅上一轮包装模板 |
+| `llmScriptContinuityHistoryWrapper` | (内置) | 完整历史包装模板 |
+| `llmWorldInfoEnabled` | false | 启用世界书注入 |
+| `llmWorldInfoWrapper` | (内置) | 世界书包装模板 |
 | `debugLogging` | false | 控制台调试输出 |
+| `lang` | `zh` | 语言 |
+| `profileEnabled` | false | 启用角色档案系统 |
+| `profileTokenBudget` | 2000 | 档案 Token 预算 |
+| `profileConcurrency` | 0 | 档案生成并发数 |
+| `profileGeneratorPrompt` | '' | 生成器 Prompt（空=用内置） |
+| `profileJsonSchema` | '' | JSON Schema（空=用内置） |
+| `profileRenderTemplate` | '' | 渲染模板（空=用内置） |
 
-> 兼容性：v0.3 的 `enabled` / `directorLlmEnabled` / `directorLlmPrompt` 旧字段会在加载时自动迁移到 `mode` / `llmPrompt`。
+> v0.3 旧字段 `enabled` / `directorLlmEnabled` / `directorLlmPrompt` 加载时自动迁移。
 
-## 8. 失败回退
+## 10. 失败回退
 
-- LLM 调用失败 / JSON 解析失败 / 返回空 speakers → 透明放行（不 abort 任何角色，等价于"模式关闭"），不会自动跨模式回退到公式判断（保持互斥语义）。
-- `selected_group` 为空或群组找不到 → 透明放行。
-- `type` 为 `quiet` / `impersonate` / `continue` → 不拦截（避免影响这些特殊流程）。
+- LLM 调用失败 / JSON 解析失败 / 返回空 speakers → 透明放行
+- `selected_group` 为空 → 透明放行
+- `type` 为 `quiet` / `impersonate` / `continue` → 不拦截
+- Takeover 中途生成失败 → 保留导演决策、`takeoverFailed = true`，下次重试复用
 
-## 9. 已知限制
+## 11. 开发速查
 
-- 关键词触发器目前用简单分词，对纯中文文本可能产生噪声词，可在后续版本接入 jieba 或允许用户自定义关键词列表。
-- 同一角色卡复用名字时，按 `avatar` 字段去重以保证唯一。
-- Director LLM 复用当前主模型；"独立模型配置" 仍待实现（可接入 Connection Manager 的多 profile）。
+| 任务 | 改哪些文件 |
+|------|-----------|
+| 加 Prompt 占位符 | `providers/*.js`（新建）+ `index.js` 底部 import/register |
+| 加业务逻辑模块 | `systems/*.js`（新建）+ `index.js` import/组装 |
+| 加设置项 | `settings.js` + `settings.html` + `index.js` loadSettingsUI |
+| 加 UI 文字 | `index.js` I18N 对象 + `settings.html` data-i18n |
+| 改评分算法 | `index.js` → scoreCharacter / checkTriggers / rollInitiative |
+| 改 LLM 响应解析 | `utils/json-utils.js` |
+| 改拦截器行为 | `index.js` → groupDirector_Interceptor |
 
-## 10. 后续路线
+### 11.1 编码纪律
 
-- [ ] 关键词触发器支持用户在角色卡 `extensions.group_director.triggers` 中自定义
-- [ ] Director LLM 独立 Connection Profile
-- [ ] 发言队列可视化（在群聊 UI 显示当前轮 Top-N 列表）
-- [ ] 提供 slash command `/director topn 3` 等运行时调参
+1. **所有占位符替换走 Provider 系统。** 不要在任何地方手动 `.replace('{{xxx}}', ...)` 做数据注入。
+2. **System 显式声明全部依赖。** 可变值用 getter，不隐式依赖闭包。
+3. **settings.js 是唯一的默认值来源。** UI 初始化从这里读，不要硬编码 fallback。
+4. **Provider 有开关时，在 `render()` 内返回空字符串，不要用 `enabled` 跳过。**
+5. **Script Wrapper 是通用渲染管道。** 任何 Provider 占位符都能在其中使用，新增 Provider 时无需额外适配——`renderPrompt` 自动处理。
