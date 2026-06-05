@@ -155,6 +155,7 @@ const I18N = {
         profileRenderTemplateHint: '控制 <code>{{character_profiles}}</code> 占位符的输出格式。每角色占位符：<code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code>',
         profileRenderReset: '恢复默认渲染模板',
         profileManagementTitle: '档案管理',
+        profileScanSave: '扫描当前存档中的角色档案',
         profileRegenerateAll: '全部重新生成',
     },
     en: {
@@ -251,6 +252,7 @@ const I18N = {
         profileRenderTemplateHint: 'Controls the output format of <code>{{character_profiles}}</code>. Per-character placeholders: <code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code>',
         profileRenderReset: 'Restore Default Render Template',
         profileManagementTitle: 'Profile Management',
+        profileScanSave: 'Scan current save for character profiles',
         profileRegenerateAll: 'Regenerate All',
     },
 };
@@ -1795,6 +1797,17 @@ async function loadSettingsUI() {
             checkProfileStartupStatus();
         }
         saveSettings();
+    });
+
+    // Manual scan button: re-reads chat_metadata and shows the loader panel
+    $c('profile-scan-save').on('click', function () {
+        const group = getCurrentGroup();
+        if (!group) {
+            toastr.warning(settings.lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Please open this settings panel from within a group chat');
+            return;
+        }
+        buildProfileLoaderPanel();
+        toastr.info(settings.lang === 'zh' ? '已扫描存档' : 'Save scanned');
     });
     $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = parseInt($(this).val()) || 2000; saveSettings(); });
     $c('profile-concurrency').on('input', function () { settings.profileConcurrency = parseInt($(this).val()) || 0; saveSettings(); });
