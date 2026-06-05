@@ -19,53 +19,6 @@ import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 
-// ─── Settings ─────────────────────────────────────────────────────────
-    mode: MODE_FORMULA,     // 'off' | 'formula' | 'llm' — 互斥单选
-    topN: 1,
-    scoreWeights: {
-        mention: 30,
-        keyword: 15,
-        recency: 20,
-        talkativeness: 10,
-    },
-    recentMessageCount: 10,
-    llmContextDepth: 10,               // LLM-only: how many recent messages to send to Director
-    consecutivePenalty: 15,
-    triggerEnabled: true,
-    triggerScore: 40,
-    initiativeEnabled: true,
-    initiativeBaseScore: 5,
-    // LLM mode
-    llmPrompt: '',
-    llmMaxSpeakers: 3,
-    llmRespectOrder: true,
-    llmCharDescMode: 'slice',
-    llmCharDescLength: 200,
-    // Director script — inject stage direction into character prompts
-    llmScriptEnabled: false,
-    llmScriptPrompt: '',
-    llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
-    llmHistoryEnabled: true,           // always record director decisions to chat_metadata (independent of continuity injection)
-    llmScriptContinuity: false,
-    llmScriptContinuityMode: 'last',   // 'last' = only previous round; 'history' = full recorded history
-    llmScriptContinuityCount: 0,       // history mode: 0 = all rounds, N = last N rounds
-    llmScriptContinuityWrapper: '[Previous round\'s director plan — reference this for continuity, but update for the current situation:\n{{previousPlan}}\n]',
-    llmScriptContinuityHistoryWrapper: '[Director plans from previous rounds:\n{{previousPlans}}\n]',
-    // World Info injection into Director prompt
-    llmWorldInfoEnabled: false,
-    llmWorldInfoWrapper: '[Current world context / lorebook entries:\n{{worldInfo}}\n]',
-    debugLogging: false,
-    lang: 'zh',                        // 'zh' | 'en'
-
-    // ── Character Profile System ──
-    profileEnabled: false,
-    profileTokenBudget: 2000,
-    profileConcurrency: 0,             // 0 = unlimited concurrent, 1 = sequential, N = max N at a time
-    profileGeneratorPrompt: '',        // '' = use built-in default
-    profileJsonSchema: '',             // '' = use built-in default
-    profileRenderTemplate: '',         // '' = use built-in default
-    profileSchemaVersion: 1,
-};
 
 // ─── I18n ─────────────────────────────────────────────────────────────
 const I18N = {
@@ -807,6 +760,75 @@ function toggleContinuityMode(mode) {
     $('#gd-llm-script-continuity-count').prop('disabled', mode !== 'history');
     $('#gd-llm-script-continuity-history-wrapper').prop('disabled', mode !== 'history');
     $('#gd-llm-script-continuity-wrapper').prop('disabled', mode !== 'last');
+}
+
+
+// ─── Manual Ordered Generation (takeover) ─────────────────────────────
+async function runManualOrderedGeneration() {
+    takeoverPending = false;
+    const orderedList = [...llmPickedAvatars];
+    takeoverGenCount = orderedList.length;
+    const ctx = getContext();
+    const savedChId = ctx.characterId;
+    const savedChName = characters[savedChId]?.name || "";
+
+    console.warn("[GroupDirector] TAKEOVER START — orderedList:", orderedList.map(a => characters.find(c => c.avatar === a)?.name));
+    console.warn("[GroupDirector] takeoverGenCount:", takeoverGenCount);
+
+    try {
+        for (let i = 0; i < orderedList.length; i++) {
+            const avatar = orderedList[i];
+            const chId = characters.findIndex(c => c.avatar === avatar);
+            if (chId === -1) {
+                takeoverGenCount--;
+                console.warn("[GroupDirector] SKIP unknown avatar, takeoverGenCount→", takeoverGenCount);
+                continue;
+            }
+            setCharacterId(chId);
+            setCharacterName(characters[chId].name);
+            const verifyChId = getContext().characterId;
+            const verifyAvatar = characters[verifyChId]?.avatar;
+            if (verifyAvatar !== avatar) {
+                console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
+                takeoverGenCount--;
+                continue;
+            }
+            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
+            const charScript = getScriptForChar(characters[chId].name);
+            if (charScript) {
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+            }
+            try {
+                setCharacterId(chId);
+                setCharacterName(characters[chId].name);
+                await ctx.generate("normal", { force_chid: chId });
+                if (chat.length > 0) {
+                    const lastMsg = chat[chat.length - 1];
+                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
+                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
+                    }
+                }
+                console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
+            } catch (e) {
+                console.error("[GroupDirector] GEN FAILED:", e.message, e.stack);
+                takeoverGenCount = 0;
+                takeoverFailed = true;
+                return;
+            } finally {
+                if (charScript) {
+                    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, "", extension_prompt_types.IN_PROMPT, 0, true);
+                }
+            }
+        }
+        console.warn("[GroupDirector] TAKEOVER COMPLETE — all speakers generated");
+    } finally {
+        console.warn("[GroupDirector] TAKEOVER FINALLY — resetting flags");
+        takeoverGenCount = 0;
+        if (savedChId !== undefined && savedChId !== null) {
+            setCharacterId(savedChId);
+            setCharacterName(savedChName);
+        }
+    }
 }
 
 // ─── Slash Commands ───────────────────────────────────────────────────
