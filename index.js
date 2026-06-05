@@ -757,19 +757,14 @@ async function runManualOrderedGeneration() {
                 setCharacterId(chId);
                 setCharacterName(characters[chId].name);
                 await ctx.generate('normal', { force_chid: chId });
-                // Detect empty/think-only responses: ST may auto-retry on these,
-                // which would fire a new GROUP_WRAPPER_STARTED and corrupt state.
-                const lastMsg = chat.length > 0 ? chat[chat.length - 1] : null;
-                const isCharMsg = lastMsg && !lastMsg.is_user && !lastMsg.is_system;
-                const isEmptyReply = isCharMsg && (!lastMsg.mes || lastMsg.mes.trim() === '');
-                if (isCharMsg && lastMsg.name !== characters[chId].name) {
-                    console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
-                }
-                if (isEmptyReply) {
-                    console.warn(`[GroupDirector] EMPTY REPLY from ${characters[chId].name} (think-only or blank) — removing stub to prevent ST auto-retry`);
-                    // Remove the empty stub message so ST doesn't see a partial round
-                    chat.length = chat.length - 1;
-                    await saveChatConditional();
+                // Post-generation identity check only. Empty/think-only replies
+                // are NOT treated as errors — ST's auto-swipe already handled them
+                // internally. By the time we get here, the message is finalized.
+                if (chat.length > 0) {
+                    const lastMsg = chat[chat.length - 1];
+                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
+                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
+                    }
                 }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
             } catch (e) {
