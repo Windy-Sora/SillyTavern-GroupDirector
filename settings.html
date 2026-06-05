@@ -225,6 +225,9 @@
                     <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">档案 Token 预算（超过时压缩非活跃角色）</label>
                     <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
 
+                    <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数（0=全部同时, 1=逐个, N=每批N个）</label>
+                    <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
+
                     <hr>
                     <h4 data-i18n="profileGeneratorPromptTitle">生成器 Prompt 模板</h4>
                     <small data-i18n="profileGeneratorPromptHint">告诉 LLM 如何分析角色。占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code></small>

@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS = {
     // ── Character Profile System ──
     profileEnabled: false,
     profileTokenBudget: 2000,
+    profileConcurrency: 0,             // 0 = unlimited concurrent, 1 = sequential, N = max N at a time
     profileGeneratorPrompt: '',        // '' = use built-in default
     profileJsonSchema: '',             // '' = use built-in default
     profileRenderTemplate: '',         // '' = use built-in default
@@ -143,6 +144,7 @@ const I18N = {
         profileHint: '提前分析每个角色的特质、动机、关系，作为结构化数据注入 Director Prompt。独立于导演判断逻辑。',
         profileEnabled: '启用角色档案（让 Director 了解每个角色的深层信息）',
         profileTokenBudget: '档案 Token 预算（超过时压缩非活跃角色）',
+        profileConcurrency: '并发数（0=全部同时, 1=逐个, N=每批N个）',
         profileGeneratorPromptTitle: '生成器 Prompt 模板',
         profileGeneratorPromptHint: '告诉 LLM 如何分析角色。占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code>',
         profileGeneratorReset: '恢复默认生成器 Prompt',
@@ -238,6 +240,7 @@ const I18N = {
         profileHint: 'Pre-analyze each character\'s traits, motivations, and relationships as structured data for the Director Prompt. Independent of director decision logic.',
         profileEnabled: 'Enable Character Profiles (let Director understand each character\'s deep traits)',
         profileTokenBudget: 'Profile Token Budget (compress inactive characters when exceeded)',
+        profileConcurrency: 'Concurrency (0=all, 1=sequential, N=batch of N)',
         profileGeneratorPromptTitle: 'Generator Prompt Template',
         profileGeneratorPromptHint: 'Tell the LLM how to analyze characters. Placeholders: <code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code>',
         profileGeneratorReset: 'Restore Default Generator Prompt',
@@ -502,7 +505,8 @@ async function generateProfilesBatch(avatars) {
     if (!settings.profileEnabled) return;
     if (!avatars.length) return;
 
-    const tasks = avatars.map(async (avatar) => {
+    const limit = settings.profileConcurrency || 0;
+    const buildTask = (avatar) => async () => {
         const char = characters.find(c => c.avatar === avatar);
         if (!char) return;
 
@@ -533,9 +537,21 @@ async function generateProfilesBatch(avatars) {
         }
         pendingProfile.updatedAt = Date.now();
         await saveProfile(avatar, pendingProfile);
-    });
+    };
 
-    await Promise.all(tasks);
+    const taskFns = avatars.map(buildTask).filter(Boolean);
+
+    if (limit <= 0 || limit >= taskFns.length) {
+        // Unlimited concurrent
+        await Promise.all(taskFns.map(fn => fn()));
+    } else {
+        // Batched concurrent: run N at a time
+        for (let i = 0; i < taskFns.length; i += limit) {
+            const batch = taskFns.slice(i, i + limit);
+            await Promise.all(batch.map(fn => fn()));
+        }
+    }
+
     refreshProfileManagementUI();
 }
 
@@ -1763,6 +1779,7 @@ async function loadSettingsUI() {
     // ── Profile System UI Bindings ──
     $c('profile-enabled').prop('checked', settings.profileEnabled);
     $c('profile-token-budget').val(settings.profileTokenBudget);
+    $c('profile-concurrency').val(settings.profileConcurrency);
     // Show default templates in the UI when the setting is empty,
     // but keep the setting as '' (meaning "use built-in default" at runtime).
     $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt());
@@ -1780,6 +1797,7 @@ async function loadSettingsUI() {
         saveSettings();
     });
     $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = parseInt($(this).val()) || 2000; saveSettings(); });
+    $c('profile-concurrency').on('input', function () { settings.profileConcurrency = parseInt($(this).val()) || 0; saveSettings(); });
     $c('profile-generator-prompt').on('input', function () { settings.profileGeneratorPrompt = $(this).val(); saveSettings(); });
     $c('profile-json-schema').on('input', function () { settings.profileJsonSchema = $(this).val(); saveSettings(); });
     $c('profile-render-template').on('input', function () {
