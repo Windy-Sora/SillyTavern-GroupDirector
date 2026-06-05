@@ -209,18 +209,22 @@ return {
 - `{{?name:scripts.Alice}}` → `"试探 Bob"`
 - `{{?name:events[0].title}}` → `"初遇"`
 
-### 5.3 现有 Provider 的 data 支持
+### 5.3 已注册 Provider 一览
 
-| Provider | `content` | `data` |
-|----------|-----------|--------|
-| `directorLedger` | 最新导演计划 JSON 字符串 | 最新导演计划原始对象 |
-| `previousPlan` | 上一轮计划（wrapper 包裹） | 上一轮计划原始对象 |
-| `previousPlans` | 历史计划数组（wrapper 包裹） | 历史计划原始数组 |
-| `recentMessages` | 格式化消息文本 | 无 |
-| `characters` | 角色列表文本 | 无 |
-| `worldInfo` | 世界书条目文本 | 无 |
-| `character_profiles` | 角色档案文本 | 无 |
-| `maxSpeakers` | 数字字符串 | 无 |
+| Provider | 占位符 | `content` | `data`（路径查询） | 注册位置 |
+|----------|--------|-----------|-------------------|---------|
+| `recentMessages` | `{{recentMessages}}` | 最近消息文本 | 无 | `providers/recent-messages.js` |
+| `characters` | `{{characters}}` | 角色列表文本 | 无 | `providers/characters.js` |
+| `character_profiles` | `{{character_profiles}}` | 角色档案文本 | 无 | `providers/character-profiles.js` |
+| `maxSpeakers` | `{{maxSpeakers}}` | 数字字符串 | 无 | `index.js`（内联） |
+| `worldInfo` | `{{worldInfo}}` | 世界书条目文本 | 无 | `providers/world-info.js` |
+| `previousPlan` | `{{previousPlan}}` | 上一轮计划（wrapper 包裹） | 上一轮计划原始对象 | `providers/history.js` |
+| `previousPlans` | `{{previousPlans}}` | 历史计划数组（wrapper 包裹） | 历史计划原始数组 | `providers/history.js` |
+| `directorLedger` | `{{directorLedger}}` | 最新导演计划 JSON | 最新导演计划原始对象 | `providers/director-ledger.js` |
+| `directorHistory` | `{{directorHistory}}` | 全部导演历史 JSON 数组 | 全部历史原始数组 | `providers/director-ledger.js` |
+| `test` | `{{test}}` | 测试文本 | 测试结构化数据 | `providers/test-provider.js` |
+
+所有 Provider 均可通过 `{{name}}` 渲染 content 文本，通过 `{{?name:path}}` 查询 data 字段。带 `data` 的 Provider 支持路径查询和运行时变量 `$`。
 
 ---
 

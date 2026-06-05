@@ -341,3 +341,49 @@ Group Director 不是一个发言过滤器。
 
 并让整个群聊像一场真正被导演过的故事。
 
+
+---
+
+## 模板占位符 (Template Placeholders)
+
+Director Prompt、剧本包装模板、连贯剧本模板均支持以下占位符：
+
+### 基础占位符
+
+| 占位符 | 说明 |
+|--------|------|
+| `{{recentMessages}}` | 最近对话记录 |
+| `{{characters}}` | 角色列表（含描述） |
+| `{{character_profiles}}` | 角色结构化档案 |
+| `{{maxSpeakers}}` | 每轮最多发言人数 |
+| `{{worldInfo}}` | 激活的世界书条目 |
+| `{{previousPlan}}` | 上一轮导演计划 |
+| `{{previousPlans}}` | 历史导演计划数组 |
+| `{{directorLedger}}` | 最新导演决策（完整 JSON） |
+| `{{directorHistory}}` | 全部导演历史数组 |
+
+### 路径查询语法
+
+从 Provider 的 JSON 数据中提取单个字段：
+
+| 语法 | 示例 | 说明 |
+|------|------|------|
+| `{{?name:path}}` | `{{?directorLedger:reason}}` | 点号访问嵌套字段 |
+| `{{?name:path\|默认值}}` | `{{?directorLedger:memory.location\|未知}}` | 路径不存在时返回默认值 |
+| `{{?name:arr[0]}}` | `{{?directorHistory:0.speakers}}` | 数组下标 |
+| `{{?name:arr[-1]}}` | `{{?directorHistory:[-1].reason}}` | 负下标取倒数 |
+| `{{?name:arr[key=val]}}` | `{{?worldInfo:entries[active=true]}}` | 属性过滤 |
+| `{{?name:path.$var}}` | `{{?directorLedger:scripts.$character}}` | 运行时变量 |
+
+### 运行时变量
+
+Script Wrapper 中可使用：
+
+| 变量 | 值 |
+|------|-----|
+| `$character` | 当前角色名 |
+| `$speakerIndex` | 发言顺序 (1-based) |
+| `$speakerIndex0` | 发言顺序 (0-based, 数组用) |
+| `$speakerCount` | 本轮总发言人数 |
+
+详细语法参考 [TEMPLATE-SYNTAX.md](TEMPLATE-SYNTAX.md)。
