@@ -585,6 +585,8 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         });
         if (charScript) {
             setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+        } else {
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
         }
         log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
         return;
@@ -703,6 +705,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverGenCount = 0;
     takeoverFailed = false;
     directorScripts = {};
+    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
     wiState.text = '';
     wiState.entries = [];
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
