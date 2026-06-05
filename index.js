@@ -500,10 +500,22 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
     // ─── Mode: LLM ──────────────────────────────────────────────────
     if (settings.mode === MODE_LLM) {
-        // Manual ordered generation in progress — let through without filtering
+        // Manual ordered generation in progress — validate identity, inject script, let through
         if (takeoverGenCount > 0) {
             takeoverGenCount--;
             roundSpeakerCount++;
+            // Verify the character ST is about to generate matches the expected speaker
+            const expectedAvatar = llmPickedAvatars?.[roundSpeakerCount - 1];
+            if (expectedAvatar && avatar !== expectedAvatar) {
+                console.error(`[GroupDirector] TAKEOVER MISMATCH: ST wants ${char.name} (${avatar}) but director expects speaker #${roundSpeakerCount} (${characters.find(c => c.avatar === expectedAvatar)?.name || expectedAvatar}). Aborting!`);
+                abort(false);
+                return;
+            }
+            // Safety-net script injection: ensure the correct per-character script is set
+            const takeoverScript = getScriptForChar(char.name);
+            if (takeoverScript) {
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, extension_prompt_types.IN_PROMPT, 0, true);
+            }
             console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount})`);
             return;
         }
@@ -731,7 +743,18 @@ async function runManualOrderedGeneration() {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
             }
             try {
+                // Re-set character identity right before generation, in case
+                // something between setCharacterId and here mutated this_chid
+                setCharacterId(chId);
+                setCharacterName(characters[chId].name);
                 await ctx.generate('normal', { force_chid: chId });
+                // Post-generation: verify the new message has the correct character name
+                if (chat.length > 0) {
+                    const lastMsg = chat[chat.length - 1];
+                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
+                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
+                    }
+                }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
