@@ -1302,11 +1302,23 @@ async function initRoundWithLLM() {
         }
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
+        const hasProfilePlaceholder = promptTemplate.includes('{{character_profiles}}');
         let filled = promptTemplate
             .replace('{{recentMessages}}', recentText)
             .replace('{{characters}}', memberList)
             .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers))
             .replace('{{character_profiles}}', buildCharacterProfilesText());
+
+        // If profiles are enabled but the template doesn't use the placeholder
+        // (e.g. a custom prompt saved before the profile system was added),
+        // auto-inject the profiles into the context prefix so they aren't lost.
+        if (settings.profileEnabled && !hasProfilePlaceholder) {
+            const profilesText = buildCharacterProfilesText();
+            if (profilesText) {
+                contextPrefix = profilesText + '\n\n' + contextPrefix;
+                console.log('[GroupDirector] Profile placeholder not found in template — auto-injected into context prefix');
+            }
+        }
 
         // Prepend context (WI, continuity) so instruction/format stays at bottom
         if (contextPrefix) {
