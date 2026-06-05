@@ -6,7 +6,8 @@ export function register(settings, characters, buildCharacterProfilesText) {
         placeholder: '{{characters}}',
         render: (ctx) => {
             const members = ctx.enabledMembers || [];
-            const profilesActive = settings.profileEnabled && !!buildCharacterProfilesText();
+            // Reuse cached result from character_profiles provider if available
+            const profilesActive = settings.profileEnabled && !!(ctx._profilesText || buildCharacterProfilesText());
             return {
                 content: members.map(a => {
                     const c = characters.find(c => c.avatar === a);

@@ -4,8 +4,8 @@ export function register(settings, roundState, buildDirectorWorldInfo) {
     registerProvider({
         id: 'worldInfo',
         placeholder: '{{worldInfo}}',
-        enabled: () => settings.llmWorldInfoEnabled,
         render: async (ctx) => {
+            if (!settings.llmWorldInfoEnabled) return { content: '' };
             if (!roundState.text) {
                 const members = ctx.enabledMembers || [];
                 const wi = await buildDirectorWorldInfo(members);

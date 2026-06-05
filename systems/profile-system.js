@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, chat, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, llmPickedSet, llmPickedAvatars, roundSpeakerCount, saveSettings } = deps;
+    const { settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, chat, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
     const cm = () => getChatMetadata();
 
 // ─── Profile System: Hash & Data Layer ─────────────────────────────────
@@ -232,7 +232,7 @@ function getProfilePriority(prof, pickedSet, recentSpeakerSet, currentSpeakingAv
 
 function applyTokenBudget(readyProfiles, budget) {
     if (!readyProfiles.length) return [];
-    const pickedSet = llmPickedSet || new Set();
+    const pickedSet = getLlmPickedSet() || new Set();
 
     // Build recent speaker set from the last 5 messages
     const recentSpeakerSet = new Set();
@@ -243,7 +243,7 @@ function applyTokenBudget(readyProfiles, budget) {
         }
     }
 
-    const currentSpeakingAvatar = llmPickedAvatars?.[roundSpeakerCount] || null;
+    const currentSpeakingAvatar = getLlmPickedAvatars()?.[getRoundSpeakerCount()] || null;
 
     const sorted = [...readyProfiles].sort((a, b) => {
         const aP = getProfilePriority(a, pickedSet, recentSpeakerSet, currentSpeakingAvatar);
@@ -305,8 +305,8 @@ function validateTemplatePlaceholders(template, knownKeys) {
 
 function validateAndWarnProfilePlaceholders(type) {
     const template = type === 'generator'
-        ? ($c('profile-generator-prompt').val() || getDefaultProfileGeneratorPrompt())
-        : ($c('profile-render-template').val() || getDefaultProfileRenderTemplate());
+        ? ($('#gd-profile-generator-prompt').val() || getDefaultProfileGeneratorPrompt())
+        : ($('#gd-profile-render-template').val() || getDefaultProfileRenderTemplate());
 
     const knownKeys = type === 'generator'
         ? new Set(['{{charName}}', '{{charDescription}}', '{{charPersonality}}', '{{charScenario}}'])

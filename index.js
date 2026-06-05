@@ -279,7 +279,9 @@ const profileSystem = createProfileSystem({
     settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, chat,
     getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson,
     matchCharacterByName, getCurrentGroup, log,
-    llmPickedSet, llmPickedAvatars, roundSpeakerCount,
+    getLlmPickedSet: () => llmPickedSet,
+    getLlmPickedAvatars: () => llmPickedAvatars,
+    getRoundSpeakerCount: () => roundSpeakerCount,
     saveSettings,
 });
 const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfilePlaceholders,
@@ -846,6 +848,14 @@ async function initRoundWithLLM() {
                         filled = wrapper.replace('{{previousPlan}}', lastJson) + '\n\n' + filled;
                     }
                 }
+            }
+        }
+
+        // Auto-inject character profiles if the template lacks the placeholder
+        if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
+            const profilesText = buildCharacterProfilesText();
+            if (profilesText) {
+                filled = profilesText + '\n\n' + filled;
             }
         }
 
