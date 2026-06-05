@@ -8,12 +8,19 @@ function computeProfileSchemaHash() {
 }
 
 function getProfileContainer() {
+    const existed = !!chat_metadata[EXT_KEY];
     if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
     const meta = chat_metadata[EXT_KEY];
+    const hadProfiles = !!meta.characterProfiles && Object.keys(meta.characterProfiles).length > 0;
     if (!meta.characterProfiles) meta.characterProfiles = {};
     if (!meta.archivedProfiles) meta.archivedProfiles = {};
     if (meta.profileVersion === undefined) meta.profileVersion = 1;
     if (meta.profileSchemaHash === undefined) meta.profileSchemaHash = '';
+    if (!existed || !hadProfiles) {
+        console.log('[GroupDirector] getProfileContainer: EXT_KEY existed:', existed, 'existing profiles:', hadProfiles ? Object.keys(meta.characterProfiles).length : 0);
+    } else {
+        console.log('[GroupDirector] getProfileContainer: loaded', Object.keys(meta.characterProfiles).length, 'profiles from save');
+    }
     return meta;
 }
 
@@ -41,6 +48,7 @@ async function saveProfile(avatar, profileObj) {
     const profiles = getProfiles();
     profiles[avatar] = profileObj;
     await saveChatConditional();
+    console.log('[GroupDirector] saveProfile:', avatar, 'state:', profileObj.state, 'keys:', Object.keys(profiles).length);
 }
 
 function diffProfiles(enabledMembers) {
