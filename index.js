@@ -814,7 +814,14 @@ async function initRoundWithLLM() {
         };
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-        const filled = await renderPrompt(promptTemplate, runtimeContext);
+        let filled = await renderPrompt(promptTemplate, runtimeContext);
+
+        // Auto-inject WI if the template lacks the placeholder (custom prompts)
+        if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiState.text) {
+            const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
+            filled = wiWrapper.replace('{{worldInfo}}', wiState.text) + '\n\n' + filled;
+            console.log('[GroupDirector] WI auto-injected into prompt (placeholder absent from template)');
+        }
 
         const ctx = getContext();
         const response = await ctx.generateRaw({
