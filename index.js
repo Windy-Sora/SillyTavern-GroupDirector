@@ -5,54 +5,13 @@ import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
 import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
+import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
+import { registerProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
+import { renderPrompt } from './prompt-renderer.js';
+import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
+import { djb2Hash, hashChar } from './utils/string-utils.js';
 
-// ─── Settings Defaults ───────────────────────────────────────────────
-const EXT_KEY = 'group-director';
-const MODE_OFF = 'off';
-const MODE_FORMULA = 'formula';
-const MODE_LLM = 'llm';
-
-// ─── Provider Registry ─────────────────────────────────────────────────
-const providers = new Map();
-
-function registerProvider(provider) {
-    if (!provider || !provider.id || !provider.placeholder) {
-        console.warn('[GroupDirector] registerProvider: invalid provider, missing id or placeholder');
-        return;
-    }
-    providers.set(provider.id, provider);
-}
-
-function unregisterProvider(id) {
-    providers.delete(id);
-}
-
-function getProviders() {
-    return [...providers.values()];
-}
-
-function getAvailablePlaceholders() {
-    return [...providers.values()].map(p => p.placeholder);
-}
-
-async function renderPrompt(template, context) {
-    let result = template;
-    for (const provider of providers.values()) {
-        if (provider.enabled && !provider.enabled(context)) continue;
-        try {
-            const rendered = await provider.render(context);
-            // Support both { content } object and bare string return
-            const text = (rendered && typeof rendered === 'object') ? (rendered.content ?? '') : (rendered ?? '');
-            // Global replace — same placeholder may appear multiple times
-            result = result.split(provider.placeholder).join(text);
-        } catch (e) {
-            console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
-        }
-    }
-    return result;
-}
-
-const DEFAULT_SETTINGS = {
+// ─── Settings ─────────────────────────────────────────────────────────
     mode: MODE_FORMULA,     // 'off' | 'formula' | 'llm' — 互斥单选
     topN: 1,
     scoreWeights: {
@@ -377,20 +336,6 @@ function saveSettings() {
 }
 
 // ─── Profile System: Hash & Data Layer ─────────────────────────────────
-function djb2Hash(str) {
-    let hash = 5381;
-    for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) + hash) + str.charCodeAt(i);
-        hash = hash & 0xFFFFFFFF;
-    }
-    return hash.toString(16);
-}
-
-function hashChar(description, personality, scenario) {
-    const combined = (description || '') + '\x00' + (personality || '') + '\x00' + (scenario || '');
-    return djb2Hash(combined);
-}
-
 function computeProfileSchemaHash() {
     const schema = settings.profileJsonSchema || getDefaultProfileSchema();
     return djb2Hash(schema);
@@ -1332,7 +1277,7 @@ async function initRoundWithLLM() {
 
         log('LLM raw response:', response);
 
-        const parsed = parseLlmResponse(response);
+        const parsed = parseLlmResponse(response, log);
         if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
             log('LLM returned no valid speakers');
             return;
@@ -1418,98 +1363,7 @@ async function initRoundWithLLM() {
     }
 }
 
-function parseLlmResponse(text) {
-    if (!text) return null;
-
-    // Strategy 1: extract the outermost JSON object with balanced braces
-    const extracted = extractJsonObject(text);
-    if (!extracted) {
-        log('parseLlmResponse: no JSON object found in response');
-        return null;
-    }
-
-    // Normalize: trailing commas, single→double quotes, unquoted keys
-    const sanitized = sanitizeJson(extracted);
-
-    try {
-        return JSON.parse(sanitized);
-    } catch (e1) {
-        log('parseLlmResponse: JSON.parse failed after sanitize:', e1.message);
-
-        // Strategy 2: try extracting the speakers array directly
-        const arrMatch = sanitized.match(/\[([\s\S]*?)\]/);
-        if (arrMatch) {
-            const items = arrMatch[1]
-                .split(/["'],\s*["']/)
-                .map(s => s.replace(/^["'\s]+|["'\s]+$/g, '').trim())
-                .filter(Boolean);
-            if (items.length > 0) {
-                log('parseLlmResponse: extracted speakers array directly:', items);
-                return { speakers: items, reason: '' };
-            }
-        }
-
-        return null;
-    }
-}
-
-/**
- * Extract a balanced JSON object from text that may contain code fences, markdown, or extra prose.
- */
-function extractJsonObject(text) {
-    // Remove code fences (non-globally, fence by fence)
-    let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
-
-    const firstBrace = cleaned.indexOf('{');
-    if (firstBrace === -1) return null;
-
-    let depth = 0;
-    let inString = false;
-    let escape = false;
-
-    for (let i = firstBrace; i < cleaned.length; i++) {
-        const ch = cleaned[i];
-
-        if (escape) { escape = false; continue; }
-        if (ch === '\\') { escape = true; continue; }
-        if (ch === '"') { inString = !inString; continue; }
-        if (inString) continue;
-
-        if (ch === '{') depth++;
-        else if (ch === '}') {
-            depth--;
-            if (depth === 0) {
-                return cleaned.slice(firstBrace, i + 1);
-            }
-        }
-    }
-    return null;
-}
-
-/**
- * Fix common JSON formatting errors from LLM output.
- */
-function sanitizeJson(raw) {
-    let s = raw;
-
-    // Remove trailing commas before closing brackets/braces
-    s = s.replace(/,(\s*[}\]])/g, '$1');
-
-    // Convert single-quoted keys/values to double-quoted (carefully)
-    // Match single-quoted strings that are keys or values
-    // First, replace single-quoted keys: 'key':
-    s = s.replace(/'([^']+)'(\s*:)/g, '"$1"$2');
-    // Then, replace single-quoted values: : 'value'
-    s = s.replace(/(:\s*)'([^']+)'/g, '$1"$2"');
-
-    // Remove BOM / zero-width characters
-    s = s.replace(/[​-‍﻿]/g, '');
-
-    // Remove control characters (except \n, \r, \t) that break JSON
-    s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
-
-    return s.trim();
-}
+// parseLlmResponse, extractJsonObject, sanitizeJson — now in utils/json-utils.js
 
 /**
  * Match a name from LLM output to a group member character.
