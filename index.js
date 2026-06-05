@@ -601,11 +601,21 @@ function buildCharacterProfilesText() {
 
     getProfileContainer(); // ensure migration ran
     const profiles = getProfiles();
-    const readyProfiles = Object.values(profiles).filter(p => p.state === 'ready');
+    const all = Object.values(profiles);
+    const readyProfiles = all.filter(p => p.state === 'ready');
+    const pendingProfiles = all.filter(p => p.state === 'pending');
+    const failedProfiles = all.filter(p => p.state === 'failed');
+
+    // Always log profile state summary so the user knows what's happening
+    console.log(`[GroupDirector] Profiles: ${all.length} total, ${readyProfiles.length} ready, ${pendingProfiles.length} pending, ${failedProfiles.length} failed`);
+
     if (readyProfiles.length === 0) {
-        if (settings.debugLogging) {
-            const pendingCount = Object.values(profiles).filter(p => p.state === 'pending').length;
-            if (pendingCount > 0) log(`Profile: ${pendingCount} pending, 0 ready — profiles will appear next round`);
+        if (all.length === 0) {
+            console.warn('[GroupDirector] No profiles exist. Click "Regenerate All" in the Profile Management panel to generate them.');
+        } else if (failedProfiles.length === all.length) {
+            console.warn(`[GroupDirector] All ${all.length} profile(s) failed. Check the browser console for errors, then click "Regenerate All" to retry.`);
+        } else if (pendingProfiles.length > 0) {
+            console.warn(`[GroupDirector] ${pendingProfiles.length} profile(s) still pending. Profiles will appear once generation completes.`);
         }
         return '';
     }
@@ -1788,7 +1798,18 @@ async function loadSettingsUI() {
         toastr.info(lang === 'zh' ? `正在为 ${members.length} 个角色生成档案...` : `Generating profiles for ${members.length} characters...`);
         try {
             await generateProfilesBatch(members);
-            toastr.success(lang === 'zh' ? '全部角色档案已更新' : 'All character profiles updated');
+            const profiles = getProfiles();
+            const ready = Object.values(profiles).filter(p => p.state === 'ready').length;
+            const failed = Object.values(profiles).filter(p => p.state === 'failed').length;
+            if (failed > 0) {
+                toastr.warning(lang === 'zh'
+                    ? `${ready} 个就绪, ${failed} 个失败 — 查看控制台了解详情`
+                    : `${ready} ready, ${failed} failed — check console for details`);
+            } else {
+                toastr.success(lang === 'zh'
+                    ? `${ready} 个角色档案已更新`
+                    : `${ready} character profiles updated`);
+            }
         } catch (e) {
             toastr.error(lang === 'zh' ? '生成失败，请查看控制台' : 'Generation failed, check console');
             console.error('[GroupDirector] Batch profile generation failed:', e);
