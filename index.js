@@ -49,6 +49,14 @@ const DEFAULT_SETTINGS = {
     llmWorldInfoWrapper: '[Current world context / lorebook entries:\n{{worldInfo}}\n]',
     debugLogging: false,
     lang: 'zh',                        // 'zh' | 'en'
+
+    // ── Character Profile System ──
+    profileEnabled: false,
+    profileTokenBudget: 2000,
+    profileGeneratorPrompt: '',        // '' = use built-in default
+    profileJsonSchema: '',             // '' = use built-in default
+    profileRenderTemplate: '',         // '' = use built-in default
+    profileSchemaVersion: 1,
 };
 
 // ─── I18n ─────────────────────────────────────────────────────────────
@@ -130,6 +138,22 @@ const I18N = {
         promptHint: '可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code><br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。启用剧本后还需包含 <code>"script": "..."</code>。<code>speakers</code> 数组<b>顺序就是发言顺序</b>。',
         promptReset: '恢复默认 Prompt',
         promptNote: '注意：每轮群聊生成会额外调用一次主模型来做导演决策。LLM 调用失败时插件会透明放行（不影响聊天）。',
+
+        profileTitle: '角色档案系统 (Character Profile System)',
+        profileHint: '提前分析每个角色的特质、动机、关系，作为结构化数据注入 Director Prompt。独立于导演判断逻辑。',
+        profileEnabled: '启用角色档案（让 Director 了解每个角色的深层信息）',
+        profileTokenBudget: '档案 Token 预算（超过时压缩非活跃角色）',
+        profileGeneratorPromptTitle: '生成器 Prompt 模板',
+        profileGeneratorPromptHint: '告诉 LLM 如何分析角色。占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code>',
+        profileGeneratorReset: '恢复默认生成器 Prompt',
+        profileJsonSchemaTitle: 'JSON Schema（可选，用于结构化生成）',
+        profileJsonSchemaHint: '定义 AI 返回的 JSON 格式。留空使用内置默认 Schema。',
+        profileSchemaReset: '恢复默认 Schema',
+        profileRenderTemplateTitle: '渲染模板（Render Template）',
+        profileRenderTemplateHint: '控制 <code>{{character_profiles}}</code> 占位符的输出格式。每角色占位符：<code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code>',
+        profileRenderReset: '恢复默认渲染模板',
+        profileManagementTitle: '档案管理',
+        profileRegenerateAll: '全部重新生成',
     },
     en: {
         langLabel: '语言 / Language',
@@ -209,6 +233,22 @@ const I18N = {
         promptHint: 'Placeholders: <code>{{recentMessages}}</code>, <code>{{characters}}</code>, <code>{{maxSpeakers}}</code><br>Model must return JSON: <code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>. With script enabled, also include <code>"script": "..."</code>. <code>speakers</code> array <b>order is speaking order</b>.',
         promptReset: 'Restore Default Prompt',
         promptNote: 'Note: Each round of group chat generation makes one extra main-model call for the director decision. LLM call failures are transparent (chat continues unaffected).',
+
+        profileTitle: 'Character Profile System',
+        profileHint: 'Pre-analyze each character\'s traits, motivations, and relationships as structured data for the Director Prompt. Independent of director decision logic.',
+        profileEnabled: 'Enable Character Profiles (let Director understand each character\'s deep traits)',
+        profileTokenBudget: 'Profile Token Budget (compress inactive characters when exceeded)',
+        profileGeneratorPromptTitle: 'Generator Prompt Template',
+        profileGeneratorPromptHint: 'Tell the LLM how to analyze characters. Placeholders: <code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code>',
+        profileGeneratorReset: 'Restore Default Generator Prompt',
+        profileJsonSchemaTitle: 'JSON Schema (optional, for structured generation)',
+        profileJsonSchemaHint: 'Define the JSON format for AI responses. Leave empty to use the built-in default schema.',
+        profileSchemaReset: 'Restore Default Schema',
+        profileRenderTemplateTitle: 'Render Template',
+        profileRenderTemplateHint: 'Controls the output format of <code>{{character_profiles}}</code>. Per-character placeholders: <code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code>',
+        profileRenderReset: 'Restore Default Render Template',
+        profileManagementTitle: 'Profile Management',
+        profileRegenerateAll: 'Regenerate All',
     },
 };
 
@@ -287,6 +327,351 @@ function pruneDirectorHistory(newChatLength) {
 function saveSettings() {
     extension_settings[EXT_KEY] = settings;
     saveSettingsDebounced();
+}
+
+// ─── Profile System: Hash & Data Layer ─────────────────────────────────
+function djb2Hash(str) {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) + str.charCodeAt(i);
+        hash = hash & 0xFFFFFFFF;
+    }
+    return hash.toString(16);
+}
+
+function hashChar(description, personality, scenario) {
+    const combined = (description || '') + '\x00' + (personality || '') + '\x00' + (scenario || '');
+    return djb2Hash(combined);
+}
+
+function computeProfileSchemaHash() {
+    const schema = settings.profileJsonSchema || getDefaultProfileSchema();
+    return djb2Hash(schema);
+}
+
+function getProfileContainer() {
+    if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
+    const meta = chat_metadata[EXT_KEY];
+    if (!meta.characterProfiles) meta.characterProfiles = {};
+    if (!meta.archivedProfiles) meta.archivedProfiles = {};
+    if (meta.profileVersion === undefined) meta.profileVersion = 1;
+    if (meta.profileSchemaHash === undefined) meta.profileSchemaHash = '';
+    return meta;
+}
+
+function migrateProfileData(container) {
+    const from = container.profileVersion || 0;
+    if (from < 1) {
+        container.profileVersion = 1;
+    }
+    const currentHash = computeProfileSchemaHash();
+    if (container.profileSchemaHash && container.profileSchemaHash !== currentHash) {
+        console.warn('[GroupDirector] Profile schema changed since last save. Old profiles may use outdated field set.');
+    }
+    container.profileSchemaHash = currentHash;
+}
+
+function getProfiles() {
+    return getProfileContainer().characterProfiles;
+}
+
+function getArchivedProfiles() {
+    return getProfileContainer().archivedProfiles;
+}
+
+async function saveProfile(avatar, profileObj) {
+    const profiles = getProfiles();
+    profiles[avatar] = profileObj;
+    await saveChatConditional();
+}
+
+function diffProfiles(enabledMembers) {
+    if (!settings.profileEnabled) return { newChars: [], removedChars: [], existingChars: [], hashMismatches: [] };
+    const profiles = getProfiles();
+    const profileAvatars = Object.keys(profiles);
+    const newChars = enabledMembers.filter(a => !profileAvatars.includes(a));
+    const removedChars = profileAvatars.filter(a => !enabledMembers.includes(a));
+    const existingChars = enabledMembers.filter(a => profileAvatars.includes(a));
+    const hashMismatches = [];
+    for (const avatar of existingChars) {
+        const char = characters.find(c => c.avatar === avatar);
+        if (!char) continue;
+        const currentHash = hashChar(char.description, char.personality, char.scenario);
+        if (profiles[avatar].hash && profiles[avatar].hash !== currentHash) {
+            hashMismatches.push(avatar);
+        }
+    }
+    return { newChars, removedChars, existingChars, hashMismatches };
+}
+
+// ─── Profile System: Generator ─────────────────────────────────────────
+function getDefaultProfileGeneratorPrompt() {
+    return `You are a Character Profile Analyzer. Analyze the following character and extract key information.
+
+Character Name: {{charName}}
+Description: {{charDescription}}
+Personality: {{charPersonality}}
+Scenario: {{charScenario}}
+
+Extract the following in JSON format ONLY (no prose, no code fences):
+{
+  "summary": "A concise 2-3 sentence description of who this character is, their role, and their defining traits.",
+  "tags": ["tag1", "tag2", "tag3"],
+  "motivation": "What drives this character? What do they want? What are their core goals or fears?",
+  "relationships": "How does this character relate to others? What is their social role or typical dynamic with people?"
+}
+
+Important:
+- Output ONLY valid JSON, no extra text.
+- summary must be under 200 characters.
+- tags must be an array of 3-6 single words or short phrases.
+- motivation must be under 300 characters.
+- relationships must be under 200 characters.`;
+}
+
+function getDefaultProfileSchema() {
+    return JSON.stringify({
+        type: 'object',
+        properties: {
+            summary:       { type: 'string' },
+            tags:          { type: 'array', items: { type: 'string' } },
+            motivation:    { type: 'string' },
+            relationships: { type: 'string' },
+        },
+        required: ['summary', 'tags', 'motivation', 'relationships'],
+    }, null, 2);
+}
+
+function getDefaultProfileRenderTemplate() {
+    return `- {{name}}: {{summary}}
+  Tags: {{tags}}
+  Motivation: {{motivation}}
+  Relationships: {{relationships}}`;
+}
+
+function normalizeProfileFields(parsed) {
+    if (!parsed || typeof parsed !== 'object') return { summary: '', tags: [], motivation: '', relationships: '' };
+    return {
+        summary: parsed.summary || '',
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+        motivation: parsed.motivation || '',
+        relationships: parsed.relationships || '',
+        ...parsed,
+    };
+}
+
+async function generateSingleProfile(avatar) {
+    if (!settings.profileEnabled) return null;
+    const char = characters.find(c => c.avatar === avatar);
+    if (!char) throw new Error(`Character not found for avatar: ${avatar}`);
+
+    const generatorPrompt = settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt();
+    const schemaText = settings.profileJsonSchema || getDefaultProfileSchema();
+
+    let filled = generatorPrompt
+        .replace('{{charName}}', char.name)
+        .replace('{{charDescription}}', char.description || '')
+        .replace('{{charPersonality}}', char.personality || '')
+        .replace('{{charScenario}}', char.scenario || '');
+
+    let jsonSchema = null;
+    try { jsonSchema = JSON.parse(schemaText); } catch (e) { /* use null */ }
+
+    const ctx = getContext();
+    const response = await ctx.generateRaw({
+        prompt: filled,
+        jsonSchema: jsonSchema,
+    });
+
+    let parsed;
+    try {
+        parsed = JSON.parse(response);
+    } catch (e) {
+        const extracted = extractJsonObject(response);
+        if (extracted) {
+            const sanitized = sanitizeJson(extracted);
+            try { parsed = JSON.parse(sanitized); } catch (e2) { /* fall through */ }
+        }
+    }
+
+    if (!parsed) throw new Error('Failed to parse profile JSON response');
+    return normalizeProfileFields(parsed);
+}
+
+async function generateProfilesBatch(avatars) {
+    if (!settings.profileEnabled) return;
+    if (!avatars.length) return;
+
+    for (const avatar of avatars) {
+        const char = characters.find(c => c.avatar === avatar);
+        if (!char) continue;
+
+        const currentHash = hashChar(char.description, char.personality, char.scenario);
+        const pendingProfile = {
+            avatar: avatar,
+            name: char.name,
+            hash: currentHash,
+            profile: { summary: '', tags: [], motivation: '', relationships: '' },
+            state: 'pending',
+            manualEdited: false,
+            updatedAt: Date.now(),
+        };
+        await saveProfile(avatar, pendingProfile);
+        refreshProfileManagementUI();
+
+        try {
+            const result = await generateSingleProfile(avatar);
+            if (result) {
+                pendingProfile.profile = result;
+                pendingProfile.state = 'ready';
+                pendingProfile.hash = currentHash;
+            } else {
+                pendingProfile.state = 'failed';
+            }
+        } catch (e) {
+            console.error(`[GroupDirector] Profile generation failed for ${char.name}:`, e.message);
+            pendingProfile.state = 'failed';
+        }
+        pendingProfile.updatedAt = Date.now();
+        await saveProfile(avatar, pendingProfile);
+        refreshProfileManagementUI();
+    }
+}
+
+// ─── Profile System: Renderer ──────────────────────────────────────────
+function renderSingleProfile(prof) {
+    if (!prof || !prof.profile) return '';
+    const template = settings.profileRenderTemplate || getDefaultProfileRenderTemplate();
+    return template
+        .replace(/\{\{name\}\}/g,          prof.name || '')
+        .replace(/\{\{summary\}\}/g,       prof.profile.summary || '')
+        .replace(/\{\{tags\}\}/g,          (prof.profile.tags || []).join(', '))
+        .replace(/\{\{motivation\}\}/g,    prof.profile.motivation || '')
+        .replace(/\{\{relationships\}\}/g, prof.profile.relationships || '');
+}
+
+function getProfilePriority(prof, pickedSet, recentSpeakerSet, currentSpeakingAvatar) {
+    if (prof.avatar === currentSpeakingAvatar) return 0;
+    if (pickedSet && pickedSet.has(prof.avatar)) return 1;
+    if (recentSpeakerSet && recentSpeakerSet.has(prof.avatar)) return 2;
+    return 3;
+}
+
+function applyTokenBudget(readyProfiles, budget) {
+    if (!readyProfiles.length) return [];
+    const pickedSet = llmPickedSet || new Set();
+
+    // Build recent speaker set from the last 5 messages
+    const recentSpeakerSet = new Set();
+    for (let i = chat.length - 1; i >= Math.max(0, chat.length - 5); i--) {
+        const msg = chat[i];
+        if (msg && !msg.is_user && !msg.is_system && msg.avatar) {
+            recentSpeakerSet.add(msg.avatar);
+        }
+    }
+
+    const currentSpeakingAvatar = llmPickedAvatars?.[roundSpeakerCount] || null;
+
+    const sorted = [...readyProfiles].sort((a, b) => {
+        const aP = getProfilePriority(a, pickedSet, recentSpeakerSet, currentSpeakingAvatar);
+        const bP = getProfilePriority(b, pickedSet, recentSpeakerSet, currentSpeakingAvatar);
+        if (aP !== bP) return aP - bP;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+
+    let usedTokens = 0;
+    const result = [];
+    for (const p of sorted) {
+        const rendered = renderSingleProfile(p);
+        const estTokens = Math.max(1, Math.ceil(rendered.length / 4));
+        if (usedTokens + estTokens <= budget || result.length === 0) {
+            result.push({ ...p, rendered });
+            usedTokens += estTokens;
+        } else {
+            const short = `${p.name}: ${(p.profile.summary || '').slice(0, 100)}`;
+            result.push({ ...p, rendered: short, compressed: true });
+            usedTokens += Math.max(1, Math.ceil(short.length / 4));
+        }
+    }
+    return result;
+}
+
+function buildCharacterProfilesText() {
+    if (!settings.profileEnabled) return '';
+
+    getProfileContainer(); // ensure migration ran
+    const profiles = getProfiles();
+    const readyProfiles = Object.values(profiles).filter(p => p.state === 'ready');
+    if (readyProfiles.length === 0) {
+        if (settings.debugLogging) {
+            const pendingCount = Object.values(profiles).filter(p => p.state === 'pending').length;
+            if (pendingCount > 0) log(`Profile: ${pendingCount} pending, 0 ready — profiles will appear next round`);
+        }
+        return '';
+    }
+
+    const budgeted = applyTokenBudget(readyProfiles, settings.profileTokenBudget);
+    return budgeted.map(p => p.rendered).join('\n');
+}
+
+function validateTemplatePlaceholders(template, knownKeys) {
+    const found = template.match(/\{\{[a-zA-Z_]+\}\}/g) || [];
+    const unknowns = [...new Set(found)].filter(p => !knownKeys.has(p));
+    return unknowns;
+}
+
+function validateAndWarnProfilePlaceholders(type) {
+    const template = type === 'generator'
+        ? ($c('profile-generator-prompt').val() || getDefaultProfileGeneratorPrompt())
+        : ($c('profile-render-template').val() || getDefaultProfileRenderTemplate());
+
+    const knownKeys = type === 'generator'
+        ? new Set(['{{charName}}', '{{charDescription}}', '{{charPersonality}}', '{{charScenario}}'])
+        : new Set(['{{name}}', '{{summary}}', '{{tags}}', '{{motivation}}', '{{relationships}}']);
+
+    const unknowns = validateTemplatePlaceholders(template, knownKeys);
+    const $warn = $('#gd-profile-template-warning');
+    if (unknowns.length > 0) {
+        const lang = settings.lang || 'zh';
+        $warn.text(lang === 'zh'
+            ? `警告：未知占位符 ${unknowns.join(', ')}，将渲染为空。`
+            : `Warning: unknown placeholders ${unknowns.join(', ')}. They will render as empty.`).show();
+    } else {
+        $warn.hide();
+    }
+}
+
+async function syncProfiles(enabledMembers) {
+    if (!settings.profileEnabled) return;
+
+    getProfileContainer(); // ensure migration
+    const { newChars, removedChars, hashMismatches } = diffProfiles(enabledMembers);
+
+    // Archive removed characters
+    for (const avatar of removedChars) {
+        const profile = getProfiles()[avatar];
+        if (profile) {
+            getArchivedProfiles()[avatar] = profile;
+            delete getProfiles()[avatar];
+        }
+    }
+
+    if (hashMismatches.length > 0) {
+        const names = hashMismatches.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ');
+        log(`Profile hash mismatch for: ${names} — use Regenerate button to update`);
+    }
+
+    if (removedChars.length || hashMismatches.length) {
+        await saveChatConditional();
+    }
+
+    // Auto-generate profiles for new characters (non-blocking fire-and-forget)
+    if (newChars.length > 0) {
+        log(`Auto-generating profiles for ${newChars.length} new character(s): ${newChars.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ')}`);
+        generateProfilesBatch(newChars).catch(e => {
+            console.error('[GroupDirector] Background profile generation failed:', e);
+        });
+    }
 }
 
 function log(...args) {
@@ -681,6 +1066,15 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundWorldInfo = '';
     roundWorldInfoEntries = [];
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
+
+    // Trigger profile sync for new/removed characters (non-blocking)
+    const group = getCurrentGroup();
+    if (group && settings.profileEnabled && settings.mode === MODE_LLM) {
+        const members = group.members.filter(a => !group.disabled_members?.includes(a));
+        syncProfiles(members).catch(e => {
+            console.error('[GroupDirector] Profile sync failed:', e);
+        });
+    }
 });
 
 eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
@@ -910,7 +1304,8 @@ async function initRoundWithLLM() {
         let filled = promptTemplate
             .replace('{{recentMessages}}', recentText)
             .replace('{{characters}}', memberList)
-            .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers));
+            .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers))
+            .replace('{{character_profiles}}', buildCharacterProfilesText());
 
         // Prepend context (WI, continuity) so instruction/format stays at bottom
         if (contextPrefix) {
@@ -1338,6 +1733,63 @@ async function loadSettingsUI() {
         settings.llmPrompt = defaultP;
         saveSettings();
     });
+
+    // ── Profile System UI Bindings ──
+    $c('profile-enabled').prop('checked', settings.profileEnabled);
+    $c('profile-token-budget').val(settings.profileTokenBudget);
+    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt);
+    $c('profile-json-schema').val(settings.profileJsonSchema);
+    $c('profile-render-template').val(settings.profileRenderTemplate);
+    $('#gd-profile-section').toggle(settings.profileEnabled);
+
+    $c('profile-enabled').on('input', function () {
+        settings.profileEnabled = !!$(this).prop('checked');
+        $('#gd-profile-section').toggle(settings.profileEnabled);
+        saveSettings();
+    });
+    $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = parseInt($(this).val()) || 2000; saveSettings(); });
+    $c('profile-generator-prompt').on('input', function () { settings.profileGeneratorPrompt = $(this).val(); saveSettings(); });
+    $c('profile-json-schema').on('input', function () { settings.profileJsonSchema = $(this).val(); saveSettings(); });
+    $c('profile-render-template').on('input', function () {
+        settings.profileRenderTemplate = $(this).val();
+        validateAndWarnProfilePlaceholders('render');
+        saveSettings();
+    });
+
+    $c('profile-generator-reset').on('click', function () {
+        const def = getDefaultProfileGeneratorPrompt();
+        $c('profile-generator-prompt').val(def);
+        settings.profileGeneratorPrompt = '';
+        saveSettings();
+    });
+    $c('profile-schema-reset').on('click', function () {
+        const def = getDefaultProfileSchema();
+        $c('profile-json-schema').val(def);
+        settings.profileJsonSchema = '';
+        saveSettings();
+    });
+    $c('profile-render-reset').on('click', function () {
+        const def = getDefaultProfileRenderTemplate();
+        $c('profile-render-template').val(def);
+        settings.profileRenderTemplate = '';
+        saveSettings();
+    });
+
+    $c('profile-regenerate-all').on('click', async function () {
+        const group = getCurrentGroup();
+        if (!group) return;
+        const members = group.members.filter(a => !group.disabled_members?.includes(a));
+        const btn = $('#gd-profile-regenerate-all');
+        btn.prop('disabled', true);
+        try {
+            await generateProfilesBatch(members);
+        } finally {
+            btn.prop('disabled', false);
+        }
+    });
+
+    // Initial render of the management panel
+    refreshProfileManagementUI();
 }
 
 function applyModeVisibility(mode) {
@@ -1354,6 +1806,123 @@ function toggleContinuityMode(mode) {
     $('#gd-llm-script-continuity-count').prop('disabled', mode !== 'history');
     $('#gd-llm-script-continuity-history-wrapper').prop('disabled', mode !== 'history');
     $('#gd-llm-script-continuity-wrapper').prop('disabled', mode !== 'last');
+}
+
+// ─── Profile System: Management UI ─────────────────────────────────────
+function refreshProfileManagementUI() {
+    const $container = $('#gd-profile-management-list');
+    if (!$container.length) return;
+    $container.empty();
+
+    const profiles = getProfiles();
+    const lang = settings.lang || 'zh';
+    const isZh = lang === 'zh';
+
+    if (Object.keys(profiles).length === 0) {
+        $container.html(`<small><i>${isZh ? '暂无角色档案。加入群聊的角色将在首轮自动生成。' : 'No character profiles yet. Characters will be auto-generated on first round.'}</i></small>`);
+        return;
+    }
+
+    for (const avatar of Object.keys(profiles)) {
+        const prof = profiles[avatar];
+        if (!prof) continue;
+        const char = characters.find(c => c.avatar === avatar);
+        const name = char ? char.name : (prof.name || 'Unknown');
+        const hashMatch = char ? (hashChar(char.description, char.personality, char.scenario) === prof.hash) : true;
+        const stateLabels = isZh ? { ready: '就绪', pending: '生成中', failed: '失败' } : { ready: 'Ready', pending: 'Generating', failed: 'Failed' };
+        const stateLabel = stateLabels[prof.state] || prof.state;
+        const stateClass = { ready: 'profile-state-ready', pending: 'profile-state-pending', failed: 'profile-state-failed' }[prof.state] || '';
+        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+
+        const card = $(`
+            <div class="gd-profile-card" data-avatar="${avatar}">
+                <div class="gd-profile-card-header">
+                    <div class="gd-profile-card-info">
+                        <strong>${name}</strong>
+                        <div class="gd-profile-card-meta">
+                            <span class="gd-profile-state ${stateClass}">${stateLabel}</span>
+                            ${!hashMatch ? `<span class="gd-profile-hash-warn" title="${isZh ? '角色定义已变更，档案可能过时' : 'Character definition changed, profile may be outdated'}">&#9888;</span>` : ''}
+                            ${prof.manualEdited ? `<span class="gd-profile-edited-tag">${isZh ? '(已编辑)' : '(Edited)'}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="gd-profile-card-actions">
+                        <button class="gd-profile-btn-edit" data-avatar="${avatar}">${isZh ? '编辑' : 'Edit'}</button>
+                        <button class="gd-profile-btn-regen" data-avatar="${avatar}">${isZh ? '重生成' : 'Regen'}</button>
+                        <button class="gd-profile-btn-delete" data-avatar="${avatar}">${isZh ? '删除' : 'Delete'}</button>
+                    </div>
+                </div>
+                <div class="gd-profile-card-edit" id="gd-profile-edit-${safeId}" style="display:none;">
+                    <label>Summary <textarea class="gd-profile-edit-field" data-field="summary" rows="2">${prof.profile.summary || ''}</textarea></label>
+                    <label>Tags <input class="gd-profile-edit-field" data-field="tags" value="${(prof.profile.tags || []).join(', ')}"></label>
+                    <label>Motivation <textarea class="gd-profile-edit-field" data-field="motivation" rows="2">${prof.profile.motivation || ''}</textarea></label>
+                    <label>Relationships <textarea class="gd-profile-edit-field" data-field="relationships" rows="2">${prof.profile.relationships || ''}</textarea></label>
+                    <button class="gd-profile-btn-save" data-avatar="${avatar}">${isZh ? '保存' : 'Save'}</button>
+                    <button class="gd-profile-btn-cancel" data-avatar="${avatar}">${isZh ? '取消' : 'Cancel'}</button>
+                </div>
+            </div>
+        `);
+        $container.append(card);
+    }
+
+    bindProfileCardActions();
+}
+
+function bindProfileCardActions() {
+    $('.gd-profile-btn-edit').off('click').on('click', function () {
+        const avatar = $(this).data('avatar');
+        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+        $(`#gd-profile-edit-${safeId}`).toggle();
+    });
+
+    $('.gd-profile-btn-cancel').off('click').on('click', function () {
+        const avatar = $(this).data('avatar');
+        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+        $(`#gd-profile-edit-${safeId}`).hide();
+    });
+
+    $('.gd-profile-btn-save').off('click').on('click', async function () {
+        const avatar = $(this).data('avatar');
+        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+        const $edit = $(`#gd-profile-edit-${safeId}`);
+        const profiles = getProfiles();
+        const prof = profiles[avatar];
+        if (!prof) return;
+
+        prof.profile.summary = $edit.find('[data-field="summary"]').val();
+        prof.profile.tags = ($edit.find('[data-field="tags"]').val() || '').split(',').map(s => s.trim()).filter(Boolean);
+        prof.profile.motivation = $edit.find('[data-field="motivation"]').val();
+        prof.profile.relationships = $edit.find('[data-field="relationships"]').val();
+        prof.manualEdited = true;
+        prof.updatedAt = Date.now();
+        prof.state = 'ready';
+
+        await saveProfile(avatar, prof);
+        $edit.hide();
+        toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
+    });
+
+    $('.gd-profile-btn-regen').off('click').on('click', async function () {
+        const avatar = $(this).data('avatar');
+        const btn = $(this);
+        btn.prop('disabled', true);
+        try {
+            await generateProfilesBatch([avatar]);
+        } finally {
+            btn.prop('disabled', false);
+        }
+    });
+
+    $('.gd-profile-btn-delete').off('click').on('click', async function () {
+        const avatar = $(this).data('avatar');
+        const profiles = getProfiles();
+        const prof = profiles[avatar];
+        if (prof) {
+            getArchivedProfiles()[avatar] = prof;
+            delete profiles[avatar];
+        }
+        await saveChatConditional();
+        refreshProfileManagementUI();
+    });
 }
 
 // ─── I18n ─────────────────────────────────────────────────────────────
