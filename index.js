@@ -535,6 +535,12 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
                 llmCursor++;
             }
         }
+        // Validate: this character must be in the picked set
+        if (!llmPickedSet.has(avatar)) {
+            console.warn(`[GroupDirector] VALIDATION FAILED: ${char.name} (${avatar}) not in llmPickedSet! Aborting.`);
+            abort(false);
+            return;
+        }
         llmSpokenSet.add(avatar);
         roundSpeakerCount++;
         // Inject per-character director script
@@ -680,6 +686,14 @@ async function runManualOrderedGeneration() {
             }
             setCharacterId(chId);
             setCharacterName(characters[chId].name);
+            // Validate: the context must now point to the character we intend to generate
+            const verifyChId = getContext().characterId;
+            const verifyAvatar = characters[verifyChId]?.avatar;
+            if (verifyAvatar !== avatar) {
+                console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
+                takeoverGenCount--;
+                continue;
+            }
             console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
 
             // Inject per-character director script
@@ -875,6 +889,21 @@ async function initRoundWithLLM() {
         llmPickedAvatars = capped;
         llmPickedSet = new Set(capped);
         llmCursor = 0;
+
+        // Validate: every picked avatar must be a current enabled group member
+        for (const av of capped) {
+            if (!enabledMembers.includes(av)) {
+                console.warn(`[GroupDirector] VALIDATION FAILED: picked avatar ${av} not in enabled members! Removing.`);
+                llmPickedSet.delete(av);
+            }
+        }
+        llmPickedAvatars = capped.filter(av => llmPickedSet.has(av));
+        if (llmPickedAvatars.length === 0) {
+            console.warn('[GroupDirector] All picked speakers failed validation — aborting director round');
+            llmPickedAvatars = null;
+            llmPickedSet = null;
+            return;
+        }
 
         // Store director script if present
         // Store per-character scripts from LLM response
