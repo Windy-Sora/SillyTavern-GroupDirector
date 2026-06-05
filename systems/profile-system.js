@@ -8,6 +8,7 @@ function computeProfileSchemaHash() {
 }
 
 function getProfileContainer() {
+    console.log('[GroupDirector] getProfileContainer() called. Stack:', new Error().stack?.split('\n').slice(1, 4).map(s => s.trim()).join(' <- '));
     const existed = !!chat_metadata[EXT_KEY];
     if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
     const meta = chat_metadata[EXT_KEY];
