@@ -243,7 +243,6 @@ let takeoverGenCount = 0;
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let roundWorldInfo = '';            // cached WI text for this round
 let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
-let _pruneTimer = null;             // debounce timer for pruneDirectorHistory
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -273,13 +272,13 @@ async function addToDirectorHistory(entry) {
     await saveChatConditional();
 }
 
-async function pruneDirectorHistory(newChatLength) {
+function pruneDirectorHistory(newChatLength) {
     const history = getDirectorHistory();
     if (!history.length) return;
     const pruned = history.filter(e => (e._chatLength || 0) <= newChatLength);
     if (pruned.length < history.length) {
         chat_metadata[EXT_KEY].directorHistory = pruned;
-        await saveChatConditional();
+        saveChatConditional(); // fire-and-forget; in-memory array is already correct
         log(`Pruned ${history.length - pruned.length} stale director history entries (chatLength=${newChatLength})`);
     }
 }
@@ -656,13 +655,25 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     takeoverPending = false;
 });
 
-// Prune stale director history when messages are deleted from chat.
-// Debounced to avoid rapid-fire saves during individual deletions.
-// Uses live chat.length at fire time, not the captured event argument,
-// so a new message sent between deletion and prune won't be affected.
-eventSource.on(event_types.MESSAGE_DELETED, () => {
-    clearTimeout(_pruneTimer);
-    _pruneTimer = setTimeout(() => pruneDirectorHistory(chat.length), 150);
+// When messages are deleted, the chat timeline has rolled back.
+// All in-memory runtime state based on the old timeline is now invalid.
+// Clear it BEFORE pruning history so no stale pointers linger.
+eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
+    roundScores = {};
+    roundSpeakerCount = 0;
+    roundTriggeredAvatars.clear();
+    roundInitiative = {};
+    llmPickedAvatars = null;
+    llmPickedSet = null;
+    llmSpokenSet = new Set();
+    llmCursor = 0;
+    roundInitialized = false;
+    takeoverPending = false;
+    takeoverGenCount = 0;
+    directorScripts = {};
+    roundWorldInfo = '';
+    roundWorldInfoEntries = [];
+    pruneDirectorHistory(newChatLength);
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
