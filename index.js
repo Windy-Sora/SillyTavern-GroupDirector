@@ -15,6 +15,7 @@ import { register as registerCharacters } from './providers/characters.js';
 import { register as registerCharacterProfiles } from './providers/character-profiles.js';
 import { register as registerWorldInfoProvider } from './providers/world-info.js';
 import { register as registerHistoryProviders } from './providers/history.js';
+import { register as registerDirectorLedger } from './providers/director-ledger.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
@@ -256,11 +257,13 @@ const DIRECTOR_SCRIPT_KEY = 'group_director_script';
 async function getScriptForChar(charName) {
     const script = directorScripts[charName];
     if (!script) return '';
-    // Render the wrapper through all providers so any {{placeholder}}
-    // in the wrapper (e.g. {{previousPlans}}) is resolved, then inject script
     const wrapper = settings.llmScriptWrapper || '{{script}}';
-    const rendered = await renderPrompt(wrapper, {});
-    return rendered.replace('{{script}}', script);
+    // Protect {{script}} from renderPrompt's Phase 2 — it matches \w+ but
+    // has no registered provider, so it gets replaced with empty string.
+    const placeholder = '\x00SCRIPT\x00';
+    const protected = wrapper.replace('{{script}}', placeholder);
+    const rendered = await renderPrompt(protected, { character: charName });
+    return rendered.replace(placeholder, script);
 }
 
 function saveSettings() {
@@ -1366,6 +1369,7 @@ registerProvider({
 
 registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
 registerHistoryProviders(settings, getDirectorHistory);
+registerDirectorLedger(settings, getDirectorHistory);
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
