@@ -975,7 +975,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 // ─── Event Listeners ─────────────────────────────────────────────────
 let roundGenerateType = 'normal'; // captured from GROUP_WRAPPER_STARTED
 
-eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
+eventSource.on(event_types.GROUP_WRAPPER_STARTED, async (data) => {
     // Always capture the generation type, even for nested wrappers.
     // Auto-swipes during takeover need to be visible to the interceptor.
     roundGenerateType = data?.type || 'normal';
@@ -1067,13 +1067,16 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundWorldInfoEntries = [];
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 
-    // Trigger profile sync for new/removed characters (non-blocking)
+    // Profile sync must complete before the Director round — otherwise
+    // new characters would be missing their profiles in the first round.
     const group = getCurrentGroup();
     if (group && settings.profileEnabled && settings.mode === MODE_LLM) {
         const members = group.members.filter(a => !group.disabled_members?.includes(a));
-        syncProfiles(members).catch(e => {
+        try {
+            await syncProfiles(members);
+        } catch (e) {
             console.error('[GroupDirector] Profile sync failed:', e);
-        });
+        }
     }
 });
 
@@ -1551,6 +1554,9 @@ function getDefaultLlmPrompt() {
 
 Available characters:
 {{characters}}
+
+Character profiles (detailed analysis):
+{{character_profiles}}
 
 ---
 You are a Group Chat Director. Decide which characters should respond next, and in what order.
