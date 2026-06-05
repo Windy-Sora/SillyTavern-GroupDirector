@@ -1303,21 +1303,30 @@ async function initRoundWithLLM() {
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
         const hasProfilePlaceholder = promptTemplate.includes('{{character_profiles}}');
+        const profilesText = buildCharacterProfilesText();
+
+        // When profiles are active and non-empty, suppress the bulky raw
+        // character descriptions to avoid redundant token waste. The profiles
+        // already provide the structured summary the Director needs.
+        const charText = (settings.profileEnabled && profilesText)
+            ? enabledMembers.map(a => {
+                const c = characters.find(c => c.avatar === a);
+                return c ? `- ${c.name}` : '';
+              }).filter(Boolean).join('\n')
+            : memberList;
+
         let filled = promptTemplate
             .replace('{{recentMessages}}', recentText)
-            .replace('{{characters}}', memberList)
+            .replace('{{characters}}', charText)
             .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers))
-            .replace('{{character_profiles}}', buildCharacterProfilesText());
+            .replace('{{character_profiles}}', profilesText);
 
         // If profiles are enabled but the template doesn't use the placeholder
         // (e.g. a custom prompt saved before the profile system was added),
         // auto-inject the profiles into the context prefix so they aren't lost.
-        if (settings.profileEnabled && !hasProfilePlaceholder) {
-            const profilesText = buildCharacterProfilesText();
-            if (profilesText) {
-                contextPrefix = profilesText + '\n\n' + contextPrefix;
-                console.log('[GroupDirector] Profile placeholder not found in template — auto-injected into context prefix');
-            }
+        if (settings.profileEnabled && !hasProfilePlaceholder && profilesText) {
+            contextPrefix = profilesText + '\n\n' + contextPrefix;
+            console.log('[GroupDirector] Profile placeholder not found in template — auto-injected into context prefix');
         }
 
         // Prepend context (WI, continuity) so instruction/format stays at bottom
