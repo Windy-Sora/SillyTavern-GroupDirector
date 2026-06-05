@@ -31,13 +31,19 @@ function getProviders() {
     return [...providers.values()];
 }
 
+function getAvailablePlaceholders() {
+    return [...providers.values()].map(p => p.placeholder);
+}
+
 async function renderPrompt(template, context) {
     let result = template;
     for (const provider of providers.values()) {
         if (provider.enabled && !provider.enabled(context)) continue;
         try {
-            const replacement = await provider.render(context);
-            result = result.replace(provider.placeholder, replacement ?? '');
+            const rendered = await provider.render(context);
+            // Support both { content } object and bare string return
+            const text = (rendered && typeof rendered === 'object') ? (rendered.content ?? '') : (rendered ?? '');
+            result = result.replace(provider.placeholder, text);
         } catch (e) {
             console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
         }
@@ -1304,90 +1310,62 @@ async function initRoundWithLLM() {
         const llmDepth = Math.min(settings.llmContextDepth, chat.length);
         const recentMessages = chat.slice(-llmDepth);
         const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
-        const memberList = enabledMembers
-            .map(a => {
-                const c = characters.find(c => c.avatar === a);
-                if (!c) return null;
-                const desc = c.description || '';
-                const showDesc = settings.llmCharDescMode === 'full'
-                    ? desc
-                    : desc.slice(0, settings.llmCharDescLength);
-                const truncated = showDesc.length < desc.length ? `${showDesc}…` : showDesc;
-                return `- ${c.name}: ${truncated}`;
-            })
-            .filter(Boolean)
-            .join('\n');
 
-        const recentText = recentMessages
-            .map(m => `${m.name || (m.is_user ? 'User' : 'Char')}: ${m.mes || ''}`)
-            .join('\n');
-
-        // One-shot WI scan per round, cached for the director stage
-        let contextPrefix = '';
+        // One-shot WI scan per round, cached for the WorldInfoProvider
         if (!roundWorldInfo && settings.llmWorldInfoEnabled) {
             const wi = await buildDirectorWorldInfo(enabledMembers);
             roundWorldInfo = wi.text;
             roundWorldInfoEntries = wi.entries;
         }
+
+        // Minimal runtime context — providers encapsulate all rendering logic
+        const runtimeContext = {
+            recentMessages,
+            enabledMembers,
+            maxSpeakers: settings.llmMaxSpeakers,
+        };
+
+        const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
+        let filled = await renderPrompt(promptTemplate, runtimeContext);
+
+        // Build context prefix for data sources whose placeholders may
+        // not be in the template (WI, continuity, profiles in legacy prompts).
+        // Providers handle the case where placeholders ARE present; this
+        // handles auto-injection when they're absent.
+        let contextPrefix = '';
+
+        // World Info — always prepended (legacy behavior); provider handles template placeholder
         if (roundWorldInfo) {
             const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
             contextPrefix += wiWrapper.replace('{{worldInfo}}', roundWorldInfo) + '\n\n';
         }
 
-        // Inject previous director plans for script continuity
+        // Director history continuity — always prepended (legacy behavior)
         const history = getDirectorHistory();
         if (settings.llmHistoryEnabled && settings.llmScriptContinuity && history.length > 0) {
             if (settings.llmScriptContinuityMode === 'history') {
-                // Full history mode: provide N recent rounds as JSON array
                 const count = settings.llmScriptContinuityCount > 0
                     ? Math.min(settings.llmScriptContinuityCount, history.length)
                     : history.length;
-                const recentPlans = history.slice(-count);
-                const plansJson = JSON.stringify(recentPlans, null, 2);
+                const plansJson = JSON.stringify(history.slice(-count), null, 2);
                 const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
                 contextPrefix += wrapper.replace('{{previousPlans}}', plansJson) + '\n\n';
             } else {
-                // Last-round mode (default): provide only the most recent plan
-                const lastPlan = history[history.length - 1];
-                const lastJson = JSON.stringify(lastPlan, null, 2);
+                const lastJson = JSON.stringify(history[history.length - 1], null, 2);
                 const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
                 contextPrefix += wrapper.replace('{{previousPlan}}', lastJson) + '\n\n';
             }
         }
 
-        const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-        const hasProfilePlaceholder = promptTemplate.includes('{{character_profiles}}');
-        const profilesText = buildCharacterProfilesText();
-
-        // When profiles are active and non-empty, suppress the bulky raw
-        // character descriptions to avoid redundant token waste.
-        const charText = (settings.profileEnabled && profilesText)
-            ? enabledMembers.map(a => {
-                const c = characters.find(c => c.avatar === a);
-                return c ? `- ${c.name}` : '';
-              }).filter(Boolean).join('\n')
-            : memberList;
-
-        // Build provider context — all data sources in one object
-        const providerContext = {
-            recentMessages: recentMessages,
-            memberList: charText,
-            maxSpeakers: settings.llmMaxSpeakers,
-            profilesText: profilesText,
-            worldInfoText: roundWorldInfo,
-            previousPlan: '',
-            previousPlans: '',
-        };
-
-        let filled = await renderPrompt(promptTemplate, providerContext);
-
-        // Profile auto-injection: if enabled but template lacks placeholder
-        if (settings.profileEnabled && !hasProfilePlaceholder && profilesText) {
-            contextPrefix = profilesText + '\n\n' + contextPrefix;
-            console.log('[GroupDirector] Profile placeholder not found in template — auto-injected into context prefix');
+        // Profile auto-injection for legacy prompts without the placeholder
+        if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
+            const profilesText = buildCharacterProfilesText();
+            if (profilesText) {
+                contextPrefix = profilesText + '\n\n' + contextPrefix;
+                console.log('[GroupDirector] Profile placeholder not found in template — auto-injected');
+            }
         }
 
-        // Prepend context (WI, continuity) so instruction/format stays at bottom
         if (contextPrefix) {
             filled = contextPrefix + filled;
         }
@@ -2293,49 +2271,97 @@ function applyI18n(lang) {
 // TODO: Register slash commands for manual director control
 
 // ─── Register Built-in Providers ──────────────────────────────────────
+
+// RecentMessagesProvider — formats chat history for the Director
 registerProvider({
     id: 'recentMessages',
     placeholder: '{{recentMessages}}',
     render: (ctx) => {
         const msgs = ctx.recentMessages || [];
-        return msgs.map(m => `${m.name || (m.is_user ? 'User' : 'Char')}: ${m.mes || ''}`).join('\n');
+        return { content: msgs.map(m => `${m.name || (m.is_user ? 'User' : 'Char')}: ${m.mes || ''}`).join('\n') };
     },
 });
 
+// CharactersProvider — builds the character list with optional truncation
 registerProvider({
     id: 'characters',
     placeholder: '{{characters}}',
-    render: (ctx) => ctx.memberList || '',
+    render: (ctx) => {
+        const members = ctx.enabledMembers || [];
+        const profilesActive = settings.profileEnabled && !!buildCharacterProfilesText();
+        return {
+            content: members.map(a => {
+                const c = characters.find(c => c.avatar === a);
+                if (!c) return '';
+                if (profilesActive) {
+                    // Profiles are active — suppress bulky descriptions to save tokens
+                    return `- ${c.name}`;
+                }
+                const desc = c.description || '';
+                const showDesc = settings.llmCharDescMode === 'full'
+                    ? desc
+                    : desc.slice(0, settings.llmCharDescLength);
+                const truncated = showDesc.length < desc.length ? `${showDesc}…` : showDesc;
+                return `- ${c.name}: ${truncated}`;
+            }).filter(Boolean).join('\n'),
+        };
+    },
 });
 
+// CharacterProfilesProvider — renders structured character profiles
 registerProvider({
     id: 'character_profiles',
     placeholder: '{{character_profiles}}',
-    render: (ctx) => ctx.profilesText || '',
+    render: () => ({ content: buildCharacterProfilesText() }),
 });
 
+// MaxSpeakersProvider — simple number
 registerProvider({
     id: 'maxSpeakers',
     placeholder: '{{maxSpeakers}}',
-    render: (ctx) => String(ctx.maxSpeakers || 1),
+    render: (ctx) => ({ content: String(ctx.maxSpeakers || 1) }),
 });
 
+// WorldInfoProvider — injects activated lorebook entries
 registerProvider({
     id: 'worldInfo',
     placeholder: '{{worldInfo}}',
-    render: (ctx) => ctx.worldInfoText || '',
+    render: () => {
+        const wrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
+        const text = roundWorldInfo || '';
+        // The WI text was already wrapped before caching; just return it
+        return { content: text ? wrapper.replace('{{worldInfo}}', text) : '' };
+    },
 });
 
+// DirectorHistoryProvider — previous director plans for continuity
 registerProvider({
     id: 'previousPlan',
     placeholder: '{{previousPlan}}',
-    render: (ctx) => ctx.previousPlan || '',
+    render: () => {
+        const history = getDirectorHistory();
+        if (!settings.llmHistoryEnabled || !settings.llmScriptContinuity || !history.length) return { content: '' };
+        if (settings.llmScriptContinuityMode === 'history') return { content: '' }; // handled by previousPlans
+        const lastPlan = history[history.length - 1];
+        const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
+        return { content: wrapper.replace('{{previousPlan}}', JSON.stringify(lastPlan, null, 2)) };
+    },
 });
 
 registerProvider({
     id: 'previousPlans',
     placeholder: '{{previousPlans}}',
-    render: (ctx) => ctx.previousPlans || '',
+    render: () => {
+        const history = getDirectorHistory();
+        if (!settings.llmHistoryEnabled || !settings.llmScriptContinuity || !history.length) return { content: '' };
+        if (settings.llmScriptContinuityMode !== 'history') return { content: '' };
+        const count = settings.llmScriptContinuityCount > 0
+            ? Math.min(settings.llmScriptContinuityCount, history.length)
+            : history.length;
+        const plansJson = JSON.stringify(history.slice(-count), null, 2);
+        const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
+        return { content: wrapper.replace('{{previousPlans}}', plansJson) };
+    },
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────
