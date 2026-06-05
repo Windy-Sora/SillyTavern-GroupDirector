@@ -43,7 +43,8 @@ async function renderPrompt(template, context) {
             const rendered = await provider.render(context);
             // Support both { content } object and bare string return
             const text = (rendered && typeof rendered === 'object') ? (rendered.content ?? '') : (rendered ?? '');
-            result = result.replace(provider.placeholder, text);
+            // Global replace — same placeholder may appear multiple times
+            result = result.split(provider.placeholder).join(text);
         } catch (e) {
             console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
         }
@@ -1311,14 +1312,6 @@ async function initRoundWithLLM() {
         const recentMessages = chat.slice(-llmDepth);
         const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
 
-        // One-shot WI scan per round, cached for the WorldInfoProvider
-        if (!roundWorldInfo && settings.llmWorldInfoEnabled) {
-            const wi = await buildDirectorWorldInfo(enabledMembers);
-            roundWorldInfo = wi.text;
-            roundWorldInfoEntries = wi.entries;
-        }
-
-        // Minimal runtime context — providers encapsulate all rendering logic
         const runtimeContext = {
             recentMessages,
             enabledMembers,
@@ -1326,46 +1319,44 @@ async function initRoundWithLLM() {
         };
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-        let filled = await renderPrompt(promptTemplate, runtimeContext);
 
-        // Build context prefix for data sources whose placeholders may
-        // not be in the template (WI, continuity, profiles in legacy prompts).
-        // Providers handle the case where placeholders ARE present; this
-        // handles auto-injection when they're absent.
+        // Context prefix: provider outputs for placeholders not in the template.
+        // Providers encapsulate all rendering logic; Director only assembles.
         let contextPrefix = '';
-
-        // World Info — always prepended (legacy behavior); provider handles template placeholder
-        if (roundWorldInfo) {
-            const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-            contextPrefix += wiWrapper.replace('{{worldInfo}}', roundWorldInfo) + '\n\n';
+        const wiProvider = providers.get('worldInfo');
+        if (wiProvider && (!wiProvider.enabled || wiProvider.enabled(runtimeContext))) {
+            const wiRendered = await wiProvider.render(runtimeContext);
+            const wiText = (wiRendered && typeof wiRendered === 'object') ? wiRendered.content : wiRendered;
+            if (wiText) contextPrefix += wiText + '\n\n';
         }
 
-        // Director history continuity — always prepended (legacy behavior)
-        const history = getDirectorHistory();
-        if (settings.llmHistoryEnabled && settings.llmScriptContinuity && history.length > 0) {
-            if (settings.llmScriptContinuityMode === 'history') {
-                const count = settings.llmScriptContinuityCount > 0
-                    ? Math.min(settings.llmScriptContinuityCount, history.length)
-                    : history.length;
-                const plansJson = JSON.stringify(history.slice(-count), null, 2);
-                const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
-                contextPrefix += wrapper.replace('{{previousPlans}}', plansJson) + '\n\n';
-            } else {
-                const lastJson = JSON.stringify(history[history.length - 1], null, 2);
-                const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
-                contextPrefix += wrapper.replace('{{previousPlan}}', lastJson) + '\n\n';
-            }
+        const prevPlanP = providers.get('previousPlan');
+        if (prevPlanP && (!prevPlanP.enabled || prevPlanP.enabled(runtimeContext))) {
+            const pp = await prevPlanP.render(runtimeContext);
+            const ppText = (pp && typeof pp === 'object') ? pp.content : pp;
+            if (ppText) contextPrefix += ppText + '\n\n';
+        }
+
+        const prevPlansP = providers.get('previousPlans');
+        if (prevPlansP && (!prevPlansP.enabled || prevPlansP.enabled(runtimeContext))) {
+            const pps = await prevPlansP.render(runtimeContext);
+            const ppsText = (pps && typeof pps === 'object') ? pps.content : pps;
+            if (ppsText) contextPrefix += ppsText + '\n\n';
         }
 
         // Profile auto-injection for legacy prompts without the placeholder
         if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
-            const profilesText = buildCharacterProfilesText();
-            if (profilesText) {
-                contextPrefix = profilesText + '\n\n' + contextPrefix;
-                console.log('[GroupDirector] Profile placeholder not found in template — auto-injected');
+            const cpProvider = providers.get('character_profiles');
+            if (cpProvider) {
+                const cp = await cpProvider.render(runtimeContext);
+                const cpText = (cp && typeof cp === 'object') ? cp.content : cp;
+                if (cpText) {
+                    contextPrefix = cpText + '\n\n' + contextPrefix;
+                }
             }
         }
 
+        let filled = await renderPrompt(promptTemplate, runtimeContext);
         if (contextPrefix) {
             filled = contextPrefix + filled;
         }
@@ -2322,15 +2313,21 @@ registerProvider({
     render: (ctx) => ({ content: String(ctx.maxSpeakers || 1) }),
 });
 
-// WorldInfoProvider — injects activated lorebook entries
+// WorldInfoProvider — handles WI scanning + caching internally
 registerProvider({
     id: 'worldInfo',
     placeholder: '{{worldInfo}}',
-    render: () => {
+    enabled: () => settings.llmWorldInfoEnabled,
+    render: async (ctx) => {
+        if (!roundWorldInfo) {
+            const members = ctx.enabledMembers || [];
+            const wi = await buildDirectorWorldInfo(members);
+            roundWorldInfo = wi.text;
+            roundWorldInfoEntries = wi.entries;
+        }
+        if (!roundWorldInfo) return { content: '' };
         const wrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-        const text = roundWorldInfo || '';
-        // The WI text was already wrapped before caching; just return it
-        return { content: text ? wrapper.replace('{{worldInfo}}', text) : '' };
+        return { content: wrapper.replace('{{worldInfo}}', roundWorldInfo) };
     },
 });
 
