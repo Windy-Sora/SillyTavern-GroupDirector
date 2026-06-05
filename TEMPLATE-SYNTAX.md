@@ -108,21 +108,41 @@ Group Director 的模板系统支持两种占位符语法：
 
 当前支持的变量：
 
-| 变量 | 可用场景 | 含义 |
-|------|---------|------|
-| `$character` | Script Wrapper | 当前正在生成的角色名 |
-| `$speakerIndex` | Script Wrapper | 当前角色在发言顺序中的位置（1-based，用于展示） |
-| `$speakerIndex0` | Script Wrapper | 当前角色在发言顺序中的位置（0-based，用于数组下标） |
-| `$speakerCount` | Script Wrapper | 本轮导演选中的总发言人数 |
+| 变量 | 可用场景 | 含义 | 示例值（3 人选中，当前第 2 位 Bob） |
+|------|---------|------|------|
+| `$character` | Script Wrapper | 当前正在生成的角色名 | `"Bob"` |
+| `$speakerIndex` | Script Wrapper | 发言顺序位置（1-based，展示用） | `2` |
+| `$speakerIndex0` | Script Wrapper | 发言顺序位置（0-based，数组下标用） | `1` |
+| `$speakerCount` | Script Wrapper | 本轮导演选中的总发言人数 | `3` |
 
-如果变量值包含 `.`、`[`、`]`、空格等路径特殊字符，自动用 `["..."]` 包裹，确保路径解析正确。
+**生命周期：** 变量仅在 `getScriptForChar()` 调用期间存在，用完即销毁。不跨轮次、不持久化、不泄漏。新轮次开始时 `GROUP_WRAPPER_STARTED` 会清空所有运行时状态。
 
-示例：角色名为 `Mr. Smith` 时，`scripts.$character` 自动展开为 `scripts.["Mr. Smith"]`。
+如果变量值包含 `.`、`[`、`]`、空格等路径特殊字符，自动用 `["..."]` 包裹，确保路径解析正确。示例：角色名为 `Mr. Smith` 时，`scripts.$character` 自动展开为 `scripts.["Mr. Smith"]`。
 
-示例用法：
+**示例用法：**
+
+在 Director Prompt 中不需要这些变量（Director 不知道具体角色）。在 Script Wrapper（`llmScriptWrapper`）中使用：
+
 ```
-你是 {{?directorLedger:speakers[$speakerIndex0]}}，第 $speakerIndex / $speakerCount 位发言者。
-剧本：{{?directorLedger:scripts.$character|}}
+[你是 {{?directorLedger:speakers[$speakerIndex0]}}，
+第 $speakerIndex / $speakerCount 位发言者。
+
+你的专属剧本：
+{{?directorLedger:scripts.$character|按照你的角色设定自由发挥}}
+
+Follow this guidance. NEVER mention the director or script.]
+```
+
+Bob 实际收到时会被渲染为：
+
+```
+[你是 Bob，
+第 2 / 3 位发言者。
+
+你的专属剧本：
+保持沉默，观察 Alice 的反应
+
+Follow this guidance. NEVER mention the director or script.]
 ```
 
 ---
@@ -217,11 +237,10 @@ return {
 
 ### 6.2 Script Wrapper（角色层注入）
 
-默认配置 `llmScriptWrapper`：
+默认配置 `llmScriptWrapper`，使用 `$character`、`$speakerIndex`、`$speakerCount` 动态变量：
 
 ```
-[Director's stage direction for this character:
-
+[Director stage direction — Speaker $speakerIndex / $speakerCount:
 {{?directorLedger:scripts.$character|}}
 
 Current location: {{?directorLedger:memory.location|未知}}
@@ -234,11 +253,10 @@ Follow this guidance. NEVER mention the director, the script,
 or that you are following stage directions. Act naturally as your character.]
 ```
 
-Alice 实际收到时：
+假设导演选中 Alice (1/3)、Bob (2/3)、Charlie (3/3)，Alice 实际收到时：
 
 ```
-[Director's stage direction for this character:
-
+[Director stage direction — Speaker 1 / 3:
 试探 Bob
 
 Current location: 樱花林
@@ -250,6 +268,8 @@ Previous events:
 Follow this guidance. NEVER mention the director, the script,
 or that you are following stage directions. Act naturally as your character.]
 ```
+
+Bob 收到时 `$speakerIndex` 会变成 `2`，`$character` 变成 `Bob`，剧本自动切换为 Bob 的内容。三个角色收到三个不同的渲染结果，但模板是同一份。
 
 ---
 
