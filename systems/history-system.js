@@ -1,4 +1,4 @@
-export function createHistorySystem({ getChatMetadata, EXT_KEY, chat, saveChatConditional, settings, log }) {
+export function createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log }) {
     const cm = () => getChatMetadata();
 
     function getDirectorHistory() {
@@ -10,7 +10,7 @@ export function createHistorySystem({ getChatMetadata, EXT_KEY, chat, saveChatCo
         if (!meta[EXT_KEY]) meta[EXT_KEY] = {};
         if (!meta[EXT_KEY].historyMeta) meta[EXT_KEY].historyMeta = {};
         if (!meta[EXT_KEY].directorHistory) meta[EXT_KEY].directorHistory = [];
-        entry._chatLength = chat.length;
+        entry._chatLength = getChat().length;
         meta[EXT_KEY].directorHistory.push(entry);
         if (meta[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
             meta[EXT_KEY].historyMeta.scriptPrompt = settings.llmScriptPrompt;

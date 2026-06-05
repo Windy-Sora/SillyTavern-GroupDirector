@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, chat, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
+    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
     const cm = () => getChatMetadata();
 
 // ─── Profile System: Hash & Data Layer ─────────────────────────────────
@@ -53,7 +53,7 @@ function diffProfiles(enabledMembers) {
     const existingChars = enabledMembers.filter(a => profileAvatars.includes(a));
     const hashMismatches = [];
     for (const avatar of existingChars) {
-        const char = characters.find(c => c.avatar === avatar);
+        const char = getCharacters().find(c => c.avatar === avatar);
         if (!char) continue;
         const currentHash = hashChar(char.description, char.personality, char.scenario);
         if (profiles[avatar].hash && profiles[avatar].hash !== currentHash) {
@@ -121,7 +121,7 @@ function normalizeProfileFields(parsed) {
 
 async function generateSingleProfile(avatar) {
     if (!settings.profileEnabled) return null;
-    const char = characters.find(c => c.avatar === avatar);
+    const char = getCharacters().find(c => c.avatar === avatar);
     if (!char) throw new Error(`Character not found for avatar: ${avatar}`);
 
     const generatorPrompt = settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt();
@@ -163,7 +163,7 @@ async function generateProfilesBatch(avatars) {
 
     const limit = settings.profileConcurrency || 0;
     const buildTask = (avatar) => async () => {
-        const char = characters.find(c => c.avatar === avatar);
+        const char = getCharacters().find(c => c.avatar === avatar);
         if (!char) return;
 
         const currentHash = hashChar(char.description, char.personality, char.scenario);
@@ -236,8 +236,8 @@ function applyTokenBudget(readyProfiles, budget) {
 
     // Build recent speaker set from the last 5 messages
     const recentSpeakerSet = new Set();
-    for (let i = chat.length - 1; i >= Math.max(0, chat.length - 5); i--) {
-        const msg = chat[i];
+    for (let i = getChat().length - 1; i >= Math.max(0, getChat().length - 5); i--) {
+        const msg = getChat()[i];
         if (msg && !msg.is_user && !msg.is_system && msg.avatar) {
             recentSpeakerSet.add(msg.avatar);
         }
@@ -340,7 +340,7 @@ async function syncProfiles(enabledMembers) {
     }
 
     if (hashMismatches.length > 0) {
-        const names = hashMismatches.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ');
+        const names = hashMismatches.map(a => getCharacters().find(c => c.avatar === a)?.name || a).join(', ');
         log(`Profile hash mismatch for: ${names} — use Regenerate button to update`);
     }
 
@@ -350,7 +350,7 @@ async function syncProfiles(enabledMembers) {
 
     // Auto-generate profiles for new characters (non-blocking fire-and-forget)
     if (newChars.length > 0) {
-        log(`Auto-generating profiles for ${newChars.length} new character(s): ${newChars.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ')}`);
+        log(`Auto-generating profiles for ${newChars.length} new character(s): ${newChars.map(a => getCharacters().find(c => c.avatar === a)?.name || a).join(', ')}`);
         generateProfilesBatch(newChars).catch(e => {
             console.error('[GroupDirector] Background profile generation failed:', e);
         });
@@ -371,7 +371,7 @@ function buildProfileLoaderPanel() {
     const isZh = lang === 'zh';
 
     const existingList = Object.entries(profiles).map(([avatar, prof]) => {
-        const char = characters.find(c => c.avatar === avatar);
+        const char = getCharacters().find(c => c.avatar === avatar);
         const name = char ? char.name : (prof.name || avatar);
         const isMismatch = hashMismatches.includes(avatar);
         const stateLabel = { ready: isZh ? '就绪' : 'Ready', pending: isZh ? '生成中' : 'Pending', failed: isZh ? '失败' : 'Failed' }[prof.state] || prof.state;
@@ -380,7 +380,7 @@ function buildProfileLoaderPanel() {
     });
 
     const newList = newChars.map(avatar => {
-        const char = characters.find(c => c.avatar === avatar);
+        const char = getCharacters().find(c => c.avatar === avatar);
         return { avatar, name: char?.name || avatar };
     });
 
@@ -493,7 +493,7 @@ function detectCharacterChanges() {
     if (newChars.length > 0) {
         html += `<div style="margin-top:6px;font-weight:bold;color:#4caf50;">${isZh ? '新增角色' : 'Added'} (${newChars.length}):</div>`;
         for (const avatar of newChars) {
-            const char = characters.find(c => c.avatar === avatar);
+            const char = getCharacters().find(c => c.avatar === avatar);
             const name = char?.name || avatar;
             html += `<div class="gd-change-row" data-avatar="${avatar}" data-action="add" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
                 <input type="checkbox" class="gd-change-check" checked>
@@ -585,7 +585,7 @@ function refreshProfileManagementUI() {
     for (const avatar of Object.keys(profiles)) {
         const prof = profiles[avatar];
         if (!prof) continue;
-        const char = characters.find(c => c.avatar === avatar);
+        const char = getCharacters().find(c => c.avatar === avatar);
         const name = char ? char.name : (prof.name || 'Unknown');
         const hashMatch = char ? (hashChar(char.description, char.personality, char.scenario) === prof.hash) : true;
         const stateLabels = isZh ? { ready: '就绪', pending: '生成中', failed: '失败' } : { ready: 'Ready', pending: 'Generating', failed: 'Failed' };
