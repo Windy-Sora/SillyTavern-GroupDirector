@@ -1773,12 +1773,25 @@ async function loadSettingsUI() {
 
     $c('profile-regenerate-all').on('click', async function () {
         const group = getCurrentGroup();
-        if (!group) return;
+        if (!group) {
+            toastr.warning(settings.lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Please open this settings panel from within a group chat');
+            return;
+        }
         const members = group.members.filter(a => !group.disabled_members?.includes(a));
+        if (!members.length) {
+            toastr.warning(settings.lang === 'zh' ? '当前群聊没有可用角色' : 'No enabled members in current group');
+            return;
+        }
         const btn = $('#gd-profile-regenerate-all');
         btn.prop('disabled', true);
+        const lang = settings.lang || 'zh';
+        toastr.info(lang === 'zh' ? `正在为 ${members.length} 个角色生成档案...` : `Generating profiles for ${members.length} characters...`);
         try {
             await generateProfilesBatch(members);
+            toastr.success(lang === 'zh' ? '全部角色档案已更新' : 'All character profiles updated');
+        } catch (e) {
+            toastr.error(lang === 'zh' ? '生成失败，请查看控制台' : 'Generation failed, check console');
+            console.error('[GroupDirector] Batch profile generation failed:', e);
         } finally {
             btn.prop('disabled', false);
         }
