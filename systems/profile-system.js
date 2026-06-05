@@ -673,6 +673,11 @@ function bindProfileCardActions() {
         if (prof) {
             getArchivedProfiles()[avatar] = prof;
             delete profiles[avatar];
+        }
+        await saveChatConditional();
+        refreshProfileManagementUI();
+    });
+}
 
     return {
         computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, diffProfiles,
