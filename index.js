@@ -253,10 +253,14 @@ const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
 
-function getScriptForChar(charName) {
+async function getScriptForChar(charName) {
     const script = directorScripts[charName];
     if (!script) return '';
-    return (settings.llmScriptWrapper || '{{script}}').replace('{{script}}', script);
+    // Render the wrapper through all providers so any {{placeholder}}
+    // in the wrapper (e.g. {{previousPlans}}) is resolved, then inject script
+    const wrapper = settings.llmScriptWrapper || '{{script}}';
+    const rendered = await renderPrompt(wrapper, {});
+    return rendered.replace('{{script}}', script);
 }
 
 function saveSettings() {
@@ -523,7 +527,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
                 return;
             }
             // Safety-net script injection: ensure the correct per-character script is set
-            const takeoverScript = getScriptForChar(char.name);
+            const takeoverScript = await getScriptForChar(char.name);
             if (takeoverScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, extension_prompt_types.IN_PROMPT, 0, true);
             }
@@ -567,7 +571,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         llmSpokenSet.add(avatar);
         roundSpeakerCount++;
         // Inject per-character director script
-        const charScript = getScriptForChar(char.name);
+        const charScript = await getScriptForChar(char.name);
         if (charScript) {
             setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
         }
@@ -759,7 +763,7 @@ async function runManualOrderedGeneration() {
             console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
 
             // Inject per-character director script
-            const charScript = getScriptForChar(characters[chId].name);
+            const charScript = await getScriptForChar(characters[chId].name);
             if (charScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
             }
