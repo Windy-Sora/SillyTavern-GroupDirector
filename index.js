@@ -824,7 +824,29 @@ async function initRoundWithLLM() {
         if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiState.text) {
             const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
             filled = wiWrapper.replace('{{worldInfo}}', wiState.text) + '\n\n' + filled;
-            console.log('[GroupDirector] WI auto-injected into prompt (placeholder absent from template)');
+        }
+
+        // Auto-inject director history continuity if the template lacks the placeholder
+        if (settings.llmHistoryEnabled && settings.llmScriptContinuity) {
+            const hasPrevPlan = promptTemplate.includes('{{previousPlan}}');
+            const hasPrevPlans = promptTemplate.includes('{{previousPlans}}');
+            if (!hasPrevPlan && !hasPrevPlans) {
+                const history = getDirectorHistory();
+                if (history.length > 0) {
+                    if (settings.llmScriptContinuityMode === 'history') {
+                        const count = settings.llmScriptContinuityCount > 0
+                            ? Math.min(settings.llmScriptContinuityCount, history.length)
+                            : history.length;
+                        const plansJson = JSON.stringify(history.slice(-count), null, 2);
+                        const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
+                        filled = wrapper.replace('{{previousPlans}}', plansJson) + '\n\n' + filled;
+                    } else {
+                        const lastJson = JSON.stringify(history[history.length - 1], null, 2);
+                        const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
+                        filled = wrapper.replace('{{previousPlan}}', lastJson) + '\n\n' + filled;
+                    }
+                }
+            }
         }
 
         const ctx = getContext();

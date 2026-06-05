@@ -9,18 +9,8 @@ function computeProfileSchemaHash() {
 }
 
 function getProfileContainer() {
-    console.log('[GroupDirector] getProfileContainer() called. Stack:', new Error().stack?.split('\n').slice(1, 4).map(s => s.trim()).join(' <- '));
-    const existed = !!cm()[EXT_KEY];
     if (!cm()[EXT_KEY]) cm()[EXT_KEY] = {};
     const meta = cm()[EXT_KEY];
-    // Diagnostic: dump all keys in the container
-    console.log('[GroupDirector] getProfileContainer: EXT_KEY keys:', Object.keys(meta).join(', '));
-    if (meta.characterProfiles) {
-        const names = Object.values(meta.characterProfiles).map(p => p?.name || '?').join(', ');
-        console.log('[GroupDirector] getProfileContainer: characterProfiles exists with', Object.keys(meta.characterProfiles).length, 'entries:', names);
-    } else {
-        console.log('[GroupDirector] getProfileContainer: characterProfiles is UNDEFINED — creating empty');
-    }
     if (!meta.characterProfiles) meta.characterProfiles = {};
     if (!meta.archivedProfiles) meta.archivedProfiles = {};
     if (meta.profileVersion === undefined) meta.profileVersion = 1;
@@ -52,7 +42,6 @@ async function saveProfile(avatar, profileObj) {
     const profiles = getProfiles();
     profiles[avatar] = profileObj;
     await saveChatConditional();
-    console.log('[GroupDirector] saveProfile:', avatar, 'state:', profileObj.state, 'keys:', Object.keys(profiles).length);
 }
 
 function diffProfiles(enabledMembers) {
