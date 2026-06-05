@@ -16,6 +16,7 @@ import { register as registerCharacterProfiles } from './providers/character-pro
 import { register as registerWorldInfoProvider } from './providers/world-info.js';
 import { register as registerHistoryProviders } from './providers/history.js';
 import { register as registerDirectorLedger } from './providers/director-ledger.js';
+import { register as registerTestProvider } from './providers/test-provider.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
@@ -1370,6 +1371,7 @@ registerProvider({
 registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
 registerHistoryProviders(settings, getDirectorHistory);
 registerDirectorLedger(settings, getDirectorHistory);
+registerTestProvider();
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
