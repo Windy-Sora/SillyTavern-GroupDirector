@@ -243,6 +243,7 @@ let takeoverGenCount = 0;
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let roundWorldInfo = '';            // cached WI text for this round
 let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
+let _pruneTimer = null;             // debounce timer for pruneDirectorHistory
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -258,7 +259,7 @@ function getDirectorHistory() {
     return chat_metadata?.[EXT_KEY]?.directorHistory || [];
 }
 
-function addToDirectorHistory(entry) {
+async function addToDirectorHistory(entry) {
     if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
     if (!chat_metadata[EXT_KEY].historyMeta) chat_metadata[EXT_KEY].historyMeta = {};
     if (!chat_metadata[EXT_KEY].directorHistory) chat_metadata[EXT_KEY].directorHistory = [];
@@ -269,16 +270,16 @@ function addToDirectorHistory(entry) {
     if (chat_metadata[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
         chat_metadata[EXT_KEY].historyMeta.scriptPrompt = settings.llmScriptPrompt;
     }
-    saveChatConditional();
+    await saveChatConditional();
 }
 
-function pruneDirectorHistory(newChatLength) {
+async function pruneDirectorHistory(newChatLength) {
     const history = getDirectorHistory();
     if (!history.length) return;
     const pruned = history.filter(e => (e._chatLength || 0) <= newChatLength);
     if (pruned.length < history.length) {
         chat_metadata[EXT_KEY].directorHistory = pruned;
-        saveChatConditional();
+        await saveChatConditional();
         log(`Pruned ${history.length - pruned.length} stale director history entries (chatLength=${newChatLength})`);
     }
 }
@@ -649,9 +650,13 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     takeoverPending = false;
 });
 
-// Prune stale director history when messages are deleted from chat
-eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
-    pruneDirectorHistory(newChatLength);
+// Prune stale director history when messages are deleted from chat.
+// Debounced to avoid rapid-fire saves during individual deletions.
+// Uses live chat.length at fire time, not the captured event argument,
+// so a new message sent between deletion and prune won't be affected.
+eventSource.on(event_types.MESSAGE_DELETED, () => {
+    clearTimeout(_pruneTimer);
+    _pruneTimer = setTimeout(() => pruneDirectorHistory(chat.length), 150);
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
@@ -843,7 +848,7 @@ async function initRoundWithLLM() {
 
         // Save full parsed JSON to history (independent of continuity injection)
         if (settings.llmHistoryEnabled) {
-            addToDirectorHistory(parsed);
+            await addToDirectorHistory(parsed);
         }
 
         // Map names → avatars in declared order; dedupe
