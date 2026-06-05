@@ -502,9 +502,9 @@ async function generateProfilesBatch(avatars) {
     if (!settings.profileEnabled) return;
     if (!avatars.length) return;
 
-    for (const avatar of avatars) {
+    const tasks = avatars.map(async (avatar) => {
         const char = characters.find(c => c.avatar === avatar);
-        if (!char) continue;
+        if (!char) return;
 
         const currentHash = hashChar(char.description, char.personality, char.scenario);
         const pendingProfile = {
@@ -517,7 +517,6 @@ async function generateProfilesBatch(avatars) {
             updatedAt: Date.now(),
         };
         await saveProfile(avatar, pendingProfile);
-        refreshProfileManagementUI();
 
         try {
             const result = await generateSingleProfile(avatar);
@@ -534,8 +533,10 @@ async function generateProfilesBatch(avatars) {
         }
         pendingProfile.updatedAt = Date.now();
         await saveProfile(avatar, pendingProfile);
-        refreshProfileManagementUI();
-    }
+    });
+
+    await Promise.all(tasks);
+    refreshProfileManagementUI();
 }
 
 // ─── Profile System: Renderer ──────────────────────────────────────────
