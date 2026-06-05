@@ -1319,47 +1319,7 @@ async function initRoundWithLLM() {
         };
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-
-        // Context prefix: provider outputs for placeholders not in the template.
-        // Providers encapsulate all rendering logic; Director only assembles.
-        let contextPrefix = '';
-        const wiProvider = providers.get('worldInfo');
-        if (wiProvider && (!wiProvider.enabled || wiProvider.enabled(runtimeContext))) {
-            const wiRendered = await wiProvider.render(runtimeContext);
-            const wiText = (wiRendered && typeof wiRendered === 'object') ? wiRendered.content : wiRendered;
-            if (wiText) contextPrefix += wiText + '\n\n';
-        }
-
-        const prevPlanP = providers.get('previousPlan');
-        if (prevPlanP && (!prevPlanP.enabled || prevPlanP.enabled(runtimeContext))) {
-            const pp = await prevPlanP.render(runtimeContext);
-            const ppText = (pp && typeof pp === 'object') ? pp.content : pp;
-            if (ppText) contextPrefix += ppText + '\n\n';
-        }
-
-        const prevPlansP = providers.get('previousPlans');
-        if (prevPlansP && (!prevPlansP.enabled || prevPlansP.enabled(runtimeContext))) {
-            const pps = await prevPlansP.render(runtimeContext);
-            const ppsText = (pps && typeof pps === 'object') ? pps.content : pps;
-            if (ppsText) contextPrefix += ppsText + '\n\n';
-        }
-
-        // Profile auto-injection for legacy prompts without the placeholder
-        if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
-            const cpProvider = providers.get('character_profiles');
-            if (cpProvider) {
-                const cp = await cpProvider.render(runtimeContext);
-                const cpText = (cp && typeof cp === 'object') ? cp.content : cp;
-                if (cpText) {
-                    contextPrefix = cpText + '\n\n' + contextPrefix;
-                }
-            }
-        }
-
-        let filled = await renderPrompt(promptTemplate, runtimeContext);
-        if (contextPrefix) {
-            filled = contextPrefix + filled;
-        }
+        const filled = await renderPrompt(promptTemplate, runtimeContext);
 
         const ctx = getContext();
         const response = await ctx.generateRaw({
@@ -1595,7 +1555,7 @@ function matchCharacterByName(name, enabledMembers) {
 
 function getDefaultLlmPrompt() {
     // Context at TOP — instruction/format at BOTTOM for maximum adherence in long contexts
-    let base = `Recent messages:
+    let base = `{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
 {{recentMessages}}
 
 Available characters:
