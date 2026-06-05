@@ -19,7 +19,6 @@ import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 
-
 // ─── I18n ─────────────────────────────────────────────────────────────
 const I18N = {
     zh: {
@@ -260,6 +259,11 @@ function getScriptForChar(charName) {
     return (settings.llmScriptWrapper || '{{script}}').replace('{{script}}', script);
 }
 
+function saveSettings() {
+    extension_settings[EXT_KEY] = settings;
+    saveSettingsDebounced();
+}
+
 // ─── Systems ──────────────────────────────────────────────────────────
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory } =
     createHistorySystem({ chat_metadata, EXT_KEY, chat, saveChatConditional, settings, log });
@@ -278,9 +282,511 @@ const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfil
     buildProfileLoaderPanel, checkProfileStartupStatus, detectCharacterChanges,
     refreshProfileManagementUI, bindProfileCardActions } = profileSystem;
 
-function saveSettings() {
-    extension_settings[EXT_KEY] = settings;
-    saveSettingsDebounced();
+function log(...args) {
+    if (settings.debugLogging) {
+        console.log('[GroupDirector]', ...args);
+    }
+}
+
+// ─── Trigger Engine ───────────────────────────────────────────────────
+function checkTriggers(characterName, characterAvatar, recentMessages) {
+    if (!settings.triggerEnabled) return false;
+
+    const char = characters.find(c => c.avatar === characterAvatar);
+    if (!char) return false;
+
+    // Extract keywords from character description + personality + scenario
+    const desc = (char.description || '') + ' ' + (char.personality || '') + ' ' + (char.scenario || '');
+    const keywords = desc
+        .split(/[\s,.;!?，。；！？、]+/)
+        .filter(w => w.length >= 2 && w.length <= 10)
+        .map(w => w.toLowerCase());
+
+    // Deduplicate
+    const uniqueKeywords = [...new Set(keywords)];
+
+    const text = recentMessages.map(m => m.mes || '').join(' ').toLowerCase();
+
+    for (const kw of uniqueKeywords) {
+        if (text.includes(kw)) {
+            log(`Trigger matched: "${kw}" for ${characterName}`);
+            return true;
+        }
+    }
+    return false;
+}
+
+// ─── Initiative Engine ────────────────────────────────────────────────
+function rollInitiative(avatar) {
+    if (!settings.initiativeEnabled) return 0;
+    // Initiative: random base + slight variation
+    const base = settings.initiativeBaseScore;
+    const roll = Math.random() * base;
+    roundInitiative[avatar] = roll;
+    return roll;
+}
+
+// ─── Scoring System ───────────────────────────────────────────────────
+function scoreCharacter(chId, recentMessages) {
+    const char = characters[chId];
+    if (!char) return -Infinity;
+
+    const name = char.name;
+    const avatar = char.avatar;
+    const weights = settings.scoreWeights;
+
+    let score = 0;
+
+    // 1. Mention score: character name appears in recent messages
+    const recentText = recentMessages.map(m => m.mes || '').join(' ');
+    const mentionRegex = new RegExp(name, 'gi');
+    const mentionCount = (recentText.match(mentionRegex) || []).length;
+    score += mentionCount * weights.mention;
+
+    // 2. Keyword trigger score
+    if (roundTriggeredAvatars.has(avatar)) {
+        score += settings.triggerScore;
+    }
+
+    // 3. Recency score: bonus for not having spoken recently
+    const lastSpokenIndex = findLastSpokenIndex(avatar, recentMessages);
+    if (lastSpokenIndex === -1) {
+        // Hasn't spoken in recent messages at all — big bonus
+        score += weights.recency;
+    } else {
+        // The more recent they spoke, the less bonus
+        const ratio = lastSpokenIndex / Math.max(recentMessages.length, 1);
+        score += weights.recency * ratio;
+    }
+
+    // 4. Consecutive speaking penalty
+    const consecutiveCount = countConsecutiveMessages(avatar);
+    score -= consecutiveCount * settings.consecutivePenalty;
+
+    // 5. Talkativeness
+    const talkativeness = isNaN(char.talkativeness) ? 0.5 : Number(char.talkativeness);
+    score += talkativeness * weights.talkativeness;
+
+    // 6. Initiative roll
+    score += roundInitiative[avatar] || 0;
+
+    log(`Score for ${name}: ${score.toFixed(1)} (mention=${mentionCount}, trigger=${roundTriggeredAvatars.has(avatar)}, recencyIdx=${lastSpokenIndex}, consec=${consecutiveCount}, talk=${talkativeness.toFixed(2)})`);
+    return score;
+}
+
+function findLastSpokenIndex(avatar, recentMessages) {
+    // Iterate from newest to oldest. Returns 0 for most recent speaker,
+    // N-1 for earliest speaker in the window, -1 if never spoke.
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+        const msg = recentMessages[i];
+        if (!msg.is_user && !msg.is_system) {
+            const msgAvatar = msg.avatar || '';
+            const msgName = msg.name || '';
+            const char = characters.find(c => c.avatar === avatar);
+            if (msgAvatar === avatar || (char && msgName === char.name)) {
+                return recentMessages.length - 1 - i;
+            }
+        }
+    }
+    return -1;
+}
+
+function countConsecutiveMessages(avatar) {
+    // Count how many of the most recent messages are from this avatar
+    let count = 0;
+    const char = characters.find(c => c.avatar === avatar);
+    if (!char) return 0;
+
+    for (let i = chat.length - 1; i >= 0; i--) {
+        const msg = chat[i];
+        if (msg.is_user || msg.is_system) break;
+        const msgAvatar = msg.avatar || '';
+        const msgName = msg.name || '';
+        if (msgAvatar === avatar || msgName === char.name) {
+            count++;
+        } else {
+            break;
+        }
+    }
+    return count;
+}
+
+// ─── Round Initialization ─────────────────────────────────────────────
+function getCurrentGroup() {
+    if (!selected_group) return null;
+    return groups.find(g => g.id === selected_group) || null;
+}
+
+function initFormulaRound() {
+    roundScores = {};
+    roundTriggeredAvatars.clear();
+    roundInitiative = {};
+
+    const group = getCurrentGroup();
+    if (!group) return;
+
+    const recentMessages = getRecentMessages();
+
+    // Pre-compute triggers and initiative for all members
+    for (const memberAvatar of group.members) {
+        if (group.disabled_members?.includes(memberAvatar)) continue;
+
+        const chId = characters.findIndex(c => c.avatar === memberAvatar);
+        if (chId === -1) continue;
+
+        const char = characters[chId];
+
+        // Check triggers
+        if (checkTriggers(char.name, memberAvatar, recentMessages)) {
+            roundTriggeredAvatars.add(memberAvatar);
+        }
+
+        // Roll initiative
+        rollInitiative(memberAvatar);
+
+        // Score character
+        roundScores[memberAvatar] = scoreCharacter(chId, recentMessages);
+    }
+
+    log('Round scores:', Object.entries(roundScores)
+        .sort((a, b) => b[1] - a[1])
+        .map(([a, s]) => `${characters.find(c => c.avatar === a)?.name || a}: ${s.toFixed(1)}`)
+        .join(', '));
+}
+
+function getRecentMessages() {
+    const count = Math.min(settings.recentMessageCount, chat.length);
+    return chat.slice(-count);
+}
+
+// ─── Main Interceptor ─────────────────────────────────────────────────
+// Runs once per activated character before its Generate() call.
+globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, abort, type) {
+    if (settings.mode === MODE_OFF) return;
+    if (type === 'quiet' || type === 'impersonate' || type === 'continue') return;
+
+    const group = getCurrentGroup();
+    if (!group) return;
+
+    const ctx = getContext();
+    const activeCharId = ctx.characterId;
+    if (activeCharId === undefined || activeCharId === null) return;
+
+    const char = characters[activeCharId];
+    if (!char) return;
+
+    const avatar = char.avatar;
+
+    // First speaker of the round: initialize state (run rules or call LLM)
+    if (!roundInitialized) {
+        roundInitialized = true;
+        if (settings.mode === MODE_LLM) {
+            await initRoundWithLLM();
+            // If LLM failed and returned nothing, fall back transparently — allow all
+            if (!llmPickedAvatars || llmPickedAvatars.length === 0) {
+                log('LLM produced no decision; falling back to transparent (allow all)');
+            }
+        } else {
+            initFormulaRound();
+        }
+    }
+
+    // ─── Mode: LLM ──────────────────────────────────────────────────
+    if (settings.mode === MODE_LLM) {
+        // Manual ordered generation in progress — validate identity, inject script, let through
+        if (takeoverGenCount > 0) {
+            // Auto-swipe/regenerate during takeover: same character re-rolling,
+            // don't consume the takeover count. Detected via roundGenerateType
+            // which is now captured before the nested START guard.
+            const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+            if (!isReroll) {
+                takeoverGenCount--;
+                roundSpeakerCount++;
+            }
+            // Verify the character ST is about to generate matches the expected speaker
+            const expectedAvatar = llmPickedAvatars?.[roundSpeakerCount - 1];
+            if (expectedAvatar && avatar !== expectedAvatar) {
+                console.error(`[GroupDirector] TAKEOVER MISMATCH: ST wants ${char.name} (${avatar}) but director expects speaker #${roundSpeakerCount} (${characters.find(c => c.avatar === expectedAvatar)?.name || expectedAvatar}). Aborting!`);
+                abort(false);
+                return;
+            }
+            // Safety-net script injection: ensure the correct per-character script is set
+            const takeoverScript = getScriptForChar(char.name);
+            if (takeoverScript) {
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, extension_prompt_types.IN_PROMPT, 0, true);
+            }
+            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
+            return;
+        }
+        // ST's activation loop is being suppressed — abort all
+        if (takeoverPending) {
+            console.warn(`[GroupDirector] TAKEOVER-BLOCK ${char.name} (ST order suppressed, director will drive order)`);
+            abort(false);
+            return;
+        }
+        if (!llmPickedSet) {
+            return;
+        }
+        if (!llmPickedSet.has(avatar)) {
+            log(`BLOCKED ${char.name} (not in LLM picks)`);
+            abort(false);
+            return;
+        }
+        // Best-effort order tracking (non-takeover mode)
+        if (settings.llmRespectOrder) {
+            while (llmCursor < llmPickedAvatars.length && llmSpokenSet.has(llmPickedAvatars[llmCursor])) {
+                llmCursor++;
+            }
+            const expected = llmPickedAvatars[llmCursor];
+            if (expected && expected !== avatar) {
+                log(`OUT-OF-ORDER: ${char.name} speaking before ${characters.find(c => c.avatar === expected)?.name || expected}. Still allowed.`);
+                llmCursor = llmPickedAvatars.findIndex(a => !llmSpokenSet.has(a));
+                if (llmCursor === -1) llmCursor = llmPickedAvatars.length;
+            } else if (expected === avatar) {
+                llmCursor++;
+            }
+        }
+        // Validate: this character must be in the picked set
+        if (!llmPickedSet.has(avatar)) {
+            console.warn(`[GroupDirector] VALIDATION FAILED: ${char.name} (${avatar}) not in llmPickedSet! Aborting.`);
+            abort(false);
+            return;
+        }
+        llmSpokenSet.add(avatar);
+        roundSpeakerCount++;
+        // Inject per-character director script
+        const charScript = getScriptForChar(char.name);
+        if (charScript) {
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+        }
+        log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
+        return;
+    }
+
+    // ─── Mode: Formula (Top-N) ──────────────────────────────────────
+    const sortedAvatars = Object.entries(roundScores)
+        .sort((a, b) => b[1] - a[1])
+        .map(([a]) => a);
+    const topN = Math.min(settings.topN, sortedAvatars.length);
+    const allowedAvatars = new Set(sortedAvatars.slice(0, topN));
+    const score = roundScores[avatar] ?? -Infinity;
+
+    if (allowedAvatars.has(avatar)) {
+        roundSpeakerCount++;
+        log(`ALLOWED ${char.name} (score=${score.toFixed(1)}, speaker #${roundSpeakerCount})`);
+    } else {
+        log(`BLOCKED ${char.name} (score=${score.toFixed(1)})`);
+        abort(false);
+    }
+};
+
+// ─── Event Listeners ─────────────────────────────────────────────────
+let roundGenerateType = 'normal'; // captured from GROUP_WRAPPER_STARTED
+
+eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
+    // Always capture the generation type, even for nested wrappers.
+    // Auto-swipes during takeover need to be visible to the interceptor.
+    roundGenerateType = data?.type || 'normal';
+
+    // If manual ordered generation is in progress (force_chid sub-calls),
+    // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
+    if (takeoverGenCount > 0) {
+        console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
+        return;
+    }
+
+    // Previous takeover failed mid-round: reuse the existing director decision
+    // instead of making a new one. Chat already has partial messages from the
+    // failed attempt; a new decision would conflict with existing dialog boxes.
+    if (takeoverFailed) {
+        takeoverFailed = false;
+        takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
+        takeoverGenCount = 0;
+        llmSpokenSet = new Set();
+        llmCursor = 0;
+        roundSpeakerCount = 0;
+        roundGenerateType = data?.type || 'normal';
+        console.warn('[GroupDirector] Retry after takeover failure — reusing existing director plan');
+        return;
+    }
+
+    isGroupChat = true;
+
+    // Regenerate / swipe: reuse the existing director decision — only reset
+    // per-speaker tracking. Don't re-trigger takeover; let ST decide which
+    // messages to regenerate. Reconstruct state from chat_metadata so it
+    // survives browser restarts (in-memory state is gone on reload).
+    if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
+        if (!llmPickedSet) {
+            const history = getDirectorHistory();
+            const lastPlan = history[history.length - 1];
+            if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
+                const group = getCurrentGroup();
+                const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
+                const avatars = [];
+                for (const name of lastPlan.speakers) {
+                    const c = matchCharacterByName(name, members);
+                    if (c) avatars.push(c.avatar);
+                }
+                if (avatars.length > 0) {
+                    llmPickedAvatars = avatars;
+                    llmPickedSet = new Set(avatars);
+                    directorScripts = {};
+                    if (lastPlan.scripts && typeof lastPlan.scripts === 'object') {
+                        for (const [name, script] of Object.entries(lastPlan.scripts)) {
+                            const c = matchCharacterByName(name, members);
+                            if (c) directorScripts[c.name] = script;
+                        }
+                    }
+                    roundInitialized = true;
+                    log('Regenerate/swipe — reconstructed director plan from chat_metadata');
+                }
+            }
+        }
+        if (!llmPickedSet) {
+            // No history to reconstruct from — let it fall through to normal init
+            // so the interceptor doesn't operate on null state.
+            log('Regenerate/swipe — no persisted plan found, falling through to normal round init');
+        } else {
+            llmSpokenSet = new Set();
+            llmCursor = 0;
+            roundSpeakerCount = 0;
+            takeoverPending = false;
+            takeoverGenCount = 0;
+            log('Regenerate/swipe — reusing director plan, no takeover');
+            return;
+        }
+    }
+
+    roundScores = {};
+    roundSpeakerCount = 0;
+    roundTriggeredAvatars.clear();
+    roundInitiative = {};
+    llmPickedAvatars = null;
+    llmPickedSet = null;
+    llmSpokenSet = new Set();
+    llmCursor = 0;
+    roundInitialized = false;
+    takeoverPending = false;
+    takeoverGenCount = 0;
+    takeoverFailed = false;
+    directorScripts = {};
+    wiState.text = '';
+    wiState.entries = [];
+    log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
+});
+
+eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
+    isGroupChat = false;
+    log('Group generation finished');
+
+    if (takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
+        await runManualOrderedGeneration();
+    }
+    takeoverPending = false;
+});
+
+// When messages are deleted, the chat timeline has rolled back.
+// All in-memory runtime state based on the old timeline is now invalid.
+// Clear it BEFORE pruning history so no stale pointers linger.
+eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
+    roundScores = {};
+    roundSpeakerCount = 0;
+    roundTriggeredAvatars.clear();
+    roundInitiative = {};
+    llmPickedAvatars = null;
+    llmPickedSet = null;
+    llmSpokenSet = new Set();
+    llmCursor = 0;
+    roundInitialized = false;
+    takeoverPending = false;
+    takeoverGenCount = 0;
+    takeoverFailed = false;
+    directorScripts = {};
+    wiState.text = '';
+    wiState.entries = [];
+    pruneDirectorHistory(newChatLength);
+});
+
+// ─── Manual Ordered Generation (takeover) ─────────────────────────────
+async function runManualOrderedGeneration() {
+    takeoverPending = false;
+    const orderedList = [...llmPickedAvatars];
+    takeoverGenCount = orderedList.length;
+    const ctx = getContext();
+    const savedChId = ctx.characterId;
+    const savedChName = characters[savedChId]?.name || '';
+
+    console.warn('[GroupDirector] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
+    console.warn('[GroupDirector] takeoverGenCount:', takeoverGenCount);
+
+    try {
+        for (let i = 0; i < orderedList.length; i++) {
+            const avatar = orderedList[i];
+            const chId = characters.findIndex(c => c.avatar === avatar);
+            if (chId === -1) {
+                takeoverGenCount--;
+                console.warn('[GroupDirector] SKIP unknown avatar, takeoverGenCount→', takeoverGenCount);
+                continue;
+            }
+            setCharacterId(chId);
+            setCharacterName(characters[chId].name);
+            // Validate: the context must now point to the character we intend to generate
+            const verifyChId = getContext().characterId;
+            const verifyAvatar = characters[verifyChId]?.avatar;
+            if (verifyAvatar !== avatar) {
+                console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
+                takeoverGenCount--;
+                continue;
+            }
+            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
+
+            // Inject per-character director script
+            const charScript = getScriptForChar(characters[chId].name);
+            if (charScript) {
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+            }
+            try {
+                // Re-set character identity right before generation, in case
+                // something between setCharacterId and here mutated this_chid
+                setCharacterId(chId);
+                setCharacterName(characters[chId].name);
+                await ctx.generate('normal', { force_chid: chId });
+                // Post-generation identity check only. Empty/think-only replies
+                // are NOT treated as errors — ST's auto-swipe already handled them
+                // internally. By the time we get here, the message is finalized.
+                if (chat.length > 0) {
+                    const lastMsg = chat[chat.length - 1];
+                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
+                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
+                    }
+                }
+                console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
+            } catch (e) {
+                console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
+                takeoverGenCount = 0;
+                takeoverFailed = true;
+                // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
+                // so a retry reuses the same director decision instead of making a new one.
+                return;
+            } finally {
+                if (charScript) {
+                    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
+                }
+            }
+        }
+
+        console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
+    } finally {
+        console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
+        takeoverGenCount = 0;
+        // Restore the original character context so ST doesn't stay stuck
+        // on the last generated character after takeover
+        if (savedChId !== undefined && savedChId !== null) {
+            setCharacterId(savedChId);
+            setCharacterName(savedChName);
+        }
+    }
 }
 
 async function initRoundWithLLM() {
@@ -762,72 +1268,25 @@ function toggleContinuityMode(mode) {
     $('#gd-llm-script-continuity-wrapper').prop('disabled', mode !== 'last');
 }
 
-
-// ─── Manual Ordered Generation (takeover) ─────────────────────────────
-async function runManualOrderedGeneration() {
-    takeoverPending = false;
-    const orderedList = [...llmPickedAvatars];
-    takeoverGenCount = orderedList.length;
-    const ctx = getContext();
-    const savedChId = ctx.characterId;
-    const savedChName = characters[savedChId]?.name || "";
-
-    console.warn("[GroupDirector] TAKEOVER START — orderedList:", orderedList.map(a => characters.find(c => c.avatar === a)?.name));
-    console.warn("[GroupDirector] takeoverGenCount:", takeoverGenCount);
-
-    try {
-        for (let i = 0; i < orderedList.length; i++) {
-            const avatar = orderedList[i];
-            const chId = characters.findIndex(c => c.avatar === avatar);
-            if (chId === -1) {
-                takeoverGenCount--;
-                console.warn("[GroupDirector] SKIP unknown avatar, takeoverGenCount→", takeoverGenCount);
-                continue;
-            }
-            setCharacterId(chId);
-            setCharacterName(characters[chId].name);
-            const verifyChId = getContext().characterId;
-            const verifyAvatar = characters[verifyChId]?.avatar;
-            if (verifyAvatar !== avatar) {
-                console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
-                takeoverGenCount--;
-                continue;
-            }
-            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
-            const charScript = getScriptForChar(characters[chId].name);
-            if (charScript) {
-                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
-            }
-            try {
-                setCharacterId(chId);
-                setCharacterName(characters[chId].name);
-                await ctx.generate("normal", { force_chid: chId });
-                if (chat.length > 0) {
-                    const lastMsg = chat[chat.length - 1];
-                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
-                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
-                    }
-                }
-                console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
-            } catch (e) {
-                console.error("[GroupDirector] GEN FAILED:", e.message, e.stack);
-                takeoverGenCount = 0;
-                takeoverFailed = true;
-                return;
-            } finally {
-                if (charScript) {
-                    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, "", extension_prompt_types.IN_PROMPT, 0, true);
-                }
-            }
+// ─── I18n ─────────────────────────────────────────────────────────────
+function applyI18n(lang) {
+    const t = I18N[lang] || I18N['zh'];
+    $('[data-i18n]').each(function () {
+        const key = $(this).attr('data-i18n');
+        if (t[key] !== undefined) {
+            $(this).html(t[key]);
         }
-        console.warn("[GroupDirector] TAKEOVER COMPLETE — all speakers generated");
-    } finally {
-        console.warn("[GroupDirector] TAKEOVER FINALLY — resetting flags");
-        takeoverGenCount = 0;
-        if (savedChId !== undefined && savedChId !== null) {
-            setCharacterId(savedChId);
-            setCharacterName(savedChName);
+    });
+    $('[data-i18n-placeholder]').each(function () {
+        const key = $(this).attr('data-i18n-placeholder');
+        if (t[key] !== undefined) {
+            $(this).attr('placeholder', t[key]);
         }
+    });
+    // Update the persisted script display
+    const persistedScript = chat_metadata?.[EXT_KEY]?.historyMeta?.scriptPrompt;
+    if (persistedScript) {
+        $('#gd-history-meta-script').text(persistedScript);
     }
 }
 
