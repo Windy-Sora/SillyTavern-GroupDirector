@@ -1772,6 +1772,10 @@ async function loadSettingsUI() {
     $c('profile-enabled').on('input', function () {
         settings.profileEnabled = !!$(this).prop('checked');
         $('#gd-profile-section').toggle(settings.profileEnabled);
+        if (settings.profileEnabled) {
+            refreshProfileManagementUI();
+            checkProfileStartupStatus();
+        }
         saveSettings();
     });
     $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = parseInt($(this).val()) || 2000; saveSettings(); });
@@ -1839,8 +1843,9 @@ async function loadSettingsUI() {
         }
     });
 
-    // Initial render of the management panel
+    // Initial render and status check
     refreshProfileManagementUI();
+    checkProfileStartupStatus();
 }
 
 function applyModeVisibility(mode) {
@@ -1860,6 +1865,58 @@ function toggleContinuityMode(mode) {
 }
 
 // ─── Profile System: Management UI ─────────────────────────────────────
+function checkProfileStartupStatus() {
+    if (!settings.profileEnabled) return;
+
+    const group = getCurrentGroup();
+    if (!group) return;
+    const members = group.members.filter(a => !group.disabled_members?.includes(a));
+    if (!members.length) return;
+
+    const profiles = getProfiles();
+    const { newChars, hashMismatches } = diffProfiles(members);
+
+    const totalExisting = Object.keys(profiles).length;
+    const readyCount = Object.values(profiles).filter(p => p.state === 'ready').length;
+    const failedCount = Object.values(profiles).filter(p => p.state === 'failed').length;
+    const lang = settings.lang || 'zh';
+    const isZh = lang === 'zh';
+
+    if (totalExisting === 0 && newChars.length === 0) return;
+
+    let msg = '';
+    const parts = [];
+    if (totalExisting > 0) {
+        parts.push(isZh
+            ? `存档中发现 ${totalExisting} 个角色档案（${readyCount} 就绪, ${failedCount} 失败）`
+            : `Found ${totalExisting} profile(s) in save (${readyCount} ready, ${failedCount} failed)`);
+    }
+    if (newChars.length > 0) {
+        const names = newChars.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ');
+        parts.push(isZh ? `缺档案: ${names}` : `Missing: ${names}`);
+    }
+    if (hashMismatches.length > 0) {
+        const names = hashMismatches.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ');
+        parts.push(isZh ? `需更新: ${names}（角色卡已修改）` : `Outdated: ${names} (character changed)`);
+    }
+    msg = parts.join(' | ');
+
+    if (newChars.length > 0 || hashMismatches.length > 0) {
+        msg += ' — ' + (isZh
+            ? '点击「全部重新生成」或单角色「重生成」按钮来更新'
+            : 'Click "Regenerate All" or per-character "Regen" to update');
+    }
+
+    const $status = $('#gd-profile-status');
+    if ($status.length) {
+        $status.text(msg).css('color', hashMismatches.length > 0 ? '#ff9800' : '#4caf50');
+    } else {
+        $('#gd-profile-management-list').before(
+            `<div id="gd-profile-status" style="margin-bottom:6px;font-size:0.85em;color:${hashMismatches.length > 0 ? '#ff9800' : '#4caf50'};">${msg}</div>`
+        );
+    }
+}
+
 function refreshProfileManagementUI() {
     const $container = $('#gd-profile-management-list');
     if (!$container.length) return;
