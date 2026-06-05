@@ -1865,9 +1865,8 @@ function toggleContinuityMode(mode) {
 }
 
 // ─── Profile System: Management UI ─────────────────────────────────────
-function checkProfileStartupStatus() {
+function buildProfileLoaderPanel() {
     if (!settings.profileEnabled) return;
-
     const group = getCurrentGroup();
     if (!group) return;
     const members = group.members.filter(a => !group.disabled_members?.includes(a));
@@ -1875,46 +1874,105 @@ function checkProfileStartupStatus() {
 
     const profiles = getProfiles();
     const { newChars, hashMismatches } = diffProfiles(members);
-
-    const totalExisting = Object.keys(profiles).length;
-    const readyCount = Object.values(profiles).filter(p => p.state === 'ready').length;
-    const failedCount = Object.values(profiles).filter(p => p.state === 'failed').length;
     const lang = settings.lang || 'zh';
     const isZh = lang === 'zh';
 
-    if (totalExisting === 0 && newChars.length === 0) return;
+    const existingList = Object.entries(profiles).map(([avatar, prof]) => {
+        const char = characters.find(c => c.avatar === avatar);
+        const name = char ? char.name : (prof.name || avatar);
+        const isMismatch = hashMismatches.includes(avatar);
+        const stateLabel = { ready: isZh ? '就绪' : 'Ready', pending: isZh ? '生成中' : 'Pending', failed: isZh ? '失败' : 'Failed' }[prof.state] || prof.state;
+        const stateColor = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[prof.state] || '#999';
+        return { avatar, name, prof, isMismatch, stateLabel, stateColor };
+    });
 
-    let msg = '';
-    const parts = [];
-    if (totalExisting > 0) {
-        parts.push(isZh
-            ? `存档中发现 ${totalExisting} 个角色档案（${readyCount} 就绪, ${failedCount} 失败）`
-            : `Found ${totalExisting} profile(s) in save (${readyCount} ready, ${failedCount} failed)`);
-    }
-    if (newChars.length > 0) {
-        const names = newChars.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ');
-        parts.push(isZh ? `缺档案: ${names}` : `Missing: ${names}`);
-    }
-    if (hashMismatches.length > 0) {
-        const names = hashMismatches.map(a => characters.find(c => c.avatar === a)?.name || a).join(', ');
-        parts.push(isZh ? `需更新: ${names}（角色卡已修改）` : `Outdated: ${names} (character changed)`);
-    }
-    msg = parts.join(' | ');
+    const newList = newChars.map(avatar => {
+        const char = characters.find(c => c.avatar === avatar);
+        return { avatar, name: char?.name || avatar };
+    });
 
-    if (newChars.length > 0 || hashMismatches.length > 0) {
-        msg += ' — ' + (isZh
-            ? '点击「全部重新生成」或单角色「重生成」按钮来更新'
-            : 'Click "Regenerate All" or per-character "Regen" to update');
+    if (existingList.length === 0 && newList.length === 0) return;
+
+    let html = `<div id="gd-profile-loader" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:10px;margin-bottom:10px;">`;
+    html += `<strong>${isZh ? '加载存档档案' : 'Load Profiles from Save'}</strong>`;
+    html += `<small style="display:block;margin:4px 0;color:var(--grey70a);">${isZh ? '选择哪些档案保留、哪些重新生成、哪些新角色加入。' : 'Choose which profiles to keep, regenerate, or add for new characters.'}</small>`;
+
+    if (existingList.length > 0) {
+        html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '存档中的档案' : 'Profiles in Save'} (${existingList.length}):</div>`;
+        for (const item of existingList) {
+            html += `<div class="gd-loader-row" data-avatar="${item.avatar}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+                <input type="checkbox" class="gd-loader-check" checked style="flex-shrink:0;">
+                <span style="flex:1;min-width:0;"><b>${item.name}</b></span>
+                <span style="color:${item.stateColor};flex-shrink:0;">${item.stateLabel}</span>
+                ${item.isMismatch ? `<span style="color:#ff9800;flex-shrink:0;" title="${isZh ? '角色卡已修改' : 'Character card changed'}">&#9888;</span>` : ''}
+                <select class="gd-loader-action text_pole" style="width:auto;flex-shrink:0;font-size:0.85em;">
+                    <option value="keep" selected>${isZh ? '保留' : 'Keep'}</option>
+                    <option value="regen">${isZh ? '重新生成' : 'Regenerate'}</option>
+                </select>
+            </div>`;
+        }
     }
 
-    const $status = $('#gd-profile-status');
-    if ($status.length) {
-        $status.text(msg).css('color', hashMismatches.length > 0 ? '#ff9800' : '#4caf50');
-    } else {
-        $('#gd-profile-management-list').before(
-            `<div id="gd-profile-status" style="margin-bottom:6px;font-size:0.85em;color:${hashMismatches.length > 0 ? '#ff9800' : '#4caf50'};">${msg}</div>`
-        );
+    if (newList.length > 0) {
+        html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '新角色' : 'New Characters'} (${newList.length}):</div>`;
+        for (const item of newList) {
+            html += `<div class="gd-loader-row gd-loader-new" data-avatar="${item.avatar}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+                <input type="checkbox" class="gd-loader-check" checked style="flex-shrink:0;">
+                <span style="flex:1;min-width:0;">${item.name}</span>
+                <span style="color:#999;flex-shrink:0;">${isZh ? '无档案' : 'No profile'}</span>
+            </div>`;
+        }
     }
+
+    html += `<div style="margin-top:8px;display:flex;gap:6px;">
+        <button class="gd-loader-btn-apply" style="flex:1;">${isZh ? '应用选择（保留勾选的，重新生成标记的）' : 'Apply (keep checked, regenerate marked)'}</button>
+        <button class="gd-loader-btn-all" style="flex:1;">${isZh ? '全部重新生成' : 'Regenerate All'}</button>
+    </div></div>`;
+
+    const $existing = $('#gd-profile-loader');
+    if ($existing.length) $existing.replaceWith(html);
+    else $('#gd-profile-management-list').before(html);
+
+    // Bind buttons
+    $('.gd-loader-btn-apply').off('click').on('click', async function () {
+        const btn = $(this);
+        btn.prop('disabled', true);
+        const toRegen = [];
+        $('.gd-loader-row').each(function () {
+            const $row = $(this);
+            const avatar = $row.data('avatar');
+            const checked = $row.find('.gd-loader-check').prop('checked');
+            if (!checked) return;
+            const isNew = $row.hasClass('gd-loader-new');
+            const action = $row.find('.gd-loader-action').val();
+            if (isNew || action === 'regen') {
+                toRegen.push(avatar);
+            }
+        });
+        if (toRegen.length > 0) {
+            toastr.info(isZh ? `正在生成 ${toRegen.length} 个档案...` : `Generating ${toRegen.length} profile(s)...`);
+            await generateProfilesBatch(toRegen);
+        }
+        $('#gd-profile-loader').remove();
+        refreshProfileManagementUI();
+        toastr.success(isZh ? '档案已更新' : 'Profiles updated');
+        btn.prop('disabled', false);
+    });
+
+    $('.gd-loader-btn-all').off('click').on('click', async function () {
+        const btn = $(this);
+        btn.prop('disabled', true);
+        toastr.info(isZh ? `正在为 ${members.length} 个角色生成档案...` : `Generating profiles for ${members.length} characters...`);
+        await generateProfilesBatch(members);
+        $('#gd-profile-loader').remove();
+        refreshProfileManagementUI();
+        toastr.success(isZh ? '全部档案已更新' : 'All profiles updated');
+        btn.prop('disabled', false);
+    });
+}
+
+function checkProfileStartupStatus() {
+    buildProfileLoaderPanel();
 }
 
 function refreshProfileManagementUI() {
