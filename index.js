@@ -240,6 +240,7 @@ let roundInitialized = false;
 let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
+let takeoverFailed = false;          // set when manual generation fails mid-round
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let roundWorldInfo = '';            // cached WI text for this round
 let roundWorldInfoEntries = [];     // cached WI entry objects for debugging
@@ -579,6 +580,21 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         return;
     }
 
+    // Previous takeover failed mid-round: reuse the existing director decision
+    // instead of making a new one. Chat already has partial messages from the
+    // failed attempt; a new decision would conflict with existing dialog boxes.
+    if (takeoverFailed) {
+        takeoverFailed = false;
+        takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
+        takeoverGenCount = 0;
+        llmSpokenSet = new Set();
+        llmCursor = 0;
+        roundSpeakerCount = 0;
+        roundGenerateType = data?.type || 'normal';
+        console.warn('[GroupDirector] Retry after takeover failure — reusing existing director plan');
+        return;
+    }
+
     roundGenerateType = data?.type || 'normal';
     isGroupChat = true;
 
@@ -639,6 +655,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundInitialized = false;
     takeoverPending = false;
     takeoverGenCount = 0;
+    takeoverFailed = false;
     directorScripts = {};
     roundWorldInfo = '';
     roundWorldInfoEntries = [];
@@ -670,6 +687,7 @@ eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
     roundInitialized = false;
     takeoverPending = false;
     takeoverGenCount = 0;
+    takeoverFailed = false;
     directorScripts = {};
     roundWorldInfo = '';
     roundWorldInfoEntries = [];
@@ -718,6 +736,9 @@ async function runManualOrderedGeneration() {
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
                 takeoverGenCount = 0;
+                takeoverFailed = true;
+                // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
+                // so a retry reuses the same director decision instead of making a new one.
                 return;
             } finally {
                 if (charScript) {
