@@ -12,6 +12,39 @@ const MODE_OFF = 'off';
 const MODE_FORMULA = 'formula';
 const MODE_LLM = 'llm';
 
+// ─── Provider Registry ─────────────────────────────────────────────────
+const providers = new Map();
+
+function registerProvider(provider) {
+    if (!provider || !provider.id || !provider.placeholder) {
+        console.warn('[GroupDirector] registerProvider: invalid provider, missing id or placeholder');
+        return;
+    }
+    providers.set(provider.id, provider);
+}
+
+function unregisterProvider(id) {
+    providers.delete(id);
+}
+
+function getProviders() {
+    return [...providers.values()];
+}
+
+async function renderPrompt(template, context) {
+    let result = template;
+    for (const provider of providers.values()) {
+        if (provider.enabled && !provider.enabled(context)) continue;
+        try {
+            const replacement = await provider.render(context);
+            result = result.replace(provider.placeholder, replacement ?? '');
+        } catch (e) {
+            console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
+        }
+    }
+    return result;
+}
+
 const DEFAULT_SETTINGS = {
     mode: MODE_FORMULA,     // 'off' | 'formula' | 'llm' — 互斥单选
     topN: 1,
@@ -1327,8 +1360,7 @@ async function initRoundWithLLM() {
         const profilesText = buildCharacterProfilesText();
 
         // When profiles are active and non-empty, suppress the bulky raw
-        // character descriptions to avoid redundant token waste. The profiles
-        // already provide the structured summary the Director needs.
+        // character descriptions to avoid redundant token waste.
         const charText = (settings.profileEnabled && profilesText)
             ? enabledMembers.map(a => {
                 const c = characters.find(c => c.avatar === a);
@@ -1336,15 +1368,20 @@ async function initRoundWithLLM() {
               }).filter(Boolean).join('\n')
             : memberList;
 
-        let filled = promptTemplate
-            .replace('{{recentMessages}}', recentText)
-            .replace('{{characters}}', charText)
-            .replace('{{maxSpeakers}}', String(settings.llmMaxSpeakers))
-            .replace('{{character_profiles}}', profilesText);
+        // Build provider context — all data sources in one object
+        const providerContext = {
+            recentMessages: recentMessages,
+            memberList: charText,
+            maxSpeakers: settings.llmMaxSpeakers,
+            profilesText: profilesText,
+            worldInfoText: roundWorldInfo,
+            previousPlan: '',
+            previousPlans: '',
+        };
 
-        // If profiles are enabled but the template doesn't use the placeholder
-        // (e.g. a custom prompt saved before the profile system was added),
-        // auto-inject the profiles into the context prefix so they aren't lost.
+        let filled = await renderPrompt(promptTemplate, providerContext);
+
+        // Profile auto-injection: if enabled but template lacks placeholder
         if (settings.profileEnabled && !hasProfilePlaceholder && profilesText) {
             contextPrefix = profilesText + '\n\n' + contextPrefix;
             console.log('[GroupDirector] Profile placeholder not found in template — auto-injected into context prefix');
@@ -2254,6 +2291,52 @@ function applyI18n(lang) {
 
 // ─── Slash Commands ───────────────────────────────────────────────────
 // TODO: Register slash commands for manual director control
+
+// ─── Register Built-in Providers ──────────────────────────────────────
+registerProvider({
+    id: 'recentMessages',
+    placeholder: '{{recentMessages}}',
+    render: (ctx) => {
+        const msgs = ctx.recentMessages || [];
+        return msgs.map(m => `${m.name || (m.is_user ? 'User' : 'Char')}: ${m.mes || ''}`).join('\n');
+    },
+});
+
+registerProvider({
+    id: 'characters',
+    placeholder: '{{characters}}',
+    render: (ctx) => ctx.memberList || '',
+});
+
+registerProvider({
+    id: 'character_profiles',
+    placeholder: '{{character_profiles}}',
+    render: (ctx) => ctx.profilesText || '',
+});
+
+registerProvider({
+    id: 'maxSpeakers',
+    placeholder: '{{maxSpeakers}}',
+    render: (ctx) => String(ctx.maxSpeakers || 1),
+});
+
+registerProvider({
+    id: 'worldInfo',
+    placeholder: '{{worldInfo}}',
+    render: (ctx) => ctx.worldInfoText || '',
+});
+
+registerProvider({
+    id: 'previousPlan',
+    placeholder: '{{previousPlan}}',
+    render: (ctx) => ctx.previousPlan || '',
+});
+
+registerProvider({
+    id: 'previousPlans',
+    placeholder: '{{previousPlans}}',
+    render: (ctx) => ctx.previousPlans || '',
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
