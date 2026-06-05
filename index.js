@@ -156,6 +156,7 @@ const I18N = {
         profileRenderReset: '恢复默认渲染模板',
         profileManagementTitle: '档案管理',
         profileScanSave: '扫描当前存档中的角色档案',
+        profileDetectChanges: '检测角色变动（加入/删除）',
         profileRegenerateAll: '全部重新生成',
     },
     en: {
@@ -253,6 +254,7 @@ const I18N = {
         profileRenderReset: 'Restore Default Render Template',
         profileManagementTitle: 'Profile Management',
         profileScanSave: 'Scan current save for character profiles',
+        profileDetectChanges: 'Detect character changes (added/removed)',
         profileRegenerateAll: 'Regenerate All',
     },
 };
@@ -1809,6 +1811,15 @@ async function loadSettingsUI() {
         buildProfileLoaderPanel();
         toastr.info(settings.lang === 'zh' ? '已扫描存档' : 'Save scanned');
     });
+
+    $c('profile-detect-changes').on('click', function () {
+        const group = getCurrentGroup();
+        if (!group) {
+            toastr.warning(settings.lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Please open this settings panel from within a group chat');
+            return;
+        }
+        detectCharacterChanges();
+    });
     $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = parseInt($(this).val()) || 2000; saveSettings(); });
     $c('profile-concurrency').on('input', function () { settings.profileConcurrency = parseInt($(this).val()) || 0; saveSettings(); });
     $c('profile-generator-prompt').on('input', function () { settings.profileGeneratorPrompt = $(this).val(); saveSettings(); });
@@ -2005,6 +2016,102 @@ function buildProfileLoaderPanel() {
 
 function checkProfileStartupStatus() {
     buildProfileLoaderPanel();
+}
+
+function detectCharacterChanges() {
+    const group = getCurrentGroup();
+    if (!group) return;
+    const members = group.members.filter(a => !group.disabled_members?.includes(a));
+    const profiles = getProfiles();
+    const { newChars, removedChars } = diffProfiles(members);
+    const lang = settings.lang || 'zh';
+    const isZh = lang === 'zh';
+
+    if (newChars.length === 0 && removedChars.length === 0) {
+        toastr.info(isZh ? '未检测到角色变动' : 'No character changes detected');
+        return;
+    }
+
+    let html = `<div id="gd-profile-changes" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:10px;margin-bottom:10px;">`;
+    html += `<strong>${isZh ? '角色变动检测' : 'Character Change Detection'}</strong>`;
+    html += `<small style="display:block;margin:4px 0;color:var(--grey70a);">${isZh ? '选择如何处理以下变动。' : 'Choose how to handle the following changes.'}</small>`;
+
+    if (newChars.length > 0) {
+        html += `<div style="margin-top:6px;font-weight:bold;color:#4caf50;">${isZh ? '新增角色' : 'Added'} (${newChars.length}):</div>`;
+        for (const avatar of newChars) {
+            const char = characters.find(c => c.avatar === avatar);
+            const name = char?.name || avatar;
+            html += `<div class="gd-change-row" data-avatar="${avatar}" data-action="add" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
+                <input type="checkbox" class="gd-change-check" checked>
+                <span style="flex:1;">${name}</span>
+                <span style="color:#999;font-size:0.8em;">${isZh ? '无档案' : 'No profile'}</span>
+            </div>`;
+        }
+    }
+
+    if (removedChars.length > 0) {
+        html += `<div style="margin-top:6px;font-weight:bold;color:#f44336;">${isZh ? '已移除角色' : 'Removed'} (${removedChars.length}):</div>`;
+        for (const avatar of removedChars) {
+            const prof = profiles[avatar];
+            const name = prof?.name || avatar;
+            html += `<div class="gd-change-row" data-avatar="${avatar}" data-action="remove" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
+                <input type="checkbox" class="gd-change-check" checked>
+                <span style="flex:1;">${name}</span>
+                <span style="color:#999;font-size:0.8em;">${isZh ? '档案仍在' : 'Profile exists'}</span>
+            </div>`;
+        }
+    }
+
+    html += `<div style="margin-top:8px;display:flex;gap:6px;">
+        <button class="gd-changes-btn-apply" style="flex:1;">${isZh ? '应用选择' : 'Apply Selected'}</button>
+        <button class="gd-changes-btn-cancel" style="flex:1;">${isZh ? '取消' : 'Cancel'}</button>
+    </div></div>`;
+
+    const $existing = $('#gd-profile-changes');
+    if ($existing.length) $existing.replaceWith(html);
+    else $('#gd-profile-management-list').before(html);
+
+    $('.gd-changes-btn-cancel').off('click').on('click', () => $('#gd-profile-changes').remove());
+
+    $('.gd-changes-btn-apply').off('click').on('click', async function () {
+        const btn = $(this);
+        btn.prop('disabled', true);
+        const toGenerate = [];
+        const toArchive = [];
+
+        $('.gd-change-row').each(function () {
+            const $row = $(this);
+            if (!$row.find('.gd-change-check').prop('checked')) return;
+            const action = $row.data('action');
+            const avatar = $row.data('avatar');
+            if (action === 'add') toGenerate.push(avatar);
+            else if (action === 'remove') toArchive.push(avatar);
+        });
+
+        // Archive removed characters
+        for (const avatar of toArchive) {
+            const prof = profiles[avatar];
+            if (prof) {
+                getArchivedProfiles()[avatar] = prof;
+                delete profiles[avatar];
+            }
+        }
+        if (toArchive.length > 0) {
+            await saveChatConditional();
+            toastr.info(isZh ? `已归档 ${toArchive.length} 个档案` : `Archived ${toArchive.length} profile(s)`);
+        }
+
+        // Generate new profiles
+        if (toGenerate.length > 0) {
+            toastr.info(isZh ? `正在生成 ${toGenerate.length} 个新角色档案...` : `Generating ${toGenerate.length} new profile(s)...`);
+            await generateProfilesBatch(toGenerate);
+        }
+
+        $('#gd-profile-changes').remove();
+        refreshProfileManagementUI();
+        toastr.success(isZh ? '变动已处理' : 'Changes processed');
+        btn.prop('disabled', false);
+    });
 }
 
 function refreshProfileManagementUI() {
