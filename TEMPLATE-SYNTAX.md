@@ -110,11 +110,20 @@ Group Director 的模板系统支持两种占位符语法：
 
 | 变量 | 可用场景 | 含义 |
 |------|---------|------|
-| `$character` | Script Wrapper（角色层注入） | 当前正在生成的角色名 |
+| `$character` | Script Wrapper | 当前正在生成的角色名 |
+| `$speakerIndex` | Script Wrapper | 当前角色在发言顺序中的位置（1-based，用于展示） |
+| `$speakerIndex0` | Script Wrapper | 当前角色在发言顺序中的位置（0-based，用于数组下标） |
+| `$speakerCount` | Script Wrapper | 本轮导演选中的总发言人数 |
 
 如果变量值包含 `.`、`[`、`]`、空格等路径特殊字符，自动用 `["..."]` 包裹，确保路径解析正确。
 
 示例：角色名为 `Mr. Smith` 时，`scripts.$character` 自动展开为 `scripts.["Mr. Smith"]`。
+
+示例用法：
+```
+你是 {{?directorLedger:speakers[$speakerIndex0]}}，第 $speakerIndex / $speakerCount 位发言者。
+剧本：{{?directorLedger:scripts.$character|}}
+```
 
 ---
 

@@ -255,15 +255,14 @@ const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
 
-async function getScriptForChar(charName) {
+async function getScriptForChar(charName, extraContext) {
     const script = directorScripts[charName];
     if (!script) return '';
     const wrapper = settings.llmScriptWrapper || '{{script}}';
-    // Protect {{script}} from renderPrompt's Phase 2 — it matches \w+ but
-    // has no registered provider, so it gets replaced with empty string.
     const placeholder = '\x00SCRIPT\x00';
     const guarded = wrapper.replace('{{script}}', placeholder);
-    const rendered = await renderPrompt(guarded, { character: charName });
+    const ctx = { character: charName, ...extraContext };
+    const rendered = await renderPrompt(guarded, ctx);
     return rendered.replace(placeholder, script);
 }
 
@@ -531,7 +530,11 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
                 return;
             }
             // Safety-net script injection: ensure the correct per-character script is set
-            const takeoverScript = await getScriptForChar(char.name);
+            const takeoverScript = await getScriptForChar(char.name, {
+                speakerIndex: roundSpeakerCount,
+                speakerIndex0: roundSpeakerCount - 1,
+                speakerCount: llmPickedAvatars?.length || 0,
+            });
             if (takeoverScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, extension_prompt_types.IN_PROMPT, 0, true);
             }
@@ -575,7 +578,11 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         llmSpokenSet.add(avatar);
         roundSpeakerCount++;
         // Inject per-character director script
-        const charScript = await getScriptForChar(char.name);
+        const charScript = await getScriptForChar(char.name, {
+            speakerIndex: roundSpeakerCount,
+            speakerIndex0: roundSpeakerCount - 1,
+            speakerCount: llmPickedAvatars?.length || 0,
+        });
         if (charScript) {
             setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
         }
@@ -766,8 +773,12 @@ async function runManualOrderedGeneration() {
             }
             console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
 
-            // Inject per-character director script
-            const charScript = await getScriptForChar(characters[chId].name);
+            // Inject per-character director script with order context
+            const charScript = await getScriptForChar(characters[chId].name, {
+                speakerIndex: i + 1,
+                speakerIndex0: i,
+                speakerCount: orderedList.length,
+            });
             if (charScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
             }
