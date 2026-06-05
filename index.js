@@ -280,7 +280,11 @@ const profileSystem = createProfileSystem({
 });
 const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfilePlaceholders,
     buildProfileLoaderPanel, checkProfileStartupStatus, detectCharacterChanges,
-    refreshProfileManagementUI, bindProfileCardActions } = profileSystem;
+    refreshProfileManagementUI, bindProfileCardActions,
+    getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
+    computeProfileSchemaHash, getProfileContainer, getProfiles, getArchivedProfiles,
+    saveProfile, diffProfiles, normalizeProfileFields,
+    generateSingleProfile, syncProfiles, migrateProfileData } = profileSystem;
 
 function log(...args) {
     if (settings.debugLogging) {

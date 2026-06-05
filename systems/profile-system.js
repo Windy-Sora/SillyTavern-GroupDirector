@@ -682,7 +682,7 @@ function bindProfileCardActions() {
     return {
         computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, diffProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
-        generateSingleProfile, generateProfilesBatch,
+        normalizeProfileFields, generateSingleProfile, generateProfilesBatch,
         buildCharacterProfilesText,
         validateAndWarnProfilePlaceholders,
         syncProfiles,
