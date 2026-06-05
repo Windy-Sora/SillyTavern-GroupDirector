@@ -1737,9 +1737,11 @@ async function loadSettingsUI() {
     // ── Profile System UI Bindings ──
     $c('profile-enabled').prop('checked', settings.profileEnabled);
     $c('profile-token-budget').val(settings.profileTokenBudget);
-    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt);
-    $c('profile-json-schema').val(settings.profileJsonSchema);
-    $c('profile-render-template').val(settings.profileRenderTemplate);
+    // Show default templates in the UI when the setting is empty,
+    // but keep the setting as '' (meaning "use built-in default" at runtime).
+    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt());
+    $c('profile-json-schema').val(settings.profileJsonSchema || getDefaultProfileSchema());
+    $c('profile-render-template').val(settings.profileRenderTemplate || getDefaultProfileRenderTemplate());
     $('#gd-profile-section').toggle(settings.profileEnabled);
 
     $c('profile-enabled').on('input', function () {
