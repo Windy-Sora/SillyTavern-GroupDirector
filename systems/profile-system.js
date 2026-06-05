@@ -1,5 +1,6 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, chat_metadata, saveChatConditional, characters, chat, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, llmPickedSet, llmPickedAvatars, roundSpeakerCount, saveSettings } = deps;
+    const { settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, chat, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, llmPickedSet, llmPickedAvatars, roundSpeakerCount, saveSettings } = deps;
+    const cm = () => getChatMetadata();
 
 // ─── Profile System: Hash & Data Layer ─────────────────────────────────
 function computeProfileSchemaHash() {
@@ -9,9 +10,9 @@ function computeProfileSchemaHash() {
 
 function getProfileContainer() {
     console.log('[GroupDirector] getProfileContainer() called. Stack:', new Error().stack?.split('\n').slice(1, 4).map(s => s.trim()).join(' <- '));
-    const existed = !!chat_metadata[EXT_KEY];
-    if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
-    const meta = chat_metadata[EXT_KEY];
+    const existed = !!cm()[EXT_KEY];
+    if (!cm()[EXT_KEY]) cm()[EXT_KEY] = {};
+    const meta = cm()[EXT_KEY];
     // Diagnostic: dump all keys in the container
     console.log('[GroupDirector] getProfileContainer: EXT_KEY keys:', Object.keys(meta).join(', '));
     if (meta.characterProfiles) {

@@ -265,14 +265,18 @@ function saveSettings() {
 }
 
 // ─── Systems ──────────────────────────────────────────────────────────
+// chat_metadata is an export let in ST — it gets replaced on chat load.
+// Pass as a getter so modules always read the current live binding.
+const getChatMetadata = () => chat_metadata;
+
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory } =
-    createHistorySystem({ chat_metadata, EXT_KEY, chat, saveChatConditional, settings, log });
+    createHistorySystem({ getChatMetadata, EXT_KEY, chat, saveChatConditional, settings, log });
 
 const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, chat, characters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
 
 const profileSystem = createProfileSystem({
-    settings, EXT_KEY, chat_metadata, saveChatConditional, characters, chat,
+    settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, chat,
     getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson,
     matchCharacterByName, getCurrentGroup, log,
     llmPickedSet, llmPickedAvatars, roundSpeakerCount,

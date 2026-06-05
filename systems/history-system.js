@@ -1,17 +1,19 @@
-export function createHistorySystem({ chat_metadata, EXT_KEY, chat, saveChatConditional, settings, log }) {
+export function createHistorySystem({ getChatMetadata, EXT_KEY, chat, saveChatConditional, settings, log }) {
+    const cm = () => getChatMetadata();
 
     function getDirectorHistory() {
-        return chat_metadata?.[EXT_KEY]?.directorHistory || [];
+        return cm()?.[EXT_KEY]?.directorHistory || [];
     }
 
     async function addToDirectorHistory(entry) {
-        if (!chat_metadata[EXT_KEY]) chat_metadata[EXT_KEY] = {};
-        if (!chat_metadata[EXT_KEY].historyMeta) chat_metadata[EXT_KEY].historyMeta = {};
-        if (!chat_metadata[EXT_KEY].directorHistory) chat_metadata[EXT_KEY].directorHistory = [];
+        const meta = cm();
+        if (!meta[EXT_KEY]) meta[EXT_KEY] = {};
+        if (!meta[EXT_KEY].historyMeta) meta[EXT_KEY].historyMeta = {};
+        if (!meta[EXT_KEY].directorHistory) meta[EXT_KEY].directorHistory = [];
         entry._chatLength = chat.length;
-        chat_metadata[EXT_KEY].directorHistory.push(entry);
-        if (chat_metadata[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
-            chat_metadata[EXT_KEY].historyMeta.scriptPrompt = settings.llmScriptPrompt;
+        meta[EXT_KEY].directorHistory.push(entry);
+        if (meta[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
+            meta[EXT_KEY].historyMeta.scriptPrompt = settings.llmScriptPrompt;
         }
         await saveChatConditional();
     }
@@ -21,7 +23,7 @@ export function createHistorySystem({ chat_metadata, EXT_KEY, chat, saveChatCond
         if (!history.length) return;
         const pruned = history.filter(e => (e._chatLength || 0) <= newChatLength);
         if (pruned.length < history.length) {
-            chat_metadata[EXT_KEY].directorHistory = pruned;
+            cm()[EXT_KEY].directorHistory = pruned;
             saveChatConditional();
             log(`Pruned ${history.length - pruned.length} stale director history entries (chatLength=${newChatLength})`);
         }
