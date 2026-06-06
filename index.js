@@ -10,7 +10,7 @@ import { registerProvider, getProviders, getAvailablePlaceholders } from './prov
 import { renderPrompt } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
-import { roundCounterReset, roundCounterSnapshotSave, roundCounterSnapshotRestore } from './utils/counter.js';
+import { roundCounterReset } from './utils/counter.js';
 import { register as registerRecentMessages } from './providers/recent-messages.js';
 import { register as registerCharacters } from './providers/characters.js';
 import { register as registerCharacterProfiles } from './providers/character-profiles.js';
@@ -702,7 +702,6 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             // to normal init, which would trigger a new LLM call.
             roundInitialized = true;
             log('Regenerate/swipe — no persisted plan, transparent pass-through');
-            roundCounterSnapshotRestore();
             return;
         }
         // Reuse existing plan (reconstructed or in-memory)
@@ -713,7 +712,6 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             takeoverPending = false;
             takeoverGenCount = 0;
             log('Regenerate/swipe — reusing director plan, no takeover');
-            roundCounterSnapshotRestore();
             return;
         }
     }
@@ -738,7 +736,6 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     wiState.text = '';
     wiState.entries = [];
     roundCounterReset();
-    roundCounterSnapshotSave();
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
