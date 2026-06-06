@@ -28,6 +28,26 @@ Group Director 的模板系统支持两种占位符语法：
 
 将 `name` 对应的 Provider 渲染结果直接插入模板。语义与旧版本完全一致，不受新语法影响。
 
+### 2.1 自增计数器 `{{counter}}` / `{{counter0}}`
+
+这两个特殊占位符不经过 Provider，由 `renderPrompt` 直接处理：
+
+| 占位符 | 生命周期 | 起始值 | 重置条件 | 典型用途 |
+|--------|---------|--------|---------|---------|
+| `{{counter}}` | 整轮（跨多次 `renderPrompt`） | 0 | `GROUP_WRAPPER_STARTED` 正常新轮次 | Director Prompt 中标记场景节拍 |
+| `{{counter0}}` | 单次 `renderPrompt` | 0 | 每次 `renderPrompt` 进入时自动重置 | 角色剧本标识每个角色的分步 |
+
+`{{counter}}` 的 swipe 保护：每个角色首次渲染脚本时，计数器值被快照。如果后续 swipe 该角色，计数器恢复到快照值，确保该角色每次得到的计数序列一致。
+
+示例：
+```
+新轮次 → counter=0
+Director Prompt 中出现 3 次 → 0, 1, 2
+Alice 脚本首次 → 快照=3 → 渲染中出现 2 次 → 3, 4
+Bob   脚本首次 → 快照=5 → 渲染中出现 2 次 → 5, 6
+用户重新生成 Bob → 恢复快照=5 → Bob 重新渲染 → 5, 6（一致）
+```
+
 ---
 
 ## 3. 路径查询占位符 `{{?name:path|fallback}}`
