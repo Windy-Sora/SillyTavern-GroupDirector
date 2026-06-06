@@ -791,13 +791,15 @@ async function runManualOrderedGeneration() {
                 setCharacterId(chId);
                 setCharacterName(characters[chId].name);
                 await ctx.generate('normal', { force_chid: chId });
-                // Post-generation identity check only. Empty/think-only replies
-                // are NOT treated as errors — ST's auto-swipe already handled them
-                // internally. By the time we get here, the message is finalized.
+                // Post-generation: log full message snapshot for identity diagnostics
                 if (chat.length > 0) {
                     const lastMsg = chat[chat.length - 1];
-                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system && lastMsg.name !== characters[chId].name) {
-                        console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${characters[chId].name}" but generated message has name "${lastMsg.name}" — character identity was swapped!`);
+                    const expectedName = characters[chId]?.name || '?';
+                    if (lastMsg && !lastMsg.is_user && !lastMsg.is_system) {
+                        console.log(`[GroupDirector] POST-GEN #${i + 1}: expected="${expectedName}" actual="${lastMsg.name}" mes=${(lastMsg.mes || '').substring(0, 80)} reasoning=${lastMsg.extra?.reasoning ? (lastMsg.extra.reasoning.substring(0, 80) + '...') : 'none'} swipes=${lastMsg.swipes?.length || 0}`);
+                        if (lastMsg.name !== expectedName) {
+                            console.error(`[GroupDirector] POST-GEN MISMATCH: expected "${expectedName}" but got "${lastMsg.name}" — identity swapped!`);
+                        }
                     }
                 }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
