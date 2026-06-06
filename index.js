@@ -654,6 +654,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         llmSpokenSet = new Set();
         llmCursor = 0;
         roundSpeakerCount = 0;
+        roundInitialized = false; // allow fresh director eval on retry
         roundGenerateType = data?.type || 'normal';
         console.warn('[GroupDirector] Retry after takeover failure — reusing existing director plan');
         return;
