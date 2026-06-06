@@ -1,6 +1,6 @@
 import { providers } from './provider-registry.js';
 import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
-import { counterNext } from './utils/counter.js';
+import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils/counter.js';
 
 /**
  * Render a template by executing all registered providers once,
@@ -17,6 +17,9 @@ import { counterNext } from './utils/counter.js';
  * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context) {
+    // Reset per-prompt counter at the start of each render call
+    promptCounterReset();
+
     // ── Phase 1: execute every provider, cache normalized results ──
     const cache = Object.create(null); // providerId → { content, data }
 
@@ -35,8 +38,11 @@ export async function renderPrompt(template, context) {
     }
 
     // ── Phase 2: simple placeholders {{name}} ──
+    // {{counter}}   → round lifetime, starts at 0, persists across renderPrompt calls
+    // {{counter0}}  → prompt lifetime, starts at 0, resets each renderPrompt call
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
-        if (id === 'counter') return String(counterNext());
+        if (id === 'counter') return String(roundCounterNext());
+        if (id === 'counter0') return String(promptCounterNext());
         return cache[id]?.content ?? '';
     });
 

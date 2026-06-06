@@ -1,9 +1,19 @@
-let counter = 0;
+let roundCounter = 0;
 
-export function counterNext() {
-    return ++counter;
+export function roundCounterNext() {
+    return roundCounter++;
 }
 
-export function counterReset() {
-    counter = 0;
+export function roundCounterReset() {
+    roundCounter = 0;
+}
+
+let promptCounter = 0;
+
+export function promptCounterNext() {
+    return promptCounter++;
+}
+
+export function promptCounterReset() {
+    promptCounter = 0;
 }
