@@ -450,7 +450,11 @@ function buildProfileLoaderPanel() {
             const avatar = $row.data('avatar');
             const checked = $row.find('.gd-loader-check').prop('checked');
             if (!checked) return;
-            toRegen.push(avatar);
+            const isNew = $row.hasClass('gd-loader-new');
+            const action = $row.find('.gd-loader-action').val();
+            if (isNew || action === 'regen') {
+                toRegen.push(avatar);
+            }
         });
         if (toRegen.length > 0) {
             toastr.info(isZh ? `后台生成 ${toRegen.length} 个档案...` : `Generating ${toRegen.length} profile(s) in background...`);
