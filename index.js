@@ -10,7 +10,7 @@ import { registerProvider, getProviders, getAvailablePlaceholders } from './prov
 import { renderPrompt } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
-import { roundCounterReset } from './utils/counter.js';
+import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
 import { register as registerRecentMessages } from './providers/recent-messages.js';
 import { register as registerCharacters } from './providers/characters.js';
 import { register as registerCharacterProfiles } from './providers/character-profiles.js';
@@ -256,6 +256,7 @@ let takeoverSwipeCount = 0;          // auto-swipe counter per character (cap at
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
+const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -263,6 +264,15 @@ const DIRECTOR_SCRIPT_KEY = 'group_director_script';
 async function getScriptForChar(charName, extraContext) {
     const script = directorScripts[charName];
     if (!script) return '';
+    // On swipe/regenerate, restore the counter to what it was when this
+    // character's script was first rendered this round. On first render,
+    // snapshot the current counter for future restores.
+    const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+    if (isReroll && scriptCounterSnapshots.has(charName)) {
+        roundCounterSet(scriptCounterSnapshots.get(charName));
+    } else if (!isReroll) {
+        scriptCounterSnapshots.set(charName, roundCounterGet());
+    }
     const wrapper = settings.llmScriptWrapper || '{{script}}';
     const placeholder = '\x00SCRIPT\x00';
     const guarded = wrapper.split('{{script}}').join(placeholder);
@@ -736,6 +746,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     wiState.text = '';
     wiState.entries = [];
     roundCounterReset();
+    scriptCounterSnapshots.clear();
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
