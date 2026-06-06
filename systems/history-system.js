@@ -18,13 +18,13 @@ export function createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveCha
         await saveChatConditional();
     }
 
-    function pruneDirectorHistory(newChatLength) {
+    async function pruneDirectorHistory(newChatLength) {
         const history = getDirectorHistory();
         if (!history.length) return;
         const pruned = history.filter(e => (e._chatLength || 0) <= newChatLength);
         if (pruned.length < history.length) {
             cm()[EXT_KEY].directorHistory = pruned;
-            saveChatConditional();
+            await saveChatConditional();
             log(`Pruned ${history.length - pruned.length} stale director history entries (chatLength=${newChatLength})`);
         }
     }

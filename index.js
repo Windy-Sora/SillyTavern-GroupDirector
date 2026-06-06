@@ -746,7 +746,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // When messages are deleted, the chat timeline has rolled back.
 // All in-memory runtime state based on the old timeline is now invalid.
 // Clear it BEFORE pruning history so no stale pointers linger.
-eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
+eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     roundScores = {};
     roundSpeakerCount = 0;
     roundTriggeredAvatars.clear();
@@ -765,7 +765,7 @@ eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
     directorScripts = {};
     wiState.text = '';
     wiState.entries = [];
-    pruneDirectorHistory(newChatLength);
+    await pruneDirectorHistory(newChatLength);
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
