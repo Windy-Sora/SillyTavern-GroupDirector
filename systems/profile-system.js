@@ -408,7 +408,7 @@ function buildProfileLoaderPanel() {
         html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '存档中的档案' : 'Profiles in Save'} (${existingList.length}):</div>`;
         for (const item of existingList) {
             html += `<div class="gd-loader-row" data-avatar="${esc(item.avatar)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
-                <input type="checkbox" class="gd-loader-check" style="flex-shrink:0;">
+                <input type="checkbox" class="gd-loader-check" checked style="flex-shrink:0;">
                 <span style="flex:1;min-width:0;"><b>${esc(item.name)}</b></span>
                 <span style="color:${item.stateColor};flex-shrink:0;">${esc(item.stateLabel)}</span>
                 ${item.isMismatch ? `<span style="color:#ff9800;flex-shrink:0;" title="${isZh ? '角色卡已修改' : 'Character card changed'}">&#9888;</span>` : ''}
