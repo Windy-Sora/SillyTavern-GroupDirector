@@ -252,6 +252,7 @@ let takeoverFailed = false;          // set when manual generation fails mid-rou
 let takeoverCompleted = new Set();    // avatars already generated (for resume after failure)
 let takeoverSwipeCount = 0;          // auto-swipe counter per character (cap at 5)
 let directorScripts = {};           // { characterName: scriptText } from LLM
+let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
@@ -623,7 +624,6 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 };
 
 // ─── Event Listeners ─────────────────────────────────────────────────
-let roundGenerateType = 'normal'; // captured from GROUP_WRAPPER_STARTED
 
 eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Always capture the generation type, even for nested wrappers.
@@ -858,10 +858,12 @@ async function initRoundWithLLM() {
     const group = getCurrentGroup();
     if (!group) return;
 
+    const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
+    const maxRetries = 3;
+
     try {
         const llmDepth = Math.min(settings.llmContextDepth, chat.length);
         const recentMessages = chat.slice(-llmDepth);
-        const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
 
         const runtimeContext = {
             recentMessages,
@@ -912,7 +914,6 @@ async function initRoundWithLLM() {
         const ctx = getContext();
         let response;
         let attempts = 0;
-        const maxRetries = 3;
         while (attempts < maxRetries) {
             attempts++;
             try {
