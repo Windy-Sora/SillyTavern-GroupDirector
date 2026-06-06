@@ -402,12 +402,13 @@ function buildProfileLoaderPanel() {
 
     let html = `<div id="gd-profile-loader" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:10px;margin-bottom:10px;">`;
     html += `<strong>${isZh ? '加载存档档案' : 'Load Profiles from Save'}</strong>`;
-    html += `<small style="display:block;margin:4px 0;color:var(--grey70a);">${isZh ? '为每个角色选择保留现有档案或重新生成。新角色将自动生成。' : 'Choose keep or regenerate for each character. New characters will be auto-generated.'}</small>`;
+    html += `<small style="display:block;margin:4px 0;color:var(--grey70a);">${isZh ? '勾选要处理的角色，选择保留或重新生成。新角色默认勾选。' : 'Check characters to process, choose keep or regenerate. New characters checked by default.'}</small>`;
 
     if (existingList.length > 0) {
         html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '存档中的档案' : 'Profiles in Save'} (${existingList.length}):</div>`;
         for (const item of existingList) {
             html += `<div class="gd-loader-row" data-avatar="${esc(item.avatar)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+                <input type="checkbox" class="gd-loader-check" style="flex-shrink:0;">
                 <span style="flex:1;min-width:0;"><b>${esc(item.name)}</b></span>
                 <span style="color:${item.stateColor};flex-shrink:0;">${esc(item.stateLabel)}</span>
                 ${item.isMismatch ? `<span style="color:#ff9800;flex-shrink:0;" title="${isZh ? '角色卡已修改' : 'Character card changed'}">&#9888;</span>` : ''}
@@ -420,9 +421,10 @@ function buildProfileLoaderPanel() {
     }
 
     if (newList.length > 0) {
-        html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '新角色（将自动生成）' : 'New Characters (auto-generated)'} (${newList.length}):</div>`;
+        html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '新角色' : 'New Characters'} (${newList.length}):</div>`;
         for (const item of newList) {
             html += `<div class="gd-loader-row gd-loader-new" data-avatar="${esc(item.avatar)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+                <input type="checkbox" class="gd-loader-check" checked style="flex-shrink:0;">
                 <span style="flex:1;min-width:0;">${esc(item.name)}</span>
                 <span style="color:#999;flex-shrink:0;">${isZh ? '无档案' : 'No profile'}</span>
             </div>`;
@@ -445,12 +447,10 @@ function buildProfileLoaderPanel() {
         const toRegen = [];
         $('.gd-loader-row').each(function () {
             const $row = $(this);
+            if (!$row.find('.gd-loader-check').prop('checked')) return;
             const avatar = $row.data('avatar');
-            if ($row.hasClass('gd-loader-new')) {
+            if ($row.hasClass('gd-loader-new') || $row.find('.gd-loader-action').val() === 'regen') {
                 toRegen.push(avatar);
-            } else {
-                const action = $row.find('.gd-loader-action').val();
-                if (action === 'regen') toRegen.push(avatar);
             }
         });
         if (toRegen.length > 0) {
@@ -463,7 +463,6 @@ function buildProfileLoaderPanel() {
         } else {
             $('#gd-profile-loader').remove();
             refreshProfileManagementUI();
-            toastr.info(isZh ? '全部保留，档案未变更' : 'All kept, no changes made');
             btn.prop('disabled', false);
         }
     });
