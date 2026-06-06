@@ -402,7 +402,7 @@ function buildProfileLoaderPanel() {
 
     let html = `<div id="gd-profile-loader" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:10px;margin-bottom:10px;">`;
     html += `<strong>${isZh ? '加载存档档案' : 'Load Profiles from Save'}</strong>`;
-    html += `<small style="display:block;margin:4px 0;color:var(--grey70a);">${isZh ? '选择哪些档案保留、哪些重新生成、哪些新角色加入。' : 'Choose which profiles to keep, regenerate, or add for new characters.'}</small>`;
+    html += `<small style="display:block;margin:4px 0;color:var(--grey70a);">${isZh ? '勾选需要重新生成的档案，未勾选的保持不变。' : 'Check profiles to regenerate, unchecked ones are left unchanged.'}</small>`;
 
     if (existingList.length > 0) {
         html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '存档中的档案' : 'Profiles in Save'} (${existingList.length}):</div>`;
@@ -412,10 +412,6 @@ function buildProfileLoaderPanel() {
                 <span style="flex:1;min-width:0;"><b>${esc(item.name)}</b></span>
                 <span style="color:${item.stateColor};flex-shrink:0;">${esc(item.stateLabel)}</span>
                 ${item.isMismatch ? `<span style="color:#ff9800;flex-shrink:0;" title="${isZh ? '角色卡已修改' : 'Character card changed'}">&#9888;</span>` : ''}
-                <select class="gd-loader-action text_pole" style="width:auto;flex-shrink:0;font-size:0.85em;">
-                    <option value="keep" selected>${isZh ? '保留' : 'Keep'}</option>
-                    <option value="regen">${isZh ? '重新生成' : 'Regenerate'}</option>
-                </select>
             </div>`;
         }
     }
@@ -432,7 +428,7 @@ function buildProfileLoaderPanel() {
     }
 
     html += `<div style="margin-top:8px;display:flex;gap:6px;">
-        <button class="gd-loader-btn-apply" style="flex:1;">${isZh ? '应用选择（保留勾选的，重新生成标记的）' : 'Apply (keep checked, regenerate marked)'}</button>
+        <button class="gd-loader-btn-apply" style="flex:1;">${isZh ? '应用选择（重新生成勾选的角色）' : 'Apply (regenerate checked characters)'}</button>
         <button class="gd-loader-btn-all" style="flex:1;">${isZh ? '全部重新生成' : 'Regenerate All'}</button>
     </div></div>`;
 
@@ -450,11 +446,7 @@ function buildProfileLoaderPanel() {
             const avatar = $row.data('avatar');
             const checked = $row.find('.gd-loader-check').prop('checked');
             if (!checked) return;
-            const isNew = $row.hasClass('gd-loader-new');
-            const action = $row.find('.gd-loader-action').val();
-            if (isNew || action === 'regen') {
-                toRegen.push(avatar);
-            }
+            toRegen.push(avatar);
         });
         if (toRegen.length > 0) {
             toastr.info(isZh ? `后台生成 ${toRegen.length} 个档案...` : `Generating ${toRegen.length} profile(s) in background...`);
