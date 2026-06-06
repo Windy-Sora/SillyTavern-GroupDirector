@@ -245,6 +245,7 @@ let llmPickedSet = null;            // Set<avatar> for O(1) membership
 let llmSpokenSet = new Set();
 let llmCursor = 0;
 let roundInitialized = false;
+let initPromise = null;              // guards concurrent interceptor calls
 let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
@@ -499,18 +500,23 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
     const avatar = char.avatar;
 
-    // First speaker of the round: initialize state (run rules or call LLM)
+    // First speaker of the round: initialize state (run rules or call LLM).
+    // Use an in-flight Promise so concurrent interceptor calls on subsequent
+    // characters all await the same init instead of racing past a null llmPickedSet.
     if (!roundInitialized) {
         roundInitialized = true;
         if (settings.mode === MODE_LLM) {
-            await initRoundWithLLM();
-            // If LLM failed and returned nothing, fall back transparently — allow all
+            initPromise = initRoundWithLLM();
+            await initPromise;
+            initPromise = null;
             if (!llmPickedAvatars || llmPickedAvatars.length === 0) {
                 log('LLM produced no decision; falling back to transparent (allow all)');
             }
         } else {
             initFormulaRound();
         }
+    } else if (initPromise) {
+        await initPromise;
     }
 
     // ─── Mode: LLM ──────────────────────────────────────────────────
@@ -714,6 +720,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     llmSpokenSet = new Set();
     llmCursor = 0;
     roundInitialized = false;
+    initPromise = null;
     takeoverPending = false;
     takeoverGenCount = 0;
     takeoverFailed = false;
@@ -749,6 +756,7 @@ eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
     llmSpokenSet = new Set();
     llmCursor = 0;
     roundInitialized = false;
+    initPromise = null;
     takeoverPending = false;
     takeoverGenCount = 0;
     takeoverFailed = false;

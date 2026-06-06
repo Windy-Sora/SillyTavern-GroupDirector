@@ -2,6 +2,20 @@ export function createProfileSystem(deps) {
     const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
     const cm = () => getChatMetadata();
 
+    // Escape untrusted strings before embedding in HTML strings.
+    // Character names and profile fields can contain user content from
+    // shared character cards — must be sanitized before innerHTML.
+    function esc(s) {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+
 // ─── Profile System: Hash & Data Layer ─────────────────────────────────
 function computeProfileSchemaHash() {
     const schema = settings.profileJsonSchema || getDefaultProfileSchema();
@@ -393,10 +407,10 @@ function buildProfileLoaderPanel() {
     if (existingList.length > 0) {
         html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '存档中的档案' : 'Profiles in Save'} (${existingList.length}):</div>`;
         for (const item of existingList) {
-            html += `<div class="gd-loader-row" data-avatar="${item.avatar}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+            html += `<div class="gd-loader-row" data-avatar="${esc(item.avatar)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
                 <input type="checkbox" class="gd-loader-check" checked style="flex-shrink:0;">
-                <span style="flex:1;min-width:0;"><b>${item.name}</b></span>
-                <span style="color:${item.stateColor};flex-shrink:0;">${item.stateLabel}</span>
+                <span style="flex:1;min-width:0;"><b>${esc(item.name)}</b></span>
+                <span style="color:${item.stateColor};flex-shrink:0;">${esc(item.stateLabel)}</span>
                 ${item.isMismatch ? `<span style="color:#ff9800;flex-shrink:0;" title="${isZh ? '角色卡已修改' : 'Character card changed'}">&#9888;</span>` : ''}
                 <select class="gd-loader-action text_pole" style="width:auto;flex-shrink:0;font-size:0.85em;">
                     <option value="keep" selected>${isZh ? '保留' : 'Keep'}</option>
@@ -409,9 +423,9 @@ function buildProfileLoaderPanel() {
     if (newList.length > 0) {
         html += `<div style="margin-top:6px;font-weight:bold;font-size:0.9em;">${isZh ? '新角色' : 'New Characters'} (${newList.length}):</div>`;
         for (const item of newList) {
-            html += `<div class="gd-loader-row gd-loader-new" data-avatar="${item.avatar}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+            html += `<div class="gd-loader-row gd-loader-new" data-avatar="${esc(item.avatar)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
                 <input type="checkbox" class="gd-loader-check" checked style="flex-shrink:0;">
-                <span style="flex:1;min-width:0;">${item.name}</span>
+                <span style="flex:1;min-width:0;">${esc(item.name)}</span>
                 <span style="color:#999;flex-shrink:0;">${isZh ? '无档案' : 'No profile'}</span>
             </div>`;
         }
@@ -495,9 +509,9 @@ function detectCharacterChanges() {
         for (const avatar of newChars) {
             const char = getCharacters().find(c => c.avatar === avatar);
             const name = char?.name || avatar;
-            html += `<div class="gd-change-row" data-avatar="${avatar}" data-action="add" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
+            html += `<div class="gd-change-row" data-avatar="${esc(avatar)}" data-action="add" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
                 <input type="checkbox" class="gd-change-check" checked>
-                <span style="flex:1;">${name}</span>
+                <span style="flex:1;">${esc(name)}</span>
                 <span style="color:#999;font-size:0.8em;">${isZh ? '无档案' : 'No profile'}</span>
             </div>`;
         }
@@ -508,9 +522,9 @@ function detectCharacterChanges() {
         for (const avatar of removedChars) {
             const prof = profiles[avatar];
             const name = prof?.name || avatar;
-            html += `<div class="gd-change-row" data-avatar="${avatar}" data-action="remove" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
+            html += `<div class="gd-change-row" data-avatar="${esc(avatar)}" data-action="remove" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85em;">
                 <input type="checkbox" class="gd-change-check" checked>
-                <span style="flex:1;">${name}</span>
+                <span style="flex:1;">${esc(name)}</span>
                 <span style="color:#999;font-size:0.8em;">${isZh ? '档案仍在' : 'Profile exists'}</span>
             </div>`;
         }
@@ -594,29 +608,29 @@ function refreshProfileManagementUI() {
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
 
         const card = $(`
-            <div class="gd-profile-card" data-avatar="${avatar}">
+            <div class="gd-profile-card" data-avatar="${esc(avatar)}">
                 <div class="gd-profile-card-header">
                     <div class="gd-profile-card-info">
-                        <strong>${name}</strong>
+                        <strong>${esc(name)}</strong>
                         <div class="gd-profile-card-meta">
-                            <span class="gd-profile-state ${stateClass}">${stateLabel}</span>
+                            <span class="gd-profile-state ${stateClass}">${esc(stateLabel)}</span>
                             ${!hashMatch ? `<span class="gd-profile-hash-warn" title="${isZh ? '角色定义已变更，档案可能过时' : 'Character definition changed, profile may be outdated'}">&#9888;</span>` : ''}
                             ${prof.manualEdited ? `<span class="gd-profile-edited-tag">${isZh ? '(已编辑)' : '(Edited)'}</span>` : ''}
                         </div>
                     </div>
                     <div class="gd-profile-card-actions">
-                        <button class="gd-profile-btn-edit" data-avatar="${avatar}">${isZh ? '编辑' : 'Edit'}</button>
-                        <button class="gd-profile-btn-regen" data-avatar="${avatar}">${isZh ? '重生成' : 'Regen'}</button>
-                        <button class="gd-profile-btn-delete" data-avatar="${avatar}">${isZh ? '删除' : 'Delete'}</button>
+                        <button class="gd-profile-btn-edit" data-avatar="${esc(avatar)}">${isZh ? '编辑' : 'Edit'}</button>
+                        <button class="gd-profile-btn-regen" data-avatar="${esc(avatar)}">${isZh ? '重生成' : 'Regen'}</button>
+                        <button class="gd-profile-btn-delete" data-avatar="${esc(avatar)}">${isZh ? '删除' : 'Delete'}</button>
                     </div>
                 </div>
                 <div class="gd-profile-card-edit" id="gd-profile-edit-${safeId}" style="display:none;">
-                    <label>Summary <textarea class="gd-profile-edit-field" data-field="summary" rows="2">${prof.profile.summary || ''}</textarea></label>
-                    <label>Tags <input class="gd-profile-edit-field" data-field="tags" value="${(prof.profile.tags || []).join(', ')}"></label>
-                    <label>Motivation <textarea class="gd-profile-edit-field" data-field="motivation" rows="2">${prof.profile.motivation || ''}</textarea></label>
-                    <label>Relationships <textarea class="gd-profile-edit-field" data-field="relationships" rows="2">${prof.profile.relationships || ''}</textarea></label>
-                    <button class="gd-profile-btn-save" data-avatar="${avatar}">${isZh ? '保存' : 'Save'}</button>
-                    <button class="gd-profile-btn-cancel" data-avatar="${avatar}">${isZh ? '取消' : 'Cancel'}</button>
+                    <label>Summary <textarea class="gd-profile-edit-field" data-field="summary" rows="2">${esc(prof.profile.summary || '')}</textarea></label>
+                    <label>Tags <input class="gd-profile-edit-field" data-field="tags" value="${esc((prof.profile.tags || []).join(', '))}"></label>
+                    <label>Motivation <textarea class="gd-profile-edit-field" data-field="motivation" rows="2">${esc(prof.profile.motivation || '')}</textarea></label>
+                    <label>Relationships <textarea class="gd-profile-edit-field" data-field="relationships" rows="2">${esc(prof.profile.relationships || '')}</textarea></label>
+                    <button class="gd-profile-btn-save" data-avatar="${esc(avatar)}">${isZh ? '保存' : 'Save'}</button>
+                    <button class="gd-profile-btn-cancel" data-avatar="${esc(avatar)}">${isZh ? '取消' : 'Cancel'}</button>
                 </div>
             </div>
         `);
