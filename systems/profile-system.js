@@ -441,7 +441,7 @@ function buildProfileLoaderPanel() {
     else $('#gd-profile-management-list').before(html);
 
     // Bind buttons
-    $('.gd-loader-btn-apply').off('click').on('click', function () {
+    $('#gd-profile-section').off('click', '.gd-loader-btn-apply').on('click', '.gd-loader-btn-apply', function () {
         const btn = $(this);
         btn.prop('disabled', true);
         const toRegen = [];
@@ -470,7 +470,7 @@ function buildProfileLoaderPanel() {
         }
     });
 
-    $('.gd-loader-btn-all').off('click').on('click', function () {
+    $('#gd-profile-section').off('click', '.gd-loader-btn-all').on('click', '.gd-loader-btn-all', function () {
         const btn = $(this);
         btn.prop('disabled', true);
         toastr.info(isZh ? `后台生成 ${members.length} 个角色档案...` : `Generating ${members.length} profiles in background...`);
