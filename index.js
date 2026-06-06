@@ -250,6 +250,7 @@ let takeoverPending = false;
 let takeoverGenCount = 0;
 let takeoverFailed = false;          // set when manual generation fails mid-round
 let takeoverCompleted = new Set();    // avatars already generated (for resume after failure)
+let takeoverSwipeCount = 0;          // auto-swipe counter per character (cap at 5)
 let directorScripts = {};           // { characterName: scriptText } from LLM
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 
@@ -519,9 +520,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             // don't consume the takeover count. Detected via roundGenerateType
             // which is now captured before the nested START guard.
             const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
-            if (!isReroll) {
+            if (isReroll) {
+                takeoverSwipeCount++;
+                if (takeoverSwipeCount > 5) {
+                    console.warn(`[GroupDirector] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting ${char.name} to prevent swipe loop`);
+                    abort(false);
+                    return;
+                }
+            } else {
                 takeoverGenCount--;
                 roundSpeakerCount++;
+                takeoverSwipeCount = 0; // new character, reset swipe counter
             }
             // Verify the character ST is about to generate matches the expected speaker
             const expectedAvatar = llmPickedAvatars?.[roundSpeakerCount - 1];
@@ -710,6 +719,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverGenCount = 0;
     takeoverFailed = false;
     takeoverCompleted = new Set();
+    takeoverSwipeCount = 0;
     directorScripts = {};
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
     wiState.text = '';
@@ -744,6 +754,7 @@ eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
     takeoverGenCount = 0;
     takeoverFailed = false;
     takeoverCompleted = new Set();
+    takeoverSwipeCount = 0;
     directorScripts = {};
     wiState.text = '';
     wiState.entries = [];
