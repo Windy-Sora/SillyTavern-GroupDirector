@@ -992,12 +992,13 @@ async function initRoundWithLLM() {
             characters.find(c => c.avatar === a)?.name).join(' → '),
             parsed.reason ? `(${parsed.reason})` : '');
     } catch (e) {
-        console.error('[GroupDirector] LLM call failed:', e);
+        const isAbort = e?.name === 'AbortError' || String(e?.message || '').includes('abort');
+        console.error(`[GroupDirector] Director LLM ${isAbort ? 'aborted by user' : 'call failed'}:`, e.message || e);
         // Fallback: reuse the last known director plan from history
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
-            console.warn('[GroupDirector] Director LLM failed — reusing last plan from history');
+            console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} — reusing last plan from history`);
             const avatars = [];
             for (const name of lastPlan.speakers) {
                 const c = matchCharacterByName(name, enabledMembers);
@@ -1019,8 +1020,8 @@ async function initRoundWithLLM() {
                 return;
             }
         }
-        // No history to reuse — transparent pass-through (all characters speak)
-        console.warn('[GroupDirector] Director LLM failed and no history — transparent pass-through');
+        // No history to reuse — transparent pass-through
+        console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} and no history — transparent pass-through`);
     }
 }
 
