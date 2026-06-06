@@ -603,7 +603,7 @@ function refreshProfileManagementUI() {
         const stateLabels = isZh ? { ready: '就绪', pending: '生成中', failed: '失败' } : { ready: 'Ready', pending: 'Generating', failed: 'Failed' };
         const stateLabel = stateLabels[prof.state] || prof.state;
         const stateClass = { ready: 'gd-profile-state-ready', pending: 'gd-profile-state-pending', failed: 'gd-profile-state-failed' }[prof.state] || '';
-        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+        const safeId = CSS.escape(avatar);
 
         const card = $(`
             <div class="gd-profile-card" data-avatar="${esc(avatar)}">
@@ -647,23 +647,21 @@ function bindProfileCardActions() {
     if (!$container.length) return;
 
     $container.on('click', '.gd-profile-btn-edit', function () {
-        const avatar = $(this).attr('data-avatar'); // use attr() not data() to avoid jQuery conversion
-        console.log('[GroupDirector] edit clicked, avatar:', avatar);
-        const safeId = String(avatar || '').replace(/[^a-zA-Z0-9]/g, '_');
-        const $target = $(`#gd-profile-edit-${safeId}`);
-        console.log('[GroupDirector] safeId:', safeId, 'found:', $target.length);
-        $target.toggle();
+        const avatar = $(this).attr('data-avatar');
+        // Use CSS.escape for safe DOM IDs — handles all Unicode, no collisions
+        const safeId = CSS.escape(avatar || '');
+        $(`#gd-profile-edit-${safeId}`).toggle();
     });
 
     $container.on('click', '.gd-profile-btn-cancel', function () {
-        const avatar = $(this).data('avatar');
-        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+        const avatar = $(this).attr('data-avatar');
+        const safeId = CSS.escape(avatar || '');
         $(`#gd-profile-edit-${safeId}`).hide();
     });
 
     $container.on('click', '.gd-profile-btn-save', async function () {
-        const avatar = $(this).data('avatar');
-        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
+        const avatar = $(this).attr('data-avatar');
+        const safeId = CSS.escape(avatar || '');
         const $edit = $(`#gd-profile-edit-${safeId}`);
         const profiles = getProfiles();
         const prof = profiles[avatar];
