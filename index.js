@@ -900,9 +900,27 @@ async function initRoundWithLLM() {
         }
 
         const ctx = getContext();
-        const response = await ctx.generateRaw({
-            prompt: filled,
-        });
+        let response;
+        let attempts = 0;
+        const maxRetries = 3;
+        while (attempts < maxRetries) {
+            attempts++;
+            try {
+                response = await ctx.generateRaw({ prompt: filled });
+                break; // success
+            } catch (err) {
+                const isAbort = err?.name === 'AbortError' || String(err?.message || '').includes('abort');
+                if (isAbort) throw err; // user abort — don't retry, fall through to history reuse
+                console.warn(`[GroupDirector] Director LLM attempt ${attempts}/${maxRetries} failed:`, err.message);
+                if (attempts < maxRetries) {
+                    toastr.warning(`Director 决策失败 (${attempts}/${maxRetries})，正在重试...`);
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
+        }
+        if (!response) {
+            throw new Error('Director LLM failed after ' + maxRetries + ' attempts');
+        }
 
         // Clear quiet prompt extension to prevent Director text leaking
         // into subsequent character generation prompts.
@@ -993,11 +1011,14 @@ async function initRoundWithLLM() {
             parsed.reason ? `(${parsed.reason})` : '');
     } catch (e) {
         const isAbort = e?.name === 'AbortError' || String(e?.message || '').includes('abort');
-        console.error(`[GroupDirector] Director LLM ${isAbort ? 'aborted by user' : 'call failed'}:`, e.message || e);
+        console.error(`[GroupDirector] Director LLM ${isAbort ? 'aborted' : 'failed'} after retries:`, e.message || e);
         // Fallback: reuse the last known director plan from history
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
+            toastr.warning(isAbort
+                ? '导演决策中断，正在复用上一轮决策...'
+                : `导演决策失败（已重试${maxRetries}次），正在复用上一轮决策...`);
             console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} — reusing last plan from history`);
             const avatars = [];
             for (const name of lastPlan.speakers) {
@@ -1020,8 +1041,15 @@ async function initRoundWithLLM() {
                 return;
             }
         }
-        // No history to reuse — transparent pass-through
-        console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} and no history — transparent pass-through`);
+        // No history — block the round instead of transparent pass-through
+        toastr.error(isAbort
+            ? '导演决策中断，且无历史记录可复用。请重新发送消息。'
+            : `导演决策失败（已重试${maxRetries}次），且无历史记录。请检查网络后重试。`);
+        console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} and no history — round blocked`);
+        // llmPickedSet stays null → interceptor passes through → but we want to block?
+        // Actually, null = transparent pass-through in the interceptor.
+        // Set to empty to block all characters (safer than letting chaos through).
+        llmPickedSet = new Set();
     }
 }
 
