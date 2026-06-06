@@ -413,8 +413,8 @@ function buildProfileLoaderPanel() {
                 <span style="color:${item.stateColor};flex-shrink:0;">${esc(item.stateLabel)}</span>
                 ${item.isMismatch ? `<span style="color:#ff9800;flex-shrink:0;" title="${isZh ? '角色卡已修改' : 'Character card changed'}">&#9888;</span>` : ''}
                 <select class="gd-loader-action text_pole" style="width:auto;flex-shrink:0;font-size:0.85em;">
+                    <option value="keep" selected>${isZh ? '保留' : 'Keep'}</option>
                     <option value="regen">${isZh ? '重新生成' : 'Regenerate'}</option>
-                    <option value="keep">${isZh ? '保留' : 'Keep'}</option>
                 </select>
             </div>`;
         }
@@ -450,11 +450,7 @@ function buildProfileLoaderPanel() {
             const avatar = $row.data('avatar');
             const checked = $row.find('.gd-loader-check').prop('checked');
             if (!checked) return;
-            const isNew = $row.hasClass('gd-loader-new');
-            const action = $row.find('.gd-loader-action').val();
-            if (isNew || action === 'regen') {
-                toRegen.push(avatar);
-            }
+            toRegen.push(avatar);
         });
         if (toRegen.length > 0) {
             toastr.info(isZh ? `后台生成 ${toRegen.length} 个档案...` : `Generating ${toRegen.length} profile(s) in background...`);
