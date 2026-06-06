@@ -52,6 +52,12 @@ export function parsePath(path) {
                 continue;
             }
 
+            if (inner.trim() === '') {
+                // Empty brackets — push a sentinel that never resolves,
+                // triggering fallback/default instead of silently succeeding
+                segments.push({ _empty: true });
+                continue;
+            }
             const n = parseInt(inner, 10);
             if (!isNaN(n)) {
                 // Negative index: wrap so resolvePath knows it's a relative index
