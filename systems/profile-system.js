@@ -647,9 +647,12 @@ function bindProfileCardActions() {
     if (!$container.length) return;
 
     $container.on('click', '.gd-profile-btn-edit', function () {
-        const avatar = $(this).data('avatar');
-        const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
-        $(`#gd-profile-edit-${safeId}`).toggle();
+        const avatar = $(this).attr('data-avatar'); // use attr() not data() to avoid jQuery conversion
+        console.log('[GroupDirector] edit clicked, avatar:', avatar);
+        const safeId = String(avatar || '').replace(/[^a-zA-Z0-9]/g, '_');
+        const $target = $(`#gd-profile-edit-${safeId}`);
+        console.log('[GroupDirector] safeId:', safeId, 'found:', $target.length);
+        $target.toggle();
     });
 
     $container.on('click', '.gd-profile-btn-cancel', function () {
