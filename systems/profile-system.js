@@ -125,11 +125,11 @@ function getDefaultProfileRenderTemplate() {
 function normalizeProfileFields(parsed) {
     if (!parsed || typeof parsed !== 'object') return { summary: '', tags: [], motivation: '', relationships: '' };
     return {
+        ...parsed,
         summary: parsed.summary || '',
         tags: Array.isArray(parsed.tags) ? parsed.tags : [],
         motivation: parsed.motivation || '',
         relationships: parsed.relationships || '',
-        ...parsed,
     };
 }
 
@@ -604,7 +604,7 @@ function refreshProfileManagementUI() {
         const hashMatch = char ? (hashChar(char.description, char.personality, char.scenario) === prof.hash) : true;
         const stateLabels = isZh ? { ready: '就绪', pending: '生成中', failed: '失败' } : { ready: 'Ready', pending: 'Generating', failed: 'Failed' };
         const stateLabel = stateLabels[prof.state] || prof.state;
-        const stateClass = { ready: 'profile-state-ready', pending: 'profile-state-pending', failed: 'profile-state-failed' }[prof.state] || '';
+        const stateClass = { ready: 'gd-profile-state-ready', pending: 'gd-profile-state-pending', failed: 'gd-profile-state-failed' }[prof.state] || '';
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
 
         const card = $(`
