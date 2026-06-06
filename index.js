@@ -249,6 +249,7 @@ let isGroupChat = false;
 let takeoverPending = false;
 let takeoverGenCount = 0;
 let takeoverFailed = false;          // set when manual generation fails mid-round
+let takeoverCompleted = new Set();    // avatars already generated (for resume after failure)
 let directorScripts = {};           // { characterName: scriptText } from LLM
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 
@@ -708,6 +709,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverPending = false;
     takeoverGenCount = 0;
     takeoverFailed = false;
+    takeoverCompleted = new Set();
     directorScripts = {};
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
     wiState.text = '';
@@ -741,6 +743,7 @@ eventSource.on(event_types.MESSAGE_DELETED, (newChatLength) => {
     takeoverPending = false;
     takeoverGenCount = 0;
     takeoverFailed = false;
+    takeoverCompleted = new Set();
     directorScripts = {};
     wiState.text = '';
     wiState.entries = [];
@@ -762,6 +765,12 @@ async function runManualOrderedGeneration() {
     try {
         for (let i = 0; i < orderedList.length; i++) {
             const avatar = orderedList[i];
+            // Resume after failure: skip characters already generated
+            if (takeoverCompleted.has(avatar)) {
+                takeoverGenCount--;
+                console.warn(`[GroupDirector] SKIP already completed: ${characters.find(c => c.avatar === avatar)?.name}, takeoverGenCount→${takeoverGenCount}`);
+                continue;
+            }
             const chId = characters.findIndex(c => c.avatar === avatar);
             if (chId === -1) {
                 takeoverGenCount--;
@@ -807,6 +816,7 @@ async function runManualOrderedGeneration() {
                     }
                 }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
+                takeoverCompleted.add(avatar);
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
                 takeoverGenCount = 0;
