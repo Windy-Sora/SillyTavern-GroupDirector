@@ -627,19 +627,21 @@ function refreshProfileManagementUI() {
 }
 
 function bindProfileCardActions() {
-    $('.gd-profile-btn-edit').off('click').on('click', function () {
+    const $container = $('#gd-profile-management-list');
+    // Event delegation on the container — survives DOM rebuilds
+    $container.off('click', '.gd-profile-btn-edit').on('click', '.gd-profile-btn-edit', function () {
         const avatar = $(this).data('avatar');
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
         $(`#gd-profile-edit-${safeId}`).toggle();
     });
 
-    $('.gd-profile-btn-cancel').off('click').on('click', function () {
+    $container.off('click', '.gd-profile-btn-cancel').on('click', '.gd-profile-btn-cancel', function () {
         const avatar = $(this).data('avatar');
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
         $(`#gd-profile-edit-${safeId}`).hide();
     });
 
-    $('.gd-profile-btn-save').off('click').on('click', async function () {
+    $container.off('click', '.gd-profile-btn-save').on('click', '.gd-profile-btn-save', async function () {
         const avatar = $(this).data('avatar');
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
         const $edit = $(`#gd-profile-edit-${safeId}`);
@@ -660,7 +662,7 @@ function bindProfileCardActions() {
         toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
     });
 
-    $('.gd-profile-btn-regen').off('click').on('click', async function () {
+    $container.off('click', '.gd-profile-btn-regen').on('click', '.gd-profile-btn-regen', async function () {
         const avatar = $(this).data('avatar');
         const btn = $(this);
         btn.prop('disabled', true);
@@ -671,7 +673,7 @@ function bindProfileCardActions() {
         }
     });
 
-    $('.gd-profile-btn-delete').off('click').on('click', async function () {
+    $container.off('click', '.gd-profile-btn-delete').on('click', '.gd-profile-btn-delete', async function () {
         const avatar = $(this).data('avatar');
         const profiles = getProfiles();
         const prof = profiles[avatar];
