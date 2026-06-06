@@ -550,7 +550,11 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         if (!llmPickedSet) {
             return;
         }
-        if (!llmPickedSet.has(avatar)) {
+        // Swipe/regenerate: ST controls which message is re-rolled. Don't
+        // filter by director picks — the swiped character may differ from
+        // the original plan (e.g., user swipes a message from a prior round).
+        const isSwipeOrRegen = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+        if (!isSwipeOrRegen && !llmPickedSet.has(avatar)) {
             log(`BLOCKED ${char.name} (not in LLM picks)`);
             abort(false);
             return;
