@@ -6,8 +6,12 @@ export function register(settings, characters, buildCharacterProfilesText) {
         placeholder: '{{characters}}',
         render: (ctx) => {
             const members = ctx.enabledMembers || [];
-            // Reuse cached result from character_profiles provider if available
-            const profilesActive = settings.profileEnabled && !!(ctx._profilesText || buildCharacterProfilesText());
+            // Build profiles text once and cache — this provider runs before
+            // character_profiles in registry order, so cache for the next one
+            if (ctx._profilesText === undefined) {
+                ctx._profilesText = buildCharacterProfilesText();
+            }
+            const profilesActive = settings.profileEnabled && !!ctx._profilesText;
             return {
                 content: members.map(a => {
                     const c = characters.find(c => c.avatar === a);

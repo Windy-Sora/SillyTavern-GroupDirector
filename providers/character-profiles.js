@@ -5,8 +5,10 @@ export function register(buildCharacterProfilesText) {
         id: 'character_profiles',
         placeholder: '{{character_profiles}}',
         render: (ctx) => {
-            // Cache so characters provider can reuse without a second call
-            ctx._profilesText = buildCharacterProfilesText();
+            // Reuse cached value set by characters provider (order: characters → character_profiles)
+            if (ctx._profilesText === undefined) {
+                ctx._profilesText = buildCharacterProfilesText();
+            }
             return { content: ctx._profilesText };
         },
     });
