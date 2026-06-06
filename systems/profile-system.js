@@ -462,7 +462,7 @@ function buildProfileLoaderPanel() {
             }).finally(() => btn.prop('disabled', false));
         } else {
             $('#gd-profile-loader').remove();
-            toastr.info(isZh ? '未选择任何操作' : 'No actions selected');
+            toastr.info(isZh ? '全部保留，档案未变更' : 'All kept, no changes made');
             btn.prop('disabled', false);
         }
     });
