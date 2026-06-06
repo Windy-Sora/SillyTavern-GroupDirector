@@ -993,6 +993,34 @@ async function initRoundWithLLM() {
             parsed.reason ? `(${parsed.reason})` : '');
     } catch (e) {
         console.error('[GroupDirector] LLM call failed:', e);
+        // Fallback: reuse the last known director plan from history
+        const history = getDirectorHistory();
+        const lastPlan = history[history.length - 1];
+        if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
+            console.warn('[GroupDirector] Director LLM failed — reusing last plan from history');
+            const avatars = [];
+            for (const name of lastPlan.speakers) {
+                const c = matchCharacterByName(name, enabledMembers);
+                if (c) avatars.push(c.avatar);
+            }
+            if (avatars.length > 0) {
+                llmPickedAvatars = avatars.slice(0, settings.llmMaxSpeakers);
+                llmPickedSet = new Set(llmPickedAvatars);
+                if (lastPlan.scripts && typeof lastPlan.scripts === 'object') {
+                    directorScripts = {};
+                    for (const [name, script] of Object.entries(lastPlan.scripts)) {
+                        const c = matchCharacterByName(name, enabledMembers);
+                        if (c) directorScripts[c.name] = script;
+                    }
+                }
+                if (settings.llmRespectOrder) {
+                    takeoverPending = true;
+                }
+                return;
+            }
+        }
+        // No history to reuse — transparent pass-through (all characters speak)
+        console.warn('[GroupDirector] Director LLM failed and no history — transparent pass-through');
     }
 }
 
