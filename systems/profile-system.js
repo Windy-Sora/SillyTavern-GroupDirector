@@ -640,22 +640,27 @@ function refreshProfileManagementUI() {
     bindProfileCardActions();
 }
 
+let _profileActionsBound = false;
+
 function bindProfileCardActions() {
+    if (_profileActionsBound) return; // bind once, delegation survives DOM rebuilds
+    _profileActionsBound = true;
     const $container = $('#gd-profile-management-list');
-    // Event delegation on the container — survives DOM rebuilds
-    $container.off('click', '.gd-profile-btn-edit').on('click', '.gd-profile-btn-edit', function () {
+    if (!$container.length) return;
+
+    $container.on('click', '.gd-profile-btn-edit', function () {
         const avatar = $(this).data('avatar');
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
         $(`#gd-profile-edit-${safeId}`).toggle();
     });
 
-    $container.off('click', '.gd-profile-btn-cancel').on('click', '.gd-profile-btn-cancel', function () {
+    $container.on('click', '.gd-profile-btn-cancel', function () {
         const avatar = $(this).data('avatar');
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
         $(`#gd-profile-edit-${safeId}`).hide();
     });
 
-    $container.off('click', '.gd-profile-btn-save').on('click', '.gd-profile-btn-save', async function () {
+    $container.on('click', '.gd-profile-btn-save', async function () {
         const avatar = $(this).data('avatar');
         const safeId = String(avatar).replace(/[^a-zA-Z0-9]/g, '_');
         const $edit = $(`#gd-profile-edit-${safeId}`);
@@ -676,7 +681,7 @@ function bindProfileCardActions() {
         toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
     });
 
-    $container.off('click', '.gd-profile-btn-regen').on('click', '.gd-profile-btn-regen', async function () {
+    $container.on('click', '.gd-profile-btn-regen', async function () {
         const avatar = $(this).data('avatar');
         const btn = $(this);
         btn.prop('disabled', true);
@@ -687,7 +692,7 @@ function bindProfileCardActions() {
         }
     });
 
-    $container.off('click', '.gd-profile-btn-delete').on('click', '.gd-profile-btn-delete', async function () {
+    $container.on('click', '.gd-profile-btn-delete', async function () {
         const avatar = $(this).data('avatar');
         const profiles = getProfiles();
         const prof = profiles[avatar];
