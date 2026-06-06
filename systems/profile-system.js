@@ -462,6 +462,7 @@ function buildProfileLoaderPanel() {
             }).finally(() => btn.prop('disabled', false));
         } else {
             $('#gd-profile-loader').remove();
+            refreshProfileManagementUI();
             toastr.info(isZh ? '全部保留，档案未变更' : 'All kept, no changes made');
             btn.prop('disabled', false);
         }
