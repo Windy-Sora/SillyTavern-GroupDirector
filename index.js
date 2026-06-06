@@ -660,6 +660,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         roundInitialized = false; // allow fresh director eval on retry
         roundGenerateType = data?.type || 'normal';
         console.warn('[GroupDirector] Retry after takeover failure — reusing existing director plan');
+            roundCounterReset();
         return;
     }
 
@@ -698,10 +699,12 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         }
         if (!llmPickedSet) {
             // No history to reconstruct — transparent pass-through: let ST handle
+            roundCounterReset();
             // the regenerate/swipe without director filtering. Must NOT fall through
             // to normal init, which would trigger a new LLM call.
             roundInitialized = true;
             log('Regenerate/swipe — no persisted plan, transparent pass-through');
+            roundCounterReset();
             return;
         }
         // Reuse existing plan (reconstructed or in-memory)
@@ -712,6 +715,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             takeoverPending = false;
             takeoverGenCount = 0;
             log('Regenerate/swipe — reusing director plan, no takeover');
+            roundCounterReset();
             return;
         }
     }
@@ -1069,12 +1073,14 @@ async function initRoundWithLLM() {
             }
         }
         // No history — block the round instead of transparent pass-through
+            roundCounterReset();
         toastr.error(isAbort
             ? '导演决策中断，且无历史记录可复用。请重新发送消息。'
             : `导演决策失败（已重试${maxRetries}次），且无历史记录。请检查网络后重试。`);
         console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} and no history — round blocked`);
         // llmPickedSet stays null → interceptor passes through → but we want to block?
         // Actually, null = transparent pass-through in the interceptor.
+            roundCounterReset();
         // Set to empty to block all characters (safer than letting chaos through).
         llmPickedSet = new Set();
     }
