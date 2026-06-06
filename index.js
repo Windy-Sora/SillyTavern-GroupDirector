@@ -808,11 +808,13 @@ async function runManualOrderedGeneration() {
             }
             console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
 
-            // Inject per-character director script with order context
+            // Inject per-character director script with order context.
+            // Use original plan position so retries/skips don't shift the index.
+            const origPos = llmPickedAvatars.indexOf(avatar);
             const charScript = await getScriptForChar(characters[chId].name, {
-                speakerIndex: i + 1,
-                speakerIndex0: i,
-                speakerCount: orderedList.length,
+                speakerIndex: origPos + 1,
+                speakerIndex0: origPos,
+                speakerCount: llmPickedAvatars.length,
             });
             if (charScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
