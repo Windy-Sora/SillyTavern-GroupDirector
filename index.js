@@ -264,10 +264,10 @@ async function getScriptForChar(charName, extraContext) {
     if (!script) return '';
     const wrapper = settings.llmScriptWrapper || '{{script}}';
     const placeholder = '\x00SCRIPT\x00';
-    const guarded = wrapper.replace('{{script}}', placeholder);
+    const guarded = wrapper.split('{{script}}').join(placeholder);
     const ctx = { character: charName, ...extraContext };
     const rendered = await renderPrompt(guarded, ctx);
-    return rendered.replace(placeholder, script);
+    return rendered.split(placeholder).join(script);
 }
 
 function saveSettings() {
@@ -363,7 +363,7 @@ function scoreCharacter(chId, recentMessages) {
     // 1. Mention score: character name appears in recent messages
     const recentText = recentMessages.map(m => m.mes || '').join(' ');
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const mentionRegex = new RegExp(escapedName, 'gi');
+    const mentionRegex = new RegExp('\\b' + escapedName + '\\b', 'gi');
     const mentionCount = (recentText.match(mentionRegex) || []).length;
     score += mentionCount * weights.mention;
 
