@@ -641,23 +641,24 @@ function bindProfileCardActions() {
     const $container = $('#gd-profile-management-list');
     if (!$container.length) return;
 
-    $container.off('click', '.gd-profile-btn-edit').on('click', '.gd-profile-btn-edit', function () {
-        const avatar = $(this).attr('data-avatar');
-        // Use CSS.escape for safe DOM IDs — handles all Unicode, no collisions
-        const safeId = CSS.escape(avatar || '');
-        $(`#gd-profile-edit-${safeId}`).toggle();
+    $container.off('click', '.gd-profile-btn-edit').on('click', '.gd-profile-btn-edit', function (e) {
+        e.stopPropagation();
+        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
+        const el = document.getElementById('gd-profile-edit-' + CSS.escape(avatar || ''));
+        if (el) { el.style.display = el.style.display === 'none' ? '' : 'none'; }
     });
 
-    $container.off('click', '.gd-profile-btn-cancel').on('click', '.gd-profile-btn-cancel', function () {
-        const avatar = $(this).attr('data-avatar');
-        const safeId = CSS.escape(avatar || '');
-        $(`#gd-profile-edit-${safeId}`).hide();
+    $container.off('click', '.gd-profile-btn-cancel').on('click', '.gd-profile-btn-cancel', function (e) {
+        e.stopPropagation();
+        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
+        const el = document.getElementById('gd-profile-edit-' + CSS.escape(avatar || ''));
+        if (el) el.style.display = 'none';
     });
 
-    $container.off('click', '.gd-profile-btn-save').on('click', '.gd-profile-btn-save', async function () {
-        const avatar = $(this).attr('data-avatar');
-        const safeId = CSS.escape(avatar || '');
-        const $edit = $(`#gd-profile-edit-${safeId}`);
+    $container.off('click', '.gd-profile-btn-save').on('click', '.gd-profile-btn-save', async function (e) {
+        e.stopPropagation();
+        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
+        const $edit = $(document.getElementById('gd-profile-edit-' + CSS.escape(avatar || '')));
         const profiles = getProfiles();
         const prof = profiles[avatar];
         if (!prof) return;
