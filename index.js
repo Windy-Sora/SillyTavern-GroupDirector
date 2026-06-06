@@ -10,6 +10,7 @@ import { registerProvider, getProviders, getAvailablePlaceholders } from './prov
 import { renderPrompt } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
+import { counterReset } from './utils/counter.js';
 import { register as registerRecentMessages } from './providers/recent-messages.js';
 import { register as registerCharacters } from './providers/characters.js';
 import { register as registerCharacterProfiles } from './providers/character-profiles.js';
@@ -734,6 +735,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
     wiState.text = '';
     wiState.entries = [];
+    counterReset();
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 

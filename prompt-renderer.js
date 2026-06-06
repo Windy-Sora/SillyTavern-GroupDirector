@@ -1,5 +1,6 @@
 import { providers } from './provider-registry.js';
 import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
+import { counterNext } from './utils/counter.js';
 
 /**
  * Render a template by executing all registered providers once,
@@ -10,6 +11,10 @@ import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
  *
  * Providers are executed exactly once per renderPrompt() call,
  * regardless of how many placeholders reference them.
+ *
+ * Special placeholder: {{counter}} increments per occurrence across
+ * all renderPrompt() calls. Each occurrence gets a unique monotonic
+ * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context) {
     // ── Phase 1: execute every provider, cache normalized results ──
@@ -31,6 +36,7 @@ export async function renderPrompt(template, context) {
 
     // ── Phase 2: simple placeholders {{name}} ──
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
+        if (id === 'counter') return String(counterNext());
         return cache[id]?.content ?? '';
     });
 
