@@ -532,10 +532,9 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
                 roundSpeakerCount++;
                 takeoverSwipeCount = 0; // new character, reset swipe counter
             }
-            // Verify the character ST is about to generate matches the expected speaker
-            const expectedAvatar = llmPickedAvatars?.[roundSpeakerCount - 1];
-            if (expectedAvatar && avatar !== expectedAvatar) {
-                console.error(`[GroupDirector] TAKEOVER MISMATCH: ST wants ${char.name} (${avatar}) but director expects speaker #${roundSpeakerCount} (${characters.find(c => c.avatar === expectedAvatar)?.name || expectedAvatar}). Aborting!`);
+            // Verify this character is actually in the director's plan
+            if (llmPickedAvatars && !llmPickedAvatars.includes(avatar)) {
+                console.error(`[GroupDirector] TAKEOVER MISMATCH: ${char.name} (${avatar}) not in director plan — aborting!`);
                 abort(false);
                 return;
             }
