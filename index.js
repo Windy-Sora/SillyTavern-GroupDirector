@@ -531,7 +531,9 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             if (isReroll) {
                 takeoverSwipeCount++;
                 if (takeoverSwipeCount > 5) {
-                    console.warn(`[GroupDirector] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting ${char.name} to prevent swipe loop`);
+                    console.warn(`[GroupDirector] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting takeover for ${char.name}`);
+                    takeoverFailed = true;
+                    takeoverGenCount = 0;
                     abort(false);
                     return;
                 }
