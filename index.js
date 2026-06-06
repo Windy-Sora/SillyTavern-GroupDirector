@@ -362,7 +362,8 @@ function scoreCharacter(chId, recentMessages) {
 
     // 1. Mention score: character name appears in recent messages
     const recentText = recentMessages.map(m => m.mes || '').join(' ');
-    const mentionRegex = new RegExp(name, 'gi');
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mentionRegex = new RegExp(escapedName, 'gi');
     const mentionCount = (recentText.match(mentionRegex) || []).length;
     score += mentionCount * weights.mention;
 
