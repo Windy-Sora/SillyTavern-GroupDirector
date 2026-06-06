@@ -1246,30 +1246,30 @@ async function loadSettingsUI() {
     toggleCharDescLength(settings.llmCharDescMode);
 
     // Formula bindings
-    $c('topn').on('input', function () { settings.topN = parseInt($(this).val()) || 1; saveSettings(); });
-    $c('recent-count').on('input', function () { settings.recentMessageCount = parseInt($(this).val()) || 10; saveSettings(); });
-    $c('consecutive-penalty').on('input', function () { settings.consecutivePenalty = parseInt($(this).val()) || 15; saveSettings(); });
+    $c('topn').on('input', function () { settings.topN = Math.max(1, parseInt($(this).val()) || 1); saveSettings(); });
+    $c('recent-count').on('input', function () { settings.recentMessageCount = Math.max(1, parseInt($(this).val()) || 10); saveSettings(); });
+    $c('consecutive-penalty').on('input', function () { settings.consecutivePenalty = Math.max(0, parseInt($(this).val()) || 15); saveSettings(); });
     $c('trigger-enabled').on('input', function () { settings.triggerEnabled = !!$(this).prop('checked'); saveSettings(); });
-    $c('trigger-score').on('input', function () { settings.triggerScore = parseInt($(this).val()) || 40; saveSettings(); });
+    $c('trigger-score').on('input', function () { settings.triggerScore = Math.max(0, parseInt($(this).val()) || 40); saveSettings(); });
     $c('initiative-enabled').on('input', function () { settings.initiativeEnabled = !!$(this).prop('checked'); saveSettings(); });
-    $c('initiative-base').on('input', function () { settings.initiativeBaseScore = parseInt($(this).val()) || 5; saveSettings(); });
-    $c('mention-weight').on('input', function () { settings.scoreWeights.mention = parseInt($(this).val()) || 30; saveSettings(); });
-    $c('keyword-weight').on('input', function () { settings.scoreWeights.keyword = parseInt($(this).val()) || 15; saveSettings(); });
-    $c('recency-weight').on('input', function () { settings.scoreWeights.recency = parseInt($(this).val()) || 20; saveSettings(); });
-    $c('talkativeness-weight').on('input', function () { settings.scoreWeights.talkativeness = parseInt($(this).val()) || 10; saveSettings(); });
+    $c('initiative-base').on('input', function () { settings.initiativeBaseScore = Math.max(0, parseInt($(this).val()) || 5); saveSettings(); });
+    $c('mention-weight').on('input', function () { settings.scoreWeights.mention = Math.max(0, parseInt($(this).val()) || 30); saveSettings(); });
+    $c('keyword-weight').on('input', function () { settings.scoreWeights.keyword = Math.max(0, parseInt($(this).val()) || 15); saveSettings(); });
+    $c('recency-weight').on('input', function () { settings.scoreWeights.recency = Math.max(0, parseInt($(this).val()) || 20); saveSettings(); });
+    $c('talkativeness-weight').on('input', function () { settings.scoreWeights.talkativeness = Math.max(1, parseInt($(this).val()) || 10); saveSettings(); });
     $c('debug').on('input', function () { settings.debugLogging = !!$(this).prop('checked'); saveSettings(); });
 
     // LLM bindings
     $c('llm-prompt').on('input', function () { settings.llmPrompt = $(this).val(); saveSettings(); });
-    $c('llm-max-speakers').on('input', function () { settings.llmMaxSpeakers = parseInt($(this).val()) || 3; saveSettings(); });
-    $c('llm-context-depth').on('input', function () { settings.llmContextDepth = parseInt($(this).val()) || 10; saveSettings(); });
+    $c('llm-max-speakers').on('input', function () { settings.llmMaxSpeakers = Math.max(1, parseInt($(this).val()) || 3); saveSettings(); });
+    $c('llm-context-depth').on('input', function () { settings.llmContextDepth = Math.max(1, parseInt($(this).val()) || 10); saveSettings(); });
     $c('llm-respect-order').on('input', function () { settings.llmRespectOrder = !!$(this).prop('checked'); saveSettings(); });
     $('input[name="gd-llm-char-desc-mode"]').on('change', function () {
         settings.llmCharDescMode = $(this).val();
         toggleCharDescLength(settings.llmCharDescMode);
         saveSettings();
     });
-    $c('llm-char-desc-length').on('input', function () { settings.llmCharDescLength = parseInt($(this).val()) || 200; saveSettings(); });
+    $c('llm-char-desc-length').on('input', function () { settings.llmCharDescLength = Math.max(1, parseInt($(this).val()) || 200); saveSettings(); });
     $c('llm-script-enabled').on('input', function () { settings.llmScriptEnabled = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-script-prompt').on('input', function () {
         settings.llmScriptPrompt = $(this).val();
@@ -1300,7 +1300,7 @@ async function loadSettingsUI() {
         toggleContinuityMode(settings.llmScriptContinuityMode);
         saveSettings();
     });
-    $c('llm-script-continuity-count').on('input', function () { settings.llmScriptContinuityCount = parseInt($(this).val()) || 0; saveSettings(); });
+    $c('llm-script-continuity-count').on('input', function () { settings.llmScriptContinuityCount = Math.max(0, parseInt($(this).val()) || 0); saveSettings(); });
     $c('llm-script-continuity-history-wrapper').on('input', function () { settings.llmScriptContinuityHistoryWrapper = $(this).val(); saveSettings(); });
     $c('llm-world-info-enabled').on('input', function () { settings.llmWorldInfoEnabled = !!$(this).prop('checked'); saveSettings(); });
     $c('llm-world-info-wrapper').on('input', function () { settings.llmWorldInfoWrapper = $(this).val(); saveSettings(); });
@@ -1353,8 +1353,8 @@ async function loadSettingsUI() {
         }
         detectCharacterChanges();
     });
-    $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = parseInt($(this).val()) || 2000; saveSettings(); });
-    $c('profile-concurrency').on('input', function () { settings.profileConcurrency = parseInt($(this).val()) || 0; saveSettings(); });
+    $c('profile-token-budget').on('input', function () { settings.profileTokenBudget = Math.max(1, parseInt($(this).val()) || 2000); saveSettings(); });
+    $c('profile-concurrency').on('input', function () { settings.profileConcurrency = Math.max(0, parseInt($(this).val()) || 0); saveSettings(); });
     $c('profile-generator-prompt').on('input', function () { settings.profileGeneratorPrompt = $(this).val(); saveSettings(); });
     $c('profile-json-schema').on('input', function () { settings.profileJsonSchema = $(this).val(); saveSettings(); });
     $c('profile-render-template').on('input', function () {
