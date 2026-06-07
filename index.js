@@ -864,15 +864,20 @@ async function initRoundWithLLM() {
             parsed.reason ? `(${parsed.reason})` : '');
     } catch (e) {
         const isAbort = e?.name === 'AbortError' || String(e?.message || '').includes('abort');
-        console.error(`[GroupDirector] Director LLM ${isAbort ? 'aborted' : 'failed'} after retries:`, e.message || e);
+        if (isAbort) {
+            // User-initiated pause — no retry, no history reuse, no toastr. Just stop.
+            console.warn('[GroupDirector] Director LLM aborted by user');
+            llmPickedSet = new Set();
+            llmPickedAvatars = null;
+            return;
+        }
+        console.error(`[GroupDirector] Director LLM failed after retries:`, e.message || e);
         // Fallback: reuse the last known director plan from history
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
-            toastr.warning(isAbort
-                ? '导演决策中断，正在复用上一轮决策...'
-                : `导演决策失败（已重试${maxRetries}次），正在复用上一轮决策...`);
-            console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} — reusing last plan from history`);
+            toastr.warning(`导演决策失败（已重试${maxRetries}次），正在复用上一轮决策...`);
+            console.warn('[GroupDirector] Director failed — reusing last plan from history');
             const avatars = [];
             for (const name of lastPlan.speakers) {
                 const c = matchCharacterByName(name, enabledMembers);
@@ -895,12 +900,8 @@ async function initRoundWithLLM() {
             }
         }
         // No history — block the round instead of transparent pass-through
-        toastr.error(isAbort
-            ? '导演决策中断，且无历史记录可复用。请重新发送消息。'
-            : `导演决策失败（已重试${maxRetries}次），且无历史记录。请检查网络后重试。`);
-        console.warn(`[GroupDirector] Director ${isAbort ? 'aborted' : 'failed'} and no history — round blocked`);
-        // llmPickedSet stays null → interceptor passes through → but we want to block?
-        // Actually, null = transparent pass-through in the interceptor.
+        toastr.error(`导演决策失败（已重试${maxRetries}次），且无历史记录。请检查网络后重试。`);
+        console.warn('[GroupDirector] Director failed and no history — round blocked');
         // Set to empty to block all characters (safer than letting chaos through).
         llmPickedSet = new Set();
     }
