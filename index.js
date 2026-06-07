@@ -75,6 +75,11 @@ async function getScriptForChar(charName, extraContext) {
         roundCounterSet(scriptCounterSnapshots.get(charName));
     } else if (!isReroll) {
         scriptCounterSnapshots.set(charName, roundCounterGet());
+        // Persist to chat_metadata for crash/tab-close recovery
+        const cm = chat_metadata[EXT_KEY];
+        if (cm) {
+            cm._counterSnapshots = Object.fromEntries(scriptCounterSnapshots);
+        }
     }
     const wrapper = settings.llmScriptWrapper || '{{script}}';
     // Inject the script text BEFORE rendering so any nested {{...}}
@@ -513,6 +518,15 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
                         }
                     }
                     roundInitialized = true;
+                    // Restore counter snapshots from persisted data
+                    const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
+                    if (saved) {
+                        for (const [name, val] of Object.entries(saved)) {
+                            if (!scriptCounterSnapshots.has(name)) {
+                                scriptCounterSnapshots.set(name, val);
+                            }
+                        }
+                    }
                     log('Regenerate/swipe — reconstructed director plan from chat_metadata');
                 }
             }
@@ -533,6 +547,15 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             takeoverPending = false;
             takeoverGenCount = 0;
             roundInitialized = true;
+            // Restore counter snapshots (may be lost on page reload while plan survived in memory)
+            const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
+            if (saved) {
+                for (const [name, val] of Object.entries(saved)) {
+                    if (!scriptCounterSnapshots.has(name)) {
+                        scriptCounterSnapshots.set(name, val);
+                    }
+                }
+            }
             log('Regenerate/swipe — reusing director plan, no takeover');
             return;
         }
@@ -560,6 +583,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     wiState.entries = [];
     roundCounterReset();
     scriptCounterSnapshots.clear();
+    if (chat_metadata[EXT_KEY]) delete chat_metadata[EXT_KEY]._counterSnapshots;
     log(`Group generation started (mode=${settings.mode}, type=${roundGenerateType})`);
 });
 
@@ -600,6 +624,8 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     directorScripts = {};
     wiState.text = '';
     wiState.entries = [];
+    scriptCounterSnapshots.clear();
+    if (chat_metadata[EXT_KEY]) delete chat_metadata[EXT_KEY]._counterSnapshots;
     await pruneDirectorHistory(newChatLength);
 });
 
