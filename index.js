@@ -109,7 +109,7 @@ const profileSystem = createProfileSystem({
     getLlmPickedSet: () => llmPickedSet,
     getLlmPickedAvatars: () => llmPickedAvatars,
     getRoundSpeakerCount: () => roundSpeakerCount,
-    isRoundActive: () => roundInitialized,
+    isRoundActive: () => isGroupChat,
     saveSettings,
 });
 const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfilePlaceholders,
@@ -563,7 +563,6 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         await runManualOrderedGeneration();
     }
     takeoverPending = false;
-    roundInitialized = false;
 });
 
 // When messages are deleted, the chat timeline has rolled back.
