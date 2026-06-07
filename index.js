@@ -59,6 +59,7 @@ let directorScripts = {};           // { characterName: scriptText } from LLM
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
+let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -547,6 +548,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     llmCursor = 0;
     roundInitialized = false;
     initPromise = null;
+    generationStopped = false;
     takeoverPending = false;
     takeoverGenCount = 0;
     takeoverFailed = false;
@@ -574,6 +576,10 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // When messages are deleted, the chat timeline has rolled back.
 // All in-memory runtime state based on the old timeline is now invalid.
 // Clear it BEFORE pruning history so no stale pointers linger.
+eventSource.on(event_types.GENERATION_STOPPED, () => {
+    generationStopped = true;
+});
+
 eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     roundScores = {};
     roundSpeakerCount = 0;
@@ -585,6 +591,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     llmCursor = 0;
     roundInitialized = false;
     initPromise = null;
+    generationStopped = false;
     takeoverPending = false;
     takeoverGenCount = 0;
     takeoverFailed = false;
@@ -700,6 +707,8 @@ async function initRoundWithLLM() {
     const maxRetries = 3;
 
     try {
+        generationStopped = false;
+
         const llmDepth = Math.min(settings.llmContextDepth, chat.length);
         const recentMessages = chat.slice(-llmDepth);
 
@@ -757,13 +766,19 @@ async function initRoundWithLLM() {
         let response;
         let attempts = 0;
         while (attempts < maxRetries) {
+            if (generationStopped) {
+                console.warn('[GroupDirector] Director LLM aborted by user');
+                llmPickedSet = new Set();
+                llmPickedAvatars = null;
+                return;
+            }
             attempts++;
             try {
                 response = await ctx.generateRaw({ prompt: filled });
+                generationStopped = false;
                 break; // success
             } catch (err) {
-                const isAbort = err?.name === 'AbortError' || String(err?.message || '').includes('abort');
-                if (isAbort) throw err; // user abort — don't retry, fall through to history reuse
+                if (generationStopped || err?.name === 'AbortError') throw err;
                 console.warn(`[GroupDirector] Director LLM attempt ${attempts}/${maxRetries} failed:`, err.message);
                 if (attempts < maxRetries) {
                     toastr.warning(`Director 决策失败 (${attempts}/${maxRetries})，正在重试...`);
@@ -863,8 +878,7 @@ async function initRoundWithLLM() {
             characters.find(c => c.avatar === a)?.name).join(' → '),
             parsed.reason ? `(${parsed.reason})` : '');
     } catch (e) {
-        const isAbort = e?.name === 'AbortError' || String(e?.message || '').includes('abort');
-        if (isAbort) {
+        if (generationStopped || e?.name === 'AbortError') {
             // User-initiated pause — no retry, no history reuse, no toastr. Just stop.
             console.warn('[GroupDirector] Director LLM aborted by user');
             llmPickedSet = new Set();
