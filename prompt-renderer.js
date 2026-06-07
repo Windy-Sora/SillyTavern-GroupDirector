@@ -46,18 +46,22 @@ export async function renderPrompt(template, context, options = {}) {
     // ── Phase 2: simple placeholders {{name}} ──
     // {{counter}}   → round lifetime, starts at 0, persists across renderPrompt calls
     // {{counter0}}  → prompt lifetime, starts at 0, resets each renderPrompt call
+    // Unrecognized placeholders stay as-is so typos (e.g. {{charcters}}) are visible.
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
         if (id === 'counter') return String(roundCounterNext());
         if (id === 'counter0') return String(promptCounterNext());
-        return cache[id]?.content ?? '';
+        if (!(id in cache)) return match;
+        return cache[id].content;
     });
 
     // ── Phase 3: path queries {{?name:path|fallback}} ──
     // The `?` after `{{` distinguishes path queries from simple placeholders.
     // {{name}} goes to Phase 2; {{?name:path}} or {{?name:path|default}} goes here.
+    // Unknown provider → preserve as-is. Known provider with unresolvable path → fallback.
     result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
         const entry = cache[id];
-        if (!entry || !entry.data) return fallback ?? '';
+        if (!entry) return match;
+        if (!entry.data) return fallback ?? '';
 
         const expandedPath = expandVariables(path.trim(), context);
         const segments = parsePath(expandedPath);
@@ -78,13 +82,15 @@ export async function renderPrompt(template, context, options = {}) {
         // Phase 2 (re-pass): skip counters — they were already consumed
         result = result.replace(/\{\{(\w+)\}\}/g, (match, id) => {
             if (id === 'counter' || id === 'counter0') return match;
-            return cache[id]?.content ?? '';
+            if (!(id in cache)) return match;
+            return cache[id].content;
         });
 
         // Phase 3 (re-pass)
         result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
             const entry = cache[id];
-            if (!entry || !entry.data) return fallback ?? '';
+            if (!entry) return match;
+            if (!entry.data) return fallback ?? '';
             const expandedPath = expandVariables(path.trim(), context);
             const segments = parsePath(expandedPath);
             const value = resolvePath(entry.data, segments);
