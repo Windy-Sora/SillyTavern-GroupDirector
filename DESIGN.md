@@ -18,7 +18,7 @@
 ```
 SillyTavern-GroupDirector/
 ├── manifest.json              # 插件元数据 + interceptor 声明
-├── index.js                   # 入口：运行时状态、拦截器、事件监听、UI、组装
+├── index.js                   # 入口：运行时状态、拦截器、事件监听、系统组装、bootstrap
 ├── settings.js                # 常量 + 默认设置（单一真相源）
 ├── settings.html              # 设置面板模板
 ├── style.css                  # UI 样式
@@ -29,42 +29,110 @@ SillyTavern-GroupDirector/
 │   ├── characters.js          # {{characters}}
 │   ├── character-profiles.js  # {{character_profiles}}
 │   ├── world-info.js          # {{worldInfo}}
-│   └── history.js             # {{previousPlan}} + {{previousPlans}}
+│   ├── history.js             # {{previousPlan}} + {{previousPlans}}
+│   ├── director-ledger.js     # {{directorLedger}} + {{directorHistory}}
+│   └── test-provider.js       # {{test}} — 模板语法测试用
 ├── systems/                   # 有状态的业务逻辑（工厂函数 + 显式依赖注入）
 │   ├── history-system.js      # 导演历史 CRUD
 │   ├── world-info-system.js   # World Info / lorebook 注入
 │   └── profile-system.js      # 角色档案全流程
 ├── utils/                     # 纯函数工具（无副作用，可直接 import）
 │   ├── json-utils.js          # extractJsonObject / sanitizeJson / parseLlmResponse
-│   └── string-utils.js        # djb2Hash / hashChar
+│   ├── string-utils.js        # djb2Hash / hashChar
+│   ├── path-resolver.js       # parsePath / resolvePath / formatValue — 路径查询引擎
+│   └── counter.js             # {{counter}} / {{counter0}} — 自增计数器
+├── ui/                        # UI 层：设置面板渲染、表单绑定、I18N
+│   ├── settings-init.js       # loadSettingsUI() 入口 → 加载 HTML → 分发到各 section
+│   ├── dom.js                 # $c() 选择器工厂 + bindNumber/bindCheckbox 等辅助函数
+│   ├── i18n.js                # I18N 中英文字典 + applyI18n() + section 显示切换
+│   └── sections/              # 每个设置区域一个自注册模块
+│       ├── registry.js        # registerSection() / initAllSections() — 自注册表
+│       ├── modes.js           # 模式选择 radio
+│       ├── formula.js         # 公式模式参数
+│       ├── director.js        # LLM 参数、剧本、历史清空
+│       ├── continuity.js      # 连续性模式 + wrapper 模板
+│       ├── worldinfo.js       # 世界书开关 + wrapper
+│       └── profile.js         # 角色档案全 UI（开关、模板、按钮、面板）
+├── TEMPLATE-SYNTAX.md         # 模板语法完整参考
 └── DESIGN.md                  # 本文件
 ```
 
 ### 3.1 分层架构
 
 ```
-┌────────────────────────────────────────────┐
-│  index.js  — 组装层                         │
-│  运行时状态 · 拦截器 · 事件监听 · UI · 组装    │
-├────────────────────────────────────────────┤
-│  prompt-renderer.js  — 渲染引擎             │
-│  遍历 Provider 注册表，异步替换占位符          │
-├──────────────┬─────────────────────────────┤
-│  providers/  │  systems/       utils/      │
-│  数据注入     │  业务逻辑       纯函数       │
-│  (无状态)     │  (工厂+依赖注入)  (无副作用)   │
-└──────────────┴─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  index.js  — 组装层（bootstrap）                               │
+│  运行时状态 · 拦截器 · 事件监听 · 系统组装                       │
+├──────────────────────────────────────────────────────────────┤
+│  prompt-renderer.js  — 渲染引擎                               │
+│  遍历 Provider 注册表，异步替换占位符                            │
+├──────────┬──────────────────┬────────────────┬───────────────┤
+│providers/│  systems/        │  utils/        │  ui/          │
+│ 数据注入  │  业务逻辑         │  纯函数         │  设置面板      │
+│ (无状态)  │  (工厂+依赖注入)   │  (无副作用)     │  (自注册模式)  │
+└──────────┴──────────────────┴────────────────┴───────────────┘
 ```
 
-## 4. Provider 系统（Prompt 占位符扩展机制）
+## 4. UI 架构（设置面板解耦）
 
-### 4.1 设计原则
+### 5.1 设计原则
+
+- **index.js 不承载 DOM 生成、表单绑定、I18N 数据、section 切换逻辑**
+- 每个设置区域是一个独立的 section 模块
+- Section 模块通过 `registerSection()` 自注册，无需在入口文件中显式调用
+- `settings-init.js` 只负责加载 HTML + 分发到所有已注册 section
+- `settings.html` 只负责模板结构，不含任何 JavaScript
+- 新增 UI 只需三件事：
+  1. `settings.html` 加 DOM 结构
+  2. `ui/sections/newname.js` 中 `registerSection('name', initFn)`
+  3. `ui/settings-init.js` 加一行 `import './sections/newname.js'`
+
+### 4.2 Section 自注册模式
+
+```js
+// ui/sections/registry.js
+const sections = [];
+export function registerSection(name, initFn) { sections.push({ name, initFn }); }
+export function initAllSections(ctx) { sections.forEach(s => s.initFn(ctx)); }
+
+// ui/sections/example.js
+import { registerSection } from './registry.js';
+registerSection('example', function (ctx) {
+    const { settings, $c, saveSettings } = ctx;
+    $c('example-input').val(settings.exampleValue);
+    $c('example-input').on('input', () => { settings.exampleValue = $(this).val(); saveSettings(); });
+});
+```
+
+### 4.3 依赖注入约定
+
+每个 section 的 `initFn` 接收统一的 `ctx` 对象：
+
+```
+ctx = {
+    settings, EXT_KEY, chat_metadata, saveChatConditional, saveSettings,
+    $c,            // () => $('#gd-{id}')
+    getCurrentGroup, getDefaultLlmPrompt,
+    generateProfilesBatch, getProfiles,
+    getDefaultProfileGeneratorPrompt, getDefaultProfileSchema,
+    getDefaultProfileRenderTemplate,
+    refreshProfileManagementUI, checkProfileStartupStatus,
+    buildProfileLoaderPanel, detectCharacterChanges,
+    validateAndWarnProfilePlaceholders,
+}
+```
+
+Section 按需从 ctx 析构，不依赖全局变量（`toastr` 除外，那是 ST 全局）。
+
+## 5. Provider 系统（Prompt 占位符扩展机制）
+
+### 5.1 设计原则
 
 每个 Prompt 占位符对应一个独立的 Provider。Provider 负责从运行时上下文取数据并渲染为文本。
 
 **彻底解耦**：新增 Provider 只需创建文件 + 注册。不需要改 `initRoundWithLLM`、`prompt-renderer.js` 或任何核心代码。
 
-### 4.2 Provider 接口
+### 5.2 Provider 接口
 
 ```js
 {
@@ -79,7 +147,7 @@ SillyTavern-GroupDirector/
 
 > 如果 Provider 有开关（`settings.xxxEnabled`），在 `render()` 内判断，关闭时返回 `{ content: '' }`，确保占位符始终被替换。
 
-### 4.3 新增 Provider 步骤
+### 5.3 新增 Provider 步骤
 
 **Step 1** — 创建 `providers/my-feature.js`：
 
@@ -108,7 +176,7 @@ registerMyFeature(settings, someDep);
 
 **Step 3** — 在任何模板中使用 `{{myFeature}}`（默认 Prompt、Script Wrapper、自定义 Prompt 均可）。
 
-### 4.4 运行时上下文 (runtimeContext)
+### 5.4 运行时上下文 (runtimeContext)
 
 `initRoundWithLLM` 构建并传给 `renderPrompt()`：
 
@@ -122,7 +190,7 @@ const runtimeContext = {
 
 新增 Provider 如需额外上下文字段，在 `runtimeContext` 中添加即可。
 
-### 4.5 依赖注入规范
+### 5.5 依赖注入规范
 
 - **不变值**（settings、函数引用）：直接传入
 - **运行时可变值**（`llmPickedSet`、`chat`、`chat_metadata`、`characters`）：传入 **getter 函数**
@@ -140,9 +208,9 @@ createMySystem({ chat, llmPickedSet });
 
 `chat`、`characters`、`chat_metadata` 是 ST 导出的 `let` 绑定，聊天加载时会被整体替换。System 内部全部通过 getter 访问，确保始终读取当前引用。
 
-## 5. 剧本注入管道 (Script Wrapper Pipeline) — 上下游打通
+## 6. 剧本注入管道 (Script Wrapper Pipeline) — 上下游打通
 
-### 5.1 概述
+### 6.1 概述
 
 剧本注入是 Group Director 中**唯一同时触及 Director 层和 Character 层的管道**。`llmScriptWrapper` 不再只是一个带 `{{script}}` 占位符的静态模板——它可以包含**任何已注册的 Provider 占位符**，在注入角色 prompt 前全部被 `renderPrompt()` 解析。
 
@@ -160,7 +228,7 @@ renderPrompt(wrapper, {})     ← 解析 {{previousPlans}}、{{worldInfo}} 等
 setExtensionPrompt(...)       → 注入到角色 prompt
 ```
 
-### 5.2 实现
+### 6.2 实现
 
 ```js
 async function getScriptForChar(charName) {
@@ -173,7 +241,7 @@ async function getScriptForChar(charName) {
 }
 ```
 
-### 5.3 用途示例
+### 6.3 用途示例
 
 默认 `llmScriptWrapper`：
 ```
@@ -200,13 +268,13 @@ or that you are following stage directions. Act naturally as your character.]
 
 此时**每个角色的 prompt 都能看到世界书状态和过往导演计划**，而不只是孤立的舞台指导。
 
-### 5.4 设计意义
+### 6.4 设计意义
 
 - **上游打通**：Director LLM 的决策结果（账本 JSON、世界书）可以穿透到角色层
 - **零额外开发成本**：任何新增 Provider 自动在 Script Wrapper 中可用
 - **用户可自定义**：`llmScriptWrapper` 在设置面板可编辑，用户可以自由组合任何 `{{占位符}}` 来定制角色收到的上下文
 
-## 6. 评分配方
+## 7. 评分配方
 
 ```
 score(c) = mention(c) × w_mention
@@ -226,7 +294,7 @@ score(c) = mention(c) × w_mention
 | `talkativeness(c)` | 角色卡 talkativeness 字段（0~1，NaN 取 0.5） |
 | `initiative(c)` | 每轮独立随机扰动 [0, base]，防止永远沉默 |
 
-## 7. 模式（互斥单选）
+## 8. 模式（互斥单选）
 
 ### 7.1 `off` — 关闭
 不干预 ST 默认行为。
@@ -251,7 +319,7 @@ score(c) = mention(c) × w_mention
 - 剧本注入前经 Script Wrapper Pipeline 渲染（见第 5 节）
 - **连贯剧本**（`llmScriptContinuity`）：注入过往导演决策保持剧情连续性
 
-## 8. 关键 ST API
+## 9. 关键 ST API
 
 | API / Event | 用途 |
 |---|---|
@@ -268,7 +336,7 @@ score(c) = mention(c) × w_mention
 | `characters`, `chat`, `chat_metadata` | 角色数据、聊天历史、元数据（live binding） |
 | `checkWorldInfo(...)` | World Info / lorebook 激活条目查询 |
 
-## 9. 配置项总览
+## 10. 配置项总览
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
@@ -312,14 +380,14 @@ score(c) = mention(c) × w_mention
 
 > v0.3 旧字段 `enabled` / `directorLlmEnabled` / `directorLlmPrompt` 加载时自动迁移。
 
-## 10. 失败回退
+## 11. 失败回退
 
 - LLM 调用失败 / JSON 解析失败 / 返回空 speakers → 透明放行
 - `selected_group` 为空 → 透明放行
 - `type` 为 `quiet` / `impersonate` / `continue` → 不拦截
 - Takeover 中途生成失败 → 保留导演决策、`takeoverFailed = true`，下次重试复用
 
-## 11. 开发速查
+## 12. 开发速查
 
 | 任务 | 改哪些文件 |
 |------|-----------|
