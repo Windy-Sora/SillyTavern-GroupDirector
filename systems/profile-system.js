@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
+    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
     const cm = () => getChatMetadata();
 
     // Escape untrusted strings before embedding in HTML strings.
@@ -155,6 +155,9 @@ async function generateSingleProfile(avatar) {
         prompt: filled,
         jsonSchema: jsonSchema,
     });
+    // Clean up QUIET_PROMPT to prevent profile generator prompt
+    // from leaking into subsequent Director generateRaw calls.
+    setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
     let parsed;
     try {

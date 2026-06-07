@@ -301,7 +301,8 @@ const { buildDirectorWorldInfo } =
 
 const profileSystem = createProfileSystem({
     settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional,
-    getContext, djb2Hash, hashChar, extractJsonObject, sanitizeJson,
+    getContext, setExtensionPrompt, inject_ids, extension_prompt_types,
+    djb2Hash, hashChar, extractJsonObject, sanitizeJson,
     matchCharacterByName, getCurrentGroup, log,
     getLlmPickedSet: () => llmPickedSet,
     getLlmPickedAvatars: () => llmPickedAvatars,
