@@ -306,16 +306,14 @@ Group Director 不是一个发言过滤器。
 | `{{directorLedger}}`     | 最新导演决策（完整 JSON） |
 | `{{directorHistory}}`    | 全部导演历史数组        |
 
-### 路径查询语法
-
-| 语法                       | 示例                                       | 说明                                 |       |             |
-| ------------------------ | ---------------------------------------- | ---------------------------------- | ----- | ----------- |
-| `{{?name:path}}`         | `{{?directorLedger:reason}}`             | 点号访问嵌套字段                           |       |             |
-| `{{?name:path            | 默认值}}`                                   | `{{?directorLedger:memory.location | 未知}}` | 路径不存在时返回默认值 |
-| `{{?name:arr[0]}}`       | `{{?directorHistory:0.speakers}}`        | 数组下标                               |       |             |
-| `{{?name:arr[-1]}}`      | `{{?directorHistory:[-1].reason}}`       | 负下标取倒数                             |       |             |
-| `{{?name:arr[key=val]}}` | `{{?worldInfo:entries[active=true]}}`    | 属性过滤                               |       |             |
-| `{{?name:path.$var}}`    | `{{?directorLedger:scripts.$character}}` | 运行时变量                              |       |             |
+| 语法 | 示例 | 说明 |
+|------|------|------|
+| `{{?name:path}}` | `{{?directorLedger:reason}}` | 点号访问嵌套字段 |
+| `{{?name:path\|默认值}}` | `{{?directorLedger:memory.location\|未知}}` | 路径不存在时返回默认值 |
+| `{{?name:arr[0]}}` | `{{?directorHistory:0.speakers}}` | 数组下标 |
+| `{{?name:arr[-1]}}` | `{{?directorHistory:[-1].reason}}` | 倒数索引 |
+| `{{?name:arr[key=value]}}` | `{{?worldInfo:entries[active=true]}}` | 属性过滤 |
+| `{{?name:path.$var}}` | `{{?directorLedger:scripts.$character}}` | 运行时变量 |
 
 ### 运行时变量
 
