@@ -525,6 +525,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             roundSpeakerCount = 0;
             takeoverPending = false;
             takeoverGenCount = 0;
+            roundInitialized = true;
             log('Regenerate/swipe — reusing director plan, no takeover');
             return;
         }
