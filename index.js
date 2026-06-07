@@ -23,6 +23,21 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 
+// Migrate legacy settings (v0.3 → v0.4)
+let loaded = extension_settings[EXT_KEY] || {};
+if (loaded.enabled === false) loaded.mode = MODE_OFF;
+else if (loaded.directorLlmEnabled === true) loaded.mode = MODE_LLM;
+else if (loaded.mode === 'top_n' || (loaded.mode === undefined && loaded.enabled !== false)) loaded.mode = MODE_FORMULA;
+delete loaded.enabled;
+delete loaded.directorLlmEnabled;
+delete loaded.directorLlmModel;
+if (loaded.directorLlmPrompt && !loaded.llmPrompt) loaded.llmPrompt = loaded.directorLlmPrompt;
+delete loaded.directorLlmPrompt;
+
+let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+settings.scoreWeights = Object.assign({}, DEFAULT_SETTINGS.scoreWeights, loaded.scoreWeights || {});
+extension_settings[EXT_KEY] = settings;
+
 // ─── Runtime State ────────────────────────────────────────────────────
 let roundScores = {};               // { avatar: score }
 let roundSpeakerCount = 0;
