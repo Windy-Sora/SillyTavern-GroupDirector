@@ -164,6 +164,12 @@
                         <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数</label>
                         <small data-i18n="templateMaxPassesHint">限制递归渲染次数以防止无限循环。推荐 3-5，接受任意正整数。</small>
                         <input type="number" id="gd-template-max-passes" class="text_pole" min="1" step="1">
+
+                        <label class="checkbox_label" for="gd-template-debug-placeholders">
+                            <input type="checkbox" id="gd-template-debug-placeholders">
+                            <span data-i18n="templateDebugPlaceholders">调试模式：保留无法识别的占位符（如拼写错误的 <code>{{charcters}}</code> 会原样输出，而非静默清除）</span>
+                        </label>
+                        <small data-i18n="templateDebugPlaceholdersHint">开启后未注册的占位符会保留在输出中方便排查。关闭（默认）则静默清除，避免污染 LLM 上下文。</small>
                     </div>
                 </div>
 

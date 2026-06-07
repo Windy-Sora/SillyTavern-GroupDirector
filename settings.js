@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS = {
     llmWorldInfoWrapper: '[Current world context / lorebook entries:\n{{worldInfo}}\n]',
     templateMaxPasses: 5,
     templateRecursive: true,
+    templateDebugPlaceholders: false,
     debugLogging: false,
     lang: 'zh',
     // Character Profile System

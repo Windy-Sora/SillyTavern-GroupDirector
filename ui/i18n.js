@@ -97,6 +97,8 @@ const I18N = {
         templateRecursive: '启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）',
         templateMaxPasses: '最大递归轮数',
         templateMaxPassesHint: '限制递归渲染次数以防止无限循环。推荐 3-5，接受任意正整数。',
+        templateDebugPlaceholders: '调试模式：保留无法识别的占位符（如拼写错误的 <code>{{charcters}}</code> 会原样输出，而非静默清除）',
+        templateDebugPlaceholdersHint: '开启后未注册的占位符会保留在输出中方便排查。关闭（默认）则静默清除，避免污染 LLM 上下文。',
 
         profileTitle: '角色档案系统 (Character Profile System)',
         profileDrawerTitle: '角色档案系统',
@@ -205,6 +207,8 @@ const I18N = {
         templateRecursive: 'Enable recursive rendering (e.g. <code>{{?directorLedger:xxx}}</code> inside script text will be resolved)',
         templateMaxPasses: 'Max recursive passes',
         templateMaxPassesHint: 'Limits recursion depth to prevent infinite loops. Recommended: 3-5, accepts any positive integer.',
+        templateDebugPlaceholders: 'Debug mode: keep unrecognized placeholders (e.g. misspelled <code>{{charcters}}</code> stays visible instead of being silently removed)',
+        templateDebugPlaceholdersHint: 'When on, unknown placeholders remain in output for troubleshooting. Off by default to avoid polluting LLM context.',
 
         profileTitle: 'Character Profile System',
         profileDrawerTitle: 'Character Profile System',

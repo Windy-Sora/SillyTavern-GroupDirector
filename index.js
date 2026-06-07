@@ -85,6 +85,7 @@ async function getScriptForChar(charName, extraContext) {
     return await renderPrompt(combined, ctx, {
         maxPasses: settings.templateMaxPasses,
         recursive: settings.templateRecursive,
+        debugPlaceholders: settings.templateDebugPlaceholders,
     });
 }
 
@@ -712,6 +713,7 @@ async function initRoundWithLLM() {
         let filled = await renderPrompt(promptTemplate, runtimeContext, {
             maxPasses: settings.templateMaxPasses,
             recursive: settings.templateRecursive,
+            debugPlaceholders: settings.templateDebugPlaceholders,
         });
 
         // Auto-inject WI if the template lacks the placeholder (custom prompts)

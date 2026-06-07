@@ -69,4 +69,9 @@ registerSection('director', function (ctx) {
         settings.templateMaxPasses = Math.max(1, parseInt($c('template-max-passes').val()) || 5);
         saveSettings();
     });
+    $c('template-debug-placeholders').prop('checked', !!settings.templateDebugPlaceholders);
+    $c('template-debug-placeholders').on('input', () => {
+        settings.templateDebugPlaceholders = !!$c('template-debug-placeholders').prop('checked');
+        saveSettings();
+    });
 });

@@ -17,12 +17,15 @@ import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils
  * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders } = options;
     // Clamp: positive, reasonable ceiling to guard against typos (e.g. 99999).
     // Early-exit on no-change makes a high value harmless in practice.
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
+    // debugPlaceholders: when true, unrecognized {{...}} stays as-is (visible for debugging).
+    // When false (default), silently removed to avoid polluting LLM context.
+    const unresolvable = debugPlaceholders ? (m) => m : () => '';
     // Reset per-prompt counter at the start of each render call
     promptCounterReset();
 
@@ -46,21 +49,19 @@ export async function renderPrompt(template, context, options = {}) {
     // ── Phase 2: simple placeholders {{name}} ──
     // {{counter}}   → round lifetime, starts at 0, persists across renderPrompt calls
     // {{counter0}}  → prompt lifetime, starts at 0, resets each renderPrompt call
-    // Unrecognized placeholders stay as-is so typos (e.g. {{charcters}}) are visible.
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
         if (id === 'counter') return String(roundCounterNext());
         if (id === 'counter0') return String(promptCounterNext());
-        if (!(id in cache)) return match;
+        if (!(id in cache)) return unresolvable(match);
         return cache[id].content;
     });
 
     // ── Phase 3: path queries {{?name:path|fallback}} ──
     // The `?` after `{{` distinguishes path queries from simple placeholders.
     // {{name}} goes to Phase 2; {{?name:path}} or {{?name:path|default}} goes here.
-    // Unknown provider → preserve as-is. Known provider with unresolvable path → fallback.
     result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
         const entry = cache[id];
-        if (!entry) return match;
+        if (!entry) return unresolvable(match);
         if (!entry.data) return fallback ?? '';
 
         const expandedPath = expandVariables(path.trim(), context);
@@ -82,14 +83,14 @@ export async function renderPrompt(template, context, options = {}) {
         // Phase 2 (re-pass): skip counters — they were already consumed
         result = result.replace(/\{\{(\w+)\}\}/g, (match, id) => {
             if (id === 'counter' || id === 'counter0') return match;
-            if (!(id in cache)) return match;
+            if (!(id in cache)) return unresolvable(match);
             return cache[id].content;
         });
 
         // Phase 3 (re-pass)
         result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
             const entry = cache[id];
-            if (!entry) return match;
+            if (!entry) return unresolvable(match);
             if (!entry.data) return fallback ?? '';
             const expandedPath = expandVariables(path.trim(), context);
             const segments = parsePath(expandedPath);
