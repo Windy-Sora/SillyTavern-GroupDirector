@@ -136,8 +136,8 @@ function normalizeProfileFields(parsed) {
 async function generateSingleProfile(avatar) {
     if (!settings.profileEnabled) return null;
     if (isRoundActive()) {
-        console.warn('[GroupDirector] Profile generation blocked — director round is active');
-        throw new Error('Profile generation blocked: director round is active');
+        console.warn('[GroupDirector] Profile generation skipped — director round is active, will retry later');
+        return null;
     }
     const char = getCharacters().find(c => c.avatar === avatar);
     if (!char) throw new Error(`Character not found for avatar: ${avatar}`);
@@ -188,32 +188,38 @@ async function generateProfilesBatch(avatars) {
         if (!char) return;
 
         const currentHash = hashChar(char.description, char.personality, char.scenario);
-        const pendingProfile = {
-            avatar: avatar,
-            name: char.name,
-            hash: currentHash,
-            profile: { summary: '', tags: [], motivation: '', relationships: '' },
-            state: 'pending',
-            manualEdited: false,
-            updatedAt: Date.now(),
-        };
-        await saveProfile(avatar, pendingProfile);
+        const existing = getProfiles()[avatar];
+
+        // Preserve existing ready data as base; only overwrite on success
+        const base = (existing && existing.state === 'ready')
+            ? { ...existing, hash: currentHash, name: char.name }
+            : {
+                avatar, name: char.name, hash: currentHash,
+                profile: { summary: '', tags: [], motivation: '', relationships: '' },
+                state: 'pending', manualEdited: false,
+            };
+        base.updatedAt = Date.now();
+        await saveProfile(avatar, base);
 
         try {
             const result = await generateSingleProfile(avatar);
             if (result) {
-                pendingProfile.profile = result;
-                pendingProfile.state = 'ready';
-                pendingProfile.hash = currentHash;
+                base.profile = result;
+                base.state = 'ready';
+                base.hash = currentHash;
             } else {
-                pendingProfile.state = 'failed';
+                // Null means skipped (e.g. round active) — keep previous state, don't mark failed
+                if (base.state === 'pending' && existing && existing.state === 'ready') {
+                    base.state = 'ready';
+                    base.profile = existing.profile;
+                }
             }
         } catch (e) {
             console.error(`[GroupDirector] Profile generation failed for ${char.name}:`, e.message);
-            pendingProfile.state = 'failed';
+            base.state = 'failed';
         }
-        pendingProfile.updatedAt = Date.now();
-        await saveProfile(avatar, pendingProfile);
+        base.updatedAt = Date.now();
+        await saveProfile(avatar, base);
     };
 
     const taskFns = avatars.map(buildTask).filter(Boolean);
