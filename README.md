@@ -1,5 +1,13 @@
 # SillyTavern Group Director
 
+🌏 Language
+
+- English: [README_EN.md](README_EN.md)
+- 中文：当前页面
+
+---
+
+> 一个面向开放式叙事的可编程运行时（Programmable Narrative Runtime）
 > 一个面向开放式叙事的可编程运行时（Programmable Narrative Runtime）
 
 Group Director 起源于一个简单问题：
