@@ -20,6 +20,7 @@ const I18N = {
         debug: '调试日志（浏览器控制台）',
         offHint: '当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言（即抢话行为不被抑制）。',
 
+        formulaDrawerTitle: '公式判断配置',
         topnTitle: 'Top-N 设置',
         topn: '每轮允许发言人数 (Top-N)',
         recentCount: '分析最近消息条数',
@@ -39,6 +40,7 @@ const I18N = {
         initiativeEnabled: '启用主动性系统（每轮随机扰动）',
         initiativeBase: '主动性基础值（每轮随机 0~该值）',
 
+        llmParamsDrawerTitle: 'Director LLM 参数',
         llmParamsTitle: 'Director LLM 参数',
         llmMaxSpeakers: '每轮最多发言人数',
         llmContextDepth: '传入上下文层数（最近 N 条消息）',
@@ -52,6 +54,7 @@ const I18N = {
         charDescLength: '切片长度（字符数）',
 
         scriptTitle: '导演剧本 (Director Script)',
+        scriptDrawerTitle: '导演剧本 & 连贯性',
         scriptHint: '让导演不仅决定谁发言，还生成一段场景剧本，注入到角色生成 prompt 中指导内容创作。',
         scriptEnabled: '启用导演剧本（Director 为每个发言角色输出独立剧本，注入角色 prompt 指导表演，角色不会暴露剧本存在）',
         scriptPrompt: '剧本要求提示（Script Prompt）',
@@ -75,6 +78,7 @@ const I18N = {
         continuityHistoryWrapperHint: '<code>{{previousPlans}}</code> 占位符会被替换为过往导演计划的 JSON 数组。',
 
         worldInfoTitle: '世界书注入 (World Info)',
+        worldInfoDrawerTitle: '世界书注入 (World Info)',
         worldInfoHint: '将当前激活的世界书/ lorebook 条目注入 Director prompt，让导演了解世界背景设定。',
         worldInfoEnabled: '启用世界书注入（将激活的 lorebook 内容传递给 Director）',
         worldInfoWrapper: '世界书包装模板',
@@ -84,11 +88,13 @@ const I18N = {
         scriptWrapperHint: '控制剧本如何包裹后注入角色 prompt。<code>{{script}}</code> 占位符会被替换为实际剧本内容。',
 
         promptTitle: 'Director Prompt 模板',
+        promptDrawerTitle: 'Director Prompt 模板',
         promptHint: '可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code><br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。启用剧本后还需包含 <code>"script": "..."</code>。<code>speakers</code> 数组<b>顺序就是发言顺序</b>。',
         promptReset: '恢复默认 Prompt',
         promptNote: '注意：每轮群聊生成会额外调用一次主模型来做导演决策。LLM 调用失败时插件会透明放行（不影响聊天）。',
 
         profileTitle: '角色档案系统 (Character Profile System)',
+        profileDrawerTitle: '角色档案系统',
         profileHint: '提前分析每个角色的特质、动机、关系，作为结构化数据注入 Director Prompt。独立于导演判断逻辑。',
         profileEnabled: '启用角色档案（让 Director 了解每个角色的深层信息）',
         profileTokenBudget: '档案 Token 预算（超过时压缩非活跃角色）',
@@ -117,6 +123,7 @@ const I18N = {
         debug: 'Debug logging (browser console)',
         offHint: 'Current mode: Off. All characters follow SillyTavern default logic (rushing behavior is not suppressed).',
 
+        formulaDrawerTitle: 'Formula Configuration',
         topnTitle: 'Top-N Settings',
         topn: 'Speakers per round (Top-N)',
         recentCount: 'Recent messages to analyze',
@@ -136,6 +143,7 @@ const I18N = {
         initiativeEnabled: 'Enable initiative system (random perturbation per round)',
         initiativeBase: 'Initiative base value (random 0~base per round)',
 
+        llmParamsDrawerTitle: 'Director LLM Parameters',
         llmParamsTitle: 'Director LLM Parameters',
         llmMaxSpeakers: 'Max speakers per round',
         llmContextDepth: 'Context depth (recent N messages)',
@@ -149,6 +157,7 @@ const I18N = {
         charDescLength: 'Slice length (characters)',
 
         scriptTitle: 'Director Script',
+        scriptDrawerTitle: 'Director Script & Continuity',
         scriptHint: 'Let the director generate per-character stage directions injected into character prompts.',
         scriptEnabled: 'Enable Director Script (Director outputs per-character stage directions, injected into character prompts; characters do not reveal script existence)',
         scriptPrompt: 'Script Prompt',
@@ -172,6 +181,7 @@ const I18N = {
         continuityHistoryWrapperHint: '<code>{{previousPlans}}</code> is replaced with a JSON array of past director plans.',
 
         worldInfoTitle: 'World Info Injection',
+        worldInfoDrawerTitle: 'World Info Injection',
         worldInfoHint: 'Inject currently activated lorebook entries into the Director prompt so the director understands world context.',
         worldInfoEnabled: 'Enable World Info injection (pass activated lorebook content to Director)',
         worldInfoWrapper: 'World Info Wrapper',
@@ -181,11 +191,13 @@ const I18N = {
         scriptWrapperHint: 'Controls how the script is wrapped before injection into character prompt. <code>{{script}}</code> is replaced with the actual script content.',
 
         promptTitle: 'Director Prompt Template',
+        promptDrawerTitle: 'Director Prompt Template',
         promptHint: 'Placeholders: <code>{{recentMessages}}</code>, <code>{{characters}}</code>, <code>{{maxSpeakers}}</code><br>Model must return JSON: <code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>. With script enabled, also include <code>"script": "..."</code>. <code>speakers</code> array <b>order is speaking order</b>.',
         promptReset: 'Restore Default Prompt',
         promptNote: 'Note: Each round of group chat generation makes one extra main-model call for the director decision. LLM call failures are transparent (chat continues unaffected).',
 
         profileTitle: 'Character Profile System',
+        profileDrawerTitle: 'Character Profile System',
         profileHint: 'Pre-analyze each character\'s traits, motivations, and relationships as structured data for the Director Prompt. Independent of director decision logic.',
         profileEnabled: 'Enable Character Profiles (let Director understand each character\'s deep traits)',
         profileTokenBudget: 'Profile Token Budget (compress inactive characters when exceeded)',
