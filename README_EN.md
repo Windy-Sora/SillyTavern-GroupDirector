@@ -253,6 +253,63 @@ All editable prompts share the same data layer:
 
 All can access the same Providers.
 
+
+Standardized Provider Extension API
+
+Group Director provides a standardized Provider interface.
+
+New data sources can be integrated without modifying the core runtime.
+
+A Provider can expose:
+
+Human-readable content
+Structured JSON data
+Runtime-accessible state
+Custom prompt variables
+
+Example:
+
+registerProvider({
+    id: 'relationshipGraph',
+
+    async render(ctx) {
+        return {
+            content: 'Relationship Graph',
+            data: {
+                Alice: {
+                    Bob: 75
+                }
+            }
+        };
+    }
+});
+
+Once registered, the Provider becomes immediately available throughout the runtime:
+
+{{relationshipGraph}}
+
+{{?relationshipGraph:Alice.Bob}}
+
+Providers automatically integrate with:
+
+Director Prompts
+Script Wrappers
+Profile Generators
+Recursive Rendering
+Path Queries
+Runtime Variables
+
+This allows developers to build custom systems such as:
+
+Memory Systems
+Relationship Graphs
+Quest Trackers
+Faction Systems
+Economy Simulations
+World-State Services
+External Data Connectors
+
+without modifying Group Director itself.
 ---
 
 ## Built-in Providers
