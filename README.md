@@ -1,155 +1,96 @@
 # SillyTavern Group Director
-
 🌏 Language
 
 - English: [README_EN.md](README_EN.md)
 - 中文: 当前页面
 
 ---
+**SillyTavern 的可编程叙事运行时 / Programmable Narrative Runtime**
 
-一个为 SillyTavern 群聊设计的 AI 导演系统。
+Group Director 不只是一个“谁先说话”的过滤器。
+它是一个面向 SillyTavern 群聊的导演层：
 
-Group Director 不只是决定谁发言。
-
-它会像导演一样管理整场群聊：
-
-* 决定谁应该回应
+* 决定谁应该发言
 * 决定发言顺序
-* 控制场景节奏
-* 为角色编写表演指导
+* 生成角色剧本与场景指导
 * 维持剧情连续性
-* 利用世界书参与决策
-* 记录并继承导演计划
+* 读取世界书 / Lorebook 信息
+* 记录导演账本（Ledger）
+* 支持可扩展的数据接口与模板查询
+* 支持递归渲染与调试模式
 
-全部基于官方 Extension API 实现，无需修改 SillyTavern 核心代码。
+它的设计目标不是把世界状态写死在代码里，而是让状态、结构和叙事逻辑能够通过 Prompt、Provider 和 Ledger 自然生长。
 
 ---
 
-# 它解决什么问题？
+## 这解决什么问题？
 
-传统群聊通常会遇到一个问题：
+在群聊 RP / 多角色叙事中，最常见的问题不是“没人说话”，而是：
 
-> 所有人都想说话。
-
-用户说一句话后：
-
-```text
-用户：今晚怎么办？
-
-骑士：我觉得应该……
-法师：根据我的研究……
-商人：我有个提议……
-女仆：主人……
-刺客：……
-```
-
-结果往往变成：
-
-* 群聊节奏混乱
-* 回复越来越长
-* 角色互相抢戏
+* 所有人都想抢着回应
+* 角色发言顺序混乱
 * 重要角色被淹没
-* 对话失去重点
+* 场景推进缺乏节奏
+* 长线剧情很难持续
 
-Group Director 会在角色生成之前增加一个「导演层」。
-
-它不再问：
-
-> 哪些角色被激活了？
-
-而是问：
+Group Director 在角色生成前加入一个“导演层”，把原本的“谁被激活就谁说话”，升级为：
 
 > 当前剧情里，哪些角色真正应该说话？
 
 ---
 
-# 核心功能
+## 核心能力
 
-## Formula Director（公式导演）
+### 1) Formula Director（公式导演）
 
-本地评分系统。
+本地评分模式，不需要额外 API 调用。
 
-无需 API 调用。
-无需额外 Token。
+它会根据以下信息计算角色优先级：
 
-根据以下因素计算角色优先级：
-
-* 角色是否被提及
+* 是否被提及
 * 关键词触发
 * 最近发言情况
 * 连续发言惩罚
 * Talkativeness
 * 主动性随机扰动
 
-然后只允许最相关的角色发言。
-
 适合：
 
 * 大型群聊
 * 长期 RP
-* 希望降低成本
+* 希望尽量节省 Token 的场景
 
 ---
 
-## LLM Director（大模型导演）
+### 2) LLM Director（大模型导演）
 
-由大模型直接担任导演。
+由当前主模型直接担任导演。
 
-Director 会综合分析：
+它会结合：
 
 * 最近聊天内容
 * 角色描述
-* 世界书信息
-* 剧情状态
+* 角色档案
+* 世界书内容
 * 历史导演计划
+* 当前剧情状态
 
-然后决定：
+来决定：
 
 * 谁应该发言
 * 发言顺序
 * 场景应该如何推进
-
-例如：
-
-```json
-{
-  "speakers": [
-    "骑士",
-    "法师",
-    "国王"
-  ],
-  "reason": "国王应该在听取意见后最终拍板。"
-}
-```
+* 是否需要为角色写入剧本指导
 
 ---
 
-## Director Script（导演剧本）
+### 3) Director Script（导演剧本）
 
-Director 不仅决定谁说话。
+导演不仅决定“谁说话”，还可以为每个角色单独生成一段表演指导。
 
-还可以为每个角色单独编写表演指导。
+这些剧本会被注入到角色 Prompt 中，但角色不会知道导演、其他人的剧本或完整计划的存在。
 
-例如：
-
-```json
-{
-  "scripts": {
-    "Alice": "表面保持冷静，但逐渐流露出不安。",
-    "Bob": "压抑愤怒，不要直接爆发。"
-  }
-}
-```
-
-每个角色只会看到属于自己的剧本。
-
-角色不会知道：
-
-* 导演的存在
-* 其他人的剧本
-* 导演的完整计划
-
-因此可以实现：
+适合：
 
 * 情绪控制
 * 氛围塑造
@@ -158,73 +99,41 @@ Director 不仅决定谁说话。
 
 ---
 
-## Director Ledger（导演账本）
+### 4) Director Ledger（导演账本）
 
-这是 Group Director 最重要的功能之一。
+导演每次决策都可以保存成结构化 JSON，并写入聊天元数据。
 
-导演计划可以自动记录到聊天元数据中。
-
-不仅保存发言顺序。
-
-还可以保存任意剧情状态。
-
-例如：
-
-```json
-{
-  "speakers": ["Alice"],
-  "story_state": {
-    "chapter": 3,
-    "progress": 42
-  },
-  "relationship_state": {
-    "Alice-Bob": 75
-  }
-}
-```
-
-Group Director 不会限制字段结构。
-
-因此你可以自由扩展：
+账本不限制字段结构，因此你可以自由扩展：
 
 * 剧情进度
-* 好感度系统
-* 阵营关系
-* 任务状态
+* 角色关系
+* 阵营状态
 * 世界状态
-* 自定义剧情变量
+* 任务状态
+* 任何你想维护的长期变量
 
-从而构建长期持续的剧情账本。
+这让 Group Director 不只是一个导演工具，而是一个可持续生长的剧情状态容器。
 
 ---
 
-## 剧情连续性
+### 5) 剧情连续性
 
-普通导演每轮都会重新思考。
+你可以选择让导演只参考上一轮计划，也可以参考完整历史。
 
-连续性模式允许导演参考过去的导演计划。
-
-从而持续维护：
-
-* 剧情主线
-* 角色关系
-* 情绪变化
-* 场景目标
-* 长期伏笔
-
-特别适合：
+这非常适合：
 
 * 长篇剧情
 * 连载 RP
-* 多章节故事
+* 多章节叙事
+* 伏笔与回收
 
 ---
 
-## 世界书感知
+### 6) 世界书感知
 
-Director 可以主动读取当前激活的世界书内容。
+Director 可以读取当前激活的世界书 / Lorebook 内容，并把这些信息纳入决策。
 
-在做决策前了解：
+这样导演不只是看对话，也能理解：
 
 * 世界观设定
 * 地区背景
@@ -232,61 +141,85 @@ Director 可以主动读取当前激活的世界书内容。
 * 历史事件
 * 当前环境
 
-然后再安排角色和剧情。
+---
 
-这让导演真正拥有“世界观意识”。
+## 模板系统
+
+Group Director 内置统一的模板与 Provider 机制。
+
+所有 Prompt 编辑框都可以使用相同的数据接口，例如：
+
+* `{{recentMessages}}`
+* `{{characters}}`
+* `{{character_profiles}}`
+* `{{worldInfo}}`
+* `{{previousPlan}}`
+* `{{previousPlans}}`
+* `{{directorLedger}}`
+* `{{directorHistory}}`
+
+### 路径查询
+
+你也可以直接从 Provider 的 JSON 数据中取字段：
+
+* `{{?directorLedger:reason}}`
+* `{{?directorLedger:scripts.$character}}`
+* `{{?directorHistory:[-1].reason}}`
+* `{{?directorLedger:memory.location|未知地点}}`
+
+### 递归渲染
+
+模板支持递归解析。
+
+你可以设置最大递归轮数，并在调试模式下保留未识别的占位符，方便排查模板问题。
 
 ---
 
-## 严格顺序生成
+## 角色档案系统
 
-默认情况下：
+Group Director 还内置了角色档案生成与渲染系统，用于把角色信息整理成结构化数据。
 
-```text
-骑士
-法师
-国王
-```
+它支持：
 
-可能按照激活顺序生成。
+* 批量生成角色档案
+* 自动检测角色变动
+* JSON Schema 自定义
+* 渲染模板自定义
+* Token 预算压缩
+* 档案状态管理
 
-而 Director 可以指定：
+可提取的信息通常包括：
 
-```text
-法师
-↓
-骑士
-↓
-国王
-```
+* summary
+* tags
+* motivation
+* relationships
 
-并接管生成流程。
-
-确保剧情按照导演预期推进。
+但这些字段并不是固定死的，你可以通过 Prompt 和 Schema 自己扩展。
 
 ---
 
-# 工作流程
+## 工作流程
 
 ```text
 用户输入
     ↓
 Director 分析剧情
     ↓
-世界书扫描
-    ↓
-读取导演账本
+读取世界书 / 角色档案 / 历史账本
     ↓
 选择发言角色
     ↓
-生成角色剧本
+生成导演剧本（可选）
+    ↓
+注入角色 Prompt
     ↓
 角色开始生成
 ```
 
 ---
 
-# 适用场景
+## 适用场景
 
 Group Director 特别适合：
 
@@ -303,87 +236,98 @@ Group Director 特别适合：
 
 ---
 
-# 安装
+## 安装
 
-扩展商店安装：
+### 方式一：扩展商店
 
-```text
-https://github.com/Windy-Sora/SillyTavern-GroupDirector
-```
+在 SillyTavern 扩展商店中安装本项目。
 
-或手动安装：
+### 方式二：手动安装
 
 ```bash
 git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
 ```
 
-放入：
+然后将文件放入：
 
 ```text
 SillyTavern/public/scripts/extensions/third-party/
 ```
 
-然后重启 SillyTavern。
+重启 SillyTavern 后即可使用。
 
 ---
 
-# 设计理念
+## 设置面板
+
+Group Director 的设置面板提供了完整可编辑的配置项，包括：
+
+* 判断模式：关闭 / 公式 / 大模型
+* Top-N 与权重设置
+* 触发器引擎
+* 主动性系统
+* Director Prompt
+* Script Prompt / Script Wrapper
+* 历史账本与连续性模式
+* World Info 注入
+* 角色档案系统
+* 递归渲染与调试模式
+* 语言切换
+
+---
+
+## 设计理念
 
 Group Director 不是一个发言过滤器。
+也不是一个简单的 speaker selector。
 
-也不是一个简单的 Speaker Selector。
+它更像一个轻量级、可编程的叙事运行时。
 
-它更像一个轻量级 AI 导演。
-
-目标不是让更少的人说话。
-
+目标不是让更少的人说话，
 而是让最合适的人，在最合适的时机，以最合适的方式说话。
 
-并让整个群聊像一场真正被导演过的故事。
-
+更进一步地说，它希望让群聊像一场真正被导演过的故事。
 
 ---
 
-## 模板占位符 (Template Placeholders)
-
-Director Prompt、剧本包装模板、连贯剧本模板均支持以下占位符：
+## 模板占位符参考
 
 ### 基础占位符
 
-| 占位符 | 说明 |
-|--------|------|
-| `{{recentMessages}}` | 最近对话记录 |
-| `{{characters}}` | 角色列表（含描述） |
-| `{{character_profiles}}` | 角色结构化档案 |
-| `{{maxSpeakers}}` | 每轮最多发言人数 |
-| `{{worldInfo}}` | 激活的世界书条目 |
-| `{{previousPlan}}` | 上一轮导演计划 |
-| `{{previousPlans}}` | 历史导演计划数组 |
-| `{{directorLedger}}` | 最新导演决策（完整 JSON） |
-| `{{directorHistory}}` | 全部导演历史数组 |
+| 占位符                      | 说明              |
+| ------------------------ | --------------- |
+| `{{recentMessages}}`     | 最近对话记录          |
+| `{{characters}}`         | 角色列表            |
+| `{{character_profiles}}` | 角色结构化档案         |
+| `{{maxSpeakers}}`        | 每轮最多发言人数        |
+| `{{worldInfo}}`          | 激活的世界书条目        |
+| `{{previousPlan}}`       | 上一轮导演计划         |
+| `{{previousPlans}}`      | 历史导演计划数组        |
+| `{{directorLedger}}`     | 最新导演决策（完整 JSON） |
+| `{{directorHistory}}`    | 全部导演历史数组        |
 
 ### 路径查询语法
 
-从 Provider 的 JSON 数据中提取单个字段：
-
-| 语法 | 示例 | 说明 |
-|------|------|------|
-| `{{?name:path}}` | `{{?directorLedger:reason}}` | 点号访问嵌套字段 |
-| `{{?name:path\|默认值}}` | `{{?directorLedger:memory.location\|未知}}` | 路径不存在时返回默认值 |
-| `{{?name:arr[0]}}` | `{{?directorHistory:0.speakers}}` | 数组下标 |
-| `{{?name:arr[-1]}}` | `{{?directorHistory:[-1].reason}}` | 负下标取倒数 |
-| `{{?name:arr[key=val]}}` | `{{?worldInfo:entries[active=true]}}` | 属性过滤 |
-| `{{?name:path.$var}}` | `{{?directorLedger:scripts.$character}}` | 运行时变量 |
+| 语法                       | 示例                                       | 说明                                 |       |             |
+| ------------------------ | ---------------------------------------- | ---------------------------------- | ----- | ----------- |
+| `{{?name:path}}`         | `{{?directorLedger:reason}}`             | 点号访问嵌套字段                           |       |             |
+| `{{?name:path            | 默认值}}`                                   | `{{?directorLedger:memory.location | 未知}}` | 路径不存在时返回默认值 |
+| `{{?name:arr[0]}}`       | `{{?directorHistory:0.speakers}}`        | 数组下标                               |       |             |
+| `{{?name:arr[-1]}}`      | `{{?directorHistory:[-1].reason}}`       | 负下标取倒数                             |       |             |
+| `{{?name:arr[key=val]}}` | `{{?worldInfo:entries[active=true]}}`    | 属性过滤                               |       |             |
+| `{{?name:path.$var}}`    | `{{?directorLedger:scripts.$character}}` | 运行时变量                              |       |             |
 
 ### 运行时变量
 
-Script Wrapper 中可使用：
+| 变量               | 值             |
+| ---------------- | ------------- |
+| `$character`     | 当前角色名         |
+| `$speakerIndex`  | 发言顺序（1-based） |
+| `$speakerIndex0` | 发言顺序（0-based） |
+| `$speakerCount`  | 本轮总发言人数       |
 
-| 变量 | 值 |
-|------|-----|
-| `$character` | 当前角色名 |
-| `$speakerIndex` | 发言顺序 (1-based) |
-| `$speakerIndex0` | 发言顺序 (0-based, 数组用) |
-| `$speakerCount` | 本轮总发言人数 |
+---
 
-详细语法参考 [TEMPLATE-SYNTAX.md](TEMPLATE-SYNTAX.md)。
+## 许可证
+
+见 `LICENSE`。
