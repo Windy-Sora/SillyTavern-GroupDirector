@@ -240,9 +240,10 @@ Group Director 内置统一的 Prompt Runtime。
 {{directorHistory}}
 ```
 
+---
+
 ## 标准化 Provider 扩展接口
 
-```text
 Group Director 提供统一的 Provider 扩展协议。
 
 开发者无需修改核心代码，即可向运行时注册新的数据源。
@@ -255,7 +256,7 @@ Group Director 提供统一的 Provider 扩展协议。
 Prompt 可访问变量
 
 例如：
-
+```text
 registerProvider({
     id: 'relationshipGraph',
 
@@ -271,24 +272,24 @@ registerProvider({
         };
     }
 });
-
+```
 注册后即可在整个运行时中使用：
-
+```text
 {{relationshipGraph}}
 
 {{?relationshipGraph:Alice.Bob}}
-
+```
 Provider 会自动接入：
-
+```text
 Director Prompt
 Script Wrapper
 Profile Generator
 Prompt DSL
 路径查询
 递归渲染系统
-
+```
 因此开发者可以轻松构建：
-
+```text
 长期记忆系统
 角色关系图
 任务追踪系统
@@ -297,9 +298,9 @@ Prompt DSL
 经济模拟系统
 外部数据接口
 自定义 Agent
-
-而无需修改 Group Director 本体。
 ```
+而无需修改 Group Director 本体。
+
 ---
 
 ## 路径查询
