@@ -161,9 +161,9 @@
                             <span data-i18n="templateRecursive">启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）</span>
                         </label>
 
-                        <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数（1-10）</label>
-                        <small data-i18n="templateMaxPassesHint">限制递归渲染次数以防止无限循环。建议值：3-5。</small>
-                        <input type="number" id="gd-template-max-passes" class="text_pole" min="1" max="10" step="1">
+                        <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数</label>
+                        <small data-i18n="templateMaxPassesHint">限制递归渲染次数以防止无限循环。推荐 3-5，接受任意正整数。</small>
+                        <input type="number" id="gd-template-max-passes" class="text_pole" min="1" step="1">
                     </div>
                 </div>
 

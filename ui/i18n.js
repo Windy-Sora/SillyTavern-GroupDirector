@@ -95,8 +95,8 @@ const I18N = {
         templateRecursiveTitle: '模板递归渲染',
         templateRecursiveHint: '当占位符渲染出的文本中仍包含 <code>{{...}}</code> 占位符时，是否继续解析。',
         templateRecursive: '启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）',
-        templateMaxPasses: '最大递归轮数（1-10）',
-        templateMaxPassesHint: '限制递归渲染次数以防止无限循环。建议值：3-5。',
+        templateMaxPasses: '最大递归轮数',
+        templateMaxPassesHint: '限制递归渲染次数以防止无限循环。推荐 3-5，接受任意正整数。',
 
         profileTitle: '角色档案系统 (Character Profile System)',
         profileDrawerTitle: '角色档案系统',
@@ -203,8 +203,8 @@ const I18N = {
         templateRecursiveTitle: 'Template Recursive Rendering',
         templateRecursiveHint: 'When rendered text still contains <code>{{...}}</code> placeholders, continue resolving them.',
         templateRecursive: 'Enable recursive rendering (e.g. <code>{{?directorLedger:xxx}}</code> inside script text will be resolved)',
-        templateMaxPasses: 'Max recursive passes (1-10)',
-        templateMaxPassesHint: 'Limits recursion depth to prevent infinite loops. Recommended: 3-5.',
+        templateMaxPasses: 'Max recursive passes',
+        templateMaxPassesHint: 'Limits recursion depth to prevent infinite loops. Recommended: 3-5, accepts any positive integer.',
 
         profileTitle: 'Character Profile System',
         profileDrawerTitle: 'Character Profile System',

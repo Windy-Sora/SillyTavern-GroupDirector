@@ -18,7 +18,11 @@ import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils
  */
 export async function renderPrompt(template, context, options = {}) {
     const { maxPasses: maxPassesOption, recursive } = options;
-    const maxPasses = recursive === false ? 1 : (maxPassesOption ?? 5);
+    // Clamp: positive, reasonable ceiling to guard against typos (e.g. 99999).
+    // Early-exit on no-change makes a high value harmless in practice.
+    const maxPasses = recursive === false
+        ? 1
+        : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
     // Reset per-prompt counter at the start of each render call
     promptCounterReset();
 

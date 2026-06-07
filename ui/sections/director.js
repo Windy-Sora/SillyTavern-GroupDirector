@@ -66,7 +66,7 @@ registerSection('director', function (ctx) {
         saveSettings();
     });
     $c('template-max-passes').on('input', () => {
-        settings.templateMaxPasses = Math.max(1, Math.min(10, parseInt($c('template-max-passes').val()) || 5));
+        settings.templateMaxPasses = Math.max(1, parseInt($c('template-max-passes').val()) || 5);
         saveSettings();
     });
 });
