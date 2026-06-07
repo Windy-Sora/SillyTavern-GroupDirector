@@ -546,18 +546,18 @@ The settings panel exposes nearly every major system for customization:
 
 # Design Philosophy
 
-Group Director is not merely a speaker selector.
+The Group Director is not a filter for dialogue.
 
-It is not just a group chat filter.
+Nor is it merely a simple speaker selector.
 
-It is a programmable narrative runtime designed for open-ended storytelling.
+It is more akin to a runtime environment designed for open-ended storytelling.
 
-The goal is not to make fewer characters speak.
+Do not design the world itself.
 
-The goal is to ensure the right character speaks, at the right moment, in the right way.
+Instead, provide a mechanism that allows the world to grow.
 
-More importantly, it aims to help stories maintain continuity, structure, memory, and long-term evolution.
+Enable the entire world to evolve continuously.
 
-Director is simply the first built-in agent.
+Allow states, relationships, narrative elements, and the worldview to accumulate over time, ready to be reused and to influence one another in the future.
 
-The runtime itself is designed to support much more.
+This is the real virtual world.
