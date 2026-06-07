@@ -307,6 +307,7 @@ const profileSystem = createProfileSystem({
     getLlmPickedSet: () => llmPickedSet,
     getLlmPickedAvatars: () => llmPickedAvatars,
     getRoundSpeakerCount: () => roundSpeakerCount,
+    isRoundActive: () => roundInitialized,
     saveSettings,
 });
 const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfilePlaceholders,

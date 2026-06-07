@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, saveSettings } = deps;
+    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings } = deps;
     const cm = () => getChatMetadata();
 
     // Escape untrusted strings before embedding in HTML strings.
@@ -135,6 +135,10 @@ function normalizeProfileFields(parsed) {
 
 async function generateSingleProfile(avatar) {
     if (!settings.profileEnabled) return null;
+    if (isRoundActive()) {
+        console.warn('[GroupDirector] Profile generation blocked — director round is active');
+        throw new Error('Profile generation blocked: director round is active');
+    }
     const char = getCharacters().find(c => c.avatar === avatar);
     if (!char) throw new Error(`Character not found for avatar: ${avatar}`);
 
