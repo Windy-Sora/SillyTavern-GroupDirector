@@ -38,6 +38,8 @@ export const DEFAULT_SETTINGS = {
     // World Info
     llmWorldInfoEnabled: false,
     llmWorldInfoWrapper: '[Current world context / lorebook entries:\n{{worldInfo}}\n]',
+    templateMaxPasses: 5,
+    templateRecursive: true,
     debugLogging: false,
     lang: 'zh',
     // Character Profile System

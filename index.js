@@ -82,7 +82,10 @@ async function getScriptForChar(charName, extraContext) {
     // which left nested {{?directorLedger:xxx}} unresolved.)
     const combined = wrapper.split('{{script}}').join(script);
     const ctx = { character: charName, ...extraContext };
-    return await renderPrompt(combined, ctx);
+    return await renderPrompt(combined, ctx, {
+        maxPasses: settings.templateMaxPasses,
+        recursive: settings.templateRecursive,
+    });
 }
 
 function saveSettings() {
@@ -706,7 +709,10 @@ async function initRoundWithLLM() {
         };
 
         const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-        let filled = await renderPrompt(promptTemplate, runtimeContext);
+        let filled = await renderPrompt(promptTemplate, runtimeContext, {
+            maxPasses: settings.templateMaxPasses,
+            recursive: settings.templateRecursive,
+        });
 
         // Auto-inject WI if the template lacks the placeholder (custom prompts)
         if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiState.text) {

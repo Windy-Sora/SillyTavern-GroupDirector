@@ -92,6 +92,11 @@ const I18N = {
         promptHint: '可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code><br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。启用剧本后还需包含 <code>"script": "..."</code>。<code>speakers</code> 数组<b>顺序就是发言顺序</b>。',
         promptReset: '恢复默认 Prompt',
         promptNote: '注意：每轮群聊生成会额外调用一次主模型来做导演决策。LLM 调用失败时插件会透明放行（不影响聊天）。',
+        templateRecursiveTitle: '模板递归渲染',
+        templateRecursiveHint: '当占位符渲染出的文本中仍包含 <code>{{...}}</code> 占位符时，是否继续解析。',
+        templateRecursive: '启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）',
+        templateMaxPasses: '最大递归轮数（1-10）',
+        templateMaxPassesHint: '限制递归渲染次数以防止无限循环。建议值：3-5。',
 
         profileTitle: '角色档案系统 (Character Profile System)',
         profileDrawerTitle: '角色档案系统',
@@ -195,6 +200,11 @@ const I18N = {
         promptHint: 'Placeholders: <code>{{recentMessages}}</code>, <code>{{characters}}</code>, <code>{{maxSpeakers}}</code><br>Model must return JSON: <code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>. With script enabled, also include <code>"script": "..."</code>. <code>speakers</code> array <b>order is speaking order</b>.',
         promptReset: 'Restore Default Prompt',
         promptNote: 'Note: Each round of group chat generation makes one extra main-model call for the director decision. LLM call failures are transparent (chat continues unaffected).',
+        templateRecursiveTitle: 'Template Recursive Rendering',
+        templateRecursiveHint: 'When rendered text still contains <code>{{...}}</code> placeholders, continue resolving them.',
+        templateRecursive: 'Enable recursive rendering (e.g. <code>{{?directorLedger:xxx}}</code> inside script text will be resolved)',
+        templateMaxPasses: 'Max recursive passes (1-10)',
+        templateMaxPassesHint: 'Limits recursion depth to prevent infinite loops. Recommended: 3-5.',
 
         profileTitle: 'Character Profile System',
         profileDrawerTitle: 'Character Profile System',

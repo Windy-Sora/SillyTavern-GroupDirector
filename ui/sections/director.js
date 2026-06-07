@@ -57,4 +57,16 @@ registerSection('director', function (ctx) {
         settings.llmPrompt = def;
         saveSettings();
     });
+
+    // Template recursive rendering
+    $c('template-recursive').prop('checked', settings.templateRecursive !== false);
+    $c('template-max-passes').val(settings.templateMaxPasses ?? 5);
+    $c('template-recursive').on('input', () => {
+        settings.templateRecursive = !!$c('template-recursive').prop('checked');
+        saveSettings();
+    });
+    $c('template-max-passes').on('input', () => {
+        settings.templateMaxPasses = Math.max(1, Math.min(10, parseInt($c('template-max-passes').val()) || 5));
+        saveSettings();
+    });
 });

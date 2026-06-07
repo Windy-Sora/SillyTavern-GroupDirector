@@ -16,7 +16,9 @@ import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils
  * all renderPrompt() calls. Each occurrence gets a unique monotonic
  * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
-export async function renderPrompt(template, context) {
+export async function renderPrompt(template, context, options = {}) {
+    const { maxPasses: maxPassesOption, recursive } = options;
+    const maxPasses = recursive === false ? 1 : (maxPassesOption ?? 5);
     // Reset per-prompt counter at the start of each render call
     promptCounterReset();
 
@@ -66,8 +68,7 @@ export async function renderPrompt(template, context) {
     // new {{...}} references (e.g. a director script stored in the ledger
     // that references {{?directorLedger:politics}}). Re-run Phase 2 + Phase 3
     // until no new replacements occur or the max depth is reached.
-    const MAX_PASSES = 5;
-    for (let pass = 1; pass < MAX_PASSES; pass++) {
+    for (let pass = 1; pass < maxPasses; pass++) {
         const before = result;
 
         // Phase 2 (re-pass): skip counters — they were already consumed

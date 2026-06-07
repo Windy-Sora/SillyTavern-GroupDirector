@@ -151,6 +151,19 @@
                             <i class="fa-solid fa-rotate-left"></i> <span data-i18n="promptReset">恢复默认 Prompt</span>
                         </div>
                         <small style="margin-top:8px;"><i data-i18n="promptNote">每轮群聊生成会额外调用一次主模型来做导演决策。</i></small>
+
+                        <hr>
+                        <h4 data-i18n="templateRecursiveTitle">模板递归渲染</h4>
+                        <small data-i18n="templateRecursiveHint">当占位符渲染出的文本中仍包含 <code>{{...}}</code> 占位符时，是否继续解析。</small>
+
+                        <label class="checkbox_label" for="gd-template-recursive">
+                            <input type="checkbox" id="gd-template-recursive">
+                            <span data-i18n="templateRecursive">启用递归渲染（如脚本内容中包含 <code>{{?directorLedger:xxx}}</code> 将被继续解析）</span>
+                        </label>
+
+                        <label for="gd-template-max-passes" data-i18n="templateMaxPasses">最大递归轮数（1-10）</label>
+                        <small data-i18n="templateMaxPassesHint">限制递归渲染次数以防止无限循环。建议值：3-5。</small>
+                        <input type="number" id="gd-template-max-passes" class="text_pole" min="1" max="10" step="1">
                     </div>
                 </div>
 
