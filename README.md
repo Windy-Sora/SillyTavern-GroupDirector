@@ -240,6 +240,66 @@ Group Director 内置统一的 Prompt Runtime。
 {{directorHistory}}
 ```
 
+## 标准化 Provider 扩展接口
+
+```text
+Group Director 提供统一的 Provider 扩展协议。
+
+开发者无需修改核心代码，即可向运行时注册新的数据源。
+
+一个 Provider 可以同时提供：
+
+可读文本内容
+结构化 JSON 数据
+长期状态信息
+Prompt 可访问变量
+
+例如：
+
+registerProvider({
+    id: 'relationshipGraph',
+
+    async render(ctx) {
+        return {
+            content: '关系图',
+
+            data: {
+                Alice: {
+                    Bob: 75
+                }
+            }
+        };
+    }
+});
+
+注册后即可在整个运行时中使用：
+
+{{relationshipGraph}}
+
+{{?relationshipGraph:Alice.Bob}}
+
+Provider 会自动接入：
+
+Director Prompt
+Script Wrapper
+Profile Generator
+Prompt DSL
+路径查询
+递归渲染系统
+
+因此开发者可以轻松构建：
+
+长期记忆系统
+角色关系图
+任务追踪系统
+阵营系统
+世界状态系统
+经济模拟系统
+外部数据接口
+自定义 Agent
+
+而无需修改 Group Director 本体。
+```
 ---
 
 ## 路径查询
