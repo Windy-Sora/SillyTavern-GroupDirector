@@ -391,7 +391,7 @@ The maximum recursion depth is configurable.
 
 A debug mode is also available to preserve unresolved placeholders for troubleshooting.
 
-In fact, you can even allow the large model to generate the extended ledger JSON by itself, and at the same time inject query statements into the script provided to the role or other custom interfaces, achieving self-production and self-sale. This way, a truly virtual world full of uncertainty and without any pre-set conditions can be created.
+In fact, you can even allow the large model to generate the extended ledger JSON by itself, and at the same time inject query statements into the script provided to the role or other custom interfaces, achieving self-production and self-sales. Or let the large model help you dynamically inject the interfaces you provide.
 
 ---
 
@@ -560,4 +560,4 @@ Enable the entire world to evolve continuously.
 
 Allow states, relationships, narrative elements, and the worldview to accumulate over time, ready to be reused and to influence one another in the future.
 
-This is the real virtual world.
+Create a real virtual world.
