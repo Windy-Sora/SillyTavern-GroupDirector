@@ -1,4 +1,4 @@
-import { renderExtensionTemplateAsync } from '../../../extensions.js';
+import { renderExtensionTemplateAsync } from '../../../../extensions.js';
 import { applyI18n } from './i18n.js';
 import { initAllSections } from './sections/registry.js';
 
