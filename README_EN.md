@@ -1,35 +1,68 @@
 # SillyTavern Group Director
 
-An AI Narrative Director for SillyTavern Group Roleplay.
+🌏 Language
 
-Group Director does more than decide who speaks next.
-
-It acts as a narrative layer above group chat generation, helping coordinate characters, maintain story continuity, direct performances, and manage long-running roleplay campaigns.
-
-No core modifications required. Built entirely on SillyTavern's Extension API.
+* English: Current Page
+* 中文: [README.md](README.md)
 
 ---
 
-# What is Group Director?
+> A Programmable Narrative Runtime for Open-Ended Storytelling in SillyTavern
 
-Traditional group chat systems answer one question:
+Group Director started as an AI director for group chats.
 
-> Which characters are active?
+Over time, it evolved into something much larger:
 
-Group Director answers a different question:
+* AI Director
+* Director Scripts
+* Director Ledger
+* Provider Runtime
+* Prompt DSL
+* Recursive Rendering
+* Character Profile System
+* Long-Term Story State
 
-> Which characters should respond right now, in what order, and for what narrative purpose?
+Its purpose is not merely to decide who speaks next.
 
-Before any character generates a reply, the Director evaluates the scene and decides:
+Its purpose is to help maintain a coherent, evolving narrative world across long-running multi-character stories.
 
-* Who should speak
-* Who should stay silent
-* Speaking order
-* Scene pacing
-* Character guidance
-* Narrative continuity
+---
 
-The result is a cleaner, more focused and more story-driven group roleplay experience.
+# Why Group Director?
+
+Traditional group chats often suffer from the same problem:
+
+> Everyone wants to speak at once.
+
+A single user message may trigger responses from every active character:
+
+```text
+User: What should we do tonight?
+
+Knight: I think we should...
+Mage: According to my research...
+Merchant: I have a proposal...
+Maid: Master...
+Assassin: ...
+```
+
+The result is often:
+
+* Chaotic pacing
+* Excessively long replies
+* Characters competing for attention
+* Important characters being buried
+* Loss of narrative focus
+
+Group Director introduces a dedicated Director layer before character generation.
+
+Instead of asking:
+
+> Which characters are activated?
+
+It asks:
+
+> Which characters should actually speak in this scene?
 
 ---
 
@@ -37,264 +70,435 @@ The result is a cleaner, more focused and more story-driven group roleplay exper
 
 ## Formula Director
 
-A lightweight local scoring system.
+A local scoring-based director.
 
 No API calls.
 No additional token cost.
 
-The Director evaluates:
+Characters are ranked using factors such as:
 
-* Character mentions
+* Mention detection
 * Trigger keywords
-* Recent activity
+* Recent speaking activity
 * Consecutive speaking penalties
 * Talkativeness
-* Initiative rolls
+* Initiative randomness
 
-Then selects the most relevant speakers.
-
-Best for:
+Best suited for:
 
 * Large group chats
-* Long-running sessions
-* Low-cost setups
+* Long-term roleplay
+* Low-cost operation
 
 ---
 
 ## LLM Director
 
-Uses a language model as a narrative director.
+A language model acting as the director.
 
-The Director evaluates:
+The Director analyzes:
 
-* Recent conversation context
+* Recent conversation
 * Character descriptions
-* World Info / Lorebooks
-* Previous Director plans
+* Character profiles
+* World Info / Lorebook
+* Previous director plans
 * Story state
 
-And decides:
+Then decides:
 
 * Who should speak
 * Speaking order
-* How the scene should progress
+* Scene progression
+* Optional character scripts
 
 Example:
 
+```json
 {
-"speakers": [
-"Knight",
-"Mage",
-"King"
-],
-"reason": "The King should make the final decision after hearing both perspectives."
+  "speakers": [
+    "Knight",
+    "Mage",
+    "King"
+  ],
+  "reason": "The king should make the final decision after hearing advice."
 }
+```
 
 ---
 
 ## Director Scripts
 
-The Director can provide hidden stage directions for each selected character.
+The Director can generate private instructions for individual characters.
 
 Example:
 
+```json
 {
-"scripts": {
-"Alice": "Remain calm on the surface, but gradually reveal anxiety.",
-"Bob": "Suppress your anger and avoid direct confrontation."
+  "scripts": {
+    "Alice": "Remain calm, but gradually reveal anxiety.",
+    "Bob": "Suppress your anger. Do not explode immediately."
+  }
 }
-}
+```
 
-Each character only receives their own instructions.
+Each character only sees their own script.
 
 Characters never see:
 
-* Other scripts
-* Director plans
-* Internal reasoning
+* The Director
+* Other characters' scripts
+* The full director plan
 
 This enables:
 
-* Emotional control
-* Scene direction
-* Dramatic pacing
-* Coordinated multi-character performances
+* Emotional steering
+* Atmosphere control
+* Dramatic tension
+* Coordinated performances
 
 ---
 
 ## Director Ledger
 
-Director decisions can be permanently stored inside chat metadata.
+One of the most powerful features of Group Director.
 
-Unlike ordinary speaker selection systems, the Director can maintain persistent narrative state across sessions.
+Director outputs can be stored as structured JSON and persisted across generations.
 
 Example:
 
+```json
 {
-"speakers": ["Alice"],
-"story_state": {
-"chapter": 3
-},
-"relationship_state": {
-"Alice-Bob": 75
+  "speakers": ["Alice"],
+
+  "story": {
+    "chapter": 3,
+    "progress": 42
+  },
+
+  "relationships": {
+    "Alice-Bob": 75
+  }
 }
-}
+```
 
-Custom fields are preserved automatically.
+The Ledger does not enforce a schema.
 
-This allows users to build:
+You are free to store:
 
-* Story progression systems
-* Relationship tracking
+* Story progression
+* Relationship systems
+* Faction states
 * Quest states
-* Campaign metadata
-* Custom narrative memory
+* World states
+* Political systems
+* Economic systems
+* Any custom narrative variables
 
-without modifying the extension itself.
+This makes the Ledger a persistent narrative state container rather than a simple history log.
 
 ---
 
-## Story Continuity
+## Narrative Continuity
 
-The Director can reference previous plans when making future decisions.
+Directors can reference either:
 
-Instead of treating every round independently, the Director can maintain:
+* The previous plan
+* The complete director history
+
+This allows the system to maintain:
 
 * Story arcs
 * Character relationships
 * Emotional development
 * Long-term goals
-* Narrative consistency
+* Foreshadowing
 
-Ideal for long-running roleplay campaigns.
+Especially useful for:
+
+* Long-form storytelling
+* Serialized RP
+* Multi-chapter narratives
 
 ---
 
-## World Info Integration
+## World Info Awareness
 
-The Director can perform a World Info scan before making decisions.
+The Director can access activated World Info entries before making decisions.
 
-Activated lore entries become part of the Director's reasoning context.
+This provides awareness of:
 
-This allows the Director to understand:
-
-* Setting information
-* Political factions
+* Worldbuilding
+* Regional context
+* Factions
 * Historical events
-* Locations
-* Current environmental conditions
+* Current environment
 
-before assigning speakers.
-
----
-
-## Ordered Generation
-
-Group Director can fully control generation order.
-
-Instead of:
-
-Knight
-Mage
-King
-
-The Director may decide:
-
-Mage
-Knight
-King
-
-and enforce that order during generation.
-
-This allows scenes to unfold naturally according to narrative logic rather than activation order.
+Allowing the Director to make decisions with actual knowledge of the setting.
 
 ---
 
-# Modes
+# Prompt Runtime
 
-## Off
+Group Director includes a unified Prompt Runtime.
 
-No intervention.
+All editable prompts share the same data layer:
 
-SillyTavern behaves normally.
+* Director Prompt
+* Script Wrapper
+* History Wrapper
+* World Info Wrapper
+* Profile Generator Prompt
+* Profile Template
 
-## Formula Director
-
-Fast.
-Stable.
-Token-free.
-
-Recommended for most users.
-
-## LLM Director
-
-Narrative-aware decision making.
-
-Recommended for story-focused roleplay.
+All can access the same Providers.
 
 ---
 
-# Example Workflow
+## Built-in Providers
 
-User Message
-↓
-Director Evaluation
-↓
-World Info Scan
-↓
-Story Ledger Lookup
-↓
-Speaker Selection
-↓
-Director Scripts
-↓
+```text
+{{recentMessages}}
+
+{{characters}}
+
+{{character_profiles}}
+
+{{worldInfo}}
+
+{{previousPlan}}
+
+{{previousPlans}}
+
+{{directorLedger}}
+
+{{directorHistory}}
+```
+
+---
+
+## Path Queries
+
+Extract structured values directly from Provider data.
+
+Examples:
+
+```text
+{{?directorLedger:reason}}
+
+{{?directorLedger:scripts.$character}}
+
+{{?directorHistory:[-1].reason}}
+
+{{?directorLedger:story.chapter}}
+
+{{?directorLedger:relationships.Alice-Bob}}
+```
+
+Supported features:
+
+* Nested property access
+* Array indexing
+* Negative indexing
+* Property filtering
+* Default values
+* Runtime variables
+
+---
+
+# Recursive Rendering
+
+Group Director supports recursive template rendering.
+
+Example:
+
+First pass:
+
+```text
+{{directorLedger}}
+```
+
+Produces:
+
+```text
+{{?directorLedger:story.chapter}}
+```
+
+Second pass:
+
+```text
+Chapter 3
+```
+
+The maximum recursion depth is configurable.
+
+A debug mode is also available to preserve unresolved placeholders for troubleshooting.
+
+---
+
+# Character Profile System
+
+Group Director includes a structured profile generation system.
+
+Features include:
+
+* Batch profile generation
+* Automatic synchronization
+* Change detection
+* Token budget optimization
+* Custom JSON schemas
+* Custom rendering templates
+
+Default schema:
+
+```json
+{
+  "summary": "",
+  "tags": [],
+  "motivation": "",
+  "relationships": ""
+}
+```
+
+However, schemas are fully customizable.
+
+Example:
+
+```json
+{
+  "goal": "",
+  "fear": "",
+  "secret": "",
+  "emotional_state": ""
+}
+```
+
+---
+
+# Emergent World State
+
+Unlike traditional systems, Group Director does not require developers to define all possible state structures beforehand.
+
+The Director can gradually build new world structures over time:
+
+```json
+{
+  "politics": {},
+  "economy": {},
+  "factions": {},
+  "religions": {}
+}
+```
+
+These structures can then be queried anywhere through the Prompt DSL.
+
+This makes Group Director particularly suitable for:
+
+* Long-form narratives
+* Open-ended worlds
+* Multi-character roleplay
+* Persistent world simulation
+
+---
+
+# Workflow
+
+```text
+User Input
+     ↓
+Director Analysis
+     ↓
+Read:
+- World Info
+- Character Profiles
+- Director Ledger
+     ↓
+Generate:
+- Speaking Order
+- Character Scripts
+- State Updates
+     ↓
 Character Generation
+     ↓
+Write Back To Ledger
+     ↓
+Next Round
+```
 
 ---
 
-# Ideal Use Cases
+# Use Cases
 
-Group Director is especially effective for:
+Group Director is particularly effective for:
 
-* Tavern scenes
+* Tavern roleplay
 * School settings
 * Adventure parties
-* Political intrigue
-* Family roleplay
-* Long-form campaigns
-* Ensemble casts
-* Multi-character storytelling
+* Court politics
+* Family sagas
+* Military campaigns
+* Long-form stories
+* Collaborative storytelling
 
-The more characters involved, the more noticeable the benefits become.
+The more characters involved, the greater the benefit.
 
 ---
 
 # Installation
 
-Extension Manager:
+## Extension Manager
 
-https://github.com/Windy-Sora/SillyTavern-GroupDirector
+Install directly through the SillyTavern Extension Manager.
 
-Manual Installation:
+## Manual Installation
 
+```bash
 git clone https://github.com/Windy-Sora/SillyTavern-GroupDirector.git
+```
 
-Place inside:
+Place it into:
 
+```text
 SillyTavern/public/scripts/extensions/third-party/
+```
 
 Restart SillyTavern.
 
 ---
 
-# Philosophy
+# Settings
 
-Group Director is not a speaker filter.
+The settings panel exposes nearly every major system for customization:
 
-It is a narrative director.
+* Director Mode (Off / Formula / LLM)
+* Trigger Engine
+* Initiative System
+* Director Prompt
+* Script Prompt
+* Script Wrapper
+* History Modes
+* World Info Integration
+* Profile System
+* Recursive Rendering
+* Debug Mode
+* Localization
+
+---
+
+# Design Philosophy
+
+Group Director is not merely a speaker selector.
+
+It is not just a group chat filter.
+
+It is a programmable narrative runtime designed for open-ended storytelling.
 
 The goal is not to make fewer characters speak.
 
-The goal is to make the right characters speak,
-at the right moment,
-for the right reason.
+The goal is to ensure the right character speaks, at the right moment, in the right way.
+
+More importantly, it aims to help stories maintain continuity, structure, memory, and long-term evolution.
+
+Director is simply the first built-in agent.
+
+The runtime itself is designed to support much more.
