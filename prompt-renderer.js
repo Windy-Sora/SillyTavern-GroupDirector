@@ -61,6 +61,35 @@ export async function renderPrompt(template, context) {
         return formatValue(value);
     });
 
+    // ── Post-render passes ──
+    // After replacing placeholders, the injected content itself may contain
+    // new {{...}} references (e.g. a director script stored in the ledger
+    // that references {{?directorLedger:politics}}). Re-run Phase 2 + Phase 3
+    // until no new replacements occur or the max depth is reached.
+    const MAX_PASSES = 5;
+    for (let pass = 1; pass < MAX_PASSES; pass++) {
+        const before = result;
+
+        // Phase 2 (re-pass): skip counters — they were already consumed
+        result = result.replace(/\{\{(\w+)\}\}/g, (match, id) => {
+            if (id === 'counter' || id === 'counter0') return match;
+            return cache[id]?.content ?? '';
+        });
+
+        // Phase 3 (re-pass)
+        result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
+            const entry = cache[id];
+            if (!entry || !entry.data) return fallback ?? '';
+            const expandedPath = expandVariables(path.trim(), context);
+            const segments = parsePath(expandedPath);
+            const value = resolvePath(entry.data, segments);
+            if (value === null || value === undefined) return fallback ?? '';
+            return formatValue(value);
+        });
+
+        if (result === before) break; // no more replacements — done
+    }
+
     return result;
 }
 

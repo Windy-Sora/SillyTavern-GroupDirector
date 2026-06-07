@@ -76,11 +76,13 @@ async function getScriptForChar(charName, extraContext) {
         scriptCounterSnapshots.set(charName, roundCounterGet());
     }
     const wrapper = settings.llmScriptWrapper || '{{script}}';
-    const placeholder = '\x00SCRIPT\x00';
-    const guarded = wrapper.split('{{script}}').join(placeholder);
+    // Inject the script text BEFORE rendering so any nested {{...}}
+    // references inside the script go through the full provider pipeline.
+    // (Previously it was injected after renderPrompt via a sentinel,
+    // which left nested {{?directorLedger:xxx}} unresolved.)
+    const combined = wrapper.split('{{script}}').join(script);
     const ctx = { character: charName, ...extraContext };
-    const rendered = await renderPrompt(guarded, ctx);
-    return rendered.split(placeholder).join(script);
+    return await renderPrompt(combined, ctx);
 }
 
 function saveSettings() {
