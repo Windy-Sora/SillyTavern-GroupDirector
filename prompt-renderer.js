@@ -59,12 +59,14 @@ export async function renderPrompt(template, context, options = {}) {
     // ── Phase 3: path queries {{?name:path|fallback}} ──
     // The `?` after `{{` distinguishes path queries from simple placeholders.
     // {{name}} goes to Phase 2; {{?name:path}} or {{?name:path|default}} goes here.
+    // Supports nested {{...}} inside the path (resolved innermost-first).
     result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
         const entry = cache[id];
         if (!entry) return unresolvable(match);
         if (!entry.data) return fallback ?? '';
 
-        const expandedPath = expandVariables(path.trim(), context);
+        const innerResolved = resolveInnerPlaceholders(path, cache, context);
+        const expandedPath = expandVariables(innerResolved.trim(), context);
         const segments = parsePath(expandedPath);
         const value = resolvePath(entry.data, segments);
 
@@ -92,7 +94,8 @@ export async function renderPrompt(template, context, options = {}) {
             const entry = cache[id];
             if (!entry) return unresolvable(match);
             if (!entry.data) return fallback ?? '';
-            const expandedPath = expandVariables(path.trim(), context);
+            const innerResolved = resolveInnerPlaceholders(path, cache, context);
+            const expandedPath = expandVariables(innerResolved.trim(), context);
             const segments = parsePath(expandedPath);
             const value = resolvePath(entry.data, segments);
             if (value === null || value === undefined) return fallback ?? '';
@@ -120,4 +123,44 @@ function expandVariables(path, context) {
         }
         return s;
     });
+}
+
+/**
+ * Resolve nested {{...}} placeholders inside a path string from innermost outward.
+ * Supports: {{name}}, {{?name:subpath}}, {{?name:subpath|fallback}}
+ *
+ * Example: scripts[{{?ledger:currentSpeaker}}] → scripts[Alice]
+ *
+ * Unknown inner placeholders return empty string to keep the path
+ * well-formed rather than corrupting it with literal "{{...}}" text.
+ */
+function resolveInnerPlaceholders(pathStr, cache, context) {
+    let prev;
+    do {
+        prev = pathStr;
+        // Match innermost {{...}} — content must not contain { or }
+        pathStr = pathStr.replace(/\{\{([^{}]+)\}\}/g, (_match, inner) => {
+            // Simple placeholder: {{name}}
+            if (/^\w+$/.test(inner)) {
+                if (inner === 'counter' || inner === 'counter0') return '';
+                if (!(inner in cache)) return '';
+                return cache[inner].content;
+            }
+            // Path query: {{?name:subpath|fallback}}
+            const m = /^\?(\w+):([^|]+)(?:\|(.+))?$/.exec(inner);
+            if (m) {
+                const [, id, subpath, fallback] = m;
+                const entry = cache[id];
+                if (!entry) return fallback ?? '';
+                if (!entry.data) return fallback ?? '';
+                const expandedSubpath = expandVariables(subpath.trim(), context);
+                const segments = parsePath(expandedSubpath);
+                const value = resolvePath(entry.data, segments);
+                if (value === null || value === undefined) return fallback ?? '';
+                return formatValue(value);
+            }
+            return '';
+        });
+    } while (pathStr !== prev);
+    return pathStr;
 }
