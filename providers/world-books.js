@@ -38,7 +38,17 @@ export function register(scanner) {
                 return parts.join('\n');
             }).join('\n\n');
 
-            return { content, data: books };
+            // Build a flat all-entries array so block-loops can query
+            // {{?worldBooks:allEntries[comment=$it].content}} without
+            // needing to know which world book an entry belongs to.
+            const allEntries = [];
+            for (const book of books) {
+                for (const entry of book.entries) {
+                    allEntries.push({ ...entry, book: book.name });
+                }
+            }
+
+            return { content, data: { books, allEntries } };
         },
     });
 }

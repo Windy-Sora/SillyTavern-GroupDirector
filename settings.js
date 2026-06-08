@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS = {
     // Director script
     llmScriptEnabled: false,
     llmScriptPrompt: '',
-    llmScriptWrapper: '[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmScriptWrapper: '[Relevant world lore for this character:\n{{#directorLedger:loreAssignments.$character}}{{?worldBooks:allEntries[comment=$it].content}}\n{{/directorLedger}}]\n\n[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
     llmHistoryEnabled: true,
     llmScriptContinuity: false,
     llmScriptContinuityMode: 'last',

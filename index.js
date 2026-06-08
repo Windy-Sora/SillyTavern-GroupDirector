@@ -1027,6 +1027,18 @@ Rules:
         }
     }
 
+    // World book lore assignments — let director decide which lore entries
+    // each character needs, based on the available world book inventory below.
+    base += `
+
+Available world book entries (you may assign relevant ones to each character):
+{{worldBookImportance}}
+
+For EACH picked character, optionally assign relevant world book entries
+by their exact displayed names. Use the "loreAssignments" field.
+Only assign entries that are actually relevant to that character's current situation.
+It is OK to assign none (empty array) or different entries to different characters.`;
+
     base += `
 
 Reply with ONLY a JSON object, no prose, no code fences:
@@ -1042,7 +1054,11 @@ Reply with ONLY a JSON object, no prose, no code fences:
   }`;
     }
 
-    base += `
+    base += `,
+  "loreAssignments": {
+    "NameOfFirstSpeaker": ["exact entry name", "another entry"],
+    "NameOfSecondSpeaker": []
+  }
 }`;
     return base;
 }
