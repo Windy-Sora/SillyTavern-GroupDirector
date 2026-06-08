@@ -22,8 +22,7 @@ export function register(scanner) {
             const content = scored.slice(0, 30).map((s, i) => {
                 const bar = '█'.repeat(Math.round(s.importance * 10));
                 const empty = '░'.repeat(10 - bar.length);
-                const binding = s.bindings ? ` → ${s.bindings}` : '';
-                return `${i + 1}. [${s.comment}] _${s.book}_ ${bar}${empty} ${s.importance.toFixed(3)} (${s.factors})${binding}`;
+                return `${i + 1}. [${s.comment}] _${s.book}_ ${bar}${empty} ${s.importance.toFixed(3)} (${s.factors})`;
             }).join('\n');
 
             // Also add a summary of always-on entries
