@@ -59,6 +59,20 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, log }) {
                     matchPersonaDescription: !!e.matchPersonaDescription,
                     matchScenario: !!e.matchScenario,
                     matchCreatorNotes: !!e.matchCreatorNotes,
+                    characterFilter: {
+                        isExclude: !!(e.characterFilter?.isExclude),
+                        names: e.characterFilter?.names || [],
+                        tags: e.characterFilter?.tags || [],
+                    },
+                    hasCharacterBinding: (
+                        !!(e.characterFilter?.names?.length) ||
+                        !!(e.characterFilter?.tags?.length) ||
+                        !!e.matchCharacterDescription ||
+                        !!e.matchCharacterPersonality ||
+                        !!e.matchPersonaDescription ||
+                        !!e.matchScenario ||
+                        !!e.matchCreatorNotes
+                    ),
                 })),
             });
         }
@@ -111,6 +125,17 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, log }) {
                 if (entry.depth !== 4) factors.push(`depth:${entry.depth}`);
                 if (entry.probability < 100) factors.push(`prob:${entry.probability}%`);
 
+                const cf = entry.characterFilter || {};
+                const bindings = [];
+                if (cf.names && cf.names.length > 0) bindings.push(...cf.names.map(n => `@${n}`));
+                if (cf.tags && cf.tags.length > 0) bindings.push(...cf.tags.map(t => `#${t}`));
+                if (entry.matchCharacterDescription) bindings.push('char-desc');
+                if (entry.matchCharacterPersonality) bindings.push('char-personality');
+                if (entry.matchPersonaDescription) bindings.push('persona');
+                if (entry.matchScenario) bindings.push('scenario');
+                if (entry.matchCreatorNotes) bindings.push('creator-notes');
+                if (bindings.length) factors.push(`bound:${bindings.join(',')}`);
+
                 scored.push({
                     book: book.name,
                     comment: entry.comment,
@@ -121,6 +146,14 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, log }) {
                     probability: entry.probability,
                     keyCount: entry.keyCount,
                     keySecondaryCount: entry.keySecondaryCount,
+                    hasCharacterBinding: entry.hasCharacterBinding || false,
+                    characterFilter: entry.characterFilter || { isExclude: false, names: [], tags: [] },
+                    matchCharacterDescription: entry.matchCharacterDescription || false,
+                    matchCharacterPersonality: entry.matchCharacterPersonality || false,
+                    matchPersonaDescription: entry.matchPersonaDescription || false,
+                    matchScenario: entry.matchScenario || false,
+                    matchCreatorNotes: entry.matchCreatorNotes || false,
+                    bindings: bindings.join(', '),
                     factors: factors.join(', '),
                     contentPreview: entry.contentPreview,
                 });
