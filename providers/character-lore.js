@@ -1,59 +1,35 @@
 import { registerProvider } from '../provider-registry.js';
 
 /**
- * {{characterLore}} — resolves the director's loreAssignments for the
- * current character into actual world book entry content.
+ * {{characterLore}} — injects the director's loreAssignments as keywords
+ * into the character prompt. ST's world info system detects these keywords
+ * and automatically activates the corresponding lorebook entries.
  *
- * Context: requires `character` in the render context (set by
- * getScriptForChar to the current character's name).
- *
- * Pipeline:
- *   directorLedger.loreAssignments["Alice"] → ["地理与空间", "社会结构"]
- *   → worldBooks lookup by entry comment → full content text
- *   → concatenated output
+ * No content lookup needed — ST handles that natively via checkWorldInfo.
  */
-export function register(scanner, getDirectorHistory) {
+export function register(getDirectorHistory) {
     registerProvider({
         id: 'characterLore',
         placeholder: '{{characterLore}}',
-        render: async (ctx) => {
+        render: (ctx) => {
             const charName = ctx?.character;
-            if (!charName) return '';
+            if (!charName) return { content: '' };
 
             const history = getDirectorHistory();
-            if (!history.length) return '';
+            if (!history.length) return { content: '' };
 
             const latest = history[history.length - 1];
             const assignments = latest?.loreAssignments;
-            if (!assignments || typeof assignments !== 'object') return '';
+            if (!assignments || typeof assignments !== 'object') return { content: '' };
 
             const names = assignments[charName];
-            if (!Array.isArray(names) || names.length === 0) return '';
+            if (!Array.isArray(names) || names.length === 0) return { content: '' };
 
-            // Resolve entry names to content via the world book scanner
-            const books = await scanner.scanAll();
-            const allEntries = [];
-            for (const book of books) {
-                for (const entry of book.entries) {
-                    if (!entry.disable) {
-                        allEntries.push({ comment: entry.comment, content: entry.content, book: book.name });
-                    }
-                }
-            }
+            // Deduplicate and format as keyword triggers for ST's world info scanner
+            const unique = [...new Set(names.filter(Boolean))];
+            if (unique.length === 0) return { content: '' };
 
-            // Deduplicate and resolve
-            const seen = new Set();
-            const parts = [];
-            for (const name of names) {
-                if (!name || seen.has(name)) continue;
-                seen.add(name);
-                const entry = allEntries.find(e => e.comment === name);
-                if (entry && entry.content) {
-                    parts.push(`[${entry.comment}] (${entry.book})\n${entry.content}`);
-                }
-            }
-
-            return { content: parts.join('\n\n') };
+            return { content: `[World lore: ${unique.join(', ')}]` };
         },
     });
 }

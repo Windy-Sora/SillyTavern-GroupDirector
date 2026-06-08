@@ -1086,7 +1086,7 @@ registerDirectorLedger(settings, getDirectorHistory);
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner);
-registerCharacterLore(worldBookScanner, getDirectorHistory);
+registerCharacterLore(getDirectorHistory);
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
