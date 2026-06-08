@@ -43,7 +43,7 @@ registerSection('worldBooks', async function (ctx) {
         list.append(toolbar);
 
         for (const name of names) {
-            const checked = settings.worldBookSelection[name] !== false;
+            const checked = settings.worldBookSelection[name] === true;
             const label = $(`<label class="checkbox_label" style="display:flex;align-items:center;gap:6px;"></label>`);
             const input = $(`<input type="checkbox" data-book="${name}">`);
             input.prop('checked', checked);

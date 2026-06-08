@@ -18,9 +18,8 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
      */
     async function scanAll() {
         const selection = getSelection ? getSelection() : {};
-        const activeNames = (world_names || []).filter(n => selection[n] !== false);
-        // Default: if nothing explicitly selected, use all books
-        const names = activeNames.length > 0 ? activeNames : (world_names || []);
+        const names = (world_names || []).filter(n => selection[n] === true);
+        if (names.length === 0) return [];
         const key = names.sort().join('|') + '|' + (getMaxEntries ? getMaxEntries() : 20);
         if (cache && cacheKey === key) return cache;
 
