@@ -73,7 +73,11 @@ export function createWorldBookScanner({ world_names, selected_world_info, loadW
             });
         }
 
-        if (log) log(`World book scanner: loaded ${results.length} activated books (${results.reduce((s, b) => s + b.entryCount, 0)} entries)`);
+        if (results.length === 0) {
+            console.warn('[GroupDirector] World book scanner: NO activated books found. Check that world books are selected in ST\'s World Info panel for this chat.');
+        } else if (log) {
+            log(`World book scanner: loaded ${results.length} activated books (${results.reduce((s, b) => s + b.entryCount, 0)} entries)`);
+        }
         cache = results;
         cacheKey = key;
         return results;

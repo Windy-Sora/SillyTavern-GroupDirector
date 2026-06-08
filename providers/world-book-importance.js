@@ -17,6 +17,8 @@ export function register(scanner) {
         placeholder: '{{worldBookImportance}}',
         render: async () => {
             const books = await scanner.scanAll();
+            if (!books.length) return { content: '', data: [] };
+
             const scored = scanner.calculateImportance(books);
 
             const content = scored.slice(0, 30).map((s, i) => {
