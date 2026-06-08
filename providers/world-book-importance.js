@@ -11,7 +11,7 @@ import { registerProvider } from '../provider-registry.js';
  *   {{?worldBookImportance:0.importance}}     → top entry score
  *   {{?worldBookImportance:0.book}}           → top entry's world book
  */
-export function register(scanner) {
+export function register(scanner, getMaxEntries) {
     registerProvider({
         id: 'worldBookImportance',
         placeholder: '{{worldBookImportance}}',
@@ -19,20 +19,18 @@ export function register(scanner) {
             const books = await scanner.scanAll();
             if (!books.length) return { content: '', data: [] };
 
+            const max = getMaxEntries ? getMaxEntries() : 20;
             const scored = scanner.calculateImportance(books);
 
-            const content = scored.slice(0, 30).map((s, i) => {
-                const bar = '█'.repeat(Math.round(s.importance * 10));
-                const empty = '░'.repeat(10 - bar.length);
-                return `${i + 1}. [${s.comment}] _${s.book}_ ${bar}${empty} ${s.importance.toFixed(3)} (${s.factors})`;
-            }).join('\n');
+            const content = scored.slice(0, Math.max(1, max)).map((s, i) =>
+                `${i + 1}. [${s.comment}] _${s.book}_ importance=${s.importance.toFixed(3)} (${s.factors})`
+            ).join('\n');
 
-            // Also add a summary of always-on entries
+            // Summary of always-on entries
             const alwaysOn = scored.filter(s => s.constant && s.importance > 0);
             if (alwaysOn.length > 0) {
-                const summary = `\n\n## Always-On Entries (${alwaysOn.length})\n` +
-                    alwaysOn.map(s => `- [${s.comment}] _${s.book}_ — ${s.importance.toFixed(3)}`).join('\n');
-                return { content: content + summary, data: scored };
+                const aoList = alwaysOn.map(s => `- [${s.comment}] _${s.book}_ importance=${s.importance.toFixed(3)}`).join('\n');
+                return { content: `${content}\n\n## Always-On (${alwaysOn.length})\n${aoList}`, data: scored };
             }
 
             return { content, data: scored };

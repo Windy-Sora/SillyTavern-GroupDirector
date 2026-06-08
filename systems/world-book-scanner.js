@@ -7,25 +7,24 @@
  *   loadWorldInfo    — async (name) => { entries: {...} }
  */
 
-export function createWorldBookScanner({ world_names, selected_world_info, loadWorldInfo, log }) {
+export function createWorldBookScanner({ world_names, loadWorldInfo, getSelection, getMaxEntries, log }) {
 
     let cache = null;
     let cacheKey = '';
 
     /**
-     * Scan only the world books currently activated by the user
-     * (selected in ST's World Info panel for this chat).
-     * Scanning ALL books on disk would mix incompatible settings
-     * and pollute the director's context with irrelevant lore.
+     * Scan only the world books the user has manually selected
+     * in the Group Director settings panel.
      */
     async function scanAll() {
-        const activeNames = new Set(selected_world_info || []);
-        const key = [...activeNames].sort().join('|');
+        const selection = getSelection ? getSelection() : {};
+        const activeNames = (world_names || []).filter(n => selection[n] !== false);
+        // Default: if nothing explicitly selected, use all books
+        const names = activeNames.length > 0 ? activeNames : (world_names || []);
+        const key = names.sort().join('|') + '|' + (getMaxEntries ? getMaxEntries() : 20);
         if (cache && cacheKey === key) return cache;
 
-        // Only scan books the user has explicitly activated for this chat
         const results = [];
-        const names = (world_names || []).filter(n => activeNames.has(n));
 
         const books = await Promise.all(names.map(async (name) => {
             try {

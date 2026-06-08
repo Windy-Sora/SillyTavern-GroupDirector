@@ -41,6 +41,9 @@ export const DEFAULT_SETTINGS = {
     templateMaxPasses: 5,
     templateRecursive: true,
     templateDebugPlaceholders: false,
+    // World Book
+    worldBookSelection: {},
+    worldBookMaxEntries: 20,
     debugLogging: false,
     lang: 'zh',
     // Character Profile System

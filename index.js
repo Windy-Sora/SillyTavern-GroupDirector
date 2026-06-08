@@ -3,7 +3,7 @@ import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
-import { checkWorldInfo, world_info_include_names, world_names, selected_world_info, loadWorldInfo } from '../../../world-info.js';
+import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
@@ -117,7 +117,11 @@ const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory } =
 const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
 
-const worldBookScanner = createWorldBookScanner({ world_names, selected_world_info, loadWorldInfo, log });
+const worldBookScanner = createWorldBookScanner({
+    world_names, loadWorldInfo, log,
+    getSelection: () => settings.worldBookSelection,
+    getMaxEntries: () => settings.worldBookMaxEntries,
+});
 
 const profileSystem = createProfileSystem({
     settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional,
@@ -1085,7 +1089,7 @@ registerHistoryProviders(settings, getDirectorHistory);
 registerDirectorLedger(settings, getDirectorHistory);
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
-registerWorldBookImportance(worldBookScanner);
+registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
 registerCharacterLore(getDirectorHistory);
 
 // ─── Init ─────────────────────────────────────────────────────────────
@@ -1096,7 +1100,7 @@ jQuery(async () => {
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
-        toastr,
+        toastr, world_names, loadWorldInfo,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

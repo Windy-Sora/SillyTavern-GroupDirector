@@ -79,6 +79,11 @@ const I18N = {
 
         worldInfoTitle: '世界书注入 (World Info)',
         worldInfoDrawerTitle: '世界书注入 (World Info)',
+        worldBookSelectionTitle: '世界书选择 (World Book Selection)',
+        worldBookSelectionHint: '手动选择要暴露给 Director 的世界书。不勾选的书不会被扫描，避免世界观串台。',
+        worldBookMaxEntries: '最大注入条目数',
+        worldBookMaxEntriesHint: '限制 {{worldBookImportance}} 输出给 Director 的条目数量。推荐 15-30。',
+        worldBookRefresh: '刷新世界书列表',
         worldInfoHint: '将当前激活的世界书/ lorebook 条目注入 Director prompt，让导演了解世界背景设定。',
         worldInfoEnabled: '启用世界书注入（将激活的 lorebook 内容传递给 Director）',
         worldInfoWrapper: '世界书包装模板',
@@ -189,6 +194,11 @@ const I18N = {
 
         worldInfoTitle: 'World Info Injection',
         worldInfoDrawerTitle: 'World Info Injection',
+        worldBookSelectionTitle: 'World Book Selection',
+        worldBookSelectionHint: 'Manually select which world books to expose to the Director. Unchecked books are not scanned, preventing setting contamination.',
+        worldBookMaxEntries: 'Max entries to inject',
+        worldBookMaxEntriesHint: 'Limits the number of entries {{worldBookImportance}} outputs to the Director. Recommended: 15-30.',
+        worldBookRefresh: 'Refresh world book list',
         worldInfoHint: 'Inject currently activated lorebook entries into the Director prompt so the director understands world context.',
         worldInfoEnabled: 'Enable World Info injection (pass activated lorebook content to Director)',
         worldInfoWrapper: 'World Info Wrapper',

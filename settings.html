@@ -253,6 +253,27 @@
                     </div>
                 </div>
 
+                <!-- World Book Selection Drawer -->
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b data-i18n="worldBookSelectionTitle">世界书选择 (World Book Selection)</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                    </div>
+                    <div class="inline-drawer-content">
+                        <small data-i18n="worldBookSelectionHint">手动选择要暴露给 Director 的世界书。不勾选的书不会被扫描，避免世界观串台。</small>
+
+                        <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目数</label>
+                        <small data-i18n="worldBookMaxEntriesHint">限制 {{worldBookImportance}} 输出给 Director 的条目数量。推荐 15-30。</small>
+                        <input type="number" id="gd-world-book-max-entries" class="text_pole" min="1" step="1">
+
+                        <div class="menu_button menu_button_icon" id="gd-world-book-refresh" style="margin-top:4px;">
+                            <i class="fa-solid fa-rotate"></i> <span data-i18n="worldBookRefresh">刷新世界书列表</span>
+                        </div>
+                        <div id="gd-world-book-list" style="margin-top:8px;max-height:300px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;">
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Character Profiles Drawer -->
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
