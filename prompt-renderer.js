@@ -4,10 +4,12 @@ import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils
 
 /**
  * Render a template by executing all registered providers once,
- * caching their results, then replacing all placeholders in two passes:
+ * caching their results, then replacing all placeholders in passes:
  *
- *   Pass 1 — Simple placeholders:  {{name}}            → content
- *   Pass 2 — Path queries:         {{name:path|fallback}} → resolved data value
+ *   Phase 1   — Execute providers, cache results
+ *   Phase 1.5 — Block loops: {{#provider:path}}...{{/provider}}
+ *   Phase 2   — Simple placeholders: {{name}} → content
+ *   Phase 3   — Path queries: {{?name:path|fallback}} → resolved value
  *
  * Providers are executed exactly once per renderPrompt() call,
  * regardless of how many placeholders reference them.
@@ -18,19 +20,14 @@ import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils
  */
 export async function renderPrompt(template, context, options = {}) {
     const { maxPasses: maxPassesOption, recursive, debugPlaceholders } = options;
-    // Clamp: positive, reasonable ceiling to guard against typos (e.g. 99999).
-    // Early-exit on no-change makes a high value harmless in practice.
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
-    // debugPlaceholders: when true, unrecognized {{...}} stays as-is (visible for debugging).
-    // When false (default), silently removed to avoid polluting LLM context.
     const unresolvable = debugPlaceholders ? (m) => m : () => '';
-    // Reset per-prompt counter at the start of each render call
     promptCounterReset();
 
     // ── Phase 1: execute every provider, cache normalized results ──
-    const cache = Object.create(null); // providerId → { content, data }
+    const cache = Object.create(null);
 
     for (const provider of providers.values()) {
         if (provider.enabled && !provider.enabled(context)) continue;
@@ -46,20 +43,41 @@ export async function renderPrompt(template, context, options = {}) {
         }
     }
 
-    // ── Phase 2: simple placeholders {{name}} ──
-    // {{counter}}   → round lifetime, starts at 0, persists across renderPrompt calls
-    // {{counter0}}  → prompt lifetime, starts at 0, resets each renderPrompt call
+    // ── Phase 1.5: block loops ──
+    let result = processBlockLoops(template, cache, context, unresolvable, false);
+
+    // ── Phase 2+3: placeholders and path queries ──
+    result = renderPhases2and3(result, cache, context, unresolvable, false);
+
+    // ── Post-render passes ──
+    for (let pass = 1; pass < maxPasses; pass++) {
+        const before = result;
+        result = processBlockLoops(result, cache, context, unresolvable, true);
+        result = renderPhases2and3(result, cache, context, unresolvable, true);
+        if (result === before) break;
+    }
+
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 2 + Phase 3: resolve simple placeholders and path queries
+ * in a single pass. When isRePass is true, counters are preserved
+ * rather than incremented.
+ */
+function renderPhases2and3(template, cache, context, unresolvable, isRePass = false) {
+    // Phase 2
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
-        if (id === 'counter') return String(roundCounterNext());
-        if (id === 'counter0') return String(promptCounterNext());
+        if (id === 'counter' || id === 'counter0') {
+            return isRePass ? match : String(id === 'counter' ? roundCounterNext() : promptCounterNext());
+        }
         if (!(id in cache)) return unresolvable(match);
         return cache[id].content;
     });
 
-    // ── Phase 3: path queries {{?name:path|fallback}} ──
-    // The `?` after `{{` distinguishes path queries from simple placeholders.
-    // {{name}} goes to Phase 2; {{?name:path}} or {{?name:path|default}} goes here.
-    // Supports nested {{...}} inside the path (resolved innermost-first).
+    // Phase 3
     result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
         const entry = cache[id];
         if (!entry) return unresolvable(match);
@@ -74,44 +92,115 @@ export async function renderPrompt(template, context, options = {}) {
         return formatValue(value);
     });
 
-    // ── Post-render passes ──
-    // After replacing placeholders, the injected content itself may contain
-    // new {{...}} references (e.g. a director script stored in the ledger
-    // that references {{?directorLedger:politics}}). Re-run Phase 2 + Phase 3
-    // until no new replacements occur or the max depth is reached.
-    for (let pass = 1; pass < maxPasses; pass++) {
-        const before = result;
+    return result;
+}
 
-        // Phase 2 (re-pass): skip counters — they were already consumed
-        result = result.replace(/\{\{(\w+)\}\}/g, (match, id) => {
-            if (id === 'counter' || id === 'counter0') return match;
-            if (!(id in cache)) return unresolvable(match);
-            return cache[id].content;
+// ─────────────────────────────────────────────────────────────────
+// Block Loops: {{#provider:path}}inner{{/provider}}
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Process block-loop expressions.
+ *
+ * Syntax:
+ *   {{#provider:path}}
+ *     inner template (can contain any {{...}} placeholder)
+ *   {{/provider}}
+ *
+ * - Resolves path against cache[provider].data to get an array
+ * - Deduplicates the array (Set, works for primitives)
+ * - Renders inner template for each element with $it = element
+ * - Empty/null array → whole block replaced with empty string
+ * - Join uses literal newlines from the template (user controls)
+ */
+function processBlockLoops(template, cache, context, unresolvable, isRePass) {
+    let result = template;
+    let safety = 0;
+    const MAX_BLOCKS = 200;
+
+    // Process from innermost outward until no more blocks remain
+    while (safety++ < MAX_BLOCKS) {
+        // Find all blocks in current result
+        const blocks = findAllBlocks(result);
+        if (blocks.length === 0) break;
+
+        // Process innermost first (shortest inner → deepest nesting)
+        blocks.sort((a, b) => a.innerLength - b.innerLength);
+        const block = blocks[0];
+
+        const inner = result.slice(block.openEnd, block.closeIdx);
+
+        // Resolve path to get array
+        const array = resolveArray(cache, block.providerId, block.path, context);
+        if (!Array.isArray(array) || array.length === 0) {
+            result = result.slice(0, block.openStart) + result.slice(block.closeEnd);
+            continue;
+        }
+
+        // Deduplicate (primitive-safe)
+        const unique = [...new Set(array)];
+
+        // Render inner for each element
+        const parts = unique.map(el => {
+            const elCtx = { ...context, it: formatValue(el) };
+            return renderPhases2and3(inner, cache, elCtx, unresolvable, isRePass);
         });
 
-        // Phase 3 (re-pass)
-        result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
-            const entry = cache[id];
-            if (!entry) return unresolvable(match);
-            if (!entry.data) return fallback ?? '';
-            const innerResolved = resolveInnerPlaceholders(path, cache, context);
-            const expandedPath = expandVariables(innerResolved.trim(), context);
-            const segments = parsePath(expandedPath);
-            const value = resolvePath(entry.data, segments);
-            if (value === null || value === undefined) return fallback ?? '';
-            return formatValue(value);
-        });
-
-        if (result === before) break; // no more replacements — done
+        // Replace entire block with joined results
+        result = result.slice(0, block.openStart) + parts.join('\n') + result.slice(block.closeEnd);
     }
 
     return result;
 }
 
+function findAllBlocks(template) {
+    const openRegex = /\{\{#(\w+):([^}]+)\}\}/g;
+    const blocks = [];
+    let match;
+
+    while ((match = openRegex.exec(template)) !== null) {
+        const providerId = match[1];
+        const openStart = match.index;
+        const openEnd = match.index + match[0].length;
+        const closeTag = `{{/${providerId}}}`;
+        const closeIdx = template.indexOf(closeTag, openEnd);
+
+        if (closeIdx !== -1) {
+            blocks.push({
+                providerId,
+                path: match[2],
+                openStart,
+                openEnd,
+                closeIdx,
+                closeEnd: closeIdx + closeTag.length,
+                innerLength: closeIdx - openEnd,
+            });
+        }
+    }
+
+    return blocks;
+}
+
 /**
- * Replace $variable tokens in a path string with values from context.
- * Values containing path-special characters are automatically quoted.
+ * Resolve a path expression against a provider's data to get an array.
+ * Returns the resolved value if it's an array, otherwise null.
  */
+function resolveArray(cache, providerId, path, context) {
+    const entry = cache[providerId];
+    if (!entry || !entry.data) return null;
+
+    const innerResolved = resolveInnerPlaceholders(path, cache, context);
+    const expandedPath = expandVariables(innerResolved.trim(), context);
+    const segments = parsePath(expandedPath);
+    const value = resolvePath(entry.data, segments);
+
+    return Array.isArray(value) ? value : null;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────
+
 function expandVariables(path, context) {
     if (!context) return path;
     return path.replace(/\$(\w+)/g, (match, varName) => {
@@ -125,28 +214,16 @@ function expandVariables(path, context) {
     });
 }
 
-/**
- * Resolve nested {{...}} placeholders inside a path string from innermost outward.
- * Supports: {{name}}, {{?name:subpath}}, {{?name:subpath|fallback}}
- *
- * Example: scripts[{{?ledger:currentSpeaker}}] → scripts[Alice]
- *
- * Unknown inner placeholders return empty string to keep the path
- * well-formed rather than corrupting it with literal "{{...}}" text.
- */
 function resolveInnerPlaceholders(pathStr, cache, context) {
     let prev;
     do {
         prev = pathStr;
-        // Match innermost {{...}} — content must not contain { or }
         pathStr = pathStr.replace(/\{\{([^{}]+)\}\}/g, (_match, inner) => {
-            // Simple placeholder: {{name}}
             if (/^\w+$/.test(inner)) {
                 if (inner === 'counter' || inner === 'counter0') return '';
                 if (!(inner in cache)) return '';
                 return cache[inner].content;
             }
-            // Path query: {{?name:subpath|fallback}}
             const m = /^\?(\w+):([^|]+)(?:\|(.+))?$/.exec(inner);
             if (m) {
                 const [, id, subpath, fallback] = m;
