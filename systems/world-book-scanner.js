@@ -118,8 +118,8 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
 
                 const factors = [];
                 if (entry.constant) factors.push('always-on');
-                if (entry.keyCount > 0) factors.push(`keywords:${entry.keyCount}`);
-                if (entry.keySecondaryCount > 0) factors.push(`sec-keywords:${entry.keySecondaryCount}`);
+                if (entry.keyCount > 0) factors.push(`keys:${entry.key.slice(0, 5).join(',')}`);
+                if (entry.keySecondaryCount > 0) factors.push(`sec:${entry.keysecondary.slice(0, 3).join(',')}`);
                 if (entry.sticky > 0) factors.push(`sticky:${entry.sticky}`);
                 if (entry.depth !== 4) factors.push(`depth:${entry.depth}`);
                 if (entry.probability < 100) factors.push(`prob:${entry.probability}%`);
@@ -138,6 +138,8 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
                     probability: entry.probability,
                     keyCount: entry.keyCount,
                     keySecondaryCount: entry.keySecondaryCount,
+                    keywords: entry.key,
+                    keysecondary: entry.keysecondary,
                     characterFilter: entry.characterFilter || { isExclude: false, names: [], tags: [] },
                     factors: factors.join(', '),
                     contentPreview: entry.contentPreview,
