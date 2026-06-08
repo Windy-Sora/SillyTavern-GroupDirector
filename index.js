@@ -3,7 +3,7 @@ import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
-import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
+import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
@@ -18,9 +18,12 @@ import { register as registerWorldInfoProvider } from './providers/world-info.js
 import { register as registerHistoryProviders } from './providers/history.js';
 import { register as registerDirectorLedger } from './providers/director-ledger.js';
 import { register as registerTestProvider } from './providers/test-provider.js';
+import { register as registerWorldBooks } from './providers/world-books.js';
+import { register as registerWorldBookImportance } from './providers/world-book-importance.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
+import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
@@ -112,6 +115,8 @@ const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory } =
 
 const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
+
+const worldBookScanner = createWorldBookScanner({ world_names, loadWorldInfo, log });
 
 const profileSystem = createProfileSystem({
     settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional,
@@ -1062,6 +1067,8 @@ registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
 registerHistoryProviders(settings, getDirectorHistory);
 registerDirectorLedger(settings, getDirectorHistory);
 registerTestProvider();
+registerWorldBooks(worldBookScanner);
+registerWorldBookImportance(worldBookScanner);
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
