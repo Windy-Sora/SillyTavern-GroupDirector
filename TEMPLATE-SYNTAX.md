@@ -2,42 +2,40 @@
 
 ## 1. 概述
 
-Group Director 的模板系统支持两种占位符语法：
+Group Director 的模板系统支持四种占位符语法，可在**任何模板**中使用（Director Prompt、Script Wrapper、自定义 Prompt）：
 
 | 语法 | 用途 | 示例 |
 |------|------|------|
 | `{{name}}` | 渲染 Provider 的完整文本内容 | `{{recentMessages}}` |
-| `{{?name:path\|fallback}}` | 从 Provider 的 JSON 数据中按路径提取单个值 | `{{?directorLedger:memory.location}}` |
-
-两种语法可以在**任何模板**中使用——Director Prompt、Script Wrapper、自定义 Prompt 均可。
+| `{{?name:path\|fallback}}` | 从 Provider 的 JSON 数据中按路径提取值 | `{{?directorLedger:memory.location}}` |
+| `{{#name:path}}...{{/name}}` | 遍历数组，对每个元素渲染内部模板 | `{{#ledger:items}}...{{/ledger}}` |
+| `{{counter}}` / `{{counter0}}` | 自增计数器 | `{{counter}}` |
 
 ---
 
 ## 2. 简单占位符 `{{name}}`
 
 ```
-{{recentMessages}}
-{{characters}}
-{{previousPlan}}
-{{directorLedger}}
-{{worldInfo}}
-{{character_profiles}}
-{{maxSpeakers}}
-{{previousPlans}}
+{{recentMessages}}  {{characters}}  {{previousPlan}}  {{directorLedger}}
+{{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
+{{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
 ```
 
-将 `name` 对应的 Provider 渲染结果直接插入模板。语义与旧版本完全一致，不受新语法影响。
+将 `name` 对应的 Provider 渲染结果直接插入模板。未注册的占位符行为由 `templateDebugPlaceholders` 设置控制：
+
+| 设置 | 行为 |
+|------|------|
+| `false`（默认） | 未注册 → 静默清除为 `''`，不污染 LLM 上下文 |
+| `true` | 未注册 → 保留原样 `{{typoName}}`，方便排查拼写错误 |
 
 ### 2.1 自增计数器 `{{counter}}` / `{{counter0}}`
 
-这两个特殊占位符不经过 Provider，由 `renderPrompt` 直接处理：
+| 占位符 | 生命周期 | 起始值 | 重置条件 |
+|--------|---------|--------|---------|
+| `{{counter}}` | 整轮（跨多次 `renderPrompt`） | 0 | `GROUP_WRAPPER_STARTED` 正常新轮次 |
+| `{{counter0}}` | 单次 `renderPrompt` | 0 | 每次 `renderPrompt` 进入时自动重置 |
 
-| 占位符 | 生命周期 | 起始值 | 重置条件 | 典型用途 |
-|--------|---------|--------|---------|---------|
-| `{{counter}}` | 整轮（跨多次 `renderPrompt`） | 0 | `GROUP_WRAPPER_STARTED` 正常新轮次 | Director Prompt 中标记场景节拍 |
-| `{{counter0}}` | 单次 `renderPrompt` | 0 | 每次 `renderPrompt` 进入时自动重置 | 角色剧本标识每个角色的分步 |
-
-`{{counter}}` 的 swipe 保护：每个角色首次渲染脚本时，计数器值被快照。如果后续 swipe 该角色，计数器恢复到快照值，确保该角色每次得到的计数序列一致。
+**`{{counter}}` swipe 保护：** 每个角色首次渲染脚本时，计数器值被快照并持久化到 `chat_metadata._counterSnapshots`。后续 swipe 该角色时，计数器恢复到快照值。页面重载后也能从 chat_metadata 恢复。
 
 示例：
 ```
@@ -46,300 +44,249 @@ Director Prompt 中出现 3 次 → 0, 1, 2
 Alice 脚本首次 → 快照=3 → 渲染中出现 2 次 → 3, 4
 Bob   脚本首次 → 快照=5 → 渲染中出现 2 次 → 5, 6
 用户重新生成 Bob → 恢复快照=5 → Bob 重新渲染 → 5, 6（一致）
+页面重载后 swipe Bob → chat_metadata 恢复快照 → 5, 6（一致）
 ```
 
 ---
 
-## 3. 路径查询占位符 `{{?name:path|fallback}}`
+## 3. 块循环 `{{#name:path}}...{{/name}}`
 
 ### 3.1 基本格式
+
+```
+{{#provider:path.to.array}}
+  ... 内部模板，可使用任何 {{...}} 占位符 ...
+{{/provider}}
+```
+
+- `path.to.array` 解析为数组后，对每个元素渲染内部模板
+- 结果用换行符 `\n` 拼接
+- 自动 Set 去重（适用于字符串/数字等原始类型）
+- 空数组/null/非数组 → 整块输出空字符串（silent fallback）
+- 最内层优先处理，支持嵌套块循环
+
+### 3.2 `$it` 变量
+
+块循环内部，`$it` 绑定当前迭代元素：
+
+```
+{{#directorLedger:loreAssignments.$character}}
+  {{?worldBooks:allEntries[comment=$it].content}}
+{{/directorLedger}}
+```
+
+`$it` 同样可用于 `$variable` 展开和嵌套路径查询。
+
+### 3.3 渲染顺序
+
+块循环在 Phase 1.5 执行（Provider 已缓存，占位符尚未替换）。内部模板随后走完整 Phase 2+3。因此内部可以使用任何占位符，包括计数器：
+
+```
+{{#ledger:steps}}
+  Step {{counter}}: {{?ledger:details[$speakerIndex0]}}
+{{/ledger}}
+```
+
+---
+
+## 4. 路径查询 `{{?name:path|fallback}}`
+
+### 4.1 基本格式
 
 ```
 {{?provider:path.to.value}}
 {{?provider:path.to.value|默认值}}
 ```
 
-- `?` — 路径查询标记，与简单占位符区分
-- `provider` — Provider 标识符（`directorLedger`、`previousPlan` 等）
+- `?` — 路径查询标记
 - `path.to.value` — JSON 路径表达式
-- `|默认值` — 可选。路径不存在或值为空时使用
+- `|默认值` — 路径不存在或值为空时使用
 
-### 3.2 路径语法
+### 4.2 路径语法
 
 #### 点号访问
-
 ```
-{{?directorLedger:memory.location}}
-{{?directorLedger:scripts.Alice}}
-{{?directorLedger:reason}}
+{{?directorLedger:memory.location}}        → data.memory.location
+{{?directorLedger:scripts.Alice}}          → data.scripts.Alice
 ```
 
-等价于 JavaScript 的 `data.memory.location`。
-
-#### 数组下标
-
+#### 数组下标（支持负下标倒数）
 ```
-{{?directorLedger:events[0].title}}
-{{?previousPlans:plans[2].reason}}
+{{?directorLedger:events[0].title}}        → 第一个
+{{?directorLedger:events[-1].title}}       → 最后一个
+{{?previousPlans:[-2].reason}}             → 倒数第二个
 ```
-
-等价于 `data.events[0].title`。下标从 0 开始。
-
-#### 负下标（倒数）
-
-```
-{{?directorLedger:events[-1].title}}
-{{?history:plans[-2].reason}}
-```
-
-`[-1]` 取数组最后一个元素，`[-2]` 取倒数第二个。等价于 `array[array.length - 1]`。
 
 #### 属性过滤
-
 ```
-{{?worldInfo:entries[active=true].content}}
+{{?worldBooks:allEntries[comment=地理与空间].content}}
 {{?history:plans[reason=开场].scripts}}
 ```
+`[key=value]` 在数组中查找第一个匹配元素。
 
-`[key=value]` 在数组中查找第一个 `e.key === value` 的元素，然后继续后续路径。值比较为字符串相等。
-
-#### 引号键名
-
-用于 key 中包含 `.`、`-`、空格等特殊字符时：
-
+#### 引号键名（含特殊字符）
 ```
 {{?directorLedger:["key.with.dots"]}}
 {{?directorLedger:['weird-key']}}
 ```
 
-支持双引号和单引号，内部可含转义 `\"` 或 `\'`。
-
 #### 组合使用
-
 ```
 {{?directorLedger:chapters[0].["scene.title"].text}}
 ```
 
----
+### 4.3 嵌套路径查询
 
-### 3.3 默认值
-
-路径不存在、值为 `null` / `undefined`、或 Provider 无 `data` 时，返回默认值：
+路径中可包含内层 `{{...}}` 占位符，从最内层向外逐级解析：
 
 ```
-{{?directorLedger:memory.location|未知地点}}
-{{?directorLedger:scripts.Bob|（无剧本）}}
-{{?directorLedger:missing.deeply.nested|什么都没有}}
+{{?directorLedger:scripts[{{?ledger:currentSpeaker}}]}}
+{{?worldBooks:allEntries[comment={{?ledger:entryName}}].content}}
 ```
 
-省略默认值（`{{?provider:path}}` 或 `{{?provider:path|}}`）时，缺失返回空字符串。
+### 4.4 运行时变量 `$`
 
----
+| 变量 | 可用场景 | 含义 |
+|------|---------|------|
+| `$character` | Script Wrapper | 当前角色名 |
+| `$speakerIndex` | Script Wrapper | 发言顺序（1-based） |
+| `$speakerIndex0` | Script Wrapper | 发言顺序（0-based） |
+| `$speakerCount` | Script Wrapper | 本轮总发言人数 |
+| `$it` | 块循环内部 | 当前迭代元素 |
 
-### 3.4 运行时变量 `$`
+变量值包含路径特殊字符时自动用 `["..."]` 包裹。
 
-路径中可以使用 `$变量名` 引用模板上下文中的运行时变量：
-
-```
-{{?directorLedger:scripts.$character|}}
-```
-
-当前支持的变量：
-
-| 变量 | 可用场景 | 含义 | 示例值（3 人选中，当前第 2 位 Bob） |
-|------|---------|------|------|
-| `$character` | Script Wrapper | 当前正在生成的角色名 | `"Bob"` |
-| `$speakerIndex` | Script Wrapper | 发言顺序位置（1-based，展示用） | `2` |
-| `$speakerIndex0` | Script Wrapper | 发言顺序位置（0-based，数组下标用） | `1` |
-| `$speakerCount` | Script Wrapper | 本轮导演选中的总发言人数 | `3` |
-
-**生命周期：** 变量仅在 `getScriptForChar()` 调用期间存在，用完即销毁。不跨轮次、不持久化、不泄漏。新轮次开始时 `GROUP_WRAPPER_STARTED` 会清空所有运行时状态。
-
-如果变量值包含 `.`、`[`、`]`、空格等路径特殊字符，自动用 `["..."]` 包裹，确保路径解析正确。示例：角色名为 `Mr. Smith` 时，`scripts.$character` 自动展开为 `scripts.["Mr. Smith"]`。
-
-**示例用法：**
-
-在 Director Prompt 中不需要这些变量（Director 不知道具体角色）。在 Script Wrapper（`llmScriptWrapper`）中使用：
-
-```
-[你是 {{?directorLedger:speakers[$speakerIndex0]}}，
-第 $speakerIndex / $speakerCount 位发言者。
-
-你的专属剧本：
-{{?directorLedger:scripts.$character|按照你的角色设定自由发挥}}
-
-Follow this guidance. NEVER mention the director or script.]
-```
-
-Bob 实际收到时会被渲染为：
-
-```
-[你是 Bob，
-第 2 / 3 位发言者。
-
-你的专属剧本：
-保持沉默，观察 Alice 的反应
-
-Follow this guidance. NEVER mention the director or script.]
-```
-
----
-
-## 4. 取值规则
-
-路径解析结果按以下规则转换为文本：
+### 4.5 取值规则
 
 | 类型 | 输出 |
 |------|------|
 | `string` | 原文输出 |
-| `number` | `String(value)`，如 `42` → `"42"` |
-| `boolean` | `String(value)`，如 `true` → `"true"` |
-| `object` / `array` | `JSON.stringify(value, null, 2)` 格式化输出 |
+| `number` | `String(value)` |
+| `boolean` | `String(value)` |
+| `object` / `array` | `JSON.stringify(value, null, 2)` |
 | `null` / `undefined` | 返回默认值；无默认值则返回空字符串 |
 
 ---
 
 ## 5. Provider 数据契约
 
-### 5.1 旧格式（向后兼容）
+### 5.1 格式
 
 ```js
+// 文本型
 return { content: '一段文本' };
-// 或
-return '一段文本';
-```
+return '一段文本';  // 向后兼容
 
-`{{name}}` 正常渲染。`{{?name:path}}` 因为无 `data` 字段，始终返回默认值或空字符串。
-
-### 5.2 新格式（支持路径查询）
-
-```js
+// 结构化（支持路径查询）
 return {
-    content: '给 {{name}} 用的文本',
-    data: {
-        memory: { location: '樱花林' },
-        scripts: { Alice: '试探 Bob', Bob: '保持沉默' },
-        events: [{ title: '初遇' }, { title: '告别' }]
-    }
+    content: '给 {{name}} 用的摘要文本',
+    data: { key1: 'val1', nested: { key2: 'val2' } },
 };
 ```
 
-- `{{name}}` → 渲染 `content`
-- `{{?name:memory.location}}` → `"樱花林"`
-- `{{?name:scripts.Alice}}` → `"试探 Bob"`
-- `{{?name:events[0].title}}` → `"初遇"`
+### 5.2 已注册 Provider 一览
 
-### 5.3 已注册 Provider 一览
-
-| Provider | 占位符 | `content` | `data`（路径查询） | 注册位置 |
-|----------|--------|-----------|-------------------|---------|
-| `recentMessages` | `{{recentMessages}}` | 最近消息文本 | 无 | `providers/recent-messages.js` |
-| `characters` | `{{characters}}` | 角色列表文本 | 无 | `providers/characters.js` |
-| `character_profiles` | `{{character_profiles}}` | 角色档案文本 | 无 | `providers/character-profiles.js` |
-| `maxSpeakers` | `{{maxSpeakers}}` | 数字字符串 | 无 | `index.js`（内联） |
-| `worldInfo` | `{{worldInfo}}` | 世界书条目文本 | 无 | `providers/world-info.js` |
-| `previousPlan` | `{{previousPlan}}` | 上一轮计划（wrapper 包裹） | 上一轮计划原始对象 | `providers/history.js` |
-| `previousPlans` | `{{previousPlans}}` | 历史计划数组（wrapper 包裹） | 历史计划原始数组 | `providers/history.js` |
-| `directorLedger` | `{{directorLedger}}` | 最新导演计划 JSON | 最新导演计划原始对象 | `providers/director-ledger.js` |
-| `directorHistory` | `{{directorHistory}}` | 全部导演历史 JSON 数组 | 全部历史原始数组 | `providers/director-ledger.js` |
-| `test` | `{{test}}` | 测试文本 | 测试结构化数据 | `providers/test-provider.js` |
-
-所有 Provider 均可通过 `{{name}}` 渲染 content 文本，通过 `{{?name:path}}` 查询 data 字段。带 `data` 的 Provider 支持路径查询和运行时变量 `$`。
+| Provider | 占位符 | content | data | 注册位置 |
+|----------|--------|---------|------|---------|
+| `recentMessages` | `{{recentMessages}}` | 最近消息文本 | — | `providers/recent-messages.js` |
+| `characters` | `{{characters}}` | 角色列表 | — | `providers/characters.js` |
+| `character_profiles` | `{{character_profiles}}` | 角色档案 | — | `providers/character-profiles.js` |
+| `maxSpeakers` | `{{maxSpeakers}}` | 数字字符串 | — | `index.js` |
+| `worldInfo` | `{{worldInfo}}` | ST 世界书条目 | — | `providers/world-info.js` |
+| `previousPlan` | `{{previousPlan}}` | 上一轮计划 | 上一轮原始对象 | `providers/history.js` |
+| `previousPlans` | `{{previousPlans}}` | 历史计划数组 | 历史原始数组 | `providers/history.js` |
+| `directorLedger` | `{{directorLedger}}` | 最新计划 JSON | 最新计划原始对象 | `providers/director-ledger.js` |
+| `directorHistory` | `{{directorHistory}}` | 全部历史 JSON | 全部历史原始数组 | `providers/director-ledger.js` |
+| `worldBooks` | `{{worldBooks}}` | 世界书清单 | `{ books, allEntries }` | `providers/world-books.js` |
+| `worldBookImportance` | `{{worldBookImportance}}` | 重要性排名 | 排序数组 | `providers/world-book-importance.js` |
+| `characterLore` | `{{characterLore}}` | 角色触发词 | — | `providers/character-lore.js` |
+| `test` | `{{test}}` | 测试文本 | 测试数据 | `providers/test-provider.js` |
 
 ---
 
-## 6. 完整示例
-
-### 6.1 Director Prompt
+## 6. 渲染管线
 
 ```
-{{worldInfo}}
-{{previousPlans}}
-{{previousPlan}}
+Phase 1   — 执行所有 Provider，缓存到 cache[id] = { content, data }
+Phase 1.5 — 块循环 {{#name:path}}...{{/name}}（最内层优先，去重后逐元素渲染）
+Phase 2   — 简单占位符 {{name}} → cache[id].content
+            {{counter}}/{{counter0}} 递增替换
+Phase 3   — 路径查询 {{?name:path|fallback}}
+            1. resolveInnerPlaceholders(path) — 展开路径中的嵌套 {{...}}
+            2. expandVariables(path) — 展开 $variable
+            3. parsePath → resolvePath → formatValue
 
-最近对话：
+Post-loop — 重复 Phase 1.5+2+3，最多 maxPasses 轮
+            每轮检查 result === before，无变化则提前退出
+            重轮中 counter 保留原样不递增
+```
+
+---
+
+## 7. 完整示例
+
+### 7.1 Director Prompt（出厂默认）
+
+```
+{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
 {{recentMessages}}
 
-可选角色：
+Available characters:
 {{characters}}
 
-角色档案：
+Character profiles:
 {{character_profiles}}
 
 ---
-你是群聊导演。根据以上信息，决定接下来由哪些角色发言。
-最多选择 {{maxSpeakers}} 个角色。
-按发言顺序排列。
+You are a Group Chat Director.
 
-上一轮导演理由：{{?directorLedger:reason|无}}
+Available world book entries:
+{{worldBookImportance}}
 
-请返回 JSON：
-{"speakers": ["角色1", "角色2"], "reason": "选择理由"}
+For EACH picked character, optionally assign relevant world book entries
+by their exact displayed names. Only assign entries actually relevant
+to that character's current situation.
+
+Reply with ONLY a JSON object:
+{
+  "speakers": ["Name1", "Name2"],
+  "reason": "short justification",
+  "scripts": { "Name1": "stage direction", "Name2": "stage direction" },
+  "loreAssignments": { "Name1": ["entry name"], "Name2": [] }
+}
 ```
 
-### 6.2 Script Wrapper（角色层注入）
-
-默认配置 `llmScriptWrapper`，使用 `$character`、`$speakerIndex`、`$speakerCount` 动态变量：
+### 7.2 Script Wrapper（出厂默认）
 
 ```
-[Director stage direction — Speaker $speakerIndex / $speakerCount:
-{{?directorLedger:scripts.$character|}}
-
-Current location: {{?directorLedger:memory.location|未知}}
-
-Previous events:
-{{?directorLedger:events[0].title|无}}
-{{?directorLedger:events[1].title|无}}
+{{characterLore}}[Director's stage direction for this character:
+{{script}}
 
 Follow this guidance. NEVER mention the director, the script,
 or that you are following stage directions. Act naturally as your character.]
 ```
 
-假设导演选中 Alice (1/3)、Bob (2/3)、Charlie (3/3)，Alice 实际收到时：
+### 7.3 `{{worldBookImportance}}` 输出示例
 
 ```
-[Director stage direction — Speaker 1 / 3:
-试探 Bob
+1. [地理与空间] _Girl world_ importance=0.850 (always-on)
+2. [eldoria] _Eldoria_ importance=0.420 (keys:eldoria,wood,forest)
+3. [娱乐室/游戏区] _girls world location indoor_ importance=0.330 (keys:台球,飞镖)
 
-Current location: 樱花林
-
-Previous events:
-初遇
-告别
-
-Follow this guidance. NEVER mention the director, the script,
-or that you are following stage directions. Act naturally as your character.]
+## Always-On (10)
+- [地理与空间] _Girl world_ importance=0.850
+- [社会结构] _Girl world_ importance=0.850
 ```
 
-Bob 收到时 `$speakerIndex` 会变成 `2`，`$character` 变成 `Bob`，剧本自动切换为 Bob 的内容。三个角色收到三个不同的渲染结果，但模板是同一份。
+### 7.4 `{{characterLore}}` 输出示例
 
----
-
-## 7. 渲染机制
-
-每次 `renderPrompt()` 调用分三阶段：
+当 Director 返回 `loreAssignments: { "Alice": ["地理与空间", "社会结构"] }` 时：
 
 ```
-Phase 1 — 执行所有 Provider，缓存结果
-    ↓
-    cache = {
-        directorLedger: { content: "...", data: {...} },
-        recentMessages: { content: "...", data: null },
-        ...
-    }
-
-Phase 2 — 替换简单占位符 {{name}}
-    ↓
-    {{directorLedger}} → cache["directorLedger"].content
-    {{recentMessages}} → cache["recentMessages"].content
-
-Phase 3 — 替换路径查询 {{?name:path|fallback}}
-    ↓
-    {{?directorLedger:memory.location}} → resolvePath(data, "memory.location")
-    {{?directorLedger:scripts.$character|}} → 展开变量 → resolvePath → 取值
+[World lore: 地理与空间, 社会结构]
 ```
 
-**关键保证**：每个 Provider 的 `render()` 在一次 `renderPrompt()` 调用中只执行一次。无论模板中引用该 Provider 多少次（简单占位符 + 多个路径查询），都从缓存读取。
+ST 检测到这些关键词后，自动激活对应世界书条目并注入正文。
 
 ---
 
@@ -348,33 +295,43 @@ Phase 3 — 替换路径查询 {{?name:path|fallback}}
 ### 8.1 仅提供文本
 
 ```js
-registerProvider({
-    id: 'myProvider',
-    placeholder: '{{myProvider}}',
-    render: (ctx) => ({ content: '文本内容' }),
-});
+import { registerProvider } from '../provider-registry.js';
+export function register() {
+    registerProvider({
+        id: 'myProvider',
+        placeholder: '{{myProvider}}',
+        render: (ctx) => ({ content: '文本内容' }),
+    });
+}
 ```
 
 ### 8.2 提供结构化数据
 
 ```js
-registerProvider({
-    id: 'myProvider',
-    placeholder: '{{myProvider}}',
-    render: (ctx) => ({
-        content: '给 {{myProvider}} 用的摘要文本',
-        data: { key1: 'value1', nested: { key2: 'value2' } },
-    }),
-});
+render: (ctx) => ({
+    content: '摘要文本',
+    data: { key1: 'value1', nested: { key2: 'value2' } },
+}),
 ```
 
-用户即可使用 `{{?myProvider:key1}}`、`{{?myProvider:nested.key2}}` 提取具体字段。
+用户即可使用 `{{?myProvider:key1}}`、`{{?myProvider:nested.key2}}`。
+
+### 8.3 提供数组（可被块循环遍历）
+
+```js
+render: (ctx) => ({
+    content: '...',
+    data: { items: ['a', 'b', 'c'] },
+}),
+```
+
+用户可用 `{{#myProvider:items}}{{?other:$it}}{{/myProvider}}` 遍历。
 
 ---
 
 ## 9. 限制
 
-- **不支持递归模板展开**：`data` 中的字符串值不会被二次当模板解析。如 `{ "text": "{{something}}" }`，路径查询返回的仍是字面 `{{something}}`。
-- **不支持通配符或数组遍历**：`{{?provider:events[*].title}}` 不合法。取数组元素必须指定下标。
-- **不支持表达式**：路径只能是纯字段访问，不含运算、函数调用、条件判断。
-- **回退值不含 `}`**：默认值中不能出现 `}`，会被提前截断。
+- **不支持通配符遍历**：`{{?provider:events[*].title}}` 不合法。用块循环替代。
+- **不支持表达式**：路径只能是纯字段访问。
+- **不支持递归模板展开**：`data` 中的字符串值不会被二次当模板解析（但递归渲染后处理会再次扫描）。
+- **回退值不含 `}`**：默认值中不能出现 `}`。
