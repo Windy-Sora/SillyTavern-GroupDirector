@@ -1,6 +1,8 @@
 export function createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log }) {
     const cm = () => getChatMetadata();
 
+    const getMessageId = (msg) => msg?.send_date || null;
+
     function getDirectorHistory() {
         return cm()?.[EXT_KEY]?.directorHistory || [];
     }
@@ -11,11 +13,10 @@ export function createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveCha
         if (!meta[EXT_KEY]) meta[EXT_KEY] = {};
         if (!meta[EXT_KEY].historyMeta) meta[EXT_KEY].historyMeta = {};
         if (!meta[EXT_KEY].directorHistory) meta[EXT_KEY].directorHistory = [];
-        // Anchor to the last message's unique send_date so pruning survives
+        // Anchor to the last message's unique id so pruning survives
         // mid-chat deletions. Unlike chat.length, send_date is immutable and
         // globally unique per message.
-        const lastMsg = chat[chat.length - 1];
-        entry._anchorDate = lastMsg?.send_date || null;
+        entry._anchorDate = getMessageId(chat[chat.length - 1]);
         entry._chatLength = chat.length; // fallback for backward compat
         meta[EXT_KEY].directorHistory.push(entry);
         if (meta[EXT_KEY].historyMeta.scriptPrompt !== settings.llmScriptPrompt) {
@@ -28,10 +29,10 @@ export function createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveCha
         const history = getDirectorHistory();
         if (!history.length) return;
         const chat = getChat();
-        const presentDates = new Set(chat.map(m => m.send_date).filter(Boolean));
+        const presentIds = new Set(chat.map(getMessageId).filter(Boolean));
         const pruned = history.filter(e => {
-            // New entries use date-based anchoring
-            if (e._anchorDate) return presentDates.has(e._anchorDate);
+            // New entries use id-based anchoring
+            if (e._anchorDate) return presentIds.has(e._anchorDate);
             // Old entries without anchor fall back to length-based check
             return (e._chatLength || 0) <= chat.length;
         });
