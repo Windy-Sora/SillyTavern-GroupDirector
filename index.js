@@ -831,10 +831,26 @@ async function initForceSpeakLLM(char, avatar) {
         return;
     }
 
-    // Record to ledger (anchor = last message in chat, which is this message itself
-    // or the preceding one — either way the self-anchor works for pruning)
+    // Record to ledger. Anchor to the most recent USER message instead of
+    // the force-speak character's preceding message. This ensures that when
+    // the user deletes their triggering message, all linked force-speak
+    // entries are pruned together — including multiple consecutive force-speaks.
     if (settings.llmHistoryEnabled) {
         await addToDirectorHistory(parsed);
+        const history = getDirectorHistory();
+        if (history.length > 0) {
+            let userAnchor = null;
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (chat[i].is_user) {
+                    userAnchor = chat[i].send_date || null;
+                    break;
+                }
+            }
+            if (userAnchor) {
+                history[history.length - 1]._anchorDate = userAnchor;
+                await saveChatConditional();
+            }
+        }
     }
 
     // Extract script for this character
