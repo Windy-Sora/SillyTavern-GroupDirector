@@ -330,6 +330,13 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     const group = getCurrentGroup();
     if (!group) return;
 
+    // Manual force-speak without a user trigger: no send_date anchor
+    // for the ledger, would corrupt indexing. Transparent pass-through.
+    if (!roundInitialized && roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
+        const lastMsg = chat[chat.length - 1];
+        if (lastMsg && !lastMsg.is_user) return;
+    }
+
     const ctx = getContext();
     const activeCharId = ctx.characterId;
     if (activeCharId === undefined || activeCharId === null) return;
