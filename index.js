@@ -111,7 +111,7 @@ const getChatMetadata = () => chat_metadata;
 const getChat = () => chat;
 const getCharacters = () => characters;
 
-const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory } =
+const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
 
 const { buildDirectorWorldInfo } =
@@ -1102,6 +1102,8 @@ jQuery(async () => {
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
         toastr, world_names, loadWorldInfo,
+        getDirectorHistory, updateEntry, clearEntry,
+        isRoundActive: () => isGroupChat,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });
