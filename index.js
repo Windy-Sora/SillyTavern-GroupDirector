@@ -324,10 +324,8 @@ function getRecentMessages() {
 // ─── Main Interceptor ─────────────────────────────────────────────────
 // Runs once per activated character before its Generate() call.
 globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, abort, type) {
-    if (settings.mode === MODE_OFF) return;
-
-    // Manual force-speak detection: runs BEFORE type guards because ST may
-    // use 'quiet' or similar types for force-speak, which would be skipped.
+    // Manual force-speak detection: runs BEFORE mode guard so it works
+    // even when the main director mode is turned off.
     const isForceSpeak = !roundInitialized
         && roundGenerateType !== 'swipe'
         && roundGenerateType !== 'regenerate'
@@ -360,6 +358,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         return;
     }
 
+    if (settings.mode === MODE_OFF) return;
     if (type === 'quiet' || type === 'impersonate' || type === 'continue') return;
 
     const group = getCurrentGroup();
