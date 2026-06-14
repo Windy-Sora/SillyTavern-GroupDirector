@@ -325,34 +325,45 @@ function getRecentMessages() {
 // Runs once per activated character before its Generate() call.
 globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, abort, type) {
     if (settings.mode === MODE_OFF) return;
+
+    // Manual force-speak detection: runs BEFORE type guards because ST may
+    // use 'quiet' or similar types for force-speak, which would be skipped.
+    const isForceSpeak = !roundInitialized
+        && roundGenerateType !== 'swipe'
+        && roundGenerateType !== 'regenerate'
+        && chat.length > 0
+        && !chat[chat.length - 1]?.is_user;
+
+    if (isForceSpeak) {
+        const mode = settings.forceSpeakMode || 'native';
+        if (mode === 'block') {
+            abort(false);
+            return;
+        }
+        if (mode === 'llm') {
+            const group = getCurrentGroup();
+            if (group) {
+                const ctx = getContext();
+                const chId = ctx.characterId;
+                if (chId !== undefined && chId !== null && characters[chId]) {
+                    await initForceSpeakLLM(characters[chId], characters[chId].avatar);
+                }
+            }
+            return;
+        }
+        // mode === 'native': confirm then pass through
+        const msg = settings.lang === 'zh'
+            ? '强制发言会绕过导演决策，可能破坏故事连续性。是否继续？'
+            : 'Force-speak bypasses the director and may break story continuity. Continue?';
+        if (confirm(msg)) return;
+        abort(false);
+        return;
+    }
+
     if (type === 'quiet' || type === 'impersonate' || type === 'continue') return;
 
     const group = getCurrentGroup();
     if (!group) return;
-
-    // Manual force-speak without a user trigger: no send_date anchor
-    // for the ledger. Mode determines how to handle it.
-    if (!roundInitialized && roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
-        const lastMsg = chat[chat.length - 1];
-        if (lastMsg && !lastMsg.is_user) {
-            const mode = settings.forceSpeakMode || 'native';
-            if (mode === 'block') {
-                abort(false);
-                return;
-            }
-            if (mode === 'llm') {
-                await initForceSpeakLLM(char, avatar);
-                return;
-            }
-            // mode === 'native': confirm then pass through
-            const msg = settings.lang === 'zh'
-                ? '强制发言会绕过导演决策，可能破坏故事连续性。是否继续？'
-                : 'Force-speak bypasses the director and may break story continuity. Continue?';
-            if (confirm(msg)) return;
-            abort(false);
-            return;
-        }
-    }
 
     const ctx = getContext();
     const activeCharId = ctx.characterId;
