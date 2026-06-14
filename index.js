@@ -1104,6 +1104,7 @@ jQuery(async () => {
         toastr, world_names, loadWorldInfo,
         getDirectorHistory, updateEntry, clearEntry,
         isRoundActive: () => isGroupChat,
+        onLatestEntryEdited: () => { llmPickedSet = null; },
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

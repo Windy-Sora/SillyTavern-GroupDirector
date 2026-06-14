@@ -2,7 +2,7 @@ import { registerSection } from './registry.js';
 import { eventSource, event_types } from '../../../../../events.js';
 
 registerSection('ledger', function (ctx) {
-    const { settings, getDirectorHistory, updateEntry, clearEntry, isRoundActive, saveChatConditional, toastr } = ctx;
+    const { settings, getDirectorHistory, updateEntry, clearEntry, isRoundActive, saveChatConditional, toastr, onLatestEntryEdited } = ctx;
 
     let expandedIndex = -1;
     let rawMode = false;
@@ -110,6 +110,9 @@ registerSection('ledger', function (ctx) {
                         parsed._anchorDate = null;
                         parsed._chatLength = 0;
                         await updateEntry(realIndex, parsed);
+                        if (onLatestEntryEdited && realIndex === getDirectorHistory().length - 1) {
+                            onLatestEntryEdited();
+                        }
                         expandedIndex = -1;
                         buildCards();
                         toastr.info(settings.lang === 'zh' ? '已保存' : 'Saved');
@@ -165,6 +168,9 @@ registerSection('ledger', function (ctx) {
                     parsed[i]._anchorDate = null;
                     parsed[i]._chatLength = 0;
                     await updateEntry(realIndex, parsed[i]);
+                }
+                if (onLatestEntryEdited && history.length > 0) {
+                    onLatestEntryEdited();
                 }
                 rawMode = false;
                 buildCards();
