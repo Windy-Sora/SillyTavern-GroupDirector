@@ -780,6 +780,7 @@ async function runManualOrderedGeneration() {
 async function initForceSpeakLLM(char, avatar) {
     const group = getCurrentGroup();
     if (!group) return;
+    if (!chat.length) return;  // no messages to anchor to
 
     const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
     if (!enabledMembers.includes(avatar)) return;
