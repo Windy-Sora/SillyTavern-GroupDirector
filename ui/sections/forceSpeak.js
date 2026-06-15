@@ -1,7 +1,7 @@
 import { registerSection } from './registry.js';
 
 registerSection('forceSpeak', function (ctx) {
-    const { settings, $c, saveSettings } = ctx;
+    const { settings, $c, saveSettings, toastr } = ctx;
 
     $(`input[name="gd-force-speak-mode"][value="${settings.forceSpeakMode || 'native'}"]`).prop('checked', true);
     $('#gd-force-speak-llm-section').toggle(settings.forceSpeakMode === 'llm');
@@ -21,5 +21,6 @@ registerSection('forceSpeak', function (ctx) {
         $c('force-speak-prompt').val('');
         settings.forceSpeakPrompt = '';
         saveSettings();
+        toastr.info(settings.lang === 'zh' ? '已恢复默认强制发言 Prompt' : 'Force-speak prompt reset to default');
     });
 });
