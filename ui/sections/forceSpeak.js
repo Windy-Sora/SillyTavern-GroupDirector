@@ -17,4 +17,9 @@ registerSection('forceSpeak', function (ctx) {
         settings.forceSpeakPrompt = $c('force-speak-prompt').val();
         saveSettings();
     });
+    $c('force-speak-prompt-reset').on('click', () => {
+        $c('force-speak-prompt').val('');
+        settings.forceSpeakPrompt = '';
+        saveSettings();
+    });
 });
