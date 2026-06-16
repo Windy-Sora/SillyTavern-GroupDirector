@@ -22,6 +22,7 @@ import { register as registerWorldBooks } from './providers/world-books.js';
 import { register as registerWorldBookImportance } from './providers/world-book-importance.js';
 import { register as registerCharacterLore } from './providers/character-lore.js';
 import { register as registerSystemTime } from './providers/system-time.js';
+import { register as registerRandomDice } from './providers/random-dice.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
@@ -1237,6 +1238,7 @@ registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
 registerCharacterLore(getDirectorHistory);
 registerSystemTime(settings);
+registerRandomDice();
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
