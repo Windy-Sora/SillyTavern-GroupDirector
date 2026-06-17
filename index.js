@@ -27,6 +27,7 @@ import { register as registerDice } from './providers/dice.js';
 import { register as registerMoonPhase } from './providers/moon-phase.js';
 import { register as registerTimeOfDay } from './providers/time-of-day.js';
 import { register as registerChatSummary } from './providers/chat-summary.js';
+import { register as registerNewRecentMessages } from './providers/new-recent-messages.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
@@ -1161,8 +1162,8 @@ function matchCharacterByName(name, enabledMembers) {
 
 function getDefaultLlmPrompt() {
     // Context at TOP — instruction/format at BOTTOM for maximum adherence in long contexts
-    let base = `{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
-{{recentMessages}}
+    let base = `{{chatSummary}}{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
+{{newRecentMessages}}
 
 Available characters:
 {{characters}}
@@ -1255,6 +1256,7 @@ registerDice();
 registerMoonPhase(settings);
 registerTimeOfDay(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
+registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
