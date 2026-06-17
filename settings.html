@@ -410,7 +410,11 @@
                         <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
                         <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryScanClear">清除存档</span></span>
                     </div>
-                    <div class="menu_button menu_button_icon" id="gd-summary-scan-btn" style="margin-top:4px;"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="summaryScan">扫描存档总结</span></div>
+                    <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="summaryScan">扫描存档总结</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> <span data-i18n="summaryPrune">清除已禁用</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> <span data-i18n="summaryHideDisabled">隐藏已禁用</span></span>
+                    </div>
 
                     <label class="checkbox_label" for="gd-summary-enabled">
                         <input type="checkbox" id="gd-summary-enabled">

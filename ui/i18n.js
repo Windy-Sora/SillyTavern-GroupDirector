@@ -96,6 +96,8 @@ const I18N = {
         summaryLocked: '生成中，面板已锁定',
         summaryScanClear: '清除存档',
         summaryScan: '扫描存档总结',
+        summaryPrune: '清除已禁用',
+        summaryHideDisabled: '隐藏已禁用',
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt，保持剧情连续性',
@@ -245,6 +247,8 @@ const I18N = {
         summaryLocked: 'Generation in progress — panel locked',
         summaryScanClear: 'Clear archive',
         summaryScan: 'Scan for summaries',
+        summaryPrune: 'Clear disabled',
+        summaryHideDisabled: 'Hide disabled',
         historyMeta: 'Current ledger style: ',
 
         continuity: '<b>Use Director History</b> — Inject recorded ledger into current prompt for continuity',

@@ -165,8 +165,9 @@ registerSection('chatSummary', function (ctx) {
     }
 
     // Scan button
-    function doScan() {
+    function doScan(skipDisabled = false) {
         const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
+        const visible = skipDisabled ? allSummaries.filter(s => s.active) : allSummaries;
         if (allSummaries.length === 0) {
             $c('summary-scan-notice').hide();
             $c('summary-result').val('');
@@ -185,11 +186,18 @@ registerSection('chatSummary', function (ctx) {
         if (inactiveCount > 0) msg += settings.lang === 'zh'
             ? `（${inactiveCount} 条已禁用）`
             : ` (${inactiveCount} disabled)`;
+        if (skipDisabled) msg += settings.lang === 'zh' ? ' — 已隐藏已禁用' : ' — disabled hidden';
         $c('summary-scan-result').text(msg);
         $c('summary-scan-notice').show();
 
-        // Show all summaries for review
-        const scanText = allSummaries.map((s, i) => {
+        if (!visible.length) {
+            $c('summary-result').val(settings.lang === 'zh' ? '（全部已禁用，已被隐藏）' : '(All disabled, hidden)');
+            $c('summary-result-section').show();
+            return;
+        }
+
+        // Show summaries for review
+        const scanText = visible.map((s, i) => {
             const status = s.active ? (settings.lang === 'zh' ? '活跃' : 'Active') : (settings.lang === 'zh' ? '已禁用' : 'Disabled');
             const range = settings.lang === 'zh' ? `覆盖前${s.rangeEnd}条` : `covers first ${s.rangeEnd}`;
             return `--- #${i + 1} [${status}] ${range} ---\n${s.content}`;
@@ -198,7 +206,47 @@ registerSection('chatSummary', function (ctx) {
         $c('summary-result-section').show();
     }
 
-    $c('summary-scan-btn').on('click', doScan);
+    let hideDisabled = false;
+
+    $c('summary-scan-btn').on('click', () => { hideDisabled = false; updateHideBtn(); doScan(); });
+
+    // Prune disabled summaries
+    $c('summary-prune-btn').on('click', async () => {
+        const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
+        const activeOnly = allSummaries.filter(s => s.active);
+        if (activeOnly.length === allSummaries.length) {
+            toastr.info(settings.lang === 'zh' ? '没有可清除的已禁用条目' : 'No disabled entries to prune');
+            return;
+        }
+        if (!confirm(settings.lang === 'zh'
+            ? `将删除 ${allSummaries.length - activeOnly.length} 条已禁用总结，保留 ${activeOnly.length} 条活跃。确认？`
+            : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`)) return;
+        allSummaries.length = 0;
+        allSummaries.push(...activeOnly);
+        const { saveChatConditional } = ctx;
+        if (saveChatConditional) await saveChatConditional();
+        doScan();
+        toastr.success(settings.lang === 'zh'
+            ? `已清除，保留 ${activeOnly.length} 条活跃总结`
+            : `Pruned, ${activeOnly.length} active summaries kept`);
+    });
+
+    // Toggle hide disabled
+    function updateHideBtn() {
+        const icon = $c('summary-hide-btn').find('i');
+        icon.removeClass('fa-eye-slash fa-eye');
+        icon.addClass(hideDisabled ? 'fa-eye' : 'fa-eye-slash');
+        const label = hideDisabled
+            ? (settings.lang === 'zh' ? '显示已禁用' : 'Show disabled')
+            : (settings.lang === 'zh' ? '隐藏已禁用' : 'Hide disabled');
+        $c('summary-hide-btn').contents().last().replaceWith(label);
+    }
+
+    $c('summary-hide-btn').on('click', () => {
+        hideDisabled = !hideDisabled;
+        updateHideBtn();
+        doScan(hideDisabled);
+    });
 
     $c('summary-scan-clear').on('click', async () => {
         if (!confirm(settings.lang === 'zh'
