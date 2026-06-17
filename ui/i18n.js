@@ -91,6 +91,9 @@ const I18N = {
         summaryRegenerate: '重新总结',
         summaryRevert: '回退总结',
         summaryReset: '重置全部',
+        summaryResultLabel: '总结结果（可直接编辑）',
+        summaryResultSave: '保存编辑',
+        summaryLocked: '生成中，面板已锁定',
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt，保持剧情连续性',
@@ -235,6 +238,9 @@ const I18N = {
         summaryRegenerate: 'Regenerate',
         summaryRevert: 'Revert',
         summaryReset: 'Reset All',
+        summaryResultLabel: 'Summary result (editable)',
+        summaryResultSave: 'Save edits',
+        summaryLocked: 'Generation in progress — panel locked',
         historyMeta: 'Current ledger style: ',
 
         continuity: '<b>Use Director History</b> — Inject recorded ledger into current prompt for continuity',

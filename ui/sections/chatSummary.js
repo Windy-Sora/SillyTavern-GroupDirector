@@ -1,13 +1,20 @@
 import { registerSection } from './registry.js';
 
+function getDefaultPrompt(lang) {
+    return lang === 'zh'
+        ? '请用简洁的语言总结以下内容，保留关键情节、角色互动和重要细节。输出纯文本，不超过500字。'
+        : 'Summarize the following content concisely. Keep key plot points, character interactions, and important details. Output plain text, maximum 300 words.';
+}
+
 registerSection('chatSummary', function (ctx) {
     const { settings, $c, saveSettings, summarySystem, toastr, isRoundActive } = ctx;
     const ss = summarySystem;
+    const defaultPrompt = getDefaultPrompt(settings.lang);
 
     // Init
     $c('summary-enabled').prop('checked', !!settings.summaryEnabled);
     $c('summary-reuse').prop('checked', settings.summaryReusePrevious !== false);
-    $c('summary-prompt').val(settings.summaryPrompt || '');
+    $c('summary-prompt').val(settings.summaryPrompt || defaultPrompt);
 
     const checkEnabled = () => {
         const locked = isRoundActive ? isRoundActive() : false;
@@ -20,6 +27,7 @@ registerSection('chatSummary', function (ctx) {
         $c('summary-revert').prop('disabled', !on);
         $c('summary-reset').prop('disabled', !on);
         $c('summary-prompt-reset').prop('disabled', !settings.summaryEnabled);
+        $c('summary-result-save').prop('disabled', !on);
     };
     checkEnabled();
 
@@ -42,10 +50,22 @@ registerSection('chatSummary', function (ctx) {
         saveSettings();
     });
     $c('summary-prompt-reset').on('click', () => {
-        $c('summary-prompt').val('');
+        $c('summary-prompt').val(defaultPrompt);
         settings.summaryPrompt = '';
         saveSettings();
         toastr.info(settings.lang === 'zh' ? '已恢复默认总结 Prompt' : 'Summary prompt reset to default');
+    });
+
+    // Save edited result
+    $c('summary-result-save').on('click', async () => {
+        if (isRoundActive && isRoundActive()) return;
+        const active = ss.getLatestActive();
+        if (!active) return;
+        active.content = $c('summary-result').val();
+        const { saveChatConditional } = ctx;
+        if (saveChatConditional) await saveChatConditional();
+        toastr.info(settings.lang === 'zh' ? '总结已更新' : 'Summary updated');
+        refreshStatus();
     });
 
     // Execute
@@ -102,9 +122,20 @@ registerSection('chatSummary', function (ctx) {
             $c('summary-status').text((settings.lang === 'zh'
                 ? `已激活：覆盖前 ${active.rangeEnd} 条消息`
                 : `Active: covers first ${active.rangeEnd} messages`) + (active.basedOn !== null ? (settings.lang === 'zh' ? '（基于上一条总结）' : ' (based on previous)') : ''));
+            $c('summary-result').val(active.content || '');
+            $c('summary-result-section').show();
         } else {
             $c('summary-status').text(settings.lang === 'zh' ? '无活跃总结' : 'No active summary');
+            $c('summary-result').val('');
+            $c('summary-result-section').hide();
         }
     }
     refreshStatus();
+
+    // Show result section if active summary exists
+    if (ss.getLatestActive()) {
+        $c('summary-result-section').show();
+    } else {
+        $c('summary-result-section').hide();
+    }
 });
