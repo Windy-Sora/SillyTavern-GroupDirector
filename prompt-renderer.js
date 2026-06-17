@@ -26,6 +26,18 @@ export async function renderPrompt(template, context, options = {}) {
     const unresolvable = debugPlaceholders ? (m) => m : () => '';
     promptCounterReset();
 
+    // ── Phase 0: raw passthrough {[{...}]} ──
+    // Content inside {[{...}]} bypasses all rendering — e.g.
+    // {[{ {{characters}} }]} → literal "{{characters}}" in output.
+    // Useful for teaching the LLM DSL syntax without evaluation.
+    const rawSlots = [];
+    const RAW_MARKER = '\x00GDRAW';
+    let result = template.replace(/\{\[\{([\s\S]*?)\}\]\}/g, (_m, inner) => {
+        const idx = rawSlots.length;
+        rawSlots.push(inner);
+        return `${RAW_MARKER}${idx}\x00`;
+    });
+
     // ── Phase 1: execute every provider, cache normalized results ──
     const cache = Object.create(null);
 
@@ -44,7 +56,7 @@ export async function renderPrompt(template, context, options = {}) {
     }
 
     // ── Phase 1.5: block loops ──
-    let result = processBlockLoops(template, cache, context, unresolvable, false);
+    result = processBlockLoops(result, cache, context, unresolvable, false);
 
     // ── Phase 2+3: placeholders and path queries ──
     result = renderPhases2and3(result, cache, context, unresolvable, false);
@@ -55,6 +67,11 @@ export async function renderPrompt(template, context, options = {}) {
         result = processBlockLoops(result, cache, context, unresolvable, true);
         result = renderPhases2and3(result, cache, context, unresolvable, true);
         if (result === before) break;
+    }
+
+    // ── Restore raw passthrough slots ──
+    for (let i = 0; i < rawSlots.length; i++) {
+        result = result.split(`${RAW_MARKER}${i}\x00`).join(rawSlots[i]);
     }
 
     return result;
