@@ -1271,6 +1271,7 @@ jQuery(async () => {
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
+        getChat: () => chat,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

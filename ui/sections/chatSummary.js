@@ -141,16 +141,31 @@ registerSection('chatSummary', function (ctx) {
         toastr.info(settings.lang === 'zh' ? '已重置全部总结' : 'All summaries reset');
     });
 
+    function getChatLen() {
+        // Access chat length from the system if available, otherwise 0
+        const summaries = ss.getSummaries ? ss.getSummaries() : [];
+        if (summaries.length > 0) {
+            // Use the max rangeEnd as an approximation; the system has actual chat ref
+            return Math.max(summaries[summaries.length - 1].rangeEnd || 0, ...summaries.map(s => s.rangeEnd || 0));
+        }
+        return 0;
+    }
+
     function refreshStatus() {
         const active = ss.getLatestActive();
+        const { getChat } = ctx;
+        const chatLen = getChat ? getChat().length : 0;
         if (active) {
+            const remaining = Math.max(0, chatLen - active.rangeEnd);
             $c('summary-status').text((settings.lang === 'zh'
-                ? `已激活：覆盖前 ${active.rangeEnd} 条消息`
-                : `Active: covers first ${active.rangeEnd} messages`) + (active.basedOn !== null ? (settings.lang === 'zh' ? '（基于上一条总结）' : ' (based on previous)') : ''));
+                ? `上次总结位置：第 ${active.rangeEnd} 条 | 未总结：${remaining} 条 | 总计：${chatLen} 条`
+                : `Last summary at: #${active.rangeEnd} | Unsummarized: ${remaining} | Total: ${chatLen}`) + (active.basedOn !== null ? (settings.lang === 'zh' ? '（基于上一条总结）' : ' (based on previous)') : ''));
             $c('summary-result').val(active.content || '');
             $c('summary-result-section').show();
         } else {
-            $c('summary-status').text(settings.lang === 'zh' ? '无活跃总结' : 'No active summary');
+            $c('summary-status').text(settings.lang === 'zh'
+                ? `未总结 | 总计：${chatLen} 条消息`
+                : `No summary | Total: ${chatLen} messages`);
             $c('summary-result').val('');
             $c('summary-result-section').hide();
         }
@@ -208,7 +223,8 @@ registerSection('chatSummary', function (ctx) {
 
     let hideDisabled = false;
 
-    $c('summary-scan-btn').on('click', () => { hideDisabled = false; updateHideBtn(); doScan(); });
+    $c('summary-scan-btn').on('click', () => { hideDisabled = false; updateHideBtn(); refreshStatus(); doScan(); });
+    $c('summary-refresh').on('click', refreshStatus);
 
     // Prune disabled summaries
     $c('summary-prune-btn').on('click', async () => {
