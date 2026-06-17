@@ -111,7 +111,7 @@
                         <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
 
                         <label for="gd-llm-context-depth" data-i18n="llmContextDepth">传入上下文层数（最近 N 条消息）</label>
-                        <small data-i18n="llmContextDepthHint">控制发送给 Director 的最近消息数量。仅作用于 <code>{{recentMessages}}</code> 接口。<code>{{newRecentMessages}}</code> 在启用总结时返回总结后的新消息，不受此限制。</small>
+                        <small data-i18n="llmContextDepthHint">控制发送给 Director 的最近消息数量，对 <code>{{recentMessages}}</code> 和 <code>{{newRecentMessages}}</code> 均生效。<code>{{newRecentMessages}}</code> 在启用总结后会额外返回总结文本 + 总结后的全部新消息，此时不受深度限制。</small>
                         <input type="number" id="gd-llm-context-depth" class="text_pole" min="1" max="100" step="1">
 
                         <label class="checkbox_label" for="gd-llm-respect-order">
