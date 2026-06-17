@@ -44,6 +44,10 @@ export const DEFAULT_SETTINGS = {
     // Force Speak
     forceSpeakMode: 'native',
     forceSpeakPrompt: '',
+    // Chat Summary
+    summaryEnabled: false,
+    summaryReusePrevious: true,
+    summaryPrompt: '',
     // World Book
     worldBookSelection: {},
     worldBookMaxEntries: 20,
