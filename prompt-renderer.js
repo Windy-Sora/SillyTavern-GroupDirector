@@ -1,6 +1,7 @@
 import { providers } from './provider-registry.js';
 import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
 import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils/counter.js';
+import { unescapeKnowledge } from './providers/knowledge.js';
 
 /**
  * Render a template by executing all registered providers once,
@@ -73,6 +74,9 @@ export async function renderPrompt(template, context, options = {}) {
     for (let i = 0; i < rawSlots.length; i++) {
         result = result.split(`${RAW_MARKER}${i}\x00`).join(rawSlots[i]);
     }
+
+    // ── Unescape knowledge provider content ──
+    result = unescapeKnowledge(result);
 
     return result;
 }

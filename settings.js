@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS = {
     forceSpeakMode: 'native',
     forceSpeakPrompt: '',
     // Chat Summary
+    knowledgeText: '',
     summaryEnabled: false,
     summaryReusePrevious: true,
     summaryPrompt: '',

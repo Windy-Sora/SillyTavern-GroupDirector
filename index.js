@@ -26,6 +26,7 @@ import { register as registerRandomDice } from './providers/random-dice.js';
 import { register as registerDice } from './providers/dice.js';
 import { register as registerMoonPhase } from './providers/moon-phase.js';
 import { register as registerTimeOfDay } from './providers/time-of-day.js';
+import { register as registerKnowledge } from './providers/knowledge.js';
 import { register as registerChatSummary } from './providers/chat-summary.js';
 import { register as registerNewRecentMessages } from './providers/new-recent-messages.js';
 import { createHistorySystem } from './systems/history-system.js';
@@ -1255,6 +1256,7 @@ registerRandomDice();
 registerDice();
 registerMoonPhase(settings);
 registerTimeOfDay(settings);
+registerKnowledge(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
 registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
 

@@ -153,6 +153,11 @@
                         <small style="margin-top:8px;"><i data-i18n="promptNote">每轮群聊生成会额外调用一次主模型来做导演决策。</i></small>
 
                         <hr>
+                        <h4 data-i18n="knowledgeTitle">知识库 (Knowledge)</h4>
+                        <small data-i18n="knowledgeHint">此区域的文本不会被渲染——其中的 <code>{{XXX}}</code> 会原样发给 LLM，用于教 LLM 使用 DSL 接口。通过 <code>{{knowledge}}</code> 占位符引用。</small>
+                        <textarea id="gd-knowledge-text" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+
+                        <hr>
                         <h4 data-i18n="templateRecursiveTitle">模板递归渲染</h4>
                         <small data-i18n="templateRecursiveHint">当占位符渲染出的文本中仍包含 <code>{{...}}</code> 占位符时，是否继续解析。</small>
 
