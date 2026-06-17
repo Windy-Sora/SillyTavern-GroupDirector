@@ -180,14 +180,14 @@ registerSection('chatSummary', function (ctx) {
     }
 
     // Scan button
-    function doScan(skipDisabled = false) {
+    function doScan(skipDisabled = false, silent = false) {
         const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
         const visible = skipDisabled ? allSummaries.filter(s => s.active) : allSummaries;
         if (allSummaries.length === 0) {
             $c('summary-scan-notice').hide();
             $c('summary-result').val('');
             $c('summary-result-section').hide();
-            toastr.info(settings.lang === 'zh' ? '未检测到存档总结' : 'No archived summaries found');
+            if (!silent) toastr.info(settings.lang === 'zh' ? '未检测到存档总结' : 'No archived summaries found');
             return;
         }
         const activeCount = allSummaries.filter(s => s.active).length;
@@ -278,6 +278,6 @@ registerSection('chatSummary', function (ctx) {
         toastr.info(settings.lang === 'zh' ? '已清除全部总结' : 'All summaries cleared');
     });
 
-    // Auto-scan on init
-    doScan();
+    // Auto-scan on init (silent — no toast if empty)
+    doScan(true);
 });
