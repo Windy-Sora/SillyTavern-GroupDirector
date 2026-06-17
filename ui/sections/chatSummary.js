@@ -144,6 +144,8 @@ registerSection('chatSummary', function (ctx) {
         const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
         if (allSummaries.length === 0) {
             $c('summary-scan-notice').hide();
+            $c('summary-result').val('');
+            $c('summary-result-section').hide();
             toastr.info(settings.lang === 'zh' ? '未检测到存档总结' : 'No archived summaries found');
             return;
         }
@@ -160,6 +162,15 @@ registerSection('chatSummary', function (ctx) {
             : ` (${inactiveCount} disabled)`;
         $c('summary-scan-result').text(msg);
         $c('summary-scan-notice').show();
+
+        // Show all summaries for review
+        const scanText = allSummaries.map((s, i) => {
+            const status = s.active ? (settings.lang === 'zh' ? '活跃' : 'Active') : (settings.lang === 'zh' ? '已禁用' : 'Disabled');
+            const range = settings.lang === 'zh' ? `覆盖前${s.rangeEnd}条` : `covers first ${s.rangeEnd}`;
+            return `--- #${i + 1} [${status}] ${range} ---\n${s.content}`;
+        }).join('\n\n');
+        $c('summary-result').val(scanText);
+        $c('summary-result-section').show();
     }
 
     $c('summary-scan-btn').on('click', doScan);
