@@ -1,12 +1,14 @@
 import { registerProvider } from '../provider-registry.js';
 
 /**
- * {{newRecentMessages}} — recent messages since the last summary rangeEnd,
- * or full recent messages if no summary is active.
+ * {{newRecentMessages}} — smart context window.
  *
- * Pairs with {{chatSummary}}: when a summary covers the first N messages,
- * this provider returns only messages after position N, avoiding redundant
- * context that the summary already compressed.
+ * - No summary active: same as {{recentMessages}} (last N messages)
+ * - Summary active:  [Summary] + [New messages after summary.rangeEnd]
+ *
+ * Replaces {{chatSummary}}{{recentMessages}} with a single provider
+ * that auto-assembles the optimal context. {{recentMessages}} and
+ * {{chatSummary}} remain available for custom templates.
  */
 export function register(settings, getChat, getLatestActive) {
     registerProvider({
@@ -20,21 +22,23 @@ export function register(settings, getChat, getLatestActive) {
             const summary = settings.summaryEnabled ? getLatestActive() : null;
 
             let startIdx;
-            if (summary && summary.active && summary.rangeEnd > 0) {
-                // Start after the summarized range
+            let prefix = '';
+
+            if (summary && summary.active && summary.rangeEnd > 0 && summary.content) {
                 startIdx = summary.rangeEnd;
+                prefix = settings.lang === 'zh'
+                    ? `[上下文总结]\n${summary.content}\n\n[最新消息]\n`
+                    : `[Chat Summary]\n${summary.content}\n\n[Recent Messages]\n`;
             } else {
-                // No summary — use normal depth window
                 startIdx = Math.max(0, chat.length - depth);
             }
 
-            // But always keep at least the last 'depth' messages visible
-            const minStart = Math.max(0, chat.length - depth);
-            startIdx = Math.min(startIdx, minStart);
+            // Always keep at least the last 'depth' messages visible
+            startIdx = Math.min(startIdx, Math.max(0, chat.length - depth));
 
             const messages = chat.slice(startIdx);
             return {
-                content: messages.map(m => `${m.name || (m.is_user ? 'User' : 'System')}: ${m.mes}`).join('\n'),
+                content: prefix + messages.map(m => `${m.name || (m.is_user ? 'User' : 'System')}: ${m.mes}`).join('\n'),
             };
         },
     });

@@ -1162,7 +1162,7 @@ function matchCharacterByName(name, enabledMembers) {
 
 function getDefaultLlmPrompt() {
     // Context at TOP — instruction/format at BOTTOM for maximum adherence in long contexts
-    let base = `{{chatSummary}}{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
+    let base = `{{worldInfo}}{{previousPlans}}{{previousPlan}}Recent messages:
 {{newRecentMessages}}
 
 Available characters:
