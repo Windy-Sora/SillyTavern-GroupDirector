@@ -56,15 +56,40 @@ registerSection('chatSummary', function (ctx) {
         toastr.info(settings.lang === 'zh' ? '已恢复默认总结 Prompt' : 'Summary prompt reset to default');
     });
 
-    // Save edited result
+    // Save edited result — handles both single active and multi-summary scan views
     $c('summary-result-save').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
-        const active = ss.getLatestActive();
-        if (!active) return;
-        active.content = $c('summary-result').val();
+        const text = $c('summary-result').val();
         const { saveChatConditional } = ctx;
-        if (saveChatConditional) await saveChatConditional();
-        toastr.info(settings.lang === 'zh' ? '总结已更新' : 'Summary updated');
+
+        // Try multi-summary format: --- #N [status] range ---
+        const blocks = text.split(/^--- #(\d+) .+? ---$/m);
+        if (blocks.length > 1) {
+            const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
+            let updated = 0;
+            for (let i = 0; i < allSummaries.length; i++) {
+                // blocks[0] = text before first header
+                // blocks[1] = #1, blocks[2] = content1
+                // blocks[3] = #2, blocks[4] = content2, etc.
+                const idx = 2 * i + 2;
+                if (idx < blocks.length && blocks[idx]) {
+                    allSummaries[i].content = blocks[idx].trim();
+                    updated++;
+                }
+            }
+            if (updated > 0) {
+                if (saveChatConditional) await saveChatConditional();
+                toastr.info(settings.lang === 'zh' ? `已更新 ${updated} 条总结` : `Updated ${updated} summaries`);
+            }
+        } else {
+            // Single summary view
+            const active = ss.getLatestActive();
+            if (active) {
+                active.content = text;
+                if (saveChatConditional) await saveChatConditional();
+                toastr.info(settings.lang === 'zh' ? '总结已更新' : 'Summary updated');
+            }
+        }
         refreshStatus();
     });
 
