@@ -44,7 +44,7 @@ const I18N = {
         llmParamsTitle: 'Director LLM 参数',
         llmMaxSpeakers: '每轮最多发言人数',
         llmContextDepth: '传入上下文层数（最近 N 条消息）',
-        llmContextDepthHint: '控制发送给 Director 的最近消息数量。减少可节省 token，但可能影响判断准确性。',
+        llmContextDepthHint: '控制发送给 Director 的最近消息数量。仅作用于 <code>{{recentMessages}}</code> 接口。<code>{{newRecentMessages}}</code> 在启用总结时返回总结后的新消息，不受此限制。',
         llmRespectOrder: '严格按 LLM 顺序发言（接管 ST 激活循环，手动按导演决定的顺序逐人生成）',
 
         charDescTitle: '角色描述控制',
@@ -191,7 +191,7 @@ const I18N = {
         llmParamsTitle: 'Director LLM Parameters',
         llmMaxSpeakers: 'Max speakers per round',
         llmContextDepth: 'Context depth (recent N messages)',
-        llmContextDepthHint: 'Number of recent messages sent to the Director. Reduce to save tokens; may affect decision quality.',
+        llmContextDepthHint: 'Number of recent messages sent to the Director. Only affects <code>{{recentMessages}}</code>. <code>{{newRecentMessages}}</code> returns post-summary messages when summary is enabled, not limited by this value.',
         llmRespectOrder: 'Strict LLM order (take over ST activation loop, generate in director-determined order)',
 
         charDescTitle: 'Character Description Control',
