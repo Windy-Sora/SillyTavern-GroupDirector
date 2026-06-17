@@ -1,7 +1,7 @@
 import { registerSection } from './registry.js';
 
 registerSection('chatSummary', function (ctx) {
-    const { settings, $c, saveSettings, summarySystem, toastr } = ctx;
+    const { settings, $c, saveSettings, summarySystem, toastr, isRoundActive } = ctx;
     const ss = summarySystem;
 
     // Init
@@ -10,14 +10,16 @@ registerSection('chatSummary', function (ctx) {
     $c('summary-prompt').val(settings.summaryPrompt || '');
 
     const checkEnabled = () => {
-        const on = !!settings.summaryEnabled;
-        $c('summary-reuse').prop('disabled', !on);
-        $c('summary-prompt').prop('disabled', !on);
+        const locked = isRoundActive ? isRoundActive() : false;
+        const on = !!settings.summaryEnabled && !locked;
+        $c('summary-lock-warn').toggle(locked);
+        $c('summary-reuse').prop('disabled', !settings.summaryEnabled);
+        $c('summary-prompt').prop('disabled', !settings.summaryEnabled);
         $c('summary-execute').prop('disabled', !on);
         $c('summary-regenerate').prop('disabled', !on);
         $c('summary-revert').prop('disabled', !on);
         $c('summary-reset').prop('disabled', !on);
-        $c('summary-prompt-reset').prop('disabled', !on);
+        $c('summary-prompt-reset').prop('disabled', !settings.summaryEnabled);
     };
     checkEnabled();
 
@@ -48,6 +50,7 @@ registerSection('chatSummary', function (ctx) {
 
     // Execute
     $c('summary-execute').on('click', async () => {
+        if (isRoundActive && isRoundActive()) return;
         $c('summary-execute').prop('disabled', true);
         try {
             const entry = await ss.generateSummary();
@@ -63,6 +66,7 @@ registerSection('chatSummary', function (ctx) {
 
     // Regenerate
     $c('summary-regenerate').on('click', async () => {
+        if (isRoundActive && isRoundActive()) return;
         $c('summary-regenerate').prop('disabled', true);
         try {
             await ss.regenerateLastSummary();
@@ -76,6 +80,7 @@ registerSection('chatSummary', function (ctx) {
 
     // Revert
     $c('summary-revert').on('click', async () => {
+        if (isRoundActive && isRoundActive()) return;
         if (!confirm(settings.lang === 'zh' ? '回退最新总结，恢复原文片段？' : 'Revert latest summary, restore original text?')) return;
         await ss.revertLastSummary();
         refreshStatus();
@@ -84,6 +89,7 @@ registerSection('chatSummary', function (ctx) {
 
     // Reset
     $c('summary-reset').on('click', async () => {
+        if (isRoundActive && isRoundActive()) return;
         if (!confirm(settings.lang === 'zh' ? '关闭所有总结，恢复全部原文？' : 'Deactivate all summaries, restore full original text?')) return;
         await ss.resetAll();
         refreshStatus();

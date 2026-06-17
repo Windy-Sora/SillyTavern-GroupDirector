@@ -402,6 +402,10 @@
                 <div class="inline-drawer-content">
                     <small data-i18n="summaryHint">将聊天上下文压缩为简洁摘要注入 Prompt，降低 token 消耗。修改或删除消息后请手动重新生成。</small>
 
+                    <div id="gd-summary-lock-warn" style="display:none;color:#ff9800;margin-top:4px;">
+                        <b>&#9888; <span data-i18n="summaryLocked">生成中，面板已锁定</span></b>
+                    </div>
+
                     <label class="checkbox_label" for="gd-summary-enabled">
                         <input type="checkbox" id="gd-summary-enabled">
                         <span data-i18n="summaryEnabled">启用上下文总结</span>
