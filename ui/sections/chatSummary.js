@@ -138,4 +138,37 @@ registerSection('chatSummary', function (ctx) {
     } else {
         $c('summary-result-section').hide();
     }
+
+    // Startup scan: detect archived summaries and offer to clear
+    const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
+    if (allSummaries.length > 0) {
+        const activeCount = allSummaries.filter(s => s.active).length;
+        const inactiveCount = allSummaries.length - activeCount;
+        let msg = settings.lang === 'zh'
+            ? `检测到 ${allSummaries.length} 条存档总结`
+            : `Found ${allSummaries.length} archived summaries`;
+        if (activeCount > 0) msg += settings.lang === 'zh'
+            ? `（${activeCount} 条活跃）`
+            : ` (${activeCount} active)`;
+        if (inactiveCount > 0) msg += settings.lang === 'zh'
+            ? `（${inactiveCount} 条已禁用）`
+            : ` (${inactiveCount} disabled)`;
+        $c('summary-scan-result').text(msg);
+        $c('summary-scan-notice').show();
+
+        $c('summary-scan-clear').on('click', async () => {
+            if (!confirm(settings.lang === 'zh'
+                ? '清除全部存档总结？此操作不可撤销。'
+                : 'Clear all archived summaries? This cannot be undone.')) return;
+            await ss.resetAll();
+            // Clear inactive too
+            const summaries = ss.getSummaries ? ss.getSummaries() : [];
+            summaries.length = 0;
+            const { saveChatConditional } = ctx;
+            if (saveChatConditional) await saveChatConditional();
+            $c('summary-scan-notice').hide();
+            refreshStatus();
+            toastr.info(settings.lang === 'zh' ? '已清除全部总结' : 'All summaries cleared');
+        });
+    }
 });

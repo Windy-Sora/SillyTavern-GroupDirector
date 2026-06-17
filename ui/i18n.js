@@ -94,6 +94,7 @@ const I18N = {
         summaryResultLabel: '总结结果（可直接编辑）',
         summaryResultSave: '保存编辑',
         summaryLocked: '生成中，面板已锁定',
+        summaryScanClear: '清除存档',
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt，保持剧情连续性',
@@ -241,6 +242,7 @@ const I18N = {
         summaryResultLabel: 'Summary result (editable)',
         summaryResultSave: 'Save edits',
         summaryLocked: 'Generation in progress — panel locked',
+        summaryScanClear: 'Clear archive',
         historyMeta: 'Current ledger style: ',
 
         continuity: '<b>Use Director History</b> — Inject recorded ledger into current prompt for continuity',
