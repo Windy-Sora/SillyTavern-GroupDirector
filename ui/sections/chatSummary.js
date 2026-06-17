@@ -279,5 +279,5 @@ registerSection('chatSummary', function (ctx) {
     });
 
     // Auto-scan on init (silent — no toast if empty)
-    doScan(true);
+    doScan(false, true);
 });
