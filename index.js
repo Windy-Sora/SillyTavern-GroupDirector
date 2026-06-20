@@ -725,6 +725,9 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // messages to regenerate. Reconstruct state from chat_metadata so it
     // survives browser restarts (in-memory state is gone on reload).
     if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
+        // Allow PostSpeech to re-analyze the swiped messages
+        postSpeechLastMsgIndex = -1;
+        postSpeechRoundRan = false;
         if (!llmPickedSet) {
             const history = getDirectorHistory();
             const lastPlan = history[history.length - 1];
@@ -979,15 +982,18 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
         });
 
-        // Dedup: skip if no new capabilities would be triggered
-        // (swipe/regenerate on same message → already decided)
-        const msgIndex = chat.length - 1;  // this message's index in chat
-        const enabledCaps = CapabilityRegistry.listEnabled().map(c => c.id);
-        const allAlreadyExecuted = enabledCaps.every(cid =>
-            postSpeechSystem.wasExecuted(msgIndex, cid));
-        if (allAlreadyExecuted) {
-            log('PostSpeech: all capabilities already executed for message', msgIndex);
-            return;
+        // Dedup: skip if no new capabilities would be triggered.
+        // For swipe/regenerate, allow re-analysis (message content changed).
+        const msgIndex = chat.length - 1;
+        const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+        if (!isReroll) {
+            const enabledCaps = CapabilityRegistry.listEnabled().map(c => c.id);
+            const allAlreadyExecuted = enabledCaps.every(cid =>
+                postSpeechSystem.wasExecuted(msgIndex, cid));
+            if (allAlreadyExecuted) {
+                log('PostSpeech: all capabilities already executed for message', msgIndex);
+                return;
+            }
         }
 
         // response is the raw LLM text; parse it
