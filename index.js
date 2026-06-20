@@ -931,7 +931,7 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 // ─── PostSpeech: multimodal policy after each character message ─────
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType) => {
     if (!settings.postSpeechMessageEnabled) return;
-    if (msgType && msgType !== 'normal') return;
+    if (msgType && msgType !== 'normal' && msgType !== 'swipe' && msgType !== 'regenerate') return;
 
     const msg = chat[chat.length - 1];
     if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
