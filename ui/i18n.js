@@ -187,6 +187,7 @@ const I18N = {
         npcPromptLabel: '生成 Prompt（留空使用内置默认，支持所有 Provider 占位符）',
         npcPromptReset: '恢复默认 Prompt',
         npcGenerate: '生成 NPC',
+        npcScan: '扫描已有 NPC',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -365,6 +366,7 @@ const I18N = {
         npcPromptLabel: 'Generation Prompt (leave empty for default, all Provider placeholders supported)',
         npcPromptReset: 'Reset to default prompt',
         npcGenerate: 'Generate NPCs',
+        npcScan: 'Scan for NPCs',
     },
 };
 
