@@ -47,6 +47,9 @@ import { createProfileAgent } from './agents/profile.js';
 import { createSummaryAgent } from './agents/summary.js';
 import { createNpcAgent } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
+import { createPostSpeechAgent } from './agents/post-speech.js';
+import { runExecutionEngine } from './systems/execution-engine.js';
+import { CapabilityRegistry } from './systems/capability-registry.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -218,6 +221,10 @@ function buildContextPool(overrides = {}) {
         npcExistingList: () => overrides.npcExistingList?.() ?? [],
         npcBatchSize: () => overrides.npcBatchSize?.() ?? settings.npcBatchSize ?? 3,
         npcGenerateFirstMes: () => overrides.npcGenerateFirstMes?.() ?? settings.npcGenerateFirstMes ?? false,
+        // PostSpeech specific (passed via overrides)
+        speakerMessage: () => overrides.speakerMessage ?? '',
+        speakerName: () => overrides.speakerName ?? '',
+        speakerDescription: () => overrides.speakerDescription ?? '',
         // Settings accessors
         settings: () => settings,
         llmWorldInfoEnabled: () => settings.llmWorldInfoEnabled,
@@ -270,6 +277,10 @@ AgentRegistry.register(createSummaryAgent({ log }));
 // NPC
 AgentRegistry.register(createNpcAgent({ renderPrompt, extractJsonObject, log }));
 
+// PostSpeech
+const postSpeechAgent = createPostSpeechAgent({ renderPrompt, log });
+AgentRegistry.register(postSpeechAgent);
+
 log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '));
 
 // ─── NPC System ──────────────────────────────────────────────────────
@@ -277,6 +288,19 @@ const npcSystem = createNpcSystem({
     settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
 });
+
+// ─── Register built-in capabilities ─────────────────────────────────
+CapabilityRegistry.register({
+    id: 'emotion',
+    displayName: 'Emotion Detection',
+    description: 'Detects emotional cues in character messages and logs them.',
+    schema: { intents: ['emotion', 'emotional', 'mood', 'tone'] },
+    executor: async (params) => {
+        log(`[Emotion] ${params.mood || params.emotion || 'neutral'} — ${params.reason || ''}`);
+    },
+});
+
+log('CapabilityRegistry:', CapabilityRegistry.list().map(c => c.id).join(', '));
 
 // ─── Trigger Engine ───────────────────────────────────────────────────
 function checkTriggers(characterName, characterAvatar, recentMessages) {
@@ -793,6 +817,68 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
     generationStopped = true;
 });
 
+// ─── PostSpeech: multimodal policy after each character message ─────
+eventSource.on(event_types.MESSAGE_RECEIVED, async (msg) => {
+    if (!settings.postSpeechEnabled) return;
+    if (!msg || msg.is_user || msg.is_system) return;
+    const group = getCurrentGroup();
+    if (!group) return;   // group chat only for now
+
+    const agent = AgentRegistry.get('post-speech');
+    if (!agent) return;
+
+    // Debounce: skip if takeover is in progress (messages fire rapidly)
+    if (takeoverPending || takeoverGenCount > 0) return;
+
+    try {
+        const charName = msg.name || '';
+        const char = characters.find(c => c.name === charName);
+        const agentConfig = settings.agentConfigs?.['post-speech'] || {};
+        const stGenerateRaw = (opts) => getContext().generateRaw(opts);
+        const caller = createCaller(agentConfig, stGenerateRaw);
+
+        const pool = buildContextPool({
+            group,
+            speakerMessage: msg.mes || '',
+            speakerName: charName,
+            speakerDescription: char?.description || '',
+        });
+
+        const callCfg = {
+            ...agentConfig.call,
+            onRetry: ({ attempt, maxRetries }) => {
+                log(`PostSpeech retry ${attempt}/${maxRetries}`);
+            },
+        };
+
+        const response = await execute(agent, {
+            pool,
+            caller,
+            config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
+        });
+
+        // response is the raw LLM text; parse it
+        if (!response) return;
+        const policy = agent.parseResponse(response);
+        if (!policy || !policy.intents?.length) return;
+
+        log('PostSpeech policy:', policy);
+
+        // Run execution engine
+        const execResult = await runExecutionEngine(policy, {
+            blocking: settings.postSpeechBlocking !== false,
+            timing: policy.timing || { mode: 'immediate', delay: 0 },
+        });
+
+        log('PostSpeech execution:', execResult);
+    } catch (e) {
+        // PostSpeech failure never interrupts the conversation
+        log('PostSpeech skipped:', e.message);
+    }
+});
+
+// ───
+
 eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     roundScores = {};
     roundSpeakerCount = 0;
@@ -1308,6 +1394,7 @@ jQuery(async () => {
         createCaller,
         getContext,
         npcSystem,
+        CapabilityRegistry,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });
