@@ -10,8 +10,11 @@ export const DEFAULT_NPC_PROMPT = `You are an NPC generator for a roleplay scena
 Recent messages:
 {{newRecentMessages}}
 
-World info:
+World info (activated entries):
 {{worldInfo}}
+
+World books (all selected entries):
+{{worldBookImportance}}
 
 Available characters:
 {{characters}}
