@@ -213,6 +213,10 @@ function buildContextPool(overrides = {}) {
         forceSpeakPrompt: () => settings.forceSpeakPrompt || null,
         // Summary specific
         summaryLatest: () => chatSummarySystem.getLatestActive?.() ?? null,
+        // NPC specific (passed via overrides from npcSystem)
+        npcExistingList: () => overrides.npcExistingList?.() ?? [],
+        npcBatchSize: () => overrides.npcBatchSize?.() ?? settings.npcBatchSize ?? 3,
+        npcGenerateFirstMes: () => overrides.npcGenerateFirstMes?.() ?? settings.npcGenerateFirstMes ?? false,
         // Settings accessors
         settings: () => settings,
         llmWorldInfoEnabled: () => settings.llmWorldInfoEnabled,
