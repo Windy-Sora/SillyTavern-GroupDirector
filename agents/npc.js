@@ -17,14 +17,14 @@ World books (all selected entries):
 {{worldBookImportance}}
 
 Available characters:
-{{existingCharacters}}
-━━━━━━━━━━━━━
+__NPCDATA_existingCharacters__
 
 Existing NPCs (DO NOT duplicate these names):
-{{existingNpcs}}
+__NPCDATA_existingNpcs__
+━━━━━━━━━━━━━
 
 Guidelines:
-- Generate {{batchSize}} NPC(s) that feel organic to the current scene and world.
+- Generate __NPCDATA_batchSize__ NPC(s) that feel organic to the current scene and world.
 - Each NPC should have a distinct role and personality — no two should serve the same function.
 - Names must be unique and NOT appear in the lists above.
 - If the story already has enough NPCs for the current scene, you may generate fewer than requested.
@@ -36,7 +36,7 @@ Reply with ONLY a JSON object, no prose, no code fences:
       "name": "NPC name",
       "description": "Physical appearance, background, role in the world",
       "personality": "Traits, speech style, temperament",
-      "scenario": "Where and how the characters might encounter this NPC"{{firstMesLine}}
+      "scenario": "Where and how the characters might encounter this NPC"__NPCDATA_firstMesLine__
     }
   ]
 }`;
@@ -96,19 +96,19 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 const fmLine = ctx.generateFirstMes ? FIRST_MES_LINE : '';
                 const charText = ctx.groupChars.length > 0 ? ctx.groupChars.join('\n') : '(none)';
 
-                // 1. Render Providers first — so {{newRecentMessages}}, {{worldInfo}},
-                //    {{worldBookImportance}} are resolved BEFORE data replacement.
-                //    This prevents characters' {{User}} etc. from being cleared.
+                // 1. Render Providers — resolves {{newRecentMessages}}, {{worldInfo}},
+                //    {{worldBookImportance}}. Sentinel placeholders (__NPCDATA_*__)
+                //    are NOT matched by renderPrompt's {{...}} regex and pass through.
                 let filled = await renderPrompt(promptTemplate, {});
 
-                // 2. Replace data-passed placeholders (not Providers —
-                //    these come from agent context, inserted AFTER renderPrompt
-                //    so their content is never re-parsed)
+                // 2. Replace sentinel placeholders with actual data.
+                //    Done AFTER renderPrompt so character descriptions containing
+                //    {{User}} etc. are never re-parsed.
                 filled = filled
-                    .replace(/\{\{firstMesLine\}\}/g, fmLine)
-                    .replace(/\{\{existingNpcs\}\}/g, ctx.existingNpcText)
-                    .replace(/\{\{batchSize\}\}/g, String(ctx.batchSize))
-                    .replace(/\{\{existingCharacters\}\}/g, charText);
+                    .replace(/__NPCDATA_firstMesLine__/g, fmLine)
+                    .replace(/__NPCDATA_existingNpcs__/g, ctx.existingNpcText)
+                    .replace(/__NPCDATA_batchSize__/g, String(ctx.batchSize))
+                    .replace(/__NPCDATA_existingCharacters__/g, charText);
 
                 return filled;
             },
