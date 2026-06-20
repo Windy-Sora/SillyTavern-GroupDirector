@@ -6,47 +6,64 @@ registerSection('postSpeech', function (ctx) {
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
 
-    const $section = $('#gd-ps-section');
     const $capsList = $('#gd-ps-capabilities-list');
 
-    // ── Bind values ──
-    $c('ps-enabled').prop('checked', settings.postSpeechEnabled ?? false);
-    $section.toggle(settings.postSpeechEnabled ?? false);
-    $c('ps-blocking').prop('checked', settings.postSpeechBlocking !== false);
-    $c('ps-prompt').val(settings.postSpeechPrompt || DEFAULT_PROMPT);
+    // ── Per-message ──
+    const $msgSection = $('#gd-ps-msg-section');
+    $c('ps-msg-enabled').prop('checked', settings.postSpeechMessageEnabled ?? false);
+    $msgSection.toggle(settings.postSpeechMessageEnabled ?? false);
+    $c('ps-msg-prompt').val(settings.postSpeechMessagePrompt || DEFAULT_PROMPT);
 
-    // ── Events ──
-    $c('ps-enabled').on('change', function () {
-        settings.postSpeechEnabled = !!$(this).prop('checked');
-        $section.toggle(settings.postSpeechEnabled);
+    $c('ps-msg-enabled').on('change', function () {
+        settings.postSpeechMessageEnabled = !!$(this).prop('checked');
+        $msgSection.toggle(settings.postSpeechMessageEnabled);
         saveSettings();
     });
+    $c('ps-msg-prompt').on('input', function () {
+        settings.postSpeechMessagePrompt = $(this).val();
+        saveSettings();
+    });
+    $c('ps-msg-prompt-reset').on('click', function () {
+        settings.postSpeechMessagePrompt = '';
+        $c('ps-msg-prompt').val(DEFAULT_PROMPT);
+        saveSettings();
+        toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
+    });
 
+    // ── Per-round ──
+    const $roundSection = $('#gd-ps-round-section');
+    $c('ps-round-enabled').prop('checked', settings.postSpeechRoundEnabled ?? false);
+    $roundSection.toggle(settings.postSpeechRoundEnabled ?? false);
+    $c('ps-round-prompt').val(settings.postSpeechRoundPrompt || DEFAULT_PROMPT);
+
+    $c('ps-round-enabled').on('change', function () {
+        settings.postSpeechRoundEnabled = !!$(this).prop('checked');
+        $roundSection.toggle(settings.postSpeechRoundEnabled);
+        saveSettings();
+    });
+    $c('ps-round-prompt').on('input', function () {
+        settings.postSpeechRoundPrompt = $(this).val();
+        saveSettings();
+    });
+    $c('ps-round-prompt-reset').on('click', function () {
+        settings.postSpeechRoundPrompt = '';
+        $c('ps-round-prompt').val(DEFAULT_PROMPT);
+        saveSettings();
+        toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
+    });
+
+    // ── Blocking ──
+    $c('ps-blocking').prop('checked', settings.postSpeechBlocking !== false);
     $c('ps-blocking').on('change', function () {
         settings.postSpeechBlocking = !!$(this).prop('checked');
         saveSettings();
     });
 
-    // Timing mode
-    // Decision limit
+    // ── Decision limit ──
     $c('ps-decision-limit').val(settings.postSpeechDecisionLimit ?? 20);
     $c('ps-decision-limit').on('input', function () {
         settings.postSpeechDecisionLimit = Math.max(1, parseInt($(this).val()) || 20);
         saveSettings();
-    });
-
-    $c('ps-timing').val(settings.postSpeechTiming || 'message');
-
-    $c('ps-prompt').on('input', function () {
-        settings.postSpeechPrompt = $(this).val();
-        saveSettings();
-    });
-
-    $c('ps-prompt-reset').on('click', function () {
-        settings.postSpeechPrompt = '';
-        $c('ps-prompt').val(DEFAULT_PROMPT);
-        saveSettings();
-        toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
     });
 
     // ── Capability list ──
@@ -68,7 +85,6 @@ registerSection('postSpeech', function (ctx) {
         });
         $capsList.html(html);
 
-        // Enable/disable
         $capsList.find('.gd-cap-enabled').on('change', function () {
             const capId = $(this).data('cap');
             const enabled = !!$(this).prop('checked');
@@ -84,9 +100,4 @@ registerSection('postSpeech', function (ctx) {
     }
 
     renderCapabilities();
-
-    // ── Template tester hook: inject capability list into test render ──
-    // When user clicks test render, populate a capability list context
-    // so {{capabilityList}} resolves in the tester.
-    const origTesterRun = $c('tester-run').data('handler');
 });

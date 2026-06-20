@@ -822,17 +822,48 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     }
     takeoverPending = false;
 
-    // PostSpeech round-end batch execution
-    if (postSpeechRoundQueue.length > 0 && settings.postSpeechEnabled) {
-        const timing = settings.postSpeechTiming || 'message';
-        if (timing === 'round' || timing === 'both') {
-            log(`PostSpeech round-end: executing ${postSpeechRoundQueue.length} queued intents`);
-            await postSpeechExecutor.run(
-                { intents: postSpeechRoundQueue, timing: { mode: 'immediate' } },
-                CapabilityRegistry.list()
-            );
+    // PostSpeech per-round: run once after all characters spoke
+    if (settings.postSpeechRoundEnabled) {
+        try {
+            const agent = AgentRegistry.get('post-speech');
+            if (agent) {
+                const agentConfig = settings.agentConfigs?.['post-speech'] || {};
+                const stGenerateRaw = (opts) => getContext().generateRaw(opts);
+                const caller = createCaller(agentConfig, stGenerateRaw);
+                const modeConfig = { ...settings, postSpeechPrompt: settings.postSpeechRoundPrompt || undefined };
+
+                const pool = buildContextPool({
+                    group: getCurrentGroup(),
+                    speakerMessage: '',    // round summary — no single speaker
+                    speakerName: '',
+                    speakerDescription: '',
+                });
+
+                const callCfg = {
+                    ...agentConfig.call,
+                    onRetry: ({ attempt, maxRetries }) => log(`PostSpeech round retry ${attempt}/${maxRetries}`),
+                };
+
+                const response = await execute(agent, {
+                    pool,
+                    caller,
+                    config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
+                });
+
+                if (response) {
+                    const policy = agent.parseResponse(response);
+                    if (policy?.intents?.length) {
+                        log('PostSpeech round policy:', policy);
+                        await postSpeechExecutor.run(policy, CapabilityRegistry.list());
+                        for (const intent of policy.intents) {
+                            await postSpeechSystem.record(chat.length - 1, '_round_', intent.type, intent.params, policy);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            log('PostSpeech round skipped:', e.message);
         }
-        postSpeechRoundQueue = [];
     }
 });
 
@@ -845,24 +876,25 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 
 // ─── PostSpeech: multimodal policy after each character message ─────
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
-    if (!settings.postSpeechEnabled) return;
-    const group = getCurrentGroup();
-    if (!group) return;   // group chat only for now
+    if (!settings.postSpeechMessageEnabled) return;
 
-    // Get the actual message from chat (last message = this one)
     const msg = chat[chat.length - 1];
-    if (!msg || msg.is_user || msg.is_system) return;
+    log(`[PostSpeech] lastMsg: is_user=${msg?.is_user}, is_system=${msg?.is_system}, name=${msg?.name?.substring(0,20)}, mes=${(msg?.mes||'').substring(0,40)}`);
+
+    if (!msg || msg.is_user || msg.is_system) { log('[PostSpeech] not a character message, skipping'); return; }
+
+    const group = getCurrentGroup();
+    if (!group) { log('[PostSpeech] not in group chat, skipping'); return; }
 
     const agent = AgentRegistry.get('post-speech');
-    if (!agent) return;
-
-    // Debounce: skip if takeover is in progress (messages fire rapidly)
-    if (takeoverPending || takeoverGenCount > 0) return;
+    if (!agent) { log('[PostSpeech] agent not registered'); return; }
 
     try {
         const charName = msg.name || '';
         const char = characters.find(c => c.name === charName);
         const agentConfig = settings.agentConfigs?.['post-speech'] || {};
+        // Inject mode-specific prompt via config — agent prompt() reads from config.postSpeechPrompt
+        const modeConfig = { ...settings, postSpeechPrompt: settings.postSpeechMessagePrompt || undefined };
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
         const caller = createCaller(agentConfig, stGenerateRaw);
 
@@ -883,7 +915,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
         const response = await execute(agent, {
             pool,
             caller,
-            config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
+            config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
         });
 
         // Dedup: skip if no new capabilities would be triggered

@@ -487,39 +487,42 @@
         </div>
         <div class="inline-drawer-content">
 
-            <!-- PostSpeech Configuration -->
-            <h4 data-i18n="psTitle">PostSpeech 多模态策略</h4>
-            <small data-i18n="psHint">每次角色发言后，LLM 决策触发哪些多模态能力（TTS、图像生成等）。</small>
+            <!-- PostSpeech per-message -->
+            <label class="checkbox_label" for="gd-ps-msg-enabled">
+                <input type="checkbox" id="gd-ps-msg-enabled">
+                <span data-i18n="psMsgEnabled">每次发言后激活 PostSpeech</span>
+            </label>
+            <div id="gd-ps-msg-section" style="display:none;">
+                <label for="gd-ps-msg-prompt" data-i18n="psMsgPromptLabel">每次发言 Prompt（留空使用内置默认，支持所有 Provider）</label>
+                <textarea id="gd-ps-msg-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-ps-msg-prompt-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="psMsgPromptReset">恢复默认</span>
+                </div>
+            </div>
 
-            <label class="checkbox_label" for="gd-ps-enabled">
-                <input type="checkbox" id="gd-ps-enabled">
-                <span data-i18n="psEnabled">启用 PostSpeech</span>
+            <!-- PostSpeech per-round -->
+            <label class="checkbox_label" for="gd-ps-round-enabled" style="margin-top:8px;">
+                <input type="checkbox" id="gd-ps-round-enabled">
+                <span data-i18n="psRoundEnabled">回合结束后激活 PostSpeech</span>
+            </label>
+            <div id="gd-ps-round-section" style="display:none;">
+                <label for="gd-ps-round-prompt" data-i18n="psRoundPromptLabel">回合结束 Prompt（留空使用内置默认，支持所有 Provider）</label>
+                <textarea id="gd-ps-round-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-ps-round-prompt-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="psRoundPromptReset">恢复默认</span>
+                </div>
+            </div>
+
+            <!-- Shared settings -->
+            <label class="checkbox_label" for="gd-ps-blocking" style="margin-top:8px;">
+                <input type="checkbox" id="gd-ps-blocking">
+                <span data-i18n="psBlocking">阻塞模式（关闭=异步后台执行，不阻塞对话）</span>
             </label>
 
-            <div id="gd-ps-section" style="display:none;">
-                <label class="checkbox_label" for="gd-ps-blocking">
-                    <input type="checkbox" id="gd-ps-blocking">
-                    <span data-i18n="psBlocking">阻塞模式（关闭=异步后台执行，不阻塞对话）</span>
-                </label>
-
-                <label for="gd-ps-timing" data-i18n="psTimingLabel">触发时机</label>
-                <select id="gd-ps-timing" class="text_pole" style="width:auto;">
-                    <option value="message">每次发言后</option>
-                    <option value="round">回合结束后</option>
-                    <option value="both">两者都触发</option>
-                </select>
-
-                <label for="gd-ps-prompt" data-i18n="psPromptLabel">Policy Prompt（留空使用内置默认，支持所有 Provider 占位符）</label>
-                <textarea id="gd-ps-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                <div class="menu_button menu_button_icon" id="gd-ps-prompt-reset" style="margin-top:4px;">
-                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="psPromptReset">恢复默认 Prompt</span>
-                </div>
-
-                <hr>
-                <h4 data-i18n="psCapabilitiesTitle">已注册能力</h4>
-                <small data-i18n="psCapabilitiesHint">启用/禁用各个多模态能力。禁用后 LLM 决策时不会考虑该能力。</small>
-                <div id="gd-ps-capabilities-list" style="margin-top:6px;"></div>
-            </div>
+            <hr>
+            <h4 data-i18n="psCapabilitiesTitle">已注册能力</h4>
+            <small data-i18n="psCapabilitiesHint">启用/禁用各个多模态能力。禁用后 LLM 决策时不会考虑该能力。</small>
+            <div id="gd-ps-capabilities-list" style="margin-top:6px;"></div>
 
             <hr>
             <h4 data-i18n="psDecisionsTitle">PostSpeech 决策记录</h4>
