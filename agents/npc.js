@@ -79,6 +79,7 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                     existingNpcs,
                     existingNpcText: npcText,
                     groupChars,
+                    enabledMembers: members,     // avatar list — used by {{characters}} Provider
                     batchSize: Math.min(batchSize, (settings.npcMaxCount ?? 10) - existingNpcs.length),
                     generateFirstMes,
                 };
@@ -95,9 +96,12 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                     .replace(/\{\{batchSize\}\}/g, String(ctx.batchSize))
                     .replace(/\{\{existingCharacters\}\}/g, ctx.groupChars.length > 0 ? ctx.groupChars.join(', ') : '(none)');
 
-                // 2. Run through renderPrompt — resolves all Provider placeholders
-                //    ({{newRecentMessages}}, {{worldInfo}}, {{characters}}, {{chatSummary}}, etc.)
-                filled = await renderPrompt(filled, {});
+                // 2. Run through renderPrompt — resolves all Provider placeholders.
+                //    Pass enabledMembers so {{characters}} Provider can find the group members.
+                filled = await renderPrompt(filled, {
+                    enabledMembers: ctx.enabledMembers,
+                    recentMessages: ctx.recentMessages,
+                });
 
                 return filled;
             },
