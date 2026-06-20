@@ -13,6 +13,8 @@ import { CapabilityRegistry } from '../systems/capability-registry.js';
 export const DEFAULT_PROMPT = `You are a multimodal policy generator. Based on the character's message and the conversation context, decide which sensory capabilities should be activated for the user.
 
 ━━━ Available Capabilities ━━━
+Each capability lists its params and when to use it. Only activate those whose "When" condition matches the current message.
+
 {{capabilityList}}
 
 ━━━ Context ━━━
@@ -62,12 +64,33 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
                 const speakerDesc = pool.speakerDescription?.() ?? '';
                 const capabilities = CapabilityRegistry.listEnabled();
 
+                // Build per-capability decision guidance
+                const capListParts = [];
+                for (const cap of capabilities) {
+                    let text = `- ${cap.id}: ${cap.description || cap.displayName}\n`;
+                    // Param schema hints
+                    if (cap.schema?.params) {
+                        const paramDescs = [];
+                        for (const [k, def] of Object.entries(cap.schema.params)) {
+                            let pd = `  ${k}`;
+                            if (def.values) pd += `(${def.values.join('/')})`;
+                            if (def.required) pd += '*';
+                            if (def.description) pd += `: ${def.description}`;
+                            paramDescs.push(pd);
+                        }
+                        if (paramDescs.length) text += `  Params: ${paramDescs.join(', ')}\n`;
+                    }
+                    // Decision guidance
+                    if (cap.promptHint) text += `  When: ${cap.promptHint}\n`;
+                    capListParts.push(text);
+                }
+
                 return {
                     speakerMessage: msg,
                     speakerName,
                     speakerDescription: speakerDesc,
                     capabilityList: capabilities.length > 0
-                        ? capabilities.map(c => `- ${c.id}: ${c.description || c.displayName}`).join('\n')
+                        ? capListParts.join('\n')
                         : '(none available)',
                     hasCapabilities: capabilities.length > 0,
                 };

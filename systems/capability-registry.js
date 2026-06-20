@@ -19,6 +19,8 @@ export const CapabilityRegistry = {
             id: cap.id,
             displayName: cap.displayName || cap.id,
             description: cap.description || '',
+            // Guidance for the LLM: when to trigger this capability and how to decide params
+            promptHint: cap.promptHint || '',
             // JSON Schema describing what params this capability accepts
             schema: cap.schema || {},
             // Async executor: (params) => { ... } — abstract, not ST-specific
@@ -41,7 +43,7 @@ export const CapabilityRegistry = {
     listEnabled() {
         return [...capabilities.values()]
             .filter(c => c.enabled)
-            .map(c => ({ id: c.id, displayName: c.displayName, description: c.description, schema: c.schema }));
+            .map(c => ({ id: c.id, displayName: c.displayName, description: c.description, promptHint: c.promptHint, schema: c.schema }));
     },
 
     /** Enable/disable a capability at runtime. */
