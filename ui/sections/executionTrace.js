@@ -102,7 +102,8 @@ registerSection('executionTrace', function (ctx) {
 
     function renderPsDecisions() {
         if (!$psList.length || !psSystem) return;
-        const decisions = psSystem.list(20);
+        const limit = settings.postSpeechDecisionLimit ?? 20;
+        const decisions = psSystem.list(limit);
         if (!decisions.length) {
             $psList.html(`<small style="color:var(--grey70a);">${L('暂无 PostSpeech 决策记录', 'No PostSpeech decisions yet')}</small>`);
             return;

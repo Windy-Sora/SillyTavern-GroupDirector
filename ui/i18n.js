@@ -210,6 +210,7 @@ const I18N = {
         psCapabilitiesHint: '启用/禁用各个多模态能力。禁用后 LLM 决策时不会考虑该能力。',
         psTimingLabel: '触发时机',
         psRefresh: '刷新',
+        psDecisionLimit: '显示条数',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -411,6 +412,7 @@ const I18N = {
         psCapabilitiesHint: 'Enable/disable individual capabilities. Disabled ones won\'t be considered by the LLM.',
         psTimingLabel: 'Trigger timing',
         psRefresh: 'Refresh',
+        psDecisionLimit: 'Display lines',
     },
 };
 

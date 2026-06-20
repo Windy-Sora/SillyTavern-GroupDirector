@@ -28,11 +28,14 @@ registerSection('postSpeech', function (ctx) {
     });
 
     // Timing mode
-    $c('ps-timing').val(settings.postSpeechTiming || 'message');
-    $c('ps-timing').on('change', function () {
-        settings.postSpeechTiming = $(this).val();
+    // Decision limit
+    $c('ps-decision-limit').val(settings.postSpeechDecisionLimit ?? 20);
+    $c('ps-decision-limit').on('input', function () {
+        settings.postSpeechDecisionLimit = Math.max(1, parseInt($(this).val()) || 20);
         saveSettings();
     });
+
+    $c('ps-timing').val(settings.postSpeechTiming || 'message');
 
     $c('ps-prompt').on('input', function () {
         settings.postSpeechPrompt = $(this).val();

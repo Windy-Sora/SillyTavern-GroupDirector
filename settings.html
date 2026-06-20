@@ -524,7 +524,11 @@
             <hr>
             <h4 data-i18n="psDecisionsTitle">PostSpeech 决策记录</h4>
             <small data-i18n="psDecisionsHint">最近的多模态策略决策（随聊天持久化，自动去重）。</small>
-            <div style="margin-top:4px;"><span class="menu_button menu_button_icon" id="gd-ps-refresh" style="font-size:0.85em;"><i class="fa-solid fa-rotate"></i> <span data-i18n="psRefresh">刷新</span></span></div>
+            <div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span class="menu_button menu_button_icon" id="gd-ps-refresh" style="font-size:0.85em;"><i class="fa-solid fa-rotate"></i> <span data-i18n="psRefresh">刷新</span></span>
+                <label for="gd-ps-decision-limit" style="font-size:0.85em;" data-i18n="psDecisionLimit">显示条数</label>
+                <input type="number" id="gd-ps-decision-limit" class="text_pole" min="1" max="500" step="1" style="width:60px;">
+            </div>
             <div id="gd-ps-list" style="margin-top:4px;max-height:200px;overflow-y:auto;"></div>
 
         </div>
