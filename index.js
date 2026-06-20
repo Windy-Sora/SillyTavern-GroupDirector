@@ -91,6 +91,7 @@ const scriptCounterSnapshots = new Map();   // charName → counter value at fir
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
+let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
 let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
@@ -933,19 +934,20 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
     if (String(msg.name).startsWith('_')) return;
 
+    // Dedup: same message index, don't trigger twice
+    const msgIndex = chat.length - 1;
+    if (msgIndex === postSpeechLastMsgIndex) return;
+    postSpeechLastMsgIndex = msgIndex;
+
     const group = getCurrentGroup();
     if (!group) return;
 
     const agent = AgentRegistry.get('post-speech');
     if (!agent) return;
 
-    // Persistent notification while PostSpeech processes
-    const psNotifyKey = 'gd-ps-msg-notify';
-    const dismissMsgNotify = () => { try { toastr?.clear?.(psNotifyKey); } catch (_) {} };
+    // Brief notification while PostSpeech processes
     if (typeof toastr !== 'undefined') {
-        toastr.info('PostSpeech analyzing...', '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false }, psNotifyKey);
-    } else if (typeof window !== 'undefined' && window.toastr) {
-        window.toastr.info('PostSpeech analyzing...', '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false }, psNotifyKey);
+        toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 });
     }
 
     try {
@@ -1024,7 +1026,6 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         }
 
         // Done notification
-        dismissMsgNotify();
         if (typeof toastr !== 'undefined') {
             toastr.success('PostSpeech done', '', { timeOut: 2000 });
         }
