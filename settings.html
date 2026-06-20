@@ -258,7 +258,6 @@
     </div><!-- /#gd-llm-section -->
 
     <!-- ═══ Drawer 3: 世界书系统 ═══ -->
-    <div id="gd-llm-data-section" style="display:none;">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
             <b data-i18n="drawerWorldBooks">世界书系统</b>
@@ -266,16 +265,18 @@
         </div>
         <div class="inline-drawer-content">
 
+            <div id="gd-llm-data-section" style="display:none;">
             <h4 data-i18n="worldInfoTitle">世界书注入 (World Info)</h4>
-            <small data-i18n="worldInfoHint">将当前激活的世界书/ lorebook 条目注入 Director prompt。</small>
+            <small data-i18n="worldInfoHint">将当前激活的世界书/ lorebook 条目注入 Director prompt。仅在 LLM 模式下生效。</small>
             <label class="checkbox_label" for="gd-llm-world-info-enabled">
                 <input type="checkbox" id="gd-llm-world-info-enabled">
                 <span data-i18n="worldInfoEnabled">启用世界书注入</span>
             </label>
             <label for="gd-llm-world-info-wrapper" data-i18n="worldInfoWrapper">世界书包装模板</label>
             <textarea id="gd-llm-world-info-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-
             <hr>
+            </div><!-- /#gd-llm-data-section -->
+
             <h4 data-i18n="worldBookSelectionTitle">世界书选择 (World Book Selection)</h4>
             <small data-i18n="worldBookSelectionHint">手动选择要暴露给 Director 的世界书。不勾选的书不会被扫描，避免世界观串台。</small>
             <label for="gd-world-book-max-entries" data-i18n="worldBookMaxEntries">最大注入条目数</label>
@@ -288,7 +289,6 @@
 
         </div>
     </div>
-    </div><!-- /#gd-llm-data-section -->
 
     <!-- ═══ Drawer 4: 角色档案与数据 ═══ -->
     <div class="inline-drawer">
