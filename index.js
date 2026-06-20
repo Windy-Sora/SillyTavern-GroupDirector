@@ -91,6 +91,7 @@ const scriptCounterSnapshots = new Map();   // charName → counter value at fir
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
+let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -829,10 +830,15 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     if (settings.postSpeechRoundEnabled && !postSpeechRoundRan) {
         postSpeechRoundRan = true;
 
-        // Block ST send button while PostSpeech processes
-        const $sendBtn = $('#send_but');
-        const sendWasDisabled = $sendBtn.length ? $sendBtn.prop('disabled') : true;
-        if ($sendBtn.length && !sendWasDisabled) $sendBtn.prop('disabled', true);
+        // Set generating state so ST shows stop button.
+        // User clicking stop → GENERATION_STOPPED → we abort.
+        generationStopped = false;
+        postSpeechAbortController = new AbortController();
+        document.body.dataset.generating = 'true';
+        const restoreUI = () => {
+            document.body.dataset.generating = '';
+            postSpeechAbortController = null;
+        };
         try {
             const agent = AgentRegistry.get('post-speech');
             if (agent) {
@@ -850,14 +856,25 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
                 const callCfg = {
                     ...agentConfig.call,
+                    signal: postSpeechAbortController.signal,
                     onRetry: ({ attempt, maxRetries }) => log(`PostSpeech round retry ${attempt}/${maxRetries}`),
                 };
+
+                if (postSpeechAbortController.signal.aborted) { restoreUI(); return; }
 
                 const response = await execute(agent, {
                     pool,
                     caller,
                     config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
+                }).catch(e => {
+                    if (e.name === 'AbortError' || postSpeechAbortController.signal.aborted) {
+                        log('PostSpeech round aborted');
+                        return null;
+                    }
+                    throw e;
                 });
+
+                if (!response) { restoreUI(); return; }
 
                 if (response) {
                     const policy = agent.parseResponse(response);
@@ -873,7 +890,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         } catch (e) {
             log('PostSpeech round skipped:', e.message);
         } finally {
-            if ($sendBtn.length && !sendWasDisabled) $sendBtn.prop('disabled', false);
+            restoreUI();
         }
     }
 });
@@ -883,6 +900,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // Clear it BEFORE pruning history so no stale pointers linger.
 eventSource.on(event_types.GENERATION_STOPPED, () => {
     generationStopped = true;
+    // If PostSpeech round LLM is running, abort it too
+    if (postSpeechAbortController) {
+        postSpeechAbortController.abort();
+        log('PostSpeech round aborted by user');
+    }
 });
 
 // ─── PostSpeech: multimodal policy after each character message ─────

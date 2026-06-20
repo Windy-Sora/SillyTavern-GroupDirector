@@ -127,16 +127,23 @@ export async function managedCall(caller, prompt, callConfig = {}) {
     const retries = callConfig.retries ?? 2;
     const timeoutMs = callConfig.timeout ?? 30000;
     const onRetry = callConfig.onRetry;
+    const signal = callConfig.signal;
     let lastError;
     let attemptCount = 0;
 
+    // Check abort before starting
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
     for (let attempt = 0; attempt <= retries; attempt++) {
+        // Check abort before each attempt
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         try {
             const text = await withTimeout(caller.generate(prompt), timeoutMs);
             return { text, retries: attempt };
         } catch (e) {
             lastError = e;
             if (e.name === 'AbortError') throw e;
+            if (attempt < retries && signal?.aborted) throw new DOMException('Aborted', 'AbortError');
             if (attempt < retries) {
                 attemptCount = attempt + 1;
                 console.warn(`[Agent] call attempt ${attemptCount}/${retries + 1} failed: ${e.message}. Retrying...`);
