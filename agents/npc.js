@@ -17,14 +17,11 @@ World books (all selected entries):
 {{worldBookImportance}}
 
 Available characters:
-{{characters}}
+{{existingCharacters}}
 ━━━━━━━━━━━━━
 
 Existing NPCs (DO NOT duplicate these names):
 {{existingNpcs}}
-
-Current group members (DO NOT use these names either):
-{{existingCharacters}}
 
 Guidelines:
 - Generate {{batchSize}} NPC(s) that feel organic to the current scene and world.
@@ -61,9 +58,12 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 const existingNpcs = pool.npcExistingList?.() ?? [];
                 const group = pool.group?.();
                 const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) ?? [];
+                // Build character list with descriptions for the prompt
                 const groupChars = members.map(av => {
                     const c = pool.characters?.()?.find(ch => ch.avatar === av);
-                    return c?.name ?? av;
+                    if (!c) return null;
+                    const desc = (c.description || '').slice(0, 80);
+                    return `- ${c.name}${desc ? ': ' + desc : ''}`;
                 }).filter(Boolean);
 
                 // Build existing NPC text for prompt
@@ -74,11 +74,17 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 const batchSize = pool.npcBatchSize?.() ?? settings.npcBatchSize ?? 3;
                 const generateFirstMes = pool.npcGenerateFirstMes?.() ?? settings.npcGenerateFirstMes ?? false;
 
+                const groupCharNames = members.map(av => {
+                    const c = pool.characters?.()?.find(ch => ch.avatar === av);
+                    return c?.name ?? '';
+                }).filter(Boolean);
+
                 return {
                     recentMessages,
                     existingNpcs,
                     existingNpcText: npcText,
                     groupChars,
+                    groupCharNames,           // plain names for dedup
                     enabledMembers: members,     // avatar list — used by {{characters}} Provider
                     batchSize: Math.min(batchSize, (settings.npcMaxCount ?? 10) - existingNpcs.length),
                     generateFirstMes,
@@ -94,14 +100,11 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                     .replace(/\{\{firstMesLine\}\}/g, fmLine)
                     .replace(/\{\{existingNpcs\}\}/g, ctx.existingNpcText)
                     .replace(/\{\{batchSize\}\}/g, String(ctx.batchSize))
-                    .replace(/\{\{existingCharacters\}\}/g, ctx.groupChars.length > 0 ? ctx.groupChars.join(', ') : '(none)');
+                    .replace(/\{\{existingCharacters\}\}/g, ctx.groupChars.length > 0 ? ctx.groupChars.join('\n') : '(none)');
 
-                // 2. Run through renderPrompt — resolves all Provider placeholders.
-                //    Pass enabledMembers so {{characters}} Provider can find the group members.
-                filled = await renderPrompt(filled, {
-                    enabledMembers: ctx.enabledMembers,
-                    recentMessages: ctx.recentMessages,
-                });
+                // 2. Run through renderPrompt — resolves Provider placeholders
+                //    ({{newRecentMessages}}, {{worldInfo}}, {{worldBookImportance}}).
+                filled = await renderPrompt(filled, {});
 
                 return filled;
             },
@@ -128,7 +131,7 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 // Dedup: strip NPCs with names matching existing NPCs or group characters
                 const existingNames = new Set([
                     ...ctx.existingNpcs.map(n => n.name.toLowerCase()),
-                    ...ctx.groupChars.map(n => n.toLowerCase()),
+                    ...(ctx.groupCharNames || []).map(n => n.toLowerCase()),
                 ]);
 
                 const filtered = npcs.filter(npc => {
