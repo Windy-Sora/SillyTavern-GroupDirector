@@ -18,8 +18,20 @@ export function createForceSpeakAgent({
         displayName: 'Force Speak LLM',
         contextAccess: ['recentMessages', 'characters', 'charactersRaw', 'profilesText', 'worldInfoText',
             'group', 'settings', 'forceSpeakCharacter', 'forceSpeakPrompt'],
-        pipelineOrder: ['context', 'prompt', 'call'],
+        pipelineOrder: ['context', 'prompt', 'call', 'parse'],
         pipeline: {
+            async parse(raw, ctx) {
+                const parsed = parseLlmResponse(raw, log);
+                if (!parsed || !Array.isArray(parsed.speakers)) return null;
+                // Filter to just the force-spoken character (index 0) — ignore any extras
+                const char = ctx?.character;
+                return {
+                    speakers: parsed.speakers.slice(0, 1),
+                    names: parsed.speakers.slice(0, 1),
+                    reason: parsed.reason ?? '',
+                    scripts: parsed.scripts ?? null,
+                };
+            },
             async context(_input, _ctx, pool, settings) {
                 const group = pool.group();
                 const enabledMembers = group?.members?.filter(a => !group.disabled_members?.includes(a)) ?? [];
@@ -73,11 +85,6 @@ export function createForceSpeakAgent({
 
                 return filled;
             },
-        },
-
-        /** Parse force-speak response (same format as director, but single speaker only) */
-        async parseResponse(raw, enabledMembers) {
-            return parseLlmResponse(raw, log);
         },
     };
 }

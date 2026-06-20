@@ -1025,14 +1025,11 @@ async function initRoundWithLLM() {
         llmPickedSet = new Set(capped);
         llmCursor = 0;
 
-        // Save to history
-        if (settings.llmHistoryEnabled && parsed.reason) {
-            await addToDirectorHistory(parsed);
-        } else if (settings.llmHistoryEnabled) {
-            // Reconstruct history entry
+        // Save to history — always use names for speakers field (recovery logic expects names)
+        if (settings.llmHistoryEnabled) {
             await addToDirectorHistory({
-                speakers: parsed.names || capped.map(a => characters.find(c => c.avatar === a)?.name || a),
-                reason: '',
+                speakers: parsed.names || capped.map(a => characters.find(c => c.avatar === a)?.name || '?'),
+                reason: parsed.reason ?? '',
                 scripts: parsed.scripts ?? {},
                 loreAssignments: parsed.loreAssignments ?? {},
             });

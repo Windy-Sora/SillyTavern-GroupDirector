@@ -113,7 +113,9 @@ export async function execute(agent, { pool, caller, config = {} }) {
         } else if (stage === 'call') {
             state.raw = await fn(caller, state.prompt, state);
         } else if (fn) {
-            const input = state.parsed ?? state.raw ?? state.prompt;
+            // Input depends on stage: later stages consume earlier output;
+            // early stages (like prompt) receive context as first argument.
+            const input = state.parsed ?? state.raw ?? state.prompt ?? state.ctx;
             state[stage] = await fn(input, state.ctx, scoped, config);
         }
     }
