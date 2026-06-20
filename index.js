@@ -834,13 +834,20 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         postSpeechAbortController = new AbortController();
 
         const lang = settings.lang || 'zh';
-        const notifyKey = 'gd-ps-round-notify';
-        toastr.info(
-            lang === 'zh' ? 'PostSpeech 正在分析本轮对话，请勿发送消息...' : 'PostSpeech analyzing this round, please wait...',
-            '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false },
-            notifyKey
-        );
-        const dismissNotify = () => { $(`#${notifyKey}`).fadeOut(200, function () { $(this).remove(); }); };
+        const msg = lang === 'zh'
+            ? 'PostSpeech 正在分析本轮对话，请勿发送消息...'
+            : 'PostSpeech analyzing this round, please wait...';
+        log('PostSpeech round start notification:', msg);
+
+        // Show persistent notification while PostSpeech processes
+        if (typeof toastr !== 'undefined') {
+            toastr.info(msg, '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false, closeButton: true });
+        } else if (typeof window !== 'undefined' && window.toastr) {
+            window.toastr.info(msg, '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false, closeButton: true });
+        }
+        const dismissNotify = () => {
+            try { toastr?.clear?.(); } catch (_) {}
+        };
         try {
             const agent = AgentRegistry.get('post-speech');
             if (agent) {
@@ -862,7 +869,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     onRetry: ({ attempt, maxRetries }) => log(`PostSpeech round retry ${attempt}/${maxRetries}`),
                 };
 
-                if (postSpeechAbortController.signal.aborted) { dismissNotify(); return; }
+                if (postSpeechAbortController.signal.aborted) return;
 
                 const response = await execute(agent, {
                     pool,
@@ -876,7 +883,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     throw e;
                 });
 
-                if (!response) { dismissNotify(); return; }
+                if (!response) return;
 
                 if (response) {
                     const policy = agent.parseResponse(response);
@@ -894,10 +901,6 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         } finally {
             dismissNotify();
             postSpeechAbortController = null;
-            toastr.success(
-                lang === 'zh' ? 'PostSpeech 决策已完成' : 'PostSpeech complete',
-                '', { timeOut: 2000 }
-            );
         }
     }
 });
