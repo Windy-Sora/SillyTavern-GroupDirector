@@ -16,7 +16,7 @@ export function createDirectorAgent({
     return {
         id: 'director',
         displayName: 'Director LLM',
-        contextAccess: ['recentMessages', 'characters', 'charactersRaw', 'profilesText', 'worldInfoText', 'ledger',
+        contextAccess: ['chat', 'recentMessages', 'characters', 'charactersRaw', 'profilesText', 'worldInfoText', 'ledger',
             'group', 'settings', 'llmWorldInfoEnabled', 'llmHistoryEnabled', 'llmScriptContinuity',
             'llmScriptContinuityMode', 'llmScriptContinuityCount', 'llmScriptContinuityWrapper',
             'llmScriptContinuityHistoryWrapper', 'llmWorldInfoWrapper', 'profileEnabled'],
