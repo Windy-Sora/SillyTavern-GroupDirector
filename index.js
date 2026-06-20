@@ -290,15 +290,8 @@ const npcSystem = createNpcSystem({
 });
 
 // ─── Register built-in capabilities ─────────────────────────────────
-CapabilityRegistry.register({
-    id: 'emotion',
-    displayName: 'Emotion Detection',
-    description: 'Detects emotional cues in character messages and logs them.',
-    schema: { intents: ['emotion', 'emotional', 'mood', 'tone'] },
-    executor: async (params) => {
-        log(`[Emotion] ${params.mood || params.emotion || 'neutral'} — ${params.reason || ''}`);
-    },
-});
+import { register as registerEmotionCap } from './capabilities/emotion.js';
+registerEmotionCap({ log });
 
 log('CapabilityRegistry:', CapabilityRegistry.list().map(c => c.id).join(', '));
 
