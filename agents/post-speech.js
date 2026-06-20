@@ -10,6 +10,16 @@
  */
 import { CapabilityRegistry } from '../systems/capability-registry.js';
 
+// ST-native Handlebars template placeholders — preserved as-is during
+// renderPrompt so ST can substitute them later in its own pipeline.
+const ST_NATIVE_PLACEHOLDERS = [
+    'User', 'user', 'char', 'original',
+    'anchorBefore', 'anchorAfter', 'system', 'persona',
+    'wiBefore', 'loreBefore', 'wiAfter', 'loreAfter',
+    'mesExamples', 'mesExamplesRaw', 'trim',
+    'description', 'personality', 'scenario',
+];
+
 export const DEFAULT_PROMPT = `You are a multimodal policy generator. Based on the character's message and the conversation context, decide which sensory capabilities should be activated for the user.
 
 ━━━ Available Capabilities ━━━
@@ -111,7 +121,7 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
                 // Passthrough ST-native placeholders ({{User}}, {{char}}, etc.) — they are
                 // substituted later by ST's own pipeline, not by Group Director.
                 filled = await renderPrompt(filled, {}, {
-                    passthrough: ['User', 'user', 'char', 'original'],
+                    passthrough: ST_NATIVE_PLACEHOLDERS,
                 });
 
                 return filled;
