@@ -208,6 +208,8 @@ const I18N = {
         psPromptReset: '恢复默认 Prompt',
         psCapabilitiesTitle: '已注册能力',
         psCapabilitiesHint: '启用/禁用各个多模态能力。禁用后 LLM 决策时不会考虑该能力。',
+        psTimingLabel: '触发时机',
+        psRefresh: '刷新',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -407,6 +409,8 @@ const I18N = {
         psPromptReset: 'Reset to default prompt',
         psCapabilitiesTitle: 'Registered Capabilities',
         psCapabilitiesHint: 'Enable/disable individual capabilities. Disabled ones won\'t be considered by the LLM.',
+        psTimingLabel: 'Trigger timing',
+        psRefresh: 'Refresh',
     },
 };
 

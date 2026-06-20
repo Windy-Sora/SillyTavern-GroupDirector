@@ -502,6 +502,13 @@
                     <span data-i18n="psBlocking">阻塞模式（关闭=异步后台执行，不阻塞对话）</span>
                 </label>
 
+                <label for="gd-ps-timing" data-i18n="psTimingLabel">触发时机</label>
+                <select id="gd-ps-timing" class="text_pole" style="width:auto;">
+                    <option value="message">每次发言后</option>
+                    <option value="round">回合结束后</option>
+                    <option value="both">两者都触发</option>
+                </select>
+
                 <label for="gd-ps-prompt" data-i18n="psPromptLabel">Policy Prompt（留空使用内置默认，支持所有 Provider 占位符）</label>
                 <textarea id="gd-ps-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                 <div class="menu_button menu_button_icon" id="gd-ps-prompt-reset" style="margin-top:4px;">
@@ -517,6 +524,7 @@
             <hr>
             <h4 data-i18n="psDecisionsTitle">PostSpeech 决策记录</h4>
             <small data-i18n="psDecisionsHint">最近的多模态策略决策（随聊天持久化，自动去重）。</small>
+            <div style="margin-top:4px;"><span class="menu_button menu_button_icon" id="gd-ps-refresh" style="font-size:0.85em;"><i class="fa-solid fa-rotate"></i> <span data-i18n="psRefresh">刷新</span></span></div>
             <div id="gd-ps-list" style="margin-top:4px;max-height:200px;overflow-y:auto;"></div>
 
         </div>

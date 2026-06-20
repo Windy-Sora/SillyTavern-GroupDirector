@@ -119,6 +119,8 @@ registerSection('executionTrace', function (ctx) {
         $psList.html(html);
     }
 
+    $('#gd-ps-refresh').on('click', renderPsDecisions);
+
     render();
     renderPsDecisions();
 });

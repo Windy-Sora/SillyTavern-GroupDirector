@@ -27,6 +27,13 @@ registerSection('postSpeech', function (ctx) {
         saveSettings();
     });
 
+    // Timing mode
+    $c('ps-timing').val(settings.postSpeechTiming || 'message');
+    $c('ps-timing').on('change', function () {
+        settings.postSpeechTiming = $(this).val();
+        saveSettings();
+    });
+
     $c('ps-prompt').on('input', function () {
         settings.postSpeechPrompt = $(this).val();
         saveSettings();

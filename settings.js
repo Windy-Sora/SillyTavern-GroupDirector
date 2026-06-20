@@ -72,6 +72,7 @@ export const DEFAULT_SETTINGS = {
     // PostSpeech — multimodal policy after each character message
     postSpeechEnabled: false,
     postSpeechBlocking: true,
+    postSpeechTiming: 'message',
     postSpeechPrompt: '',
     // Agent Runtime — per-agent API config (stored in extension_settings, not chat_metadata)
     agentConfigs: {}, // { [agentId]: { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '', model: '', call: { retries: 2, timeout: 30000 }, strictMode: false } }

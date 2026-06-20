@@ -89,6 +89,7 @@ let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, rea
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
+let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -816,6 +817,19 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         await runManualOrderedGeneration();
     }
     takeoverPending = false;
+
+    // PostSpeech round-end batch execution
+    if (postSpeechRoundQueue.length > 0 && settings.postSpeechEnabled) {
+        const timing = settings.postSpeechTiming || 'message';
+        if (timing === 'round' || timing === 'both') {
+            log(`PostSpeech round-end: executing ${postSpeechRoundQueue.length} queued intents`);
+            await postSpeechExecutor.run(
+                { intents: postSpeechRoundQueue, timing: { mode: 'immediate' } },
+                CapabilityRegistry.list()
+            );
+        }
+        postSpeechRoundQueue = [];
+    }
 });
 
 // When messages are deleted, the chat timeline has rolled back.
@@ -890,17 +904,26 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async (msg) => {
         if (!freshIntents.length) { log('PostSpeech: all intents already executed'); return; }
 
         // Run executor with filtered intents
-        const execResult = await postSpeechExecutor.run(
-            { ...policy, intents: freshIntents },
-            CapabilityRegistry.list()
-        );
+        const timing = settings.postSpeechTiming || 'message';
+
+        if (timing === 'message' || timing === 'both') {
+            const execResult = await postSpeechExecutor.run(
+                { ...policy, intents: freshIntents },
+                CapabilityRegistry.list()
+            );
+            log('PostSpeech execution (message):', execResult);
+        }
+
+        // Queue for round-end execution (round | both modes)
+        if (timing === 'round' || timing === 'both') {
+            postSpeechRoundQueue.push(...freshIntents);
+            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${postSpeechRoundQueue.length})`);
+        }
 
         // Record each executed intent
         for (const intent of freshIntents) {
             await postSpeechSystem.record(msgIndex, msg.name || '?', intent.type, intent.params, policy);
         }
-
-        log('PostSpeech execution:', execResult);
     } catch (e) {
         // PostSpeech failure never interrupts the conversation
         log('PostSpeech skipped:', e.message);
@@ -941,6 +964,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
     await postSpeechSystem.clearAll();
+    postSpeechRoundQueue = [];
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
