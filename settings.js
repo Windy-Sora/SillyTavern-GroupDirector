@@ -70,9 +70,8 @@ export const DEFAULT_SETTINGS = {
     npcPrompt: '',
     traceMaxEntries: 50,
     // PostSpeech — multimodal policy after each character message
-    postSpeechMessageEnabled: false,
+    postSpeechEnabled: false,
     postSpeechMessagePrompt: '',
-    postSpeechRoundEnabled: false,
     postSpeechRoundPrompt: '',
     postSpeechBlocking: true,
     postSpeechDecisionLimit: 20,

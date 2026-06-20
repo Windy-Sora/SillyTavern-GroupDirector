@@ -827,7 +827,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
-    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan) {
+    if (settings.postSpeechEnabled && !postSpeechRoundRan) {
         postSpeechRoundRan = true;
 
         generationStopped = false;
@@ -919,7 +919,7 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 
 // ─── PostSpeech: multimodal policy after each character message ─────
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType) => {
-    if (!settings.postSpeechMessageEnabled) return;
+    if (!settings.postSpeechEnabled) return;
     // Skip non-chat renders (quiet prompts, impersonate, continue)
     if (msgType && msgType !== 'normal') return;
 
