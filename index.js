@@ -918,12 +918,15 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 });
 
 // ─── PostSpeech: multimodal policy after each character message ─────
-eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
+eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType) => {
     if (!settings.postSpeechMessageEnabled) return;
+    // Skip non-chat renders (quiet prompts, impersonate, continue)
+    if (msgType && msgType !== 'normal') return;
 
     const msg = chat[chat.length - 1];
-    // Only real character messages: has a name, not user/system/quiet/internal
-    if (!msg || msg.is_user || msg.is_system || !msg.name || String(msg.name).startsWith('_')) return;
+    // Only real character messages: has a name, not user/system, has content
+    if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
+    if (String(msg.name).startsWith('_')) return;
 
     const group = getCurrentGroup();
     if (!group) return;
