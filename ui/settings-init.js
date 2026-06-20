@@ -39,11 +39,11 @@ export async function loadSettingsUI(deps) {
             <div id="${panelId}" class="drawer-content closedDrawer"></div>
         </div>`;
 
-    // Insert after the Extensions drawer in the settings sidebar.
-    // The drawers share a common flex container — find it by climbing from extensions.
+    // Insert before Extensions (second-to-last) so the last slot
+    // stays free for character cards as users expect.
     const $extButton = $('#extensions-settings-button');
     if ($extButton.length) {
-        $extButton.after(drawerHtml);
+        $extButton.before(drawerHtml);
         // Wire up the toggle — ST uses direct binding, so we must bind the
         // new drawer-toggle to the exported doNavbarIconClick handler.
         $(`#${drawerId} .drawer-toggle`).on('click', doNavbarIconClick);
