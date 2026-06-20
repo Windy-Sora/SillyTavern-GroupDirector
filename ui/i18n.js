@@ -11,6 +11,11 @@
 // ─── I18n Data ─────────────────────────────────────────────────────────
 const I18N = {
     zh: {
+        drawerModeScoring: '模式与评分',
+        drawerDirectorLlm: 'Director LLM',
+        drawerDataContext: '数据与上下文',
+        drawerAgentsTools: 'Agent 与工具',
+
         langLabel: '语言 / Language',
         intro: '解决群聊中所有角色抢话的问题。两种判断模式互斥，一次只能启用一种。',
         modeTitle: '判断模式（单选）',
@@ -172,6 +177,11 @@ const I18N = {
         agentsHint: '为每个 Agent 单独配置 API 端点和密钥。关闭时使用 SillyTavern 主模型。密钥保存在插件设置中，不随聊天导出。',
     },
     en: {
+        drawerModeScoring: 'Mode & Scoring',
+        drawerDirectorLlm: 'Director LLM',
+        drawerDataContext: 'Data & Context',
+        drawerAgentsTools: 'Agents & Tools',
+
         langLabel: '语言 / Language',
         intro: 'Prevents all characters from rushing to speak in group chats. The two modes are mutually exclusive.',
         modeTitle: 'Mode (single choice)',
@@ -357,6 +367,7 @@ export function applyI18n(lang, EXT_KEY, chat_metadata) {
 export function applyModeVisibility(mode) {
     $('#gd-formula-section').toggle(mode === 'formula');
     $('#gd-llm-section').toggle(mode === 'llm');
+    $('#gd-llm-data-section').toggle(mode === 'llm');
     $('#gd-off-hint').toggle(mode === 'off');
 }
 
