@@ -457,3 +457,90 @@ SillyTavern-GroupDirector/
 | 改渲染引擎 | `prompt-renderer.js` |
 | 改 LLM 响应解析 | `utils/json-utils.js` |
 | 改拦截器行为 | `index.js` → `groupDirector_Interceptor` |
+
+---
+
+## 13. 开发规范
+
+### Agent 规范
+
+```
+1. 必须声明 contextAccess  — 只访问声明的 pool key。Proxy 强制约束。
+2. 必须声明 pipelineOrder — 不在其中的阶段不执行，天然可选。
+3. pipeline.call = null    — 由 Runtime managedCall 统一治理（retry+timeout+onRetry）。
+4. Agent 不碰网络         — 只接收 caller.generate()，协议细节完全隔离。
+5. 新增 Agent 只需三步    — agents/xxx.js → index.js register → 自动 UI。
+6. UI 配置块自动生成      — 从 AgentRegistry.list() 读取，无需手写 HTML。
+```
+
+### Provider vs Locals
+
+| | Provider | Locals |
+|------|----------|--------|
+| 生命周期 | 全局注册，一次注册处处可用 | 单次 `renderPrompt` 调用 |
+| 注册方式 | `registerProvider({ id, render })` | `renderPrompt(tpl, ctx, { locals })` |
+| 语法 | `{{name}}` | `{{name}}`（同一语法） |
+| 适用场景 | 全局数据源（chat, characters, worldInfo...） | Agent 上下文数据（每次调用动态变化） |
+| 使用位置 | 任意 `renderPrompt` | 仅 Agent 的 `prompt()` 阶段 |
+
+**规则**：`locals` 只在 Agent 的 `prompt()` 阶段传入，不在其他地方传。locals 注入在 Provider 之后（Phase 1 → 注入 → Phase 2），不覆盖同名的注册 Provider。
+
+### Context Pool 规范
+
+```
+1. buildContextPool 的 getter 名 = contextAccess 声明 key。
+2. Agent 特有数据通过 overrides 传入 → pool 必须注册对应 getter。
+3. 忘了注册 pool getter → Agent 拿到 undefined → 静默失败（最常见的隐形 bug）。
+4. contextAccess 不声明 → Proxy 拦截 → strictMode 报错 / warn 模式警告。
+5. 可变值（chat、characters、chat_metadata）用 getter 闭包传递，不直接引用。
+```
+
+### renderPrompt 调用规范
+
+```
+1. 数据替换必须在 renderPrompt 之前或通过 locals，严禁事后 `{{...}}` 字符串替换。
+2. 递归渲染会二次扫描替换后的文本——若替换内容包含 {{...}} 会被清除。
+3. 包含用户数据的文本（角色描述含 {{User}}）→ 用 locals 注入 + recursive: false。
+4. 传给 renderPrompt 的 ctx 参数影响 Provider 行为（如 {{characters}} 读 ctx.enabledMembers）。
+```
+
+### Provider ctx 依赖表
+
+| Provider | 依赖的 ctx 字段 | 未提供时的行为 |
+|----------|----------------|---------------|
+| `{{recentMessages}}` | `ctx.recentMessages` (array) | 返回空字符串 |
+| `{{characters}}` | `ctx.enabledMembers` (avatar array) | 返回空字符串 |
+| `{{newRecentMessages}}` | 无（读全局 chat） | 正常 |
+| `{{worldInfo}}` | 无（读 wiState） | 正常 |
+| `{{worldBookImportance}}` | 无（读 worldBookScanner） | 正常 |
+
+---
+
+## 14. 踩坑记录
+
+### 架构层面
+
+| 坑 | 原因 | 教训 |
+|----|------|------|
+| `{{...}}` 两套系统冲突 | renderPrompt Phase 2 把 Agent locals 当未注册 Provider 清除 | 添加 `locals` 机制，占位符语法统一、来源区分 |
+| `state.ctx` 不存在 | execute() 用 stage 名做 state key（`state.context`），input 链找语义 key（`state.ctx`） | 添加 SEMANTIC 映射，每阶段执行后设置别名 |
+| prompt 阶段收到 undefined | input 回退链缺 `state.ctx`：`parsed??raw??prompt??undefined` | 回退链补 `?? state.ctx` |
+| contextAccess 漏声明 → 崩溃 | `pool.chat()` 调了但没声明，Proxy 返回 undefined→`undefined()`→TypeError | 加 `access trace`（每次 execute 后打印 used vs declared） |
+
+### 数据流层面
+
+| 坑 | 原因 | 教训 |
+|----|------|------|
+| NPC pool getter 漏注册 | `buildContextPool` 没加 NPC key，Agent 永远拿空数据 | 新增 Agent 时检查 pool getter 是否匹配 contextAccess |
+| `{{User}}` 被 renderPrompt 吞掉 | 递归渲染二次扫描已替换的本地文本 | locals 注入 + `recursive: false` |
+| `{{characters}}` Provider 空输出 | renderPrompt 传入空 `{}`，Provider 读 `ctx.enabledMembers` 为空 | 文档化了 Provider ctx 依赖表 |
+| ForceSpeak parse 未入 pipeline | `parseResponse` 方法在 pipeline 外，execute 不调用 | pipeline 的方法必须在 `pipeline: {}` 内声明 |
+| Director history 存 avatars 混 names | 两条保存路径格式不一致 | 统一使用 names 存储 |
+
+### 渲染层面
+
+| 坑 | 原因 | 教训 |
+|----|------|------|
+| CJK `\b` 永远匹配不到中文名 | JS 正则 `\b` 对 CJK 字符是 `\W→\W`，无单词边界 | `indexOf` 循环子串匹配 |
+| 递归渲染二次清除已替换文本 | 字符描述含 `{{User}}`，递归 pass 重新扫描并清除 | 先 Provider 后 locals，关闭不必要的递归 |
+| 数据占位符先替换后被清 | 手动 `.replace()` 在 renderPrompt 之前→递归 pass 又处理一遍 | 统一走 locals，不再手动 post-replace |
