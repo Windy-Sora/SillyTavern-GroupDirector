@@ -936,9 +936,9 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     // Brief notification while PostSpeech processes (auto-dismiss ~1s)
     const psNotifyKey = 'gd-ps-msg-notify';
     if (typeof toastr !== 'undefined') {
-        toastr.info('PostSpeech analyzing...', '', { timeOut: 1000 }, psNotifyKey);
+        toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 }, psNotifyKey);
     } else if (typeof window !== 'undefined' && window.toastr) {
-        window.toastr.info('PostSpeech analyzing...', '', { timeOut: 1000 }, psNotifyKey);
+        window.toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 }, psNotifyKey);
     }
 
     try {
