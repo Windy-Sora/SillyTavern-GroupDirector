@@ -1191,14 +1191,16 @@ Available characters:
 Character profiles (detailed analysis):
 {{character_profiles}}
 
-NPCs in the current scene:
+NPCs in the current scene (for context only — do NOT pick these as speakers):
 {{npcList}}
 
 ---
 You are a Group Chat Director. Decide which characters should respond next, and in what order.
 
+CRITICAL: Only pick speakers from "Available characters" above. NPCs are NOT valid speakers — they appear in "NPCs in the current scene" for context only. Picking an NPC name as a speaker is an error.
+
 Rules:
-- Pick at most {{maxSpeakers}} character(s).
+- Pick at most {{maxSpeakers}} character(s) from "Available characters" ONLY.
 - Order them by who should speak FIRST, SECOND, etc.
 - Only pick characters who have a meaningful reason to respond now.
 - It is OK to pick just one character if only one fits.`;
