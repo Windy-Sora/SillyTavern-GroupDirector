@@ -493,6 +493,9 @@ SillyTavern-GroupDirector/
 | `templateRecursive` | true | 启用递归渲染 |
 | `templateDebugPlaceholders` | false | 保留未注册占位符 |
 | `forceSpeakMode` | `native` | `native` \| `block` \| `llm` |
+| `postSpeechMessageEnabled` | false | 每次发言后触发 PostSpeech |
+| `postSpeechRoundEnabled` | false | 回合结束后触发 PostSpeech |
+| `postSpeechBlocking` | true | PostSpeech 阻塞模式 |
 | `agentConfigs` | `{}` | 每个 Agent 的独立 API 配置 |
 | `agentConfigs[id].useCustom` | false | 使用独立 API |
 | `agentConfigs[id].protocol` | `openai` | `openai` \| `anthropic` |
@@ -505,7 +508,118 @@ SillyTavern-GroupDirector/
 
 ---
 
-## 11. 失败回退
+## 11. PostSpeech 多模态策略（实验性）
+
+### 11.1 架构
+
+```
+角色发言 → CHARACTER_MESSAGE_RENDERED → PostSpeech Agent (per-message)
+回合结束 → GROUP_WRAPPER_FINISHED      → PostSpeech Agent (per-round)
+                                              ↓
+                                    LLM 输出 policy JSON
+                                              ↓
+                                    Executor: resolve → schedule → execute
+                                              ↓
+                                    Capability.executor() → TTS / Image / ...
+```
+
+### 11.2 PostSpeech Agent
+
+Pipeline: `context → prompt → call`（无 parse/validate，policy 格式由 Prompt 锁定）
+
+- `context` 阶段：收集发言内容 + 角色信息 + 已注册能力清单
+- `prompt` 阶段：渲染 PostSpeech Prompt（支持所有 Provider 占位符），注入能力参数 schema
+- `call` 阶段：LLM 返回结构化 JSON policy
+
+**Policy 格式（锁定，用户不可编辑）**：
+
+```json
+{
+  "intents": [{ "type": "tts", "params": { "emotion": "angry", "speed": 1.3 } }],
+  "timing": { "mode": "immediate" }
+}
+```
+
+**两种模式**：
+| 模式 | 触发时机 | 用途 |
+|------|---------|------|
+| per-message | `CHARACTER_MESSAGE_RENDERED`，每条角色发言后 | TTS、情绪检测等即时反馈 |
+| per-round | `GROUP_WRAPPER_FINISHED`，所有角色发言后 | 场景图像、回合总结等批量处理 |
+
+**通知机制**：两种模式在 LLM 处理期间均显示持续提示，完成后弹出成功 toast。
+
+**⚠️ 性能警告**：启用 PostSpeech 后每次角色发言增加 1 次 LLM 调用（per-message）+ 每轮 1 次（per-round），等待时间显著增加。
+
+### 11.3 Capability 系统
+
+**CapabilityRegistry** — 独立于 AgentRegistry：
+
+```
+注册: CapabilityRegistry.register({ id, displayName, description, promptHint, schema, executor, constraints })
+查询: CapabilityRegistry.get(id) / list() / listEnabled()
+开关: CapabilityRegistry.setEnabled(id, true/false)
+```
+
+**如何加一个新能力**：
+
+```js
+// 1. 创建 capabilities/xxx.js
+import { CapabilityRegistry } from '../systems/capability-registry.js';
+export function register({ log }) {
+    CapabilityRegistry.register({
+        id: 'tts',
+        displayName: 'TTS Voice',
+        description: 'Adjust voice emotion/tone',
+        promptHint: 'Activate when emotional tone is clear',
+        schema: {
+            intents: ['tts', 'voice', 'speech'],
+            params: {
+                emotion: { type: 'string', values: ['neutral','happy','sad','angry'], default: 'neutral' },
+                speed:   { type: 'number', min: 0.5, max: 2.0, default: 1.0 },
+            },
+        },
+        constraints: { maxPerMessage: 1, cooldown: 1000 },
+        executor: async (params) => { /* call external service */ },
+    });
+}
+
+// 2. 在 index.js 中 import + 调用 register({ log })
+```
+
+**能力注册规范**：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `id` | ✅ | 唯一标识，LLM policy 中的 `type` 字段匹配此值 |
+| `executor` | ✅ | `async (params) => {}`，能力执行函数 |
+| `schema.intents` | 否 | LLM 可以通过哪些别名触发此能力 |
+| `schema.params` | 否 | 参数 schema（type/values/min/max/required/default），Executor 自动校验 |
+| `promptHint` | 否 | LLM 决策指引：何时触发此能力 |
+| `constraints.maxPerMessage` | 否 | 每条消息最多触发次数（默认 1） |
+| `constraints.cooldown` | 否 | 冷却时间（ms） |
+
+### 11.4 Executor
+
+**三阶段**：`resolve → schedule → execute`
+
+```js
+const executor = createExecutor({ blocking: true, log, onExecuted });
+await executor.run(policy, CapabilityRegistry.list());
+```
+
+- `resolve`：intents → 匹配能力（schema 参数校验、type 强制、range clamp）
+- `schedule`：按 `timing.mode`（immediate / deferred / round_end）排执行计划
+- `execute`：blocking（顺序 await）或 fire-and-forget（异步后台）
+
+### 11.5 决策持久化
+
+`chat_metadata[EXT_KEY].postSpeechDecisions` — 随聊天导出/导入，`MESSAGE_DELETED` 和 `CHAT_CHANGED` 时自动裁剪。
+
+去重 key：`(messageIndex, capabilityId)` — swipe/regenerate 时自动跳过。
+
+---
+
+## 12. 失败回退 (v2)
 
 - Agent 调用失败 → managedCall 重试 `retries` 次 → 复用历史 → 阻塞轮次
 - 用户主动暂停 → `generationStopped` 标记 → 静默切断
