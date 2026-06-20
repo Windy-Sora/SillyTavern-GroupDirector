@@ -194,6 +194,7 @@ const I18N = {
         traceHint: '查看 Agent 执行记录（需开启 debugLogging 后自动采集）。展开查看每阶段耗时和输出。',
         traceRefresh: '刷新',
         traceClear: '清空',
+        traceMaxLabel: '最大条数',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -379,6 +380,7 @@ const I18N = {
         traceHint: 'View Agent execution records (auto-collected when debugLogging is on). Expand to see per-stage timing and output.',
         traceRefresh: 'Refresh',
         traceClear: 'Clear',
+        traceMaxLabel: 'Max entries',
     },
 };
 

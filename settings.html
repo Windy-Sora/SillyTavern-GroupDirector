@@ -494,9 +494,11 @@
             <hr>
             <h4 data-i18n="traceTitle">执行追踪</h4>
             <small data-i18n="traceHint">查看 Agent 执行记录（需开启调试日志）。展开可查看每个阶段的耗时和输出。</small>
-            <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+            <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
                 <span class="menu_button menu_button_icon" id="gd-trace-refresh" style="font-size:0.85em;"><i class="fa-solid fa-rotate"></i> <span data-i18n="traceRefresh">刷新</span></span>
                 <span class="menu_button menu_button_icon" id="gd-trace-clear" style="font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="traceClear">清空</span></span>
+                <label for="gd-trace-max" style="font-size:0.85em;margin-left:8px;" data-i18n="traceMaxLabel">最大条数</label>
+                <input type="number" id="gd-trace-max" class="text_pole" min="1" max="200" step="1" style="width:60px;">
             </div>
             <div id="gd-trace-list" style="margin-top:6px;"></div>
 

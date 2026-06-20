@@ -1,13 +1,22 @@
 import { registerSection } from './registry.js';
 
 registerSection('executionTrace', function (ctx) {
-    const { settings, AgentTrace } = ctx;
+    const { settings, $c, saveSettings, AgentTrace } = ctx;
     if (!AgentTrace) return;
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
 
     const $list = $('#gd-trace-list');
     if (!$list.length) return;
+
+    // ── Max entries ──
+    AgentTrace.setMax(settings.traceMaxEntries ?? 50);
+    $c('trace-max').val(settings.traceMaxEntries ?? 50);
+    $c('trace-max').on('input', function () {
+        settings.traceMaxEntries = Math.max(1, parseInt($(this).val()) || 50);
+        AgentTrace.setMax(settings.traceMaxEntries);
+        saveSettings();
+    });
 
     // ── Render ──
     function render() {

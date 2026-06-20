@@ -68,6 +68,7 @@ export const DEFAULT_SETTINGS = {
     npcBatchSize: 3,
     npcGenerateFirstMes: false,
     npcPrompt: '',
+    traceMaxEntries: 50,
     // Agent Runtime — per-agent API config (stored in extension_settings, not chat_metadata)
     agentConfigs: {}, // { [agentId]: { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '', model: '', call: { retries: 2, timeout: 30000 }, strictMode: false } }
 };

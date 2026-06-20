@@ -34,13 +34,17 @@ export const AgentRegistry = {
 
 /** Ring buffer for recent execution traces — observable, not controllable. */
 const traceBuffer = [];
-const MAX_TRACES = 20;
+let _maxTraces = 50;
 
 export const AgentTrace = {
     /** Returns a shallow copy of recent traces (newest last). */
     recent: () => [...traceBuffer],
     /** Clear all traces. */
     clear: () => { traceBuffer.length = 0; },
+    /** Get current ring buffer max size. */
+    getMax: () => _maxTraces,
+    /** Set ring buffer max size. */
+    setMax: (n) => { _maxTraces = Math.max(1, n); if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
 };
 
 /**
@@ -229,7 +233,7 @@ export async function execute(agent, { pool, caller, config = {} }) {
         trace.push({ stage: '_done', result: summarizeResult(result), contextUsed });
         const snapshot = trace.snapshot();
         traceBuffer.push(snapshot);
-        if (traceBuffer.length > MAX_TRACES) traceBuffer.shift();
+        while (traceBuffer.length > _maxTraces) traceBuffer.shift();
         console.log('[AgentTrace]', agent.id, snapshot.stages.map(s => s.stage).join(' → '));
     }
 
