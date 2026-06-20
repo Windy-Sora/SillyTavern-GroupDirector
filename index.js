@@ -501,7 +501,9 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     }
 
     if (settings.mode === MODE_OFF) return;
-    if (type === 'quiet' || type === 'impersonate' || type === 'continue') return;
+    // Only intercept actual message generation — skip quiet, impersonate, continue,
+    // image generation, TTS, and any other non-chat API calls.
+    if (type !== 'normal' && type !== 'swipe' && type !== 'regenerate') return;
 
     const group = getCurrentGroup();
     if (!group) return;
