@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { DEFAULT_NPC_PROMPT } from '../../agents/npc.js';
 
 registerSection('npc', function (ctx) {
     const { settings, $c, saveSettings, getCurrentGroup, toastr } = ctx;
@@ -18,7 +19,7 @@ registerSection('npc', function (ctx) {
     $c('npc-max-count').val(settings.npcMaxCount ?? 10);
     $c('npc-batch-size').val(settings.npcBatchSize ?? 3);
     $c('npc-generate-firstmes').prop('checked', settings.npcGenerateFirstMes ?? false);
-    $c('npc-prompt').val(settings.npcPrompt || '');
+    $c('npc-prompt').val(settings.npcPrompt || DEFAULT_NPC_PROMPT);
 
     // ── Events ──
     $toggle.on('change', function () {
@@ -50,7 +51,7 @@ registerSection('npc', function (ctx) {
 
     $c('npc-prompt-reset').on('click', function () {
         settings.npcPrompt = '';
-        $c('npc-prompt').val('');
+        $c('npc-prompt').val(DEFAULT_NPC_PROMPT);
         saveSettings();
         toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
     });

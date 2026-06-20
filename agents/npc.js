@@ -4,8 +4,7 @@
  * Pipeline: context → prompt → call → parse
  * Dedup: parse stage strips results with names that match existing NPCs or group members.
  */
-export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
-    const DEFAULT_PROMPT = `You are an NPC generator for a roleplay scenario. Based on the context provided, create new NPCs that fit naturally into the current story and setting.
+export const DEFAULT_NPC_PROMPT = `You are an NPC generator for a roleplay scenario. Based on the context provided, create new NPCs that fit naturally into the current story and setting.
 
 {{contextPrompt}}
 
@@ -33,7 +32,10 @@ Reply with ONLY a JSON object, no prose, no code fences:
   ]
 }`;
 
-    const FIRST_MES_LINE = ',\n      "first_mes": "Opening line when meeting the characters"';
+const FIRST_MES_LINE = ',\n      "first_mes": "Opening line when meeting the characters"';
+
+export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
+    const DEFAULT_PROMPT = DEFAULT_NPC_PROMPT;
 
     return {
         id: 'npc',
