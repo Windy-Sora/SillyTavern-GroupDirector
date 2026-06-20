@@ -200,9 +200,10 @@ const I18N = {
         psDecisionsTitle: 'PostSpeech 决策记录',
         psDecisionsHint: '最近的多模态策略决策（随聊天持久化，自动去重）。',
 
-        psEnabled: '启用 PostSpeech 多模态策略',
+        psMsgEnabled: '每次发言后激活 PostSpeech',
         psMsgPromptLabel: '每次发言后 Prompt（留空使用内置默认）',
         psMsgPromptReset: '恢复默认',
+        psRoundEnabled: '回合结束后激活 PostSpeech',
         psRoundPromptLabel: '回合结束后 Prompt（留空使用内置默认）',
         psRoundPromptReset: '恢复默认',
         psBlocking: '阻塞模式（关闭=异步后台执行，不阻塞对话）',
@@ -401,9 +402,10 @@ const I18N = {
         psDecisionsTitle: 'PostSpeech Decisions',
         psDecisionsHint: 'Recent multimodal policy decisions (persisted per chat, auto-dedup).',
 
-        psEnabled: 'Enable PostSpeech multimodal policy',
+        psMsgEnabled: 'Activate PostSpeech after each message',
         psMsgPromptLabel: 'Per-message Prompt (leave empty for default)',
         psMsgPromptReset: 'Reset',
+        psRoundEnabled: 'Activate PostSpeech after round ends',
         psRoundPromptLabel: 'Per-round Prompt (leave empty for default)',
         psRoundPromptReset: 'Reset',
         psBlocking: 'Blocking mode (uncheck = async background)',

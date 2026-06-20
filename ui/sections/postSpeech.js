@@ -6,20 +6,19 @@ registerSection('postSpeech', function (ctx) {
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
 
-    const $section = $('#gd-ps-section');
     const $capsList = $('#gd-ps-capabilities-list');
 
-    // ── Global toggle ──
-    $c('ps-enabled').prop('checked', settings.postSpeechEnabled ?? false);
-    $section.toggle(settings.postSpeechEnabled ?? false);
-    $c('ps-enabled').on('change', function () {
-        settings.postSpeechEnabled = !!$(this).prop('checked');
-        $section.toggle(settings.postSpeechEnabled);
+    // ── Per-message ──
+    const $msgSection = $('#gd-ps-msg-section');
+    $c('ps-msg-enabled').prop('checked', settings.postSpeechMessageEnabled ?? false);
+    $msgSection.toggle(settings.postSpeechMessageEnabled ?? false);
+    $c('ps-msg-prompt').val(settings.postSpeechMessagePrompt || DEFAULT_PROMPT);
+
+    $c('ps-msg-enabled').on('change', function () {
+        settings.postSpeechMessageEnabled = !!$(this).prop('checked');
+        $msgSection.toggle(settings.postSpeechMessageEnabled);
         saveSettings();
     });
-
-    // ── Per-message prompt ──
-    $c('ps-msg-prompt').val(settings.postSpeechMessagePrompt || DEFAULT_PROMPT);
     $c('ps-msg-prompt').on('input', function () {
         settings.postSpeechMessagePrompt = $(this).val();
         saveSettings();
@@ -31,8 +30,17 @@ registerSection('postSpeech', function (ctx) {
         toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
     });
 
-    // ── Per-round prompt ──
+    // ── Per-round ──
+    const $roundSection = $('#gd-ps-round-section');
+    $c('ps-round-enabled').prop('checked', settings.postSpeechRoundEnabled ?? false);
+    $roundSection.toggle(settings.postSpeechRoundEnabled ?? false);
     $c('ps-round-prompt').val(settings.postSpeechRoundPrompt || DEFAULT_PROMPT);
+
+    $c('ps-round-enabled').on('change', function () {
+        settings.postSpeechRoundEnabled = !!$(this).prop('checked');
+        $roundSection.toggle(settings.postSpeechRoundEnabled);
+        saveSettings();
+    });
     $c('ps-round-prompt').on('input', function () {
         settings.postSpeechRoundPrompt = $(this).val();
         saveSettings();

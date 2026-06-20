@@ -487,22 +487,26 @@
         </div>
         <div class="inline-drawer-content">
 
-            <!-- PostSpeech global toggle -->
-            <label class="checkbox_label" for="gd-ps-enabled">
-                <input type="checkbox" id="gd-ps-enabled">
-                <span data-i18n="psEnabled">启用 PostSpeech 多模态策略</span>
+            <!-- PostSpeech per-message -->
+            <label class="checkbox_label" for="gd-ps-msg-enabled">
+                <input type="checkbox" id="gd-ps-msg-enabled">
+                <span data-i18n="psMsgEnabled">每次发言后激活 PostSpeech</span>
             </label>
-
-            <div id="gd-ps-section" style="display:none;">
-                <!-- Per-message prompt -->
-                <label for="gd-ps-msg-prompt" data-i18n="psMsgPromptLabel">每次发言后 Prompt（留空使用内置默认，支持所有 Provider）</label>
+            <div id="gd-ps-msg-section" style="display:none;">
+                <label for="gd-ps-msg-prompt" data-i18n="psMsgPromptLabel">每次发言 Prompt（留空使用内置默认，支持所有 Provider）</label>
                 <textarea id="gd-ps-msg-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                 <div class="menu_button menu_button_icon" id="gd-ps-msg-prompt-reset" style="margin-top:4px;">
                     <i class="fa-solid fa-rotate-left"></i> <span data-i18n="psMsgPromptReset">恢复默认</span>
                 </div>
+            </div>
 
-                <!-- Per-round prompt -->
-                <label for="gd-ps-round-prompt" style="margin-top:8px;" data-i18n="psRoundPromptLabel">回合结束后 Prompt（留空使用内置默认，支持所有 Provider）</label>
+            <!-- PostSpeech per-round -->
+            <label class="checkbox_label" for="gd-ps-round-enabled" style="margin-top:8px;">
+                <input type="checkbox" id="gd-ps-round-enabled">
+                <span data-i18n="psRoundEnabled">回合结束后激活 PostSpeech</span>
+            </label>
+            <div id="gd-ps-round-section" style="display:none;">
+                <label for="gd-ps-round-prompt" data-i18n="psRoundPromptLabel">回合结束 Prompt（留空使用内置默认，支持所有 Provider）</label>
                 <textarea id="gd-ps-round-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                 <div class="menu_button menu_button_icon" id="gd-ps-round-prompt-reset" style="margin-top:4px;">
                     <i class="fa-solid fa-rotate-left"></i> <span data-i18n="psRoundPromptReset">恢复默认</span>
