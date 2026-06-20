@@ -31,21 +31,51 @@ export const AgentRegistry = {
 
 // ─── Scoped Context Pool ─────────────────────────────────────────────
 
-export function createScopedPool(pool, access, config = {}) {
+/**
+ * Create a Proxy-enforced context pool.
+ *
+ * @param {object} pool           Raw context pool
+ * @param {string[]} access       Declared contextAccess (which keys the agent needs)
+ * @param {object} agent          Agent descriptor ({ id }) for error messages
+ * @param {object} config         { strictMode }
+ * @returns {{ proxy: Proxy, trace: Set, report(): string }}
+ */
+export function createScopedPool(pool, access, agent = {}, config = {}) {
     const strictMode = config?.strictMode === true;
+    const agentId = agent.id || 'unknown';
+    const usedAccess = new Set();
 
-    return new Proxy(pool, {
-        get(target, key) {
+    const proxy = new Proxy(pool, {
+        get(_target, key) {
+            usedAccess.add(key);
             if (!access.includes(key)) {
-                const msg = `[Agent] "${key}": access denied (not in contextAccess)`;
+                const msg = `[AgentAccessViolation] ${agentId} tried to access "${key}" — not in contextAccess. ` +
+                    `Declared: [${access.join(', ')}]`;
                 if (strictMode) throw new Error(msg);
                 console.warn(msg);
                 return undefined;
             }
-            const val = target[key];
-            return typeof val === 'function' ? val.bind(target) : val;
+            const val = _target[key];
+            return typeof val === 'function' ? val.bind(_target) : val;
         },
     });
+
+    return {
+        proxy,
+        used: usedAccess,
+        report(verbose = false) {
+            const unused = access.filter(k => !usedAccess.has(k));
+            const undeclared = [...usedAccess].filter(k => !access.includes(k));
+            let msg = `[Agent] ${agentId} context access: ${usedAccess.size} keys used`;
+            if (undeclared.length) {
+                msg += ` | UNDECLARED: [${undeclared.join(', ')}]`;
+            }
+            if (verbose && unused.length) {
+                msg += ` | unused: [${unused.join(', ')}]`;
+            }
+            return msg;
+        },
+    };
 }
 
 // ─── Managed Call (retry + timeout) ──────────────────────────────────
@@ -102,7 +132,7 @@ function sleep(ms) {
  * Returns: parsed ?? raw ?? prompt (last meaningful stage output)
  */
 export async function execute(agent, { pool, caller, config = {} }) {
-    const scoped = createScopedPool(pool, agent.contextAccess, config);
+    const { proxy: scoped, report } = createScopedPool(pool, agent.contextAccess, agent, config);
     const state = {}; // { ctx, prompt, raw, parsed }
 
     for (const stage of agent.pipelineOrder) {
@@ -113,12 +143,13 @@ export async function execute(agent, { pool, caller, config = {} }) {
         } else if (stage === 'call') {
             state.raw = await fn(caller, state.prompt, state);
         } else if (fn) {
-            // Input depends on stage: later stages consume earlier output;
-            // early stages (like prompt) receive context as first argument.
             const input = state.parsed ?? state.raw ?? state.prompt ?? state.ctx;
             state[stage] = await fn(input, state.ctx, scoped, config);
         }
     }
+
+    // Always log access report after execution
+    console.log(report(true));
 
     return state.parsed ?? state.raw ?? state.prompt;
 }
