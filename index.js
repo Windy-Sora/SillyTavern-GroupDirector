@@ -50,6 +50,7 @@ import { createNpcSystem } from './systems/npc-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
 import { runExecutionEngine } from './systems/execution-engine.js';
 import { CapabilityRegistry } from './systems/capability-registry.js';
+import { createPostSpeechSystem } from './systems/post-speech-system.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -287,6 +288,11 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 const npcSystem = createNpcSystem({
     settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
+});
+
+// ─── PostSpeech System ───────────────────────────────────────────────
+const postSpeechSystem = createPostSpeechSystem({
+    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional, log,
 });
 
 // ─── Register built-in capabilities ─────────────────────────────────
@@ -850,6 +856,17 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async (msg) => {
             config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
         });
 
+        // Dedup: skip if no new capabilities would be triggered
+        // (swipe/regenerate on same message → already decided)
+        const msgIndex = chat.length - 1;  // this message's index in chat
+        const enabledCaps = CapabilityRegistry.listEnabled().map(c => c.id);
+        const allAlreadyExecuted = enabledCaps.every(cid =>
+            postSpeechSystem.wasExecuted(msgIndex, cid));
+        if (allAlreadyExecuted) {
+            log('PostSpeech: all capabilities already executed for message', msgIndex);
+            return;
+        }
+
         // response is the raw LLM text; parse it
         if (!response) return;
         const policy = agent.parseResponse(response);
@@ -857,11 +874,25 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async (msg) => {
 
         log('PostSpeech policy:', policy);
 
-        // Run execution engine
-        const execResult = await runExecutionEngine(policy, {
-            blocking: settings.postSpeechBlocking !== false,
-            timing: policy.timing || { mode: 'immediate', delay: 0 },
-        });
+        // Only execute intents that haven't been done yet
+        const freshIntents = policy.intents.filter(i =>
+            !postSpeechSystem.wasExecuted(msgIndex, i.type)
+        );
+        if (!freshIntents.length) { log('PostSpeech: all intents already executed'); return; }
+
+        // Run execution engine with filtered intents
+        const execResult = await runExecutionEngine(
+            { ...policy, intents: freshIntents },
+            {
+                blocking: settings.postSpeechBlocking !== false,
+                timing: policy.timing || { mode: 'immediate', delay: 0 },
+            }
+        );
+
+        // Record each executed intent
+        for (const intent of freshIntents) {
+            await postSpeechSystem.record(msgIndex, msg.name || '?', intent.type, intent.params, policy);
+        }
 
         log('PostSpeech execution:', execResult);
     } catch (e) {
@@ -896,12 +927,14 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     if (chat_metadata[EXT_KEY]) delete chat_metadata[EXT_KEY]._counterSnapshots;
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
+    await postSpeechSystem.pruneAfter(newChatLength - 1);
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
+    await postSpeechSystem.clearAll();
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
@@ -1388,6 +1421,7 @@ jQuery(async () => {
         getContext,
         npcSystem,
         CapabilityRegistry,
+        postSpeechSystem,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

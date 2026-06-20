@@ -93,8 +93,32 @@ registerSection('executionTrace', function (ctx) {
     }
 
     // ── Events ──
-    $('#gd-trace-refresh').on('click', render);
+    $('#gd-trace-refresh').on('click', () => { render(); renderPsDecisions(); });
     $('#gd-trace-clear').on('click', () => { AgentTrace.clear(); render(); });
 
+    // ── PostSpeech decisions ──
+    const $psList = $('#gd-ps-list');
+    const psSystem = ctx.postSpeechSystem;
+
+    function renderPsDecisions() {
+        if (!$psList.length || !psSystem) return;
+        const decisions = psSystem.list(20);
+        if (!decisions.length) {
+            $psList.html(`<small style="color:var(--grey70a);">${L('暂无 PostSpeech 决策记录', 'No PostSpeech decisions yet')}</small>`);
+            return;
+        }
+        let html = `<small style="color:var(--grey70a);">${decisions.length} ${L('条决策', ' decisions')} (${L('共', 'total')} ${psSystem.count()})</small>`;
+        decisions.slice(0, 10).forEach((d, i) => {
+            const time = new Date(d.timestamp).toLocaleTimeString();
+            html += `<div style="font-size:0.8em;padding:2px 0;border-bottom:1px solid var(--SmartThemeBorderColor);">
+                <b>#${d.messageIndex}</b> ${esc(d.messageName)} →
+                <span style="color:var(--green)">${esc(d.capabilityId)}</span>
+                <span style="color:var(--grey70a);float:right;">${time}</span>
+            </div>`;
+        });
+        $psList.html(html);
+    }
+
     render();
+    renderPsDecisions();
 });

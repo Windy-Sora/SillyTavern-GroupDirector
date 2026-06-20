@@ -195,6 +195,9 @@ const I18N = {
         traceRefresh: '刷新',
         traceClear: '清空',
         traceMaxLabel: '最大条数',
+
+        psDecisionsTitle: 'PostSpeech 决策记录',
+        psDecisionsHint: '最近的多模态策略决策（随聊天持久化，自动去重）。',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -381,6 +384,9 @@ const I18N = {
         traceRefresh: 'Refresh',
         traceClear: 'Clear',
         traceMaxLabel: 'Max entries',
+
+        psDecisionsTitle: 'PostSpeech Decisions',
+        psDecisionsHint: 'Recent multimodal policy decisions (persisted per chat, auto-dedup).',
     },
 };
 
