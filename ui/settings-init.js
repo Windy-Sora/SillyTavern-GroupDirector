@@ -31,7 +31,7 @@ export async function loadSettingsUI(deps) {
     const lang = settings.lang || 'zh';
 
     const drawerHtml = `
-        <div id="${drawerId}" class="drawer" style="order:10;">
+        <div id="${drawerId}" class="drawer">
             <div class="drawer-toggle">
                 <div class="drawer-icon fa-solid fa-globe fa-fw closedIcon"
                      title="${lang === 'zh' ? 'Group Director — 群聊导演' : 'Group Director'}"></div>
