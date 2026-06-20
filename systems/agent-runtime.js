@@ -83,6 +83,7 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
 export async function managedCall(caller, prompt, callConfig = {}) {
     const retries = callConfig.retries ?? 2;
     const timeoutMs = callConfig.timeout ?? 30000;
+    const onRetry = callConfig.onRetry; // ({ attempt, maxRetries, error }) => void
     let lastError;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -94,6 +95,9 @@ export async function managedCall(caller, prompt, callConfig = {}) {
             if (e.name === 'AbortError') throw e;
             if (attempt < retries) {
                 console.warn(`[Agent] call attempt ${attempt + 1}/${retries + 1} failed: ${e.message}. Retrying...`);
+                if (onRetry) {
+                    try { onRetry({ attempt: attempt + 1, maxRetries: retries, error: e.message }); } catch (_) {}
+                }
                 await sleep(2000);
             }
         }

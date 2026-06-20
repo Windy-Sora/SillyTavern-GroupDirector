@@ -311,11 +311,23 @@ function scoreCharacter(chId, recentMessages) {
 
     let score = 0;
 
-    // 1. Mention score: character name appears in recent messages
+    // 1. Mention score: character name appears in recent messages.
+    // \b only matches between \w and \W — CJK chars are \W, so \b is invisible
+    // between them. Use substring indexOf for CJK names, \b for ASCII.
     const recentText = recentMessages.map(m => m.mes || '').join(' ');
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const mentionRegex = new RegExp('\\b' + escapedName + '\\b', 'gi');
-    const mentionCount = (recentText.match(mentionRegex) || []).length;
+    const hasCJK = /[⺀-⻿　-〿㇀-㇯㈀-㋿㐀-䶿一-鿿豈-﫿︰-﹏＀-￯]/.test(name);
+    let mentionCount = 0;
+    if (hasCJK) {
+        // Substring scan for CJK names (simple indexOf loop, case-sensitive)
+        let idx = 0;
+        while ((idx = recentText.indexOf(name, idx)) !== -1) {
+            mentionCount++;
+            idx += name.length;
+        }
+    } else {
+        mentionCount = (recentText.match(new RegExp('\\b' + escapedName + '\\b', 'gi')) || []).length;
+    }
     score += mentionCount * weights.mention;
 
     // 2. Keyword trigger score
@@ -920,10 +932,16 @@ async function initForceSpeakLLM(char, avatar) {
             characterAvatar: avatar,
         });
 
+        const callCfg = {
+            ...agentConfig.call,
+            onRetry: ({ attempt, maxRetries }) => {
+                toastr.warning(`ForceSpeak 重试中 (${attempt}/${maxRetries})...`);
+            },
+        };
         const response = await execute(agent, {
             pool,
             caller,
-            config: { ...settings, call: agentConfig.call },
+            config: { ...settings, call: callCfg },
         });
 
         // Clear QUIET_PROMPT
@@ -1005,10 +1023,16 @@ async function initRoundWithLLM() {
 
         const pool = buildContextPool({ group, enabledMembers });
 
+        const callCfg = {
+            ...agentConfig.call,
+            onRetry: ({ attempt, maxRetries }) => {
+                toastr.warning(`Director 重试中 (${attempt}/${maxRetries})...`);
+            },
+        };
         const parsed = await execute(agent, {
             pool,
             caller,
-            config: { ...settings, call: agentConfig.call },
+            config: { ...settings, call: callCfg },
         });
 
         // Clean up QUIET_PROMPT
