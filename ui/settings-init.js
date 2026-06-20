@@ -32,7 +32,7 @@ export async function loadSettingsUI(deps) {
     const drawerHtml = `
         <div id="${drawerId}" class="drawer" style="order:10;">
             <div class="drawer-toggle">
-                <div class="drawer-icon fa-solid fa-clapperboard fa-fw closedIcon"
+                <div class="drawer-icon fa-solid fa-globe fa-fw closedIcon"
                      title="${lang === 'zh' ? 'Group Director — 群聊导演' : 'Group Director'}"></div>
             </div>
             <div id="${panelId}" class="drawer-content closedDrawer"></div>
