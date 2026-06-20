@@ -108,7 +108,11 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
                     .replace(/\{\{capabilityList\}\}/g, ctx.capabilityList);
 
                 // Resolve Provider placeholders via renderPrompt
-                filled = await renderPrompt(filled, {});
+                // Passthrough ST-native placeholders ({{User}}, {{char}}, etc.) — they are
+                // substituted later by ST's own pipeline, not by Group Director.
+                filled = await renderPrompt(filled, {}, {
+                    passthrough: ['User', 'user', 'char', 'original'],
+                });
 
                 return filled;
             },

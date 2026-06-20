@@ -58,6 +58,7 @@ export function createForceSpeakAgent({
                     maxPasses: settings.templateMaxPasses ?? 5,
                     recursive: settings.templateRecursive ?? true,
                     debugPlaceholders: settings.templateDebugPlaceholders ?? false,
+                    passthrough: ['User', 'user', 'char', 'original'],
                 });
 
                 // WI auto-inject

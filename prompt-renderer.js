@@ -20,7 +20,7 @@ import { unescapeKnowledge } from './providers/knowledge.js';
  * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough } = options;
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
@@ -113,6 +113,10 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
         if (id === 'counter' || id === 'counter0') {
             return isRePass ? match : String(id === 'counter' ? roundCounterNext() : promptCounterNext());
+        }
+        // Passthrough: ST-native or user-specified placeholders left as-is
+        if (passthrough && (passthrough === true || passthrough.includes(id))) {
+            return match;
         }
         if (!(id in cache)) return unresolvable(match);
         return cache[id].content;

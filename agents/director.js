@@ -44,6 +44,7 @@ export function createDirectorAgent({
                     maxPasses: settings.templateMaxPasses ?? 5,
                     recursive: settings.templateRecursive ?? true,
                     debugPlaceholders: settings.templateDebugPlaceholders ?? false,
+                    passthrough: ['User', 'user', 'char', 'original'],
                 });
 
                 // Auto-inject WI
