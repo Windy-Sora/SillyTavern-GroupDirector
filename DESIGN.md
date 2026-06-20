@@ -2,202 +2,181 @@
 
 ## 1. 概述
 
-Group Director 是一个 **群聊上下文管线（Group Context Pipeline）**：收集外部数据 → LLM 决策 → 按角色分发注入。
+Group Director 是一个 **群聊上下文管线**：收集数据 → Agent 决策 → 注入角色 prompt。
 
-默认出厂配置是"群聊导演"（决定谁发言、按什么顺序），但 prompt 模板可以替换为地牢主宰、辩论裁判、战斗系统、社会模拟等任何需要"收集上下文 → 结构化决策 → 逐角色分发"的场景。框架本身不绑定任何特定用例。
+默认搭载 4 个 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）。每个 Agent 拥有独立的 API 配置，支持 ST 原生、OpenAI 或 Anthropic 协议。
 
-### 1.1 核心管线
+框架不绑定任何特定用例——可替换 prompt 模板实现地牢主宰、辩论裁判、战斗系统、社会模拟等场景。
+
+### 1.1 三层架构
 
 ```
-Provider 层           LLM 决策层            DSL 注入层
-──────────           ──────────           ──────────
-拉取任意外部数据 →  一张 prompt 模板   →  按角色分发、
-(世界书、角色档案、   决定"这次产出      展开、拼接、
-对话历史、账本、     什么 JSON"          注入角色 prompt
-时间/天气/随机...)     
+┌── Agent Registry ─────────────────────────────────────────────────┐
+│   register(agent) / get(id) / list()                              │
+│   Agent = { id, pipelineOrder, pipeline, contextAccess }          │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  ┌─ Agent 层 ──────────────────────────────────────────────────┐  │
+│  │  agent.run({ pool, caller, config })                        │  │
+│  │  声明 pipeline: context → prompt → call → parse → validate │  │
+│  │  声明 contextAccess: 权限边界                                │  │
+│  ├─────────────────────────────────────────────────────────────┤  │
+│  │  Runtime 层                                                 │  │
+│  │  execute() — 按 pipelineOrder 执行，state-driven            │  │
+│  │  createScopedPool() — Proxy 强制 contextAccess             │  │
+│  │  managedCall() — retry + timeout + onRetry callback         │  │
+│  ├─────────────────────────────────────────────────────────────┤  │
+│  │  Protocol 层                                                │  │
+│  │  createCaller(config) — ST Native / OpenAI / Anthropic      │  │
+│  │  config.agentConfigs[id] → extension_settings (Key 在此)     │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+├── Provider 层 ─────────────────────────────────────────────────────┤
+│   {{placeholder}} → 数据注入 (无状态)                               │
+├── Systems 层 ──────────────────────────────────────────────────────┤
+│   有状态业务逻辑 (工厂 + 依赖注入)                                    │
+├── UI 层 ───────────────────────────────────────────────────────────┤
+│   自注册模式 (registerSection)                                      │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 1.2 关键设计决策
 
 | 决策 | 理由 |
 |------|------|
-| 零修改 ST 核心代码 | 纯 Extension API：`generate_interceptor` + `abort(false)` |
-| Provider 注册表 | 任何占位符都是可插拔插件，新增不碰核心 |
-| 可变值全用 getter | `chat`/`characters`/`chat_metadata` 是 ST 的 `export let`，聊天切换时被替换 |
-| 账本存在 `chat_metadata` | 跟随对话导出/导入/分支，不依赖内存 |
-| LLM 失败透明放行 | 导演故障不阻塞聊天 |
-| send_date 锚定 | 账本裁剪基于不可变时间戳，删中间消息不错乱 |
+| Agent = 声明式 pipeline | Runtime 执行，Agent 不碰控制流，可追踪、可调试 |
+| contextAccess Per Agent | Proxy enforce，越权 warn/throw，防止数据污染 |
+| callModel 统一治理 | retry + timeout + fallback，不在各处散落 |
+| Protocol 层独立 | Agent 不感知 OpenAI/Anthropic 差异，加协议只改一个文件 |
+| Key 存 extension_settings | 不随聊天导出，重启不丢 |
+| 可变值用 getter | `chat`/`characters`/`chat_metadata` 是 ST 的 `export let` |
+| 零修改 ST 核心 | 纯 Extension API：`generate_interceptor` + `abort(false)` |
 
 ---
 
-## 2. 目录结构
+## 2. Agent Runtime（核心）
 
-```
-SillyTavern-GroupDirector/
-├── manifest.json              # 插件元数据 + generate_interceptor 声明
-├── index.js                   # 入口：运行时、拦截器、事件监听、系统组装
-├── settings.js                # 常量 + 默认设置（单一真相源）
-├── settings.html              # 设置面板模板（折叠抽屉）
-├── style.css                  # UI 样式
-├── prompt-renderer.js         # 五阶段模板渲染引擎
-├── provider-registry.js       # Provider 注册表（Map 存储）
-│
-├── providers/                 # Provider — 每个占位符一个文件
-│   ├── recent-messages.js     # {{recentMessages}}
-│   ├── new-recent-messages.js # {{newRecentMessages}} — 智能上下文窗口
-│   ├── characters.js          # {{characters}}
-│   ├── character-profiles.js  # {{character_profiles}}
-│   ├── world-info.js          # {{worldInfo}}
-│   ├── history.js             # {{previousPlan}} + {{previousPlans}}
-│   ├── director-ledger.js     # {{directorLedger}} + {{directorHistory}}
-│   ├── world-books.js         # {{worldBooks}} — 激活世界书清单
-│   ├── world-book-importance.js # {{worldBookImportance}} — 条目重要性排名
-│   ├── character-lore.js      # {{characterLore}} — 角色世界书触发词
-│   ├── chat-summary.js        # {{chatSummary}} — 上下文总结
-│   ├── system-time.js         # {{systemTime}} — 系统时间
-│   ├── random-dice.js         # {{randomDice}} — 0-1 随机数
-│   ├── dice.js                # {{dice}} — 骰子 + 幸运值
-│   ├── moon-phase.js          # {{moonPhase}} — 月相
-│   ├── time-of-day.js         # {{timeOfDay}} — 时段 + 季节
-│   └── test-provider.js       # {{test}} — 模板语法测试
-│
-├── systems/                   # 有状态业务逻辑（工厂函数 + 显式依赖注入）
-│   ├── history-system.js      # 导演账本 CRUD + send_date 锚定裁剪
-│   ├── world-info-system.js   # ST checkWorldInfo() 封装
-│   ├── profile-system.js      # 角色档案全流程
-│   ├── world-book-scanner.js  # 世界书扫描 + 重要性计算
-│   └── chat-summary-system.js # 上下文总结（生成/回退/裁剪联动）
-│
-├── utils/                     # 纯函数工具
-│   ├── path-resolver.js       # parsePath / resolvePath / formatValue
-│   ├── counter.js             # {{counter}} / {{counter0}} 自增计数器
-│   ├── json-utils.js          # extractJsonObject / sanitizeJson
-│   └── string-utils.js        # djb2Hash / hashChar
-│
-└── ui/                        # UI 层（自注册模式）
-    ├── settings-init.js       # loadSettingsUI() 入口
-    ├── i18n.js                # 中英文字典 + applyI18n()
-    ├── dom.js                 # $c() + bindNumber/Checkbox/Textarea/Radio
-    └── sections/              # 每个设置区域一个自注册模块
-        ├── registry.js        # registerSection() / initAllSections()
-        ├── modes.js           # 模式选择
-        ├── formula.js         # 公式模式参数
-        ├── director.js        # LLM 参数、剧本、账本清空
-        ├── continuity.js      # 连贯性模式
-        ├── worldinfo.js       # 世界书开关
-        ├── worldBooks.js      # 世界书选择
-        ├── ledger.js          # 账本浏览器（卡片 + JSON 编辑 + Raw 模式）
-        ├── forceSpeak.js      # 强制发言（三种模式）
-        ├── chatSummary.js     # 上下文总结（生成/回退/查看编辑）
-        ├── templateTester.js  # 模板测试器
-        └── profile.js         # 角色档案 UI
+### 2.1 Agent 定义
+
+```js
+const directorAgent = {
+  id: 'director',
+  displayName: 'Director',
+  contextAccess: ['chat', 'recentMessages', 'characters', 'profiles', ...],
+  pipelineOrder: ['context', 'prompt', 'call', 'parse', 'validate'],
+  pipeline: {
+    async context(input, ctx, pool, config) { /* → state.ctx */ },
+    async prompt(input, ctx, pool, config)  { /* → state.prompt */ },
+    // call: null → Runtime 统一治理 (managedCall)
+    async parse(input, ctx, pool, config)   { /* → state.parsed */ },
+    async validate(input, ctx, pool, config){ /* → state.parsed */ },
+  },
+};
 ```
 
-### 2.1 分层架构
+- `contextAccess`：声明该 Agent 需要访问哪些 pool key。未声明的 key 被 Proxy 拦截。
+- `pipelineOrder`：阶段执行顺序。不在其中的阶段不执行，天然可选。
+- `pipeline.call = null`：由 Runtime 统一治理（retry + timeout）。Agent 也可自定义 `call` 实现。
+
+### 2.2 执行引擎 (execute)
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  index.js  — 组装层（bootstrap）                               │
-│  运行时状态 · 拦截器 · 事件监听 · 系统组装                       │
-├──────────────────────────────────────────────────────────────┤
-│  prompt-renderer.js  — 渲染引擎（5 阶段）                       │
-│  provider-registry.js — Provider 注册表                        │
-├──────────┬──────────────────┬────────────────┬───────────────┤
-│providers/│  systems/        │  utils/        │  ui/          │
-│ 数据注入  │  业务逻辑         │  纯函数         │  设置面板      │
-│ (无状态)  │  (工厂+依赖注入)   │  (无副作用)     │  (自注册模式)  │
-└──────────┴──────────────────┴────────────────┴───────────────┘
+execute(agent, { pool, caller, config })
+  │
+  ├─ createScopedPool(pool, contextAccess, agent, config)
+  │    → Proxy enforce: strictMode=true → throw; false → warn+undefined
+  │    → 记录 usedAccess Set
+  │
+  ├─ for (stage of pipelineOrder)
+  │    ├─ 'call' + null → managedCall(caller, prompt, callConfig)
+  │    ├─ 其他阶段 → fn(input, state.ctx, scoped, config)
+  │    └─ state[stage] = result
+  │
+  └─ console.log(accessReport) // 声明 vs 实际使用差异
 ```
+
+**State 对象**：`{ ctx, prompt, raw, parsed }` — 每个阶段读写明确的 key，不混用。
+
+### 2.3 Context Pool
+
+```js
+buildContextPool({ group, enabledMembers, ... }) → {
+  chat:           () => chat,
+  recentMessages: (n) => chat.slice(-n),
+  characters:     () => characters,
+  profilesText:   () => buildCharacterProfilesText(),
+  worldInfoText:  () => wiState.text,
+  ledger:         () => getDirectorHistory(),
+  group:          () => group,
+  settings:       () => settings,
+  // ... per-agent overrides
+}
+```
+
+Agent 通过 `contextAccess` 声明需要哪些字段，Pool 通过 Proxy 强制约束。未来 Token Optimizer 可直接用 `contextAccess` 做选择性构建。
+
+### 2.4 协议层 (createCaller)
+
+```js
+createCaller(config, stGenerateRaw) → { generate(prompt), test() }
+
+config.useCustom = false → ST 原生 generateRaw
+config.useCustom = true  → openaiCompatible / anthropicCompatible
+
+// OpenAI:  POST {base}/v1/chat/completions
+// Anthropic: POST {base}/v1/messages (anthropic-version: 2023-06-01)
+```
+
+### 2.5 Agent 注册
+
+```js
+AgentRegistry.register(createDirectorAgent({ renderPrompt, ... }));
+AgentRegistry.register(createForceSpeakAgent({ renderPrompt, ... }));
+AgentRegistry.register(createProfileAgent({ renderPrompt, ... }));
+AgentRegistry.register(createSummaryAgent({ log }));
+```
+
+### 2.6 配置存储
+
+```js
+settings.agentConfigs = {
+  'director':    { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '',
+                   model: '', call: { retries: 2, timeout: 30000 }, strictMode: false },
+  'force-speak': { ... },
+  'profile':     { ... },
+  'summary':     { ... },
+};
+```
+
+存于 `extension_settings[EXT_KEY].agentConfigs` → `data/default-user/extensions/group-director.json`。不与聊天数据混合，不随导出泄露。
 
 ---
 
-## 3. 模板渲染引擎（prompt-renderer.js）
+## 3. Provider 系统
 
-### 3.1 五阶段管线
-
-```
-Phase 1   → 执行所有 Provider，缓存到 cache[id] = { content, data }
-Phase 1.5 → 块循环 {{#provider:path}}...{{/provider}}（最内层优先，去重）
-Phase 2   → 简单占位符 {{name}} → cache[id].content
-Phase 3   → 路径查询 {{?name:path|fallback}} → resolvePath(data, path)
-            ● resolveInnerPlaceholders(path) — 嵌套 {{...}} 从内向外
-            ● expandVariables(path) — $variable 展开
-Post-loop → 重复 Phase 1.5+2+3，直到无新匹配或达到 maxPasses
-```
-
-**关键保证：**
-- 每个 Provider 的 `render()` 在一次 `renderPrompt()` 中只执行一次
-- 块循环自动 Set 去重，空数组/null → 空字符串
-- Counter 仅在第一轮递增，后续轮次保留
-- 未注册占位符：`templateDebugPlaceholders` 控制保留/清除
-
-### 3.2 块循环 `{{#provider:path}}...{{/provider}}`
-
-```
-{{#directorLedger:loreAssignments.$character}}
-  {{?worldBooks:allEntries[comment=$it].content}}
-{{/directorLedger}}
-```
-
-- `$it` 绑定当前元素
-- 结果用 `\n` 拼接
-- 最内层优先处理（支持嵌套）
-
-### 3.3 嵌套路径查询
-
-路径中可包含 `{{...}}` 占位符，从最内层向外解析：
-
-```
-{{?directorLedger:scripts[{{?ledger:currentSpeaker}}]}}
-```
-
-### 3.4 递归渲染
-
-渲染后的文本可能包含新占位符，后处理循环重新扫描直到稳定：
-
-| 设置 | 默认 | 说明 |
-|------|------|------|
-| `templateRecursive` | `true` | 启用递归渲染 |
-| `templateMaxPasses` | `5` | 最大递归轮数（内部钳 1000）|
-| `templateDebugPlaceholders` | `false` | 保留未注册占位符用于调试 |
-
-### 3.5 运行时变量
-
-| 变量 | 可用场景 | 含义 |
-|------|---------|------|
-| `$character` | Script Wrapper | 当前角色名 |
-| `$speakerIndex` | Script Wrapper | 发言顺序（1-based）|
-| `$speakerIndex0` | Script Wrapper | 发言顺序（0-based）|
-| `$speakerCount` | Script Wrapper | 本轮总发言人数 |
-| `$it` | 块循环内部 | 当前迭代元素 |
-
----
-
-## 4. Provider 系统
-
-### 4.1 接口
+### 3.1 接口
 
 ```js
 registerProvider({
     id: 'myFeature',
     placeholder: '{{myFeature}}',
     render: async (ctx) => ({
-        content: '摘要文本',     // {{myFeature}} → 此文本
-        data: { key: 'val' },  // 可选：{{?myFeature:key}} → "val"
+        content: '摘要文本',        // {{myFeature}} → 此文本
+        data: { key: 'val' },      // {{?myFeature:key}} → "val"
     }),
 });
 ```
 
-### 4.2 已注册 Provider 一览
+### 3.2 已注册 Provider
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
 | `recentMessages` | `{{recentMessages}}` | 最近 N 条消息 |
-| `newRecentMessages` | `{{newRecentMessages}}` | 智能上下文窗口（总结+新消息） |
+| `newRecentMessages` | `{{newRecentMessages}}` | 智能上下文窗口 |
 | `characters` | `{{characters}}` | 角色列表 |
 | `character_profiles` | `{{character_profiles}}` | 角色档案 |
 | `maxSpeakers` | `{{maxSpeakers}}` | 最大发言人数 |
-| `worldInfo` | `{{worldInfo}}` | ST 世界书激活条目 |
+| `worldInfo` | `{{worldInfo}}` | ST 世界书条目 |
 | `previousPlan` | `{{previousPlan}}` | 上一轮导演计划 |
 | `previousPlans` | `{{previousPlans}}` | 历史导演计划数组 |
 | `directorLedger` | `{{directorLedger}}` | 最新导演计划 JSON |
@@ -208,164 +187,112 @@ registerProvider({
 | `chatSummary` | `{{chatSummary}}` | 上下文总结 |
 | `systemTime` | `{{systemTime}}` | 系统日期时间 |
 | `randomDice` | `{{randomDice}}` | 0.00-1.00 随机数 |
-| `dice` | `{{dice}}` | 骰子(1-6) + 幸运值(1-100) |
-| `moonPhase` | `{{moonPhase}}` | 月相（8 相 + 光照） |
-| `timeOfDay` | `{{timeOfDay}}` | 时段（6 段）+ 季节 |
-| `test` | `{{test}}` | 测试占位符 |
+| `dice` | `{{dice}}` | 骰子 + 幸运值 |
+| `moonPhase` | `{{moonPhase}}` | 月相 |
+| `timeOfDay` | `{{timeOfDay}}` | 时段 + 季节 |
+| `knowledge` | `{{knowledge}}` | 知识库原文 |
+| `test` | `{{test}}` | 模板语法测试 |
 
-### 4.3 编码规则
+### 3.3 编码规则
 
 - Provider 有开关时在 `render()` 内返回空字符串，不用 `enabled` 跳过
-- 可变值（`chat`、`characters`、`chat_metadata`）用 getter 传入
-- `settings.js` 是唯一默认值来源，不硬编码 fallback
+- 可变值用 getter 传入
+- `settings.js` 是唯一默认值来源
 
 ---
 
-## 5. 世界书管线（World Book Pipeline）
+## 4. 模板渲染引擎（prompt-renderer.js）
 
-### 5.1 数据流
-
-```
-用户勾选世界书（GUI）
-  ↓
-worldBookScanner.scanAll() → 只扫勾中的书
-  ↓
-{{worldBookImportance}} → Director Prompt: 条目名 + 关键词 + 重要性分数
-  ↓
-Director 返回 loreAssignments: { "Alice": ["条目名1", "条目名2"] }
-  ↓
-{{characterLore}} → Script Wrapper: [World lore: 条目名1, 条目名2]
-  ↓
-ST checkWorldInfo 检测到关键词 → 自动激活条目 → 注入正文
-```
-
-### 5.2 重要性计算
+### 4.1 五阶段管线
 
 ```
-score = constant(0.50|0.10) + depth×0.15 + probability×0.10 + sticky(0.05)
-      + keywords×0.10 + secondaryKeys×0.05 + order×0.05
-max = 1.000, disabled → 0.000
+Phase 0   — {[{...}]} 直通槽位 → 哨兵替换
+Phase 1   — 执行所有 Provider，缓存到 cache[id] = { content, data }
+Phase 1.5 — 块循环 {{#provider:path}}...{{/provider}}
+Phase 2   — 简单占位符 {{name}} → cache[id].content
+Phase 3   — 路径查询 {{?name:path|fallback}}
+Post      — 递归稳化 → 恢复直通槽位
 ```
 
----
-
-## 6. 上下文总结系统（Chat Summary）
-
-### 6.1 数据流
+### 4.2 路径查询语法
 
 ```
-用户点"执行总结"
-  ↓
-首次：全量 chat → LLM 生成摘要 → 存入 chat_metadata.summaries[]
-  ↓
-后续：上次摘要 + 新增片段 → LLM 生成新摘要
-  ↓
-{{chatSummary}} → Director Prompt 可用
-{{newRecentMessages}} → 自动拼装摘要 + 新消息
+{{?directorLedger:scripts.$character}}
+{{?history:plans[reason=开场].scripts}}
+{{?directorLedger:events[-1].title}}
+{{?worldBooks:allEntries[comment=地理与空间].content}}
 ```
 
-### 6.2 设置
+### 4.3 运行时变量
 
-| 设置 | 默认 | 说明 |
+| 变量 | 场景 | 含义 |
 |------|------|------|
-| `summaryEnabled` | `false` | 总开关 |
-| `summaryReusePrevious` | `true` | 复用上次总结 |
-| `summaryPrompt` | `''` | 空 = 内置默认 |
-
-### 6.3 安全设计
-
-- 生成期间 `{{chatSummary}}` 返回空（`summarizing` 标志）
-- `MESSAGE_DELETED` 自动裁剪失效总结
-- 结果可查看编辑，不满意可回退/重新总结/重置
+| `$character` | Script Wrapper | 当前角色名 |
+| `$speakerIndex` | Script Wrapper | 发言顺序 (1-based) |
+| `$speakerIndex0` | Script Wrapper | 发言顺序 (0-based) |
+| `$speakerCount` | Script Wrapper | 本轮总发言人数 |
+| `$it` | 块循环内部 | 当前迭代元素 |
 
 ---
 
-## 7. 强制发言（Force Speak）
+## 5. 世界书管线
 
-### 7.1 三种模式
-
-| 模式 | 行为 |
-|------|------|
-| `native`（默认） | confirm 弹窗 → 透传给 ST |
-| `block` | `abort(false)` 阻断 |
-| `llm` | 复用 Director Prompt + 强制指令 → LLM 出 script → 记账本 |
-
-### 7.2 安全性
-
-- 仅群聊生效（`getCurrentGroup()` 检查）
-- LLM 模式锚点到最近用户消息，删除联动正常
-- 空 chat 直接返回
-- 关闭主模式不影响 force-speak
-
----
-
-## 8. UI 架构
-
-### 8.1 自注册模式
-
-```js
-// ui/sections/registry.js
-const sections = [];
-export function registerSection(name, initFn) { sections.push({ name, initFn }); }
-export function initAllSections(ctx) { sections.forEach(s => s.initFn(ctx)); }
+```
+用户勾选世界书
+  ↓
+worldBookScanner.scanAll()
+  ↓
+{{worldBookImportance}} → Director Prompt: 条目名 + 关键词 + 重要性
+  ↓
+Director 返回 loreAssignments: { "Alice": ["条目1", "条目2"] }
+  ↓
+{{characterLore}} → Script Wrapper: [World lore: 条目1, 条目2]
+  ↓
+ST checkWorldInfo 检测到关键词 → 激活条目 → 注入正文
 ```
 
-新增 UI 区域只需：
-1. `settings.html` 加 DOM 结构
-2. 创建 `ui/sections/newname.js` → `registerSection('name', initFn)`
-3. `ui/settings-init.js` 加 `import './sections/newname.js'`
-
-### 8.2 折叠抽屉
-
-使用 ST 原生 `inline-drawer` 组件，全局点击委托使用 `closest('.inline-drawer')` + `find('>.inline-drawer-content')` 直接子选择器，嵌套正确。
-
-当前抽屉：公式判断配置、Director LLM 参数、Director Prompt 模板、导演剧本 & 连贯性、世界书注入、世界书选择、强制发言、上下文总结、导演账本浏览器、角色档案系统、模板测试器。
-
-### 8.3 账本浏览器
-
-- 卡片列表（最新在上）：`#3 Alice, Bob — 两人正在对峙...`
-- 展开 JSON 编辑（`_anchorDate`/`_chatLength` 不可见）
-- 清空单条（替换为 `{}`）
-- Raw 模式（不允许增删）
-- 生成锁 + 自动刷新
-
 ---
 
-## 9. 模式
+## 6. 模式
 
-### 9.1 `off` — 关闭
+### 6.1 `off` — 关闭
 不干预 ST 默认行为。force-speak 不受影响。
 
-### 9.2 `formula` — 公式判断
+### 6.2 `formula` — 公式判断
 本地评分，零 API 调用：
 
 ```
-score(c) = mention(c)×w_mention + (trigger(c)?triggerScore:0)
+score(c) = mention(c)×w_mention + trigger(c)×triggerScore
          + recency(c)×w_recency − consecutive(c)×w_consecutivePenalty
          + talkativeness(c)×w_talkativeness + initiative(c)
 ```
 
-### 9.3 `llm` — 大模型判断
-- Prompt 经 Provider 系统渲染后调用 `ctx.generateRaw()`
-- 返回 JSON：`{"speakers": [...], "reason": "...", "scripts": {...}, "loreAssignments": {...}}`
-- 严格顺序模式：`force_chid` 接管 ST 循环
-- 用户暂停 → 静默切断
-- 网络错误 → 最多重试 3 次 → 复用历史
+CJK 角色名使用 `indexOf` 子串匹配，ASCII 名使用 `\b` 单词边界正则。
+
+### 6.3 `llm` — 大模型判断
+通过 Director Agent 调用 LLM：
+1. Agent context 阶段收集上下文
+2. Agent prompt 阶段渲染模板
+3. Runtime managedCall 发送请求（支持自定义 API 或 ST 原生）
+4. Agent parse 阶段解析 JSON
+5. Agent validate 阶段校验 speakers
+
+失败回退：3 次重试 → 复用历史计划 → 阻塞轮次。
 
 ---
 
-## 10. 拦截器状态机
+## 7. 拦截器状态机
 
 ```
 GROUP_WRAPPER_STARTED
-  ├─ takeoverGenCount > 0 → return
+  ├─ takeoverGenCount > 0 → return (nested sub-call)
   ├─ takeoverFailed → 复用旧计划
   ├─ swipe/regenerate → 重建/透传/复用
   └─ 正常新轮次 → 清空状态
 
 Interceptor
-  ├─ force-speak 检测（最先执行，类型无关）
-  ├─ 首个角色 → LLM/Formula 初始化
+  ├─ force-speak 检测（最先执行，不受模式关闭影响）
+  ├─ 首个角色 → Formula/Agent 初始化
   ├─ takeover → 验证身份 + 注入剧本
   └─ 过滤 → 不在 pickedSet → abort
 
@@ -375,24 +302,99 @@ GROUP_WRAPPER_FINISHED
 
 GENERATION_STOPPED → generationStopped = true
 MESSAGE_DELETED → 裁剪账本 + 裁剪总结 + 清空状态
+CHAT_CHANGED → 裁剪账本 + 裁剪总结（分支/切换）
 ```
 
 ---
 
-## 11. Crash/重载恢复
+## 8. 如何添加新 Agent
 
-| 状态 | 存储 | 恢复 |
-|------|------|------|
-| 用户设置 | `extension_settings` | 自动 |
-| 导演账本 | `chat_metadata.directorHistory` | STARTED swipe 分支重建 |
-| 角色档案 | `chat_metadata.characterProfiles` | 自动 |
-| 上下文总结 | `chat_metadata.summaries` | 自动 |
-| Counter 快照 | `chat_metadata._counterSnapshots` | swipe 时合并 |
-| 运行时变量 | 内存（丢失） | 下一轮重置 |
+1. 创建 `agents/xxx.js` → 声明 `{ id, displayName, contextAccess, pipelineOrder, pipeline }`
+2. 在 `index.js` 中 `AgentRegistry.register(createXxxAgent({...}))`
+3. UI 自动从 `AgentRegistry.list()` 生成配置块
+
+如果 Agent 需要自定义 call 或特殊生命周期，继承 pipeline 模式即可——`pipelineOrder` 声明顺序，`pipeline[stage]` 提供实现。
 
 ---
 
-## 12. 配置项总览
+## 9. 目录结构
+
+```
+SillyTavern-GroupDirector/
+├── manifest.json
+├── index.js                   # 入口：组装层、运行时状态、拦截器、事件监听
+├── settings.js                # 常量 + 默认设置（单一真相源）
+├── settings.html              # 设置面板
+├── style.css
+├── prompt-renderer.js         # 五阶段模板渲染引擎
+├── provider-registry.js       # Provider 注册表
+│
+├── agents/                    # Agent 层 — 每个 Agent 一个文件
+│   ├── director.js            # Director Agent (context→prompt→call→parse→validate)
+│   ├── force-speak.js         # ForceSpeak Agent (context→prompt→call→parse)
+│   ├── profile.js             # Profile Agent (context→prompt→call→parse→validate)
+│   └── summary.js             # Summary Agent (context→prompt→call)
+│
+├── systems/                   # 有状态业务逻辑
+│   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry
+│   ├── history-system.js      # 导演账本 CRUD + send_date 锚定裁剪
+│   ├── world-info-system.js   # ST checkWorldInfo() 封装
+│   ├── profile-system.js      # 角色档案全流程
+│   ├── world-book-scanner.js  # 世界书扫描 + 重要性计算
+│   ├── chat-summary-system.js # 上下文总结
+│   └── export-import-system.js# 群聊导出/导入
+│
+├── providers/                 # Provider — 每个占位符一个文件（无状态）
+│   ├── recent-messages.js     # {{recentMessages}}
+│   ├── new-recent-messages.js # {{newRecentMessages}}
+│   ├── characters.js          # {{characters}}
+│   ├── character-profiles.js  # {{character_profiles}}
+│   ├── world-info.js          # {{worldInfo}}
+│   ├── history.js             # {{previousPlan}} + {{previousPlans}}
+│   ├── director-ledger.js     # {{directorLedger}} + {{directorHistory}}
+│   ├── world-books.js         # {{worldBooks}}
+│   ├── world-book-importance.js # {{worldBookImportance}}
+│   ├── character-lore.js      # {{characterLore}}
+│   ├── chat-summary.js        # {{chatSummary}}
+│   ├── system-time.js         # {{systemTime}}
+│   ├── random-dice.js         # {{randomDice}}
+│   ├── dice.js                # {{dice}}
+│   ├── moon-phase.js          # {{moonPhase}}
+│   ├── time-of-day.js         # {{timeOfDay}}
+│   ├── knowledge.js           # {{knowledge}}
+│   └── test-provider.js       # {{test}}
+│
+├── utils/                     # 纯函数工具
+│   ├── custom-api.js          # createCaller (ST/OpenAI/Anthropic)
+│   ├── path-resolver.js       # parsePath / resolvePath / formatValue
+│   ├── counter.js             # {{counter}} / {{counter0}}
+│   ├── json-utils.js          # extractJsonObject / sanitizeJson
+│   └── string-utils.js        # djb2Hash / hashChar
+│
+└── ui/                        # UI 层（自注册模式）
+    ├── settings-init.js       # loadSettingsUI() 入口
+    ├── i18n.js                # 中英文字典
+    ├── dom.js                 # $c() + bind helpers
+    └── sections/              # 每个设置区域一个自注册模块
+        ├── registry.js        # registerSection() / initAllSections()
+        ├── modes.js           # 模式选择
+        ├── formula.js         # 公式模式参数
+        ├── director.js        # LLM 参数、剧本
+        ├── continuity.js      # 连贯性模式
+        ├── worldinfo.js       # 世界书开关
+        ├── worldBooks.js      # 世界书选择
+        ├── ledger.js          # 账本浏览器
+        ├── forceSpeak.js      # 强制发言
+        ├── chatSummary.js     # 上下文总结
+        ├── templateTester.js  # 模板测试器
+        ├── profile.js         # 角色档案
+        ├── exportImport.js    # 群聊导出/导入
+        └── agents.js          # Agent API 独立配置（动态生成）
+```
+
+---
+
+## 10. 配置项总览
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -413,42 +415,41 @@ MESSAGE_DELETED → 裁剪账本 + 裁剪总结 + 清空状态
 | `llmScriptWrapper` | (内置) | 剧本注入包装模板 |
 | `llmHistoryEnabled` | true | 记录导演账本 |
 | `llmScriptContinuity` | false | 连贯剧本 |
-| `llmScriptContinuityMode` | last | `last` \| `history` |
-| `llmScriptContinuityCount` | 0 | 历史模式轮数 |
 | `llmWorldInfoEnabled` | false | 世界书注入 |
-| `worldBookSelection` | {} | 手动选择世界书 |
-| `worldBookMaxEntries` | 20 | 最大注入条目数 |
 | `templateMaxPasses` | 5 | 递归渲染最大轮数 |
 | `templateRecursive` | true | 启用递归渲染 |
 | `templateDebugPlaceholders` | false | 保留未注册占位符 |
 | `forceSpeakMode` | `native` | `native` \| `block` \| `llm` |
-| `forceSpeakPrompt` | '' | 强制发言 Prompt 注入 |
-| `summaryEnabled` | false | 启用上下文总结 |
-| `summaryReusePrevious` | true | 复用上次总结 |
-| `summaryPrompt` | '' | 总结 Prompt |
-| `profileEnabled` | false | 角色档案系统 |
-| `profileTokenBudget` | 2000 | 档案 Token 预算 |
-| `profileConcurrency` | 0 | 档案生成并发数 |
-| `debugLogging` | false | 调试日志 |
-| `lang` | zh | 语言 |
+| `agentConfigs` | `{}` | 每个 Agent 的独立 API 配置 |
+| `agentConfigs[id].useCustom` | false | 使用独立 API |
+| `agentConfigs[id].protocol` | `openai` | `openai` \| `anthropic` |
+| `agentConfigs[id].endpoint` | '' | API 端点 URL |
+| `agentConfigs[id].apiKey` | '' | API 密钥 |
+| `agentConfigs[id].model` | '' | 模型名 |
+| `agentConfigs[id].strictMode` | false | 严格 contextAccess 校验 |
+| `agentConfigs[id].call.retries` | 2 | 重试次数 |
+| `agentConfigs[id].call.timeout` | 30000 | 超时 (ms) |
 
 ---
 
-## 13. 失败回退
+## 11. 失败回退
 
-- LLM 调用失败 / JSON 解析失败 → 透明放行（有历史则复用）
-- 用户主动暂停 → 静默切断，不重试，不复用历史
+- Agent 调用失败 → managedCall 重试 `retries` 次 → 复用历史 → 阻塞轮次
+- 用户主动暂停 → `generationStopped` 标记 → 静默切断
 - `selected_group` 为空 → 透明放行
 - `type` 为 `quiet` / `impersonate` / `continue` → 不拦截
 - Takeover 中途失败 → `takeoverFailed = true`，下次重试复用
 
 ---
 
-## 14. 开发速查
+## 12. 开发速查
 
 | 任务 | 改哪些文件 |
 |------|-----------|
-| 加 Prompt 占位符 | `providers/*.js`（新建）+ `index.js` 底部 import/register |
+| 加新 Agent | `agents/xxx.js`（新建）+ `index.js` register + UI 自动生成 |
+| 改 Agent 行为 | `agents/xxx.js` → pipeline 对应阶段方法 |
+| 加新协议 | `utils/custom-api.js` → 加 `makeXxxCaller()` |
+| 加 Prompt 占位符 | `providers/*.js`（新建）+ `index.js` import/register |
 | 加业务逻辑模块 | `systems/*.js`（新建）+ `index.js` import/组装 |
 | 加设置项 | `settings.js` + `settings.html` + `ui/sections/*.js` |
 | 加 UI 抽屉 | `settings.html`（inline-drawer）+ `ui/sections/newname.js` + `ui/settings-init.js` import |
