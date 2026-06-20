@@ -844,11 +844,14 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 });
 
 // ─── PostSpeech: multimodal policy after each character message ─────
-eventSource.on(event_types.MESSAGE_RECEIVED, async (msg) => {
+eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
     if (!settings.postSpeechEnabled) return;
-    if (!msg || msg.is_user || msg.is_system) return;
     const group = getCurrentGroup();
     if (!group) return;   // group chat only for now
+
+    // Get the actual message from chat (last message = this one)
+    const msg = chat[chat.length - 1];
+    if (!msg || msg.is_user || msg.is_system) return;
 
     const agent = AgentRegistry.get('post-speech');
     if (!agent) return;
