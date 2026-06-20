@@ -18,6 +18,9 @@ World books (all selected entries):
 
 Available characters:
 {{existingCharacters}}
+
+NPCs already in the scene:
+{{npcList}}
 ━━━━━━━━━━━━━
 
 Existing NPCs (DO NOT duplicate these names):

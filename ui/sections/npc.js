@@ -109,7 +109,8 @@ registerSection('npc', function (ctx) {
         npcs.forEach((npc, i) => {
             const importedBadge = npc.imported
                 ? `<span style="color:green;font-size:0.8em;">&#10003; ${L('已导入', 'Imported')} (${npc.importedAvatar || ''})</span>`
-                : `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
+                : '';
+            const importBtn = `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
 
             html += `
                 <div class="gd-npc-card" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-top:4px;" data-idx="${i}">
@@ -117,6 +118,7 @@ registerSection('npc', function (ctx) {
                         <b>${esc(npc.name)}</b>
                         <div style="display:flex;gap:4px;align-items:center;">
                             ${importedBadge}
+                            ${importBtn}
                             <span class="menu_button menu_button_icon gd-npc-edit" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-pencil"></i> ${L('编辑', 'Edit')}</span>
                             <span class="menu_button menu_button_icon gd-npc-delete" data-idx="${i}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
                         </div>

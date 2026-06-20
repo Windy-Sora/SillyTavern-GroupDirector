@@ -124,7 +124,6 @@ export function createNpcSystem({
         const npcs = getNpcs();
         const npc = npcs[index];
         if (!npc) throw new Error('NPC not found');
-        if (npc.imported) throw new Error(L('该 NPC 已导入', 'NPC already imported'));
 
         // Build character data in V2 format
         const charData = {
