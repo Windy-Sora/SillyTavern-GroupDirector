@@ -139,6 +139,9 @@ export async function execute(agent, { pool, caller, config = {} }) {
     const { proxy: scoped, report } = createScopedPool(pool, agent.contextAccess, agent, config);
     const state = {}; // { ctx, prompt, raw, parsed }
 
+    // Stage → semantic key mapping
+    const SEMANTIC = { context: 'ctx', prompt: 'prompt', call: 'raw', parse: 'parsed', validate: 'parsed' };
+
     for (const stage of agent.pipelineOrder) {
         const fn = agent.pipeline[stage];
 
@@ -149,6 +152,8 @@ export async function execute(agent, { pool, caller, config = {} }) {
         } else if (fn) {
             const input = state.parsed ?? state.raw ?? state.prompt ?? state.ctx;
             state[stage] = await fn(input, state.ctx, scoped, config);
+            // Alias semantic key for downstream stages
+            if (SEMANTIC[stage]) state[SEMANTIC[stage]] = state[stage];
         }
     }
 
