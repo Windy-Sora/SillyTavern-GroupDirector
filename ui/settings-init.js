@@ -39,9 +39,9 @@ export async function loadSettingsUI(deps) {
             <div id="${panelId}" class="drawer-content closedDrawer"></div>
         </div>`;
 
-    // Insert before Character Management so it doesn't displace the
-    // character card panel at the bottom of the sidebar.
-    const $anchor = $('#rightNavHolder');
+    // Insert before Persona Management in the left settings sidebar,
+    // keeping the character card panel on the right untouched.
+    const $anchor = $('#persona-management-button');
     if ($anchor.length) {
         $anchor.before(drawerHtml);
         // Wire up the toggle — ST uses direct binding, so we must bind the
