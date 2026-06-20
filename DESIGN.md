@@ -115,7 +115,80 @@ buildContextPool({ group, enabledMembers, ... }) → {
 
 Agent 通过 `contextAccess` 声明需要哪些字段，Pool 通过 Proxy 强制约束。未来 Token Optimizer 可直接用 `contextAccess` 做选择性构建。
 
-### 2.4 协议层 (createCaller)
+### 2.4 Execution Trace（可观测性层）
+
+Agent 执行过程完全可追溯。通过 `config.enableTrace = true` 开启，零开销关闭。
+
+#### 设计原则
+
+| 原则 | 实现 |
+|------|------|
+| append-only | 每条 entry 写入后 `Object.freeze()` 冻结，不可修改 |
+| 不参与控制流 | trace 变量不在 `if/return/throw` 中，只 push |
+| 浅拷贝 | 外部数据 snapshot 时只拷贝元信息（长度、key 列表），不绑引用 |
+| 默认关闭 | `config.enableTrace` 不传 = 零开销 |
+
+#### 数据结构
+
+```js
+trace.snapshot() → {
+  agentId: 'director',
+  startTime: '2026-06-20T...',
+  stages: [
+    { stage: '_start', pipeline: ['context','prompt','call','parse','validate'],
+      contextAccess: ['chat','recentMessages',...], time: ..., elapsed: 0 },
+    { stage: 'context', duration: 1.2, outputSummary: { type:'object', keys:[...] } },
+    { stage: 'prompt',  duration: 45.3, outputSummary: { type:'text', length: 3200 } },
+    { stage: 'call',    duration: 2100, retries: 1, promptLength: 3200 },
+    { stage: 'parse',   duration: 0.3, outputSummary: { type:'object', keys:['speakers','reason'] } },
+    { stage: 'validate', duration: 0.1, outputSummary: { type:'object', keys:['speakers'] } },
+    { stage: '_done', result: { type:'object', keys:[...] }, contextUsed: ['chat','recentMessages',...] }
+  ],
+  contextUsed: ['chat', 'recentMessages', 'characters', 'profilesText', 'worldInfoText', 'ledger', 'group']
+}
+```
+
+#### 使用方式
+
+```js
+// 开启 — Agent 调用方加 enableTrace
+const result = await execute(agent, {
+    pool, caller,
+    config: { ...settings, enableTrace: true, call: callCfg },
+});
+
+// 查看
+const traces = AgentTrace.recent();  // 最近 20 条，环形缓冲
+const last = traces[traces.length - 1];
+console.log(last.stages.map(s => `${s.stage} ${s.duration}ms`));
+
+// 清空
+AgentTrace.clear();
+```
+
+#### 用法场景
+
+| 场景 | 查什么 |
+|------|--------|
+| debug director decision | `stages[].outputSummary` 看每个阶段产出了什么 |
+| track prompt drift | 对比两次 `prompt` 阶段的 `outputSummary.length` |
+| audit takeover | 检查 `call` 阶段的 `retries` |
+| optimize token usage | 查 `call` 阶段的 `promptLength` |
+| detect contextAccess leak | 查 `_done` 的 `contextUsed` 对比声明的 `contextAccess` |
+
+#### renderPrompt 级追踪
+
+```js
+// renderPrompt 支持 onCache 回调 — trace 可挂接查看 Provider 输出
+await renderPrompt(template, ctx, {
+    onCache: (snap) => {
+        // snap = { recentMessages: { content: 1200, hasData: false }, ... }
+        // 只含元信息，不含实际文本（避免内存膨胀）
+    }
+});
+```
+
+### 2.5 协议层 (createCaller)
 
 ```js
 createCaller(config, stGenerateRaw) → { generate(prompt), test() }
@@ -127,7 +200,7 @@ config.useCustom = true  → openaiCompatible / anthropicCompatible
 // Anthropic: POST {base}/v1/messages (anthropic-version: 2023-06-01)
 ```
 
-### 2.5 Agent 注册
+### 2.6 Agent 注册
 
 ```js
 AgentRegistry.register(createDirectorAgent({ renderPrompt, ... }));
@@ -136,7 +209,7 @@ AgentRegistry.register(createProfileAgent({ renderPrompt, ... }));
 AgentRegistry.register(createSummaryAgent({ log }));
 ```
 
-### 2.6 配置存储
+### 2.7 配置存储
 
 ```js
 settings.agentConfigs = {
@@ -336,7 +409,7 @@ SillyTavern-GroupDirector/
 │   └── summary.js             # Summary Agent (context→prompt→call)
 │
 ├── systems/                   # 有状态业务逻辑
-│   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry
+│   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry + Execution Trace
 │   ├── history-system.js      # 导演账本 CRUD + send_date 锚定裁剪
 │   ├── world-info-system.js   # ST checkWorldInfo() 封装
 │   ├── profile-system.js      # 角色档案全流程
