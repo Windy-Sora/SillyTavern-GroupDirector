@@ -62,7 +62,7 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 const groupChars = members.map(av => {
                     const c = pool.characters?.()?.find(ch => ch.avatar === av);
                     if (!c) return null;
-                    const desc = (c.description || '').slice(0, 200);
+                    const desc = c.description || '';
                     return `- ${c.name}${desc ? ': ' + desc : ''}`;
                 }).filter(Boolean);
 
