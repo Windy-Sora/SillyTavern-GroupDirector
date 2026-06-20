@@ -3,9 +3,10 @@
  *
  * Provides:
  *   createScopedPool(pool, access, strictMode) → Proxy-enforced context pool
- *   managedCall(caller, prompt, callConfig) → retry + timeout
+ *   managedCall(caller, prompt, callConfig) → retry + timeout (returns { text, retries })
  *   execute(agent, { pool, caller, config }) → state-driven pipeline execution
  *   AgentRegistry → register / get / list
+ *   Execution Trace → append-only, opt-in (config.enableTrace), ring buffer
  */
 
 // ─── Agent Registry ──────────────────────────────────────────────────
@@ -29,17 +30,55 @@ export const AgentRegistry = {
     },
 };
 
-// ─── Scoped Context Pool ─────────────────────────────────────────────
+// ─── Execution Trace ─────────────────────────────────────────────────
+
+/** Ring buffer for recent execution traces — observable, not controllable. */
+const traceBuffer = [];
+const MAX_TRACES = 20;
+
+export const AgentTrace = {
+    /** Returns a shallow copy of recent traces (newest last). */
+    recent: () => [...traceBuffer],
+    /** Clear all traces. */
+    clear: () => { traceBuffer.length = 0; },
+};
 
 /**
- * Create a Proxy-enforced context pool.
- *
- * @param {object} pool           Raw context pool
- * @param {string[]} access       Declared contextAccess (which keys the agent needs)
- * @param {object} agent          Agent descriptor ({ id }) for error messages
- * @param {object} config         { strictMode }
- * @returns {{ proxy: Proxy, trace: Set, report(): string }}
+ * Create an append-only trace object. Entries are frozen after push.
+ * Trace never participates in control flow — observe only.
  */
+function createTrace(agentId) {
+    const entries = [];
+    const startTime = Date.now();
+
+    return {
+        push(entry) {
+            const frozen = Object.freeze({
+                ...entry,
+                time: Date.now(),
+                elapsed: Date.now() - startTime,
+            });
+            entries.push(frozen);
+        },
+        snapshot() {
+            return {
+                agentId,
+                startTime: new Date(startTime).toISOString(),
+                stages: [...entries],
+            };
+        },
+    };
+}
+
+function summarizeResult(result) {
+    if (!result) return null;
+    if (typeof result === 'string') return { type: 'text', length: result.length };
+    if (Array.isArray(result)) return { type: 'array', length: result.length };
+    return { type: 'object', keys: Object.keys(result).filter(k => !k.startsWith('_')) };
+}
+
+// ─── Scoped Context Pool ─────────────────────────────────────────────
+
 export function createScopedPool(pool, access, agent = {}, config = {}) {
     const strictMode = config?.strictMode === true;
     const agentId = agent.id || 'unknown';
@@ -83,20 +122,22 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
 export async function managedCall(caller, prompt, callConfig = {}) {
     const retries = callConfig.retries ?? 2;
     const timeoutMs = callConfig.timeout ?? 30000;
-    const onRetry = callConfig.onRetry; // ({ attempt, maxRetries, error }) => void
+    const onRetry = callConfig.onRetry;
     let lastError;
+    let attemptCount = 0;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            const result = await withTimeout(caller.generate(prompt), timeoutMs);
-            return result;
+            const text = await withTimeout(caller.generate(prompt), timeoutMs);
+            return { text, retries: attempt };
         } catch (e) {
             lastError = e;
             if (e.name === 'AbortError') throw e;
             if (attempt < retries) {
-                console.warn(`[Agent] call attempt ${attempt + 1}/${retries + 1} failed: ${e.message}. Retrying...`);
+                attemptCount = attempt + 1;
+                console.warn(`[Agent] call attempt ${attemptCount}/${retries} failed: ${e.message}. Retrying...`);
                 if (onRetry) {
-                    try { onRetry({ attempt: attempt + 1, maxRetries: retries, error: e.message }); } catch (_) {}
+                    try { onRetry({ attempt: attemptCount, maxRetries: retries, error: e.message }); } catch (_) {}
                 }
                 await sleep(2000);
             }
@@ -126,39 +167,71 @@ function sleep(ms) {
 /**
  * Execute an agent's declared pipeline.
  *
- * State object: { ctx, prompt, raw, parsed }
- *   context phase → state.ctx
- *   prompt  phase → state.prompt
- *   call    phase → state.raw
- *   parse   phase → state.parsed
- *   validate phase → state.parsed (validated)
+ * When config.enableTrace is true, execution is recorded in an append-only
+ * trace object and pushed to the AgentTrace ring buffer. Trace never
+ * participates in control flow — it is pure observation.
  *
- * Returns: parsed ?? raw ?? prompt (last meaningful stage output)
+ * Returns the agent's structured output (parsed ?? raw ?? prompt).
  */
 export async function execute(agent, { pool, caller, config = {} }) {
-    const { proxy: scoped, report } = createScopedPool(pool, agent.contextAccess, agent, config);
-    const state = {}; // { ctx, prompt, raw, parsed }
+    const { proxy: scoped, used, report } = createScopedPool(pool, agent.contextAccess, agent, config);
+    const state = {};
+    const trace = config.enableTrace ? createTrace(agent.id) : null;
 
-    // Stage → semantic key mapping
+    if (trace) {
+        trace.push({
+            stage: '_start',
+            pipeline: agent.pipelineOrder.slice(),
+            contextAccess: agent.contextAccess.slice(),
+        });
+    }
+
     const SEMANTIC = { context: 'ctx', prompt: 'prompt', call: 'raw', parse: 'parsed', validate: 'parsed' };
 
     for (const stage of agent.pipelineOrder) {
         const fn = agent.pipeline[stage];
+        const t0 = performance.now();
 
-        if (stage === 'call' && (fn === null || fn === undefined)) {
-            state.raw = await managedCall(caller, state.prompt, config.call);
-        } else if (stage === 'call') {
-            state.raw = await fn(caller, state.prompt, state);
-        } else if (fn) {
-            const input = state.parsed ?? state.raw ?? state.prompt ?? state.ctx;
-            state[stage] = await fn(input, state.ctx, scoped, config);
-            // Alias semantic key for downstream stages
-            if (SEMANTIC[stage]) state[SEMANTIC[stage]] = state[stage];
+        try {
+            if (stage === 'call' && (fn === null || fn === undefined)) {
+                const mcResult = await managedCall(caller, state.prompt, config.call);
+                state.raw = mcResult.text;
+                if (trace) trace.push({ stage, duration: performance.now() - t0, retries: mcResult.retries, promptLength: state.prompt?.length ?? 0 });
+            } else if (stage === 'call') {
+                state.raw = await fn(caller, state.prompt, state);
+                if (trace) trace.push({ stage, duration: performance.now() - t0, customCall: true });
+            } else if (fn) {
+                const input = state.parsed ?? state.raw ?? state.prompt ?? state.ctx;
+                state[stage] = await fn(input, state.ctx, scoped, config);
+                if (SEMANTIC[stage]) state[SEMANTIC[stage]] = state[stage];
+                if (trace) {
+                    const out = state[stage];
+                    trace.push({
+                        stage,
+                        duration: performance.now() - t0,
+                        outputSummary: summarizeResult(out),
+                    });
+                }
+            }
+        } catch (e) {
+            if (trace) trace.push({ stage, duration: performance.now() - t0, error: e.message });
+            throw e;
         }
     }
 
-    // Always log access report after execution
+    const result = state.parsed ?? state.raw ?? state.prompt;
+
     console.log(report(true));
 
-    return state.parsed ?? state.raw ?? state.prompt;
+    if (trace) {
+        // Shallow copy of access set to freeze it
+        const contextUsed = [...used];
+        trace.push({ stage: '_done', result: summarizeResult(result), contextUsed });
+        const snapshot = trace.snapshot();
+        traceBuffer.push(snapshot);
+        if (traceBuffer.length > MAX_TRACES) traceBuffer.shift();
+        console.log('[AgentTrace]', agent.id, snapshot.stages.map(s => s.stage).join(' → '));
+    }
+
+    return result;
 }

@@ -20,7 +20,7 @@ import { unescapeKnowledge } from './providers/knowledge.js';
  * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache } = options;
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
@@ -63,6 +63,17 @@ export async function renderPrompt(template, context, options = {}) {
         for (const [id, content] of Object.entries(locals)) {
             cache[id] = { content: String(content ?? ''), data: null };
         }
+    }
+
+    // Allow external observer to snapshot provider outputs (trace/debug)
+    if (onCache) {
+        try {
+            const snap = Object.create(null);
+            for (const [id, entry] of Object.entries(cache)) {
+                snap[id] = { content: entry.content?.length ?? 0, hasData: !!entry.data };
+            }
+            onCache(snap);
+        } catch (_) { /* never throw from observer */ }
     }
 
     // ── Phase 1.5: block loops ──
