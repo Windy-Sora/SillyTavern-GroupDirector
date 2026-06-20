@@ -17,7 +17,7 @@ export function createForceSpeakAgent({
         id: 'force-speak',
         displayName: 'Force Speak LLM',
         contextAccess: ['chat', 'recentMessages', 'characters', 'charactersRaw', 'profilesText', 'worldInfoText',
-            'group', 'settings', 'forceSpeakCharacter', 'forceSpeakPrompt'],
+            'group', 'settings', 'forceSpeakCharacter', 'forceSpeakPrompt', 'profileEnabled'],
         pipelineOrder: ['context', 'prompt', 'call', 'parse'],
         pipeline: {
             async parse(raw, ctx) {
