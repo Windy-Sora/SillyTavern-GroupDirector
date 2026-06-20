@@ -90,6 +90,7 @@ const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
+let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -804,6 +805,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverCompleted = new Set();
     takeoverSwipeCount = 0;
     directorScripts = {};
+    postSpeechRoundRan = false;
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
     wiState.text = '';
     wiState.entries = [];
@@ -823,7 +825,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     takeoverPending = false;
 
     // PostSpeech per-round: run once after all characters spoke
-    if (settings.postSpeechRoundEnabled) {
+    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan) {
+        postSpeechRoundRan = true;
         try {
             const agent = AgentRegistry.get('post-speech');
             if (agent) {
@@ -879,15 +882,14 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
     if (!settings.postSpeechMessageEnabled) return;
 
     const msg = chat[chat.length - 1];
-    log(`[PostSpeech] lastMsg: is_user=${msg?.is_user}, is_system=${msg?.is_system}, name=${msg?.name?.substring(0,20)}, mes=${(msg?.mes||'').substring(0,40)}`);
-
-    if (!msg || msg.is_user || msg.is_system) { log('[PostSpeech] not a character message, skipping'); return; }
+    // Only real character messages: has a name, not user/system/quiet/internal
+    if (!msg || msg.is_user || msg.is_system || !msg.name || String(msg.name).startsWith('_')) return;
 
     const group = getCurrentGroup();
-    if (!group) { log('[PostSpeech] not in group chat, skipping'); return; }
+    if (!group) return;
 
     const agent = AgentRegistry.get('post-speech');
-    if (!agent) { log('[PostSpeech] agent not registered'); return; }
+    if (!agent) return;
 
     try {
         const charName = msg.name || '';
@@ -1004,6 +1006,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     await chatSummarySystem.pruneSummaries();
     await postSpeechSystem.clearAll();
     postSpeechRoundQueue = [];
+    postSpeechRoundRan = false;
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
