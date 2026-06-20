@@ -13,7 +13,9 @@ const I18N = {
     zh: {
         drawerModeScoring: '模式与评分',
         drawerDirectorLlm: 'Director LLM',
-        drawerDataContext: '数据与上下文',
+        drawerWorldBooks: '世界书系统',
+        drawerProfiles: '角色档案与数据',
+        drawerContextLedger: '上下文与账本',
         drawerAgentsTools: 'Agent 与工具',
 
         langLabel: '语言 / Language',
@@ -179,7 +181,9 @@ const I18N = {
     en: {
         drawerModeScoring: 'Mode & Scoring',
         drawerDirectorLlm: 'Director LLM',
-        drawerDataContext: 'Data & Context',
+        drawerWorldBooks: 'World Books',
+        drawerProfiles: 'Profiles & Data',
+        drawerContextLedger: 'Context & Ledger',
         drawerAgentsTools: 'Agents & Tools',
 
         langLabel: '语言 / Language',

@@ -257,16 +257,14 @@
     </div>
     </div><!-- /#gd-llm-section -->
 
-    <!-- ═══ Drawer 3: 数据与上下文 ═══ -->
+    <!-- ═══ Drawer 3: 世界书系统 ═══ -->
+    <div id="gd-llm-data-section" style="display:none;">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b data-i18n="drawerDataContext">数据与上下文</b>
+            <b data-i18n="drawerWorldBooks">世界书系统</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
-
-            <!-- LLM-only: World Info + World Book Selection -->
-            <div id="gd-llm-data-section" style="display:none;">
 
             <h4 data-i18n="worldInfoTitle">世界书注入 (World Info)</h4>
             <small data-i18n="worldInfoHint">将当前激活的世界书/ lorebook 条目注入 Director prompt。</small>
@@ -288,9 +286,91 @@
             </div>
             <div id="gd-world-book-list" style="margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:8px;"></div>
 
-            </div><!-- /#gd-llm-data-section -->
+        </div>
+    </div>
+    </div><!-- /#gd-llm-data-section -->
 
-            <hr>
+    <!-- ═══ Drawer 4: 角色档案与数据 ═══ -->
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="drawerProfiles">角色档案与数据</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <h4 data-i18n="profileDrawerTitle">角色档案系统</h4>
+            <small data-i18n="profileHint">提前分析每个角色的特质、动机、关系，注入 Director Prompt。</small>
+
+            <label class="checkbox_label" for="gd-profile-enabled">
+                <input type="checkbox" id="gd-profile-enabled">
+                <span data-i18n="profileEnabled">启用角色档案</span>
+            </label>
+
+            <div id="gd-profile-section" style="display:none;">
+                <div class="menu_button menu_button_icon" id="gd-profile-scan-save" style="margin-bottom:4px;">
+                    <i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="profileScanSave">扫描当前存档</span>
+                </div>
+                <div class="menu_button menu_button_icon" id="gd-profile-detect-changes" style="margin-bottom:8px;">
+                    <i class="fa-solid fa-rotate"></i> <span data-i18n="profileDetectChanges">检测角色变动</span>
+                </div>
+
+                <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">档案 Token 预算</label>
+                <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
+
+                <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数（0=全部同时）</label>
+                <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
+
+                <hr>
+                <h4 data-i18n="profileGeneratorPromptTitle">生成器 Prompt 模板</h4>
+                <small data-i18n="profileGeneratorPromptHint">占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code></small>
+                <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-profile-generator-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileGeneratorReset">恢复默认</span>
+                </div>
+
+                <label for="gd-profile-json-schema" data-i18n="profileJsonSchemaTitle">JSON Schema</label>
+                <textarea id="gd-profile-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-profile-schema-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileSchemaReset">恢复默认 Schema</span>
+                </div>
+
+                <label for="gd-profile-render-template" data-i18n="profileRenderTemplateTitle">渲染模板</label>
+                <small data-i18n="profileRenderTemplateHint">占位符：<code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code></small>
+                <textarea id="gd-profile-render-template" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                <div id="gd-profile-template-warning" style="color:orange;display:none;margin-top:4px;"></div>
+                <div class="menu_button menu_button_icon" id="gd-profile-render-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileRenderReset">恢复默认</span>
+                </div>
+
+                <hr>
+                <h4 data-i18n="profileManagementTitle">档案管理</h4>
+                <div class="menu_button menu_button_icon" id="gd-profile-regenerate-all" style="margin-top:4px;">
+                    <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
+                </div>
+                <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+
+                <hr>
+                <h4 data-i18n="exportImportTitle">群聊导出 / 导入</h4>
+                <small data-i18n="exportImportHint">将当前群聊的角色卡和激活的世界书打包导出为压缩包，或从压缩包导入。</small>
+                <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                    <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> <span data-i18n="exportGroup">导出群聊</span></span>
+                    <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> <span data-i18n="importGroup">导入群聊</span></span>
+                    <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
+                </div>
+                <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══ Drawer 5: 上下文与账本 ═══ -->
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="drawerContextLedger">上下文与账本</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
             <!-- Chat Summary -->
             <h4 data-i18n="summaryDrawerTitle">上下文总结 (Chat Summary) 🧪</h4>
             <small data-i18n="summaryHint">将聊天上下文压缩为简洁摘要注入 Prompt，降低 token 消耗。</small>
@@ -360,74 +440,10 @@
             </div>
             <div id="gd-ledger-list" style="margin-top:8px;max-height:300px;overflow-y:auto;"></div>
 
-            <hr>
-            <!-- Character Profiles -->
-            <h4 data-i18n="profileDrawerTitle">角色档案系统</h4>
-            <small data-i18n="profileHint">提前分析每个角色的特质、动机、关系，注入 Director Prompt。</small>
-
-            <label class="checkbox_label" for="gd-profile-enabled">
-                <input type="checkbox" id="gd-profile-enabled">
-                <span data-i18n="profileEnabled">启用角色档案</span>
-            </label>
-
-            <div id="gd-profile-section" style="display:none;">
-                <div class="menu_button menu_button_icon" id="gd-profile-scan-save" style="margin-bottom:4px;">
-                    <i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="profileScanSave">扫描当前存档</span>
-                </div>
-                <div class="menu_button menu_button_icon" id="gd-profile-detect-changes" style="margin-bottom:8px;">
-                    <i class="fa-solid fa-rotate"></i> <span data-i18n="profileDetectChanges">检测角色变动</span>
-                </div>
-
-                <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">档案 Token 预算</label>
-                <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
-
-                <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数（0=全部同时）</label>
-                <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
-
-                <hr>
-                <h4 data-i18n="profileGeneratorPromptTitle">生成器 Prompt 模板</h4>
-                <small data-i18n="profileGeneratorPromptHint">占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{charScenario}}</code></small>
-                <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
-                <div class="menu_button menu_button_icon" id="gd-profile-generator-reset" style="margin-top:4px;">
-                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileGeneratorReset">恢复默认</span>
-                </div>
-
-                <label for="gd-profile-json-schema" data-i18n="profileJsonSchemaTitle">JSON Schema</label>
-                <textarea id="gd-profile-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;"></textarea>
-                <div class="menu_button menu_button_icon" id="gd-profile-schema-reset" style="margin-top:4px;">
-                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileSchemaReset">恢复默认 Schema</span>
-                </div>
-
-                <label for="gd-profile-render-template" data-i18n="profileRenderTemplateTitle">渲染模板</label>
-                <small data-i18n="profileRenderTemplateHint">占位符：<code>{{name}}</code> <code>{{summary}}</code> <code>{{tags}}</code> <code>{{motivation}}</code> <code>{{relationships}}</code></small>
-                <textarea id="gd-profile-render-template" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
-                <div id="gd-profile-template-warning" style="color:orange;display:none;margin-top:4px;"></div>
-                <div class="menu_button menu_button_icon" id="gd-profile-render-reset" style="margin-top:4px;">
-                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="profileRenderReset">恢复默认</span>
-                </div>
-
-                <hr>
-                <h4 data-i18n="profileManagementTitle">档案管理</h4>
-                <div class="menu_button menu_button_icon" id="gd-profile-regenerate-all" style="margin-top:4px;">
-                    <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
-                </div>
-                <div id="gd-profile-management-list" style="margin-top:8px;"></div>
-
-                <hr>
-                <h4 data-i18n="exportImportTitle">群聊导出 / 导入</h4>
-                <small data-i18n="exportImportHint">将当前群聊的角色卡和激活的世界书打包导出为压缩包，或从压缩包导入。</small>
-                <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                    <span class="menu_button menu_button_icon" id="gd-export-group"><i class="fa-solid fa-file-zipper"></i> <span data-i18n="exportGroup">导出群聊</span></span>
-                    <span class="menu_button menu_button_icon" id="gd-import-group"><i class="fa-solid fa-file-import"></i> <span data-i18n="importGroup">导入群聊</span></span>
-                    <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
-                </div>
-                <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
-            </div>
-
         </div>
     </div>
 
-    <!-- ═══ Drawer 4: Agent 与工具 ═══ -->
+    <!-- ═══ Drawer 6: Agent 与工具 ═══ -->
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
             <b data-i18n="drawerAgentsTools">Agent 与工具</b>
