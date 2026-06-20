@@ -63,10 +63,10 @@ export function createPostSpeechSystem({
         await saveStore();
     }
 
-    /** List all decisions (newest first) for visualization. */
+    /** List all decisions (oldest first) for visualization — matches execution order. */
     function list(limit = 50) {
         const store = getStore();
-        return store.slice(-limit).reverse();
+        return store.slice(-limit);
     }
 
     /** Prune decisions after a given message index (on MESSAGE_DELETED). */
