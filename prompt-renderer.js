@@ -77,16 +77,16 @@ export async function renderPrompt(template, context, options = {}) {
     }
 
     // ── Phase 1.5: block loops ──
-    result = processBlockLoops(result, cache, context, unresolvable, false);
+    result = processBlockLoops(result, cache, context, unresolvable, false, passthrough);
 
     // ── Phase 2+3: placeholders and path queries ──
-    result = renderPhases2and3(result, cache, context, unresolvable, false);
+    result = renderPhases2and3(result, cache, context, unresolvable, false, passthrough);
 
     // ── Post-render passes ──
     for (let pass = 1; pass < maxPasses; pass++) {
         const before = result;
-        result = processBlockLoops(result, cache, context, unresolvable, true);
-        result = renderPhases2and3(result, cache, context, unresolvable, true);
+        result = processBlockLoops(result, cache, context, unresolvable, true, passthrough);
+        result = renderPhases2and3(result, cache, context, unresolvable, true, passthrough);
         if (result === before) break;
     }
 
@@ -108,7 +108,7 @@ export async function renderPrompt(template, context, options = {}) {
  * in a single pass. When isRePass is true, counters are preserved
  * rather than incremented.
  */
-function renderPhases2and3(template, cache, context, unresolvable, isRePass = false) {
+function renderPhases2and3(template, cache, context, unresolvable, isRePass = false, passthrough) {
     // Phase 2
     let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
         if (id === 'counter' || id === 'counter0') {
@@ -158,7 +158,7 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
  * - Empty/null array → whole block replaced with empty string
  * - Join uses literal newlines from the template (user controls)
  */
-function processBlockLoops(template, cache, context, unresolvable, isRePass) {
+function processBlockLoops(template, cache, context, unresolvable, isRePass, passthrough) {
     let result = template;
     let safety = 0;
     const MAX_BLOCKS = 200;
@@ -188,7 +188,7 @@ function processBlockLoops(template, cache, context, unresolvable, isRePass) {
         // Render inner for each element
         const parts = unique.map(el => {
             const elCtx = { ...context, it: formatValue(el) };
-            return renderPhases2and3(inner, cache, elCtx, unresolvable, isRePass);
+            return renderPhases2and3(inner, cache, elCtx, unresolvable, isRePass, passthrough);
         });
 
         // Replace entire block with joined results
