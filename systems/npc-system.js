@@ -79,7 +79,7 @@ export function createNpcSystem({
         const result = await execute(agent, {
             pool,
             caller,
-            config: { ...settings, call: callCfg },
+            config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
         });
 
         if (!result || !Array.isArray(result) || result.length === 0) {

@@ -38,7 +38,7 @@ import { createExportImportSystem } from './systems/export-import-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 
 // ─── Agent Runtime ──────────────────────────────────────────────────
-import { AgentRegistry, execute, createScopedPool } from './systems/agent-runtime.js';
+import { AgentRegistry, execute, createScopedPool, AgentTrace } from './systems/agent-runtime.js';
 import { createCaller } from './utils/custom-api.js';
 import { createDirectorAgent } from './agents/director.js';
 import { createForceSpeakAgent } from './agents/force-speak.js';
@@ -956,7 +956,7 @@ async function initForceSpeakLLM(char, avatar) {
         const response = await execute(agent, {
             pool,
             caller,
-            config: { ...settings, call: callCfg },
+            config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
         });
 
         // Clear QUIET_PROMPT
@@ -1047,7 +1047,7 @@ async function initRoundWithLLM() {
         const parsed = await execute(agent, {
             pool,
             caller,
-            config: { ...settings, call: callCfg },
+            config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
         });
 
         // Clean up QUIET_PROMPT
@@ -1295,6 +1295,7 @@ jQuery(async () => {
         exportGroup,
         importGroup,
         AgentRegistry,
+        AgentTrace,
         createCaller,
         getContext,
         npcSystem,

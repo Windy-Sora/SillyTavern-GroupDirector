@@ -2,7 +2,7 @@
  * Agent Runtime — execution engine for the Agent system.
  *
  * Provides:
- *   createScopedPool(pool, access, strictMode) → Proxy-enforced context pool
+ *   createScopedPool(pool, access, agent, config) → Proxy-enforced context pool
  *   managedCall(caller, prompt, callConfig) → retry + timeout (returns { text, retries })
  *   execute(agent, { pool, caller, config }) → state-driven pipeline execution
  *   AgentRegistry → register / get / list
@@ -135,7 +135,7 @@ export async function managedCall(caller, prompt, callConfig = {}) {
             if (e.name === 'AbortError') throw e;
             if (attempt < retries) {
                 attemptCount = attempt + 1;
-                console.warn(`[Agent] call attempt ${attemptCount}/${retries} failed: ${e.message}. Retrying...`);
+                console.warn(`[Agent] call attempt ${attemptCount}/${retries + 1} failed: ${e.message}. Retrying...`);
                 if (onRetry) {
                     try { onRetry({ attempt: attemptCount, maxRetries: retries, error: e.message }); } catch (_) {}
                 }
