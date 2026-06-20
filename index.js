@@ -937,9 +937,11 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
     if (String(msg.name).startsWith('_')) return;
 
-    // Dedup: same message index, don't trigger twice
+    // Dedup: same message index, don't trigger twice.
+    // For swipe/regenerate, allow re-analysis.
     const msgIndex = chat.length - 1;
-    if (msgIndex === postSpeechLastMsgIndex) return;
+    const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+    if (!isReroll && msgIndex === postSpeechLastMsgIndex) return;
     postSpeechLastMsgIndex = msgIndex;
 
     const group = getCurrentGroup();
@@ -984,8 +986,6 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         // Dedup: skip if no new capabilities would be triggered.
         // For swipe/regenerate, allow re-analysis (message content changed).
-        const msgIndex = chat.length - 1;
-        const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
         if (!isReroll) {
             const enabledCaps = CapabilityRegistry.listEnabled().map(c => c.id);
             const allAlreadyExecuted = enabledCaps.every(cid =>
