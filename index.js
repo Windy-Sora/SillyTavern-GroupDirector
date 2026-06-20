@@ -939,12 +939,13 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     const agent = AgentRegistry.get('post-speech');
     if (!agent) return;
 
-    // Brief notification while PostSpeech processes (auto-dismiss ~1s)
+    // Persistent notification while PostSpeech processes
     const psNotifyKey = 'gd-ps-msg-notify';
+    const dismissMsgNotify = () => { try { toastr?.clear?.(psNotifyKey); } catch (_) {} };
     if (typeof toastr !== 'undefined') {
-        toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 }, psNotifyKey);
+        toastr.info('PostSpeech analyzing...', '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false }, psNotifyKey);
     } else if (typeof window !== 'undefined' && window.toastr) {
-        window.toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 }, psNotifyKey);
+        window.toastr.info('PostSpeech analyzing...', '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false }, psNotifyKey);
     }
 
     try {
@@ -1023,6 +1024,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         }
 
         // Done notification
+        dismissMsgNotify();
         if (typeof toastr !== 'undefined') {
             toastr.success('PostSpeech done', '', { timeOut: 2000 });
         }
