@@ -827,7 +827,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
-    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan) {
+    // Only fire when takeover is fully complete (not during nested wrappers)
+    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && takeoverGenCount === 0) {
         postSpeechRoundRan = true;
 
         generationStopped = false;
@@ -920,11 +921,9 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
 // ─── PostSpeech: multimodal policy after each character message ─────
 eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType) => {
     if (!settings.postSpeechMessageEnabled) return;
-    // Skip non-chat renders (quiet prompts, impersonate, continue)
     if (msgType && msgType !== 'normal') return;
 
     const msg = chat[chat.length - 1];
-    // Only real character messages: has a name, not user/system, has content
     if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
     if (String(msg.name).startsWith('_')) return;
 
@@ -938,6 +937,8 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     const psNotifyKey = 'gd-ps-msg-notify';
     if (typeof toastr !== 'undefined') {
         toastr.info('PostSpeech analyzing...', '', { timeOut: 1000 }, psNotifyKey);
+    } else if (typeof window !== 'undefined' && window.toastr) {
+        window.toastr.info('PostSpeech analyzing...', '', { timeOut: 1000 }, psNotifyKey);
     }
 
     try {
