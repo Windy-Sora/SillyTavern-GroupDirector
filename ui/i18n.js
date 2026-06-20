@@ -17,6 +17,7 @@ const I18N = {
         drawerProfiles: '角色档案与数据',
         drawerContextLedger: '上下文与账本',
         drawerAgentsTools: 'Agent 与工具',
+        drawerMultimodal: '多模态与更多拓展',
 
         langLabel: '语言 / Language',
         intro: '解决群聊中所有角色抢话的问题。两种判断模式互斥，一次只能启用一种。',
@@ -198,6 +199,15 @@ const I18N = {
 
         psDecisionsTitle: 'PostSpeech 决策记录',
         psDecisionsHint: '最近的多模态策略决策（随聊天持久化，自动去重）。',
+
+        psTitle: 'PostSpeech 多模态策略',
+        psHint: '每次角色发言后，LLM 决策触发哪些多模态能力（TTS、图像生成等）。',
+        psEnabled: '启用 PostSpeech',
+        psBlocking: '阻塞模式（关闭=异步后台执行，不阻塞对话）',
+        psPromptLabel: 'Policy Prompt（留空使用内置默认，支持所有 Provider 占位符）',
+        psPromptReset: '恢复默认 Prompt',
+        psCapabilitiesTitle: '已注册能力',
+        psCapabilitiesHint: '启用/禁用各个多模态能力。禁用后 LLM 决策时不会考虑该能力。',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -206,6 +216,7 @@ const I18N = {
         drawerProfiles: 'Profiles & Data',
         drawerContextLedger: 'Context & Ledger',
         drawerAgentsTools: 'Agents & Tools',
+        drawerMultimodal: 'Multimodal & Extensions',
 
         langLabel: '语言 / Language',
         intro: 'Prevents all characters from rushing to speak in group chats. The two modes are mutually exclusive.',
@@ -387,6 +398,15 @@ const I18N = {
 
         psDecisionsTitle: 'PostSpeech Decisions',
         psDecisionsHint: 'Recent multimodal policy decisions (persisted per chat, auto-dedup).',
+
+        psTitle: 'PostSpeech Multimodal Policy',
+        psHint: 'After each character message, LLM decides which multimodal capabilities to trigger (TTS, image, etc.).',
+        psEnabled: 'Enable PostSpeech',
+        psBlocking: 'Blocking mode (uncheck = async background, won\'t block conversation)',
+        psPromptLabel: 'Policy Prompt (leave empty for default, all Provider placeholders supported)',
+        psPromptReset: 'Reset to default prompt',
+        psCapabilitiesTitle: 'Registered Capabilities',
+        psCapabilitiesHint: 'Enable/disable individual capabilities. Disabled ones won\'t be considered by the LLM.',
     },
 };
 

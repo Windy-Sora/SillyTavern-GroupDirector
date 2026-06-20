@@ -10,7 +10,7 @@
  */
 import { CapabilityRegistry } from '../systems/capability-registry.js';
 
-const DEFAULT_PROMPT = `You are a multimodal policy generator. Based on the character's message and the conversation context, decide which sensory capabilities should be activated for the user.
+export const DEFAULT_PROMPT = `You are a multimodal policy generator. Based on the character's message and the conversation context, decide which sensory capabilities should be activated for the user.
 
 ━━━ Available Capabilities ━━━
 {{capabilityList}}
