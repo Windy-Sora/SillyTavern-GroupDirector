@@ -17,14 +17,14 @@ World books (all selected entries):
 {{worldBookImportance}}
 
 Available characters:
-__NPCDATA_existingCharacters__
+{{existingCharacters}}
 
 Existing NPCs (DO NOT duplicate these names):
-__NPCDATA_existingNpcs__
+{{existingNpcs}}
 ━━━━━━━━━━━━━
 
 Guidelines:
-- Generate __NPCDATA_batchSize__ NPC(s) that feel organic to the current scene and world.
+- Generate {{batchSize}} NPC(s) that feel organic to the current scene and world.
 - Each NPC should have a distinct role and personality — no two should serve the same function.
 - Names must be unique and NOT appear in the lists above.
 - If the story already has enough NPCs for the current scene, you may generate fewer than requested.
@@ -36,7 +36,7 @@ Reply with ONLY a JSON object, no prose, no code fences:
       "name": "NPC name",
       "description": "Physical appearance, background, role in the world",
       "personality": "Traits, speech style, temperament",
-      "scenario": "Where and how the characters might encounter this NPC"__NPCDATA_firstMesLine__
+      "scenario": "Where and how the characters might encounter this NPC"{{firstMesLine}}
     }
   ]
 }`;
@@ -96,21 +96,19 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 const fmLine = ctx.generateFirstMes ? FIRST_MES_LINE : '';
                 const charText = ctx.groupChars.length > 0 ? ctx.groupChars.join('\n') : '(none)';
 
-                // 1. Render Providers — resolves {{newRecentMessages}}, {{worldInfo}},
-                //    {{worldBookImportance}}. Sentinel placeholders (__NPCDATA_*__)
-                //    are NOT matched by renderPrompt's {{...}} regex and pass through.
-                let filled = await renderPrompt(promptTemplate, {});
-
-                // 2. Replace sentinel placeholders with actual data.
-                //    Done AFTER renderPrompt so character descriptions containing
-                //    {{User}} etc. are never re-parsed.
-                filled = filled
-                    .replace(/__NPCDATA_firstMesLine__/g, fmLine)
-                    .replace(/__NPCDATA_existingNpcs__/g, ctx.existingNpcText)
-                    .replace(/__NPCDATA_batchSize__/g, String(ctx.batchSize))
-                    .replace(/__NPCDATA_existingCharacters__/g, charText);
-
-                return filled;
+                // Resolve all placeholders in one pass — Providers via global
+                // registry, agent data via locals (injected into renderPrompt cache).
+                return await renderPrompt(promptTemplate, {}, {
+                    locals: {
+                        firstMesLine: fmLine,
+                        existingNpcs: ctx.existingNpcText,
+                        batchSize: String(ctx.batchSize),
+                        existingCharacters: charText,
+                    },
+                    maxPasses: 1,          // single pass — recursive would re-parse char
+                    recursive: false,        // descriptions containing {{User}} etc.
+                    debugPlaceholders: false,
+                });
             },
 
             parse(raw, ctx) {

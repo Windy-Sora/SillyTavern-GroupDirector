@@ -20,7 +20,7 @@ import { unescapeKnowledge } from './providers/knowledge.js';
  * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive, debugPlaceholders } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals } = options;
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
@@ -53,6 +53,15 @@ export async function renderPrompt(template, context, options = {}) {
         } catch (e) {
             console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
             cache[provider.id] = { content: '', data: null };
+        }
+    }
+
+    // Inject local resolvers — per-call placeholder overrides that don't
+    // go through the global Provider registry. Agent data placeholders
+    // (e.g. {{existingCharacters}}) use this to avoid being cleared.
+    if (locals) {
+        for (const [id, content] of Object.entries(locals)) {
+            cache[id] = { content: String(content ?? ''), data: null };
         }
     }
 
