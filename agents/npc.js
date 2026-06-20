@@ -4,9 +4,18 @@
  * Pipeline: context → prompt → call → parse
  * Dedup: parse stage strips results with names that match existing NPCs or group members.
  */
-export const DEFAULT_NPC_PROMPT = `You are an NPC generator for a roleplay scenario. Based on the context provided, create new NPCs that fit naturally into the current story and setting.
+export const DEFAULT_NPC_PROMPT = `You are an NPC generator for a roleplay scenario. Create new NPCs that fit naturally into the current story and setting based on the context below.
 
-{{contextPrompt}}
+━━━ Context ━━━
+Recent messages:
+{{newRecentMessages}}
+
+World info:
+{{worldInfo}}
+
+Available characters:
+{{characters}}
+━━━━━━━━━━━━━
 
 Existing NPCs (DO NOT duplicate these names):
 {{existingNpcs}}
@@ -73,43 +82,19 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
             },
 
             async prompt(ctx, _state, pool, settings) {
-                let promptTemplate = settings.npcPrompt || DEFAULT_PROMPT;
+                const promptTemplate = settings.npcPrompt || DEFAULT_PROMPT;
+                const fmLine = ctx.generateFirstMes ? FIRST_MES_LINE : '';
 
-                // If using default, inject the firstMesLine option
-                if (!settings.npcPrompt) {
-                    promptTemplate = promptTemplate.replace('{{firstMesLine}}', ctx.generateFirstMes ? FIRST_MES_LINE : '');
-                } else {
-                    // For custom prompts, replace the firstMesLine placeholder too
-                    const fmLine = ctx.generateFirstMes ? FIRST_MES_LINE : '';
-                    promptTemplate = promptTemplate.replace('{{firstMesLine}}', fmLine);
-                }
-
+                // 1. Replace data-passed placeholders (not Providers — these come from agent context)
                 let filled = promptTemplate
+                    .replace(/\{\{firstMesLine\}\}/g, fmLine)
                     .replace(/\{\{existingNpcs\}\}/g, ctx.existingNpcText)
                     .replace(/\{\{batchSize\}\}/g, String(ctx.batchSize))
                     .replace(/\{\{existingCharacters\}\}/g, ctx.groupChars.length > 0 ? ctx.groupChars.join(', ') : '(none)');
 
-                // Run through renderPrompt for full Provider support
-                filled = await renderPrompt(filled, {
-                    recentMessages: ctx.recentMessages,
-                });
-
-                // Manual fallback replacements (renderPrompt handles providers, these are data-passed values)
-                filled = filled
-                    .replace(/\{\{existingNpcs\}\}/g, ctx.existingNpcText)
-                    .replace(/\{\{batchSize\}\}/g, String(ctx.batchSize))
-                    .replace(/\{\{existingCharacters\}\}/g, ctx.groupChars.length > 0 ? ctx.groupChars.join(', ') : '(none)');
-
-                // Append context prompt if using default
-                if (!settings.npcPrompt) {
-                    const npcPrompt = settings.npcContextPrompt || '';
-                    if (npcPrompt) {
-                        filled = filled.replace('{{contextPrompt}}', npcPrompt);
-                    } else {
-                        filled = filled.replace('{{contextPrompt}}',
-                            'Recent messages:\n{{recentMessages}}\n\nWorld info:\n{{worldInfo}}');
-                    }
-                }
+                // 2. Run through renderPrompt — resolves all Provider placeholders
+                //    ({{newRecentMessages}}, {{worldInfo}}, {{characters}}, {{chatSummary}}, etc.)
+                filled = await renderPrompt(filled, {});
 
                 return filled;
             },
