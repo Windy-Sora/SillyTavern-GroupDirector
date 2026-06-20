@@ -28,6 +28,7 @@ import { register as registerMoonPhase } from './providers/moon-phase.js';
 import { register as registerTimeOfDay } from './providers/time-of-day.js';
 import { register as registerKnowledge } from './providers/knowledge.js';
 import { register as registerChatSummary } from './providers/chat-summary.js';
+import { register as registerNpcList } from './providers/npc-list.js';
 import { register as registerNewRecentMessages } from './providers/new-recent-messages.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
@@ -1190,6 +1191,9 @@ Available characters:
 Character profiles (detailed analysis):
 {{character_profiles}}
 
+NPCs in the current scene:
+{{npcList}}
+
 ---
 You are a Group Chat Director. Decide which characters should respond next, and in what order.
 
@@ -1277,6 +1281,7 @@ registerTimeOfDay(settings);
 registerKnowledge(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
 registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
+registerNpcList(() => npcSystem.getNpcs());
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
