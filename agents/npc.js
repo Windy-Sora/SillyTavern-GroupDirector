@@ -62,7 +62,7 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 const groupChars = members.map(av => {
                     const c = pool.characters?.()?.find(ch => ch.avatar === av);
                     if (!c) return null;
-                    const desc = (c.description || '').slice(0, 80);
+                    const desc = (c.description || '').slice(0, 200);
                     return `- ${c.name}${desc ? ': ' + desc : ''}`;
                 }).filter(Boolean);
 
@@ -94,17 +94,21 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
             async prompt(ctx, _state, pool, settings) {
                 const promptTemplate = settings.npcPrompt || DEFAULT_PROMPT;
                 const fmLine = ctx.generateFirstMes ? FIRST_MES_LINE : '';
+                const charText = ctx.groupChars.length > 0 ? ctx.groupChars.join('\n') : '(none)';
 
-                // 1. Replace data-passed placeholders (not Providers — these come from agent context)
-                let filled = promptTemplate
+                // 1. Render Providers first — so {{newRecentMessages}}, {{worldInfo}},
+                //    {{worldBookImportance}} are resolved BEFORE data replacement.
+                //    This prevents characters' {{User}} etc. from being cleared.
+                let filled = await renderPrompt(promptTemplate, {});
+
+                // 2. Replace data-passed placeholders (not Providers —
+                //    these come from agent context, inserted AFTER renderPrompt
+                //    so their content is never re-parsed)
+                filled = filled
                     .replace(/\{\{firstMesLine\}\}/g, fmLine)
                     .replace(/\{\{existingNpcs\}\}/g, ctx.existingNpcText)
                     .replace(/\{\{batchSize\}\}/g, String(ctx.batchSize))
-                    .replace(/\{\{existingCharacters\}\}/g, ctx.groupChars.length > 0 ? ctx.groupChars.join('\n') : '(none)');
-
-                // 2. Run through renderPrompt — resolves Provider placeholders
-                //    ({{newRecentMessages}}, {{worldInfo}}, {{worldBookImportance}}).
-                filled = await renderPrompt(filled, {});
+                    .replace(/\{\{existingCharacters\}\}/g, charText);
 
                 return filled;
             },
