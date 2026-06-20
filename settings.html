@@ -492,6 +492,15 @@
             <div id="gd-agents-list" style="margin-top:8px;"></div>
 
             <hr>
+            <h4 data-i18n="traceTitle">执行追踪</h4>
+            <small data-i18n="traceHint">查看 Agent 执行记录（需开启调试日志）。展开可查看每个阶段的耗时和输出。</small>
+            <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="menu_button menu_button_icon" id="gd-trace-refresh" style="font-size:0.85em;"><i class="fa-solid fa-rotate"></i> <span data-i18n="traceRefresh">刷新</span></span>
+                <span class="menu_button menu_button_icon" id="gd-trace-clear" style="font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="traceClear">清空</span></span>
+            </div>
+            <div id="gd-trace-list" style="margin-top:6px;"></div>
+
+            <hr>
             <h4 data-i18n="testerDrawerTitle">模板测试器 (Template Tester) 🧪</h4>
             <small data-i18n="testerHint">输入含占位符的模板，点击测试查看实时渲染结果。不会触发任何生成。</small>
             <textarea id="gd-tester-input" class="text_pole textarea_compact" rows="6" style="width:100%;margin-top:6px;" placeholder="{{recentMessages}}&#10;{{?directorLedger:reason}}"></textarea>

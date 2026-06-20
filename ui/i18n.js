@@ -189,6 +189,11 @@ const I18N = {
         npcPromptReset: '恢复默认 Prompt',
         npcGenerate: '生成 NPC',
         npcScan: '扫描已有 NPC',
+
+        traceTitle: '执行追踪',
+        traceHint: '查看 Agent 执行记录（需开启 debugLogging 后自动采集）。展开查看每阶段耗时和输出。',
+        traceRefresh: '刷新',
+        traceClear: '清空',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -369,6 +374,11 @@ const I18N = {
         npcPromptReset: 'Reset to default prompt',
         npcGenerate: 'Generate NPCs',
         npcScan: 'Scan for NPCs',
+
+        traceTitle: 'Execution Trace',
+        traceHint: 'View Agent execution records (auto-collected when debugLogging is on). Expand to see per-stage timing and output.',
+        traceRefresh: 'Refresh',
+        traceClear: 'Clear',
     },
 };
 
