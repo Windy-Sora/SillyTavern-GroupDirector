@@ -307,7 +307,11 @@ const postSpeechExecutor = createExecutor({
 
 // ─── Register built-in capabilities ─────────────────────────────────
 import { register as registerEmotionCap } from './capabilities/emotion.js';
+import { register as registerTtsCap } from './capabilities/tts.js';
+import { register as registerImageCap } from './capabilities/image.js';
 registerEmotionCap({ log });
+registerTtsCap({ log });
+registerImageCap({ log });
 
 log('CapabilityRegistry:', CapabilityRegistry.list().map(c => c.id).join(', '));
 
