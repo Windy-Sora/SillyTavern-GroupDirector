@@ -44,6 +44,8 @@ import { createDirectorAgent } from './agents/director.js';
 import { createForceSpeakAgent } from './agents/force-speak.js';
 import { createProfileAgent } from './agents/profile.js';
 import { createSummaryAgent } from './agents/summary.js';
+import { createNpcAgent } from './agents/npc.js';
+import { createNpcSystem } from './systems/npc-system.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -260,7 +262,16 @@ AgentRegistry.register(createProfileAgent({
 // Summary
 AgentRegistry.register(createSummaryAgent({ log }));
 
+// NPC
+AgentRegistry.register(createNpcAgent({ renderPrompt, extractJsonObject, log }));
+
 log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '));
+
+// ─── NPC System ──────────────────────────────────────────────────────
+const npcSystem = createNpcSystem({
+    settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
+    AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
+});
 
 // ─── Trigger Engine ───────────────────────────────────────────────────
 function checkTriggers(characterName, characterAvatar, recentMessages) {
@@ -1282,6 +1293,7 @@ jQuery(async () => {
         AgentRegistry,
         createCaller,
         getContext,
+        npcSystem,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

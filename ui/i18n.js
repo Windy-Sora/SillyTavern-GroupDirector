@@ -177,6 +177,16 @@ const I18N = {
 
         agentsDrawerTitle: 'Agent API 独立配置',
         agentsHint: '为每个 Agent 单独配置 API 端点和密钥。关闭时使用 SillyTavern 主模型。密钥保存在插件设置中，不随聊天导出。',
+
+        npcTitle: 'NPC 生成系统',
+        npcHint: '根据上下文批量生成 NPC，支持导入为角色卡。生成前会将已有 NPC 和角色名单传给 LLM 避免重复。',
+        npcEnabled: '启用 NPC 生成',
+        npcMaxCount: '最大 NPC 数量',
+        npcBatchSize: '每次生成数量',
+        npcGenerateFirstMes: '生成开场白 (first_mes)',
+        npcPromptLabel: '生成 Prompt（留空使用内置默认，支持所有 Provider 占位符）',
+        npcPromptReset: '恢复默认 Prompt',
+        npcGenerate: '生成 NPC',
     },
     en: {
         drawerModeScoring: 'Mode & Scoring',
@@ -345,6 +355,16 @@ const I18N = {
 
         agentsDrawerTitle: 'Agent API Configuration',
         agentsHint: 'Configure API endpoint and key per agent. When disabled, uses SillyTavern main model. Keys stored in plugin settings, not in chat export.',
+
+        npcTitle: 'NPC Generation',
+        npcHint: 'Generate NPCs from context. Existing NPCs and characters are fed to the LLM to avoid duplicates. Import as character cards when ready.',
+        npcEnabled: 'Enable NPC generation',
+        npcMaxCount: 'Max NPC count',
+        npcBatchSize: 'Batch size per generation',
+        npcGenerateFirstMes: 'Generate opening line (first_mes)',
+        npcPromptLabel: 'Generation Prompt (leave empty for default, all Provider placeholders supported)',
+        npcPromptReset: 'Reset to default prompt',
+        npcGenerate: 'Generate NPCs',
     },
 };
 

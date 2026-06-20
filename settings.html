@@ -360,6 +360,41 @@
                 <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
             </div>
 
+            <hr>
+            <!-- NPC Generation -->
+            <h4 data-i18n="npcTitle">NPC 生成系统</h4>
+            <small data-i18n="npcHint">根据上下文批量生成 NPC，支持导入为角色卡。生成前会将已有 NPC 和角色名单传给 LLM 避免重复。</small>
+
+            <label class="checkbox_label" for="gd-npc-enabled">
+                <input type="checkbox" id="gd-npc-enabled">
+                <span data-i18n="npcEnabled">启用 NPC 生成</span>
+            </label>
+
+            <div id="gd-npc-section" style="display:none;">
+                <label for="gd-npc-max-count" data-i18n="npcMaxCount">最大 NPC 数量</label>
+                <input type="number" id="gd-npc-max-count" class="text_pole" min="1" max="100" step="1">
+
+                <label for="gd-npc-batch-size" data-i18n="npcBatchSize">每次生成数量</label>
+                <input type="number" id="gd-npc-batch-size" class="text_pole" min="1" max="20" step="1">
+
+                <label class="checkbox_label" for="gd-npc-generate-firstmes">
+                    <input type="checkbox" id="gd-npc-generate-firstmes">
+                    <span data-i18n="npcGenerateFirstMes">生成开场白 (first_mes)</span>
+                </label>
+
+                <label for="gd-npc-prompt" data-i18n="npcPromptLabel">生成 Prompt（留空使用内置默认，支持所有 Provider 占位符）</label>
+                <textarea id="gd-npc-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-npc-prompt-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="npcPromptReset">恢复默认 Prompt</span>
+                </div>
+
+                <div class="menu_button menu_button_icon" id="gd-npc-generate" style="margin-top:8px;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="npcGenerate">生成 NPC</span>
+                </div>
+
+                <div id="gd-npc-list" style="margin-top:8px;"></div>
+            </div>
+
         </div>
     </div>
 
