@@ -9,7 +9,11 @@ registerSection('templateTester', function (ctx) {
         $c('tester-output').val(settings.lang === 'zh' ? '渲染中...' : 'Rendering...');
         $c('tester-run').prop('disabled', true);
         try {
-            const result = await renderPrompt(input, {});
+            const result = await renderPrompt(input, {}, {
+                maxPasses: settings.templateMaxPasses ?? 5,
+                recursive: settings.templateRecursive ?? true,
+                debugPlaceholders: true,   // show unresolved {{...}} as-is in tester
+            });
             $c('tester-output').val(result);
         } catch (e) {
             $c('tester-output').val(`ERROR: ${e.message}`);
