@@ -824,9 +824,15 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     }
     takeoverPending = false;
 
-    // PostSpeech per-round: run once after all characters spoke
+    // PostSpeech per-round: run EXACTLY ONCE after ALL characters
+    // (including takeover) have finished speaking.
     if (settings.postSpeechRoundEnabled && !postSpeechRoundRan) {
         postSpeechRoundRan = true;
+
+        // Block ST send button while PostSpeech processes
+        const $sendBtn = $('#send_but');
+        const sendWasDisabled = $sendBtn.length ? $sendBtn.prop('disabled') : true;
+        if ($sendBtn.length && !sendWasDisabled) $sendBtn.prop('disabled', true);
         try {
             const agent = AgentRegistry.get('post-speech');
             if (agent) {
@@ -866,6 +872,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             }
         } catch (e) {
             log('PostSpeech round skipped:', e.message);
+        } finally {
+            if ($sendBtn.length && !sendWasDisabled) $sendBtn.prop('disabled', false);
         }
     }
 });
