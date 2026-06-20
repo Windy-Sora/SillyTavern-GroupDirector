@@ -37,6 +37,14 @@ import { createChatSummarySystem } from './systems/chat-summary-system.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 
+// ─── Agent Runtime ──────────────────────────────────────────────────
+import { AgentRegistry, execute, createScopedPool } from './systems/agent-runtime.js';
+import { createCaller } from './utils/custom-api.js';
+import { createDirectorAgent } from './agents/director.js';
+import { createForceSpeakAgent } from './agents/force-speak.js';
+import { createProfileAgent } from './agents/profile.js';
+import { createSummaryAgent } from './agents/summary.js';
+
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
 if (loaded.enabled === false) loaded.mode = MODE_OFF;
@@ -169,6 +177,90 @@ const { exportGroup, importGroup } = createExportImportSystem({
     settings, getCurrentGroup, getChat, getCharacters,
     world_names, selected_world_info, world_info, getChatMetadata, log,
 });
+
+// ─── Agent Runtime — Context Pool Builder ─────────────────────────────
+
+/**
+ * Build the raw context pool injected into every agent execution.
+ * All data is accessed via lazy getters — agents pull only what they declare
+ * in contextAccess. Scoped via createScopedPool enforce.
+ */
+function buildContextPool(overrides = {}) {
+    const group = overrides.group ?? getCurrentGroup();
+    const enabledMembers = overrides.enabledMembers ??
+        group?.members?.filter(a => !group.disabled_members?.includes(a)) ?? [];
+
+    return {
+        // Data
+        chat: () => chat,
+        recentMessages: (n) => chat.slice(-Math.min(n ?? 10, chat.length)),
+        characters: () => characters,
+        charactersRaw: () => characters,
+        profilesText: () => buildCharacterProfilesText(),
+        worldInfoText: () => wiState.text,
+        ledger: () => getDirectorHistory(),
+        group: () => group,
+        groupMembers: () => enabledMembers,
+        // Single character (for profile agent)
+        character: (avatar) => {
+            const av = avatar ?? overrides.characterAvatar;
+            return characters.find(c => c.avatar === av) ?? null;
+        },
+        // Force-speak specific
+        forceSpeakCharacter: () => overrides.forceSpeakChar ?? null,
+        forceSpeakPrompt: () => settings.forceSpeakPrompt || null,
+        // Summary specific
+        summaryLatest: () => chatSummarySystem.getLatestActive?.() ?? null,
+        // Settings accessors
+        settings: () => settings,
+        llmWorldInfoEnabled: () => settings.llmWorldInfoEnabled,
+        llmHistoryEnabled: () => settings.llmHistoryEnabled,
+        llmScriptContinuity: () => settings.llmScriptContinuity,
+        llmScriptContinuityMode: () => settings.llmScriptContinuityMode,
+        llmScriptContinuityCount: () => settings.llmScriptContinuityCount,
+        llmScriptContinuityWrapper: () => settings.llmScriptContinuityWrapper,
+        llmScriptContinuityHistoryWrapper: () => settings.llmScriptContinuityHistoryWrapper,
+        llmWorldInfoWrapper: () => settings.llmWorldInfoWrapper,
+        profileEnabled: () => settings.profileEnabled,
+        profileGeneratorDefault: () => getDefaultProfileGeneratorPrompt(),
+        profileSchemaDefault: () => getDefaultProfileSchema(),
+    };
+}
+
+// ─── Agent Registration ───────────────────────────────────────────────
+
+// Director
+AgentRegistry.register(createDirectorAgent({
+    renderPrompt,
+    getDefaultLlmPrompt,
+    parseLlmResponse,
+    matchCharacterByName,
+    buildCharacterProfilesText,
+    getDirectorHistory,
+    log,
+}));
+
+// ForceSpeak
+AgentRegistry.register(createForceSpeakAgent({
+    renderPrompt,
+    getDefaultLlmPrompt,
+    parseLlmResponse,
+    matchCharacterByName,
+    buildCharacterProfilesText,
+    log,
+}));
+
+// Profile
+AgentRegistry.register(createProfileAgent({
+    renderPrompt,
+    extractJsonObject,
+    log,
+}));
+
+// Summary
+AgentRegistry.register(createSummaryAgent({ log }));
+
+log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '));
 
 // ─── Trigger Engine ───────────────────────────────────────────────────
 function checkTriggers(characterName, characterAvatar, recentMessages) {
@@ -800,111 +892,97 @@ async function runManualOrderedGeneration() {
 }
 
 /**
- * Force-speak LLM takeover: run a mini director round for exactly one
- * character. Reuses the normal Director Prompt template with a force-speak
- * instruction appended. Script is injected via setExtensionPrompt, ledger
- * is recorded with the last chat message as anchor.
+ * Force-speak LLM takeover — now delegates to ForceSpeak agent.
  */
 async function initForceSpeakLLM(char, avatar) {
     const group = getCurrentGroup();
     if (!group) return;
-    if (!chat.length) return;  // no messages to anchor to
+    if (!chat.length) return;
 
     const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
     if (!enabledMembers.includes(avatar)) return;
 
-    const llmDepth = Math.min(settings.llmContextDepth, chat.length);
-    const recentMessages = chat.slice(-llmDepth);
-
-    const runtimeContext = { recentMessages, enabledMembers, maxSpeakers: 1 };
-
-    const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-    let filled = await renderPrompt(promptTemplate, runtimeContext, {
-        maxPasses: settings.templateMaxPasses,
-        recursive: settings.templateRecursive,
-        debugPlaceholders: settings.templateDebugPlaceholders,
-    });
-
-    // WI auto-inject (same as normal flow)
-    if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiState.text) {
-        const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-        filled = wiWrapper.replace('{{worldInfo}}', wiState.text) + '\n\n' + filled;
-    }
-
-    // Profile auto-inject
-    if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
-        const profilesText = buildCharacterProfilesText();
-        if (profilesText) filled = profilesText + '\n\n' + filled;
-    }
-
-    // Force-speak instruction: tell LLM to pick ONLY this character.
-    // Appended AFTER the normal prompt so it overrides any implicit multi-character bias.
-    const systemInstruction = settings.lang === 'zh'
-        ? `【系统指令】用户已强制触发 {charName} 发言。请只选择 {charName} 一人作为本轮发言者。忽略其他角色。为 {charName} 生成一段简短的舞台指导。`
-        : `[SYSTEM] Force-speak: {charName} has been manually triggered. You MUST select ONLY {charName}. Do NOT select any other characters. Write a short stage direction for {charName}.`;
-    const fsPrompt = settings.forceSpeakPrompt || systemInstruction;
-    filled += '\n\n' + fsPrompt.replace(/\{charName\}/g, char.name);
-
-    const ctx = getContext();
-    let response;
-    try {
-        response = await ctx.generateRaw({ prompt: filled });
-    } catch (e) {
-        console.warn('[GroupDirector] Force-speak LLM call failed:', e.message);
-        return; // fall through to native generation
-    }
-
-    setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
-
-    const parsed = parseLlmResponse(response, log);
-    if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
-        log('Force-speak LLM returned no valid speakers');
+    const agent = AgentRegistry.get('force-speak');
+    if (!agent) {
+        console.warn('[GroupDirector] ForceSpeak agent not registered');
         return;
     }
 
-    // Record to ledger. Anchor to the most recent USER message instead of
-    // the force-speak character's preceding message. This ensures that when
-    // the user deletes their triggering message, all linked force-speak
-    // entries are pruned together — including multiple consecutive force-speaks.
-    if (settings.llmHistoryEnabled) {
-        await addToDirectorHistory(parsed);
-        const history = getDirectorHistory();
-        if (history.length > 0) {
-            let userAnchor = null;
-            for (let i = chat.length - 1; i >= 0; i--) {
-                if (chat[i].is_user) {
-                    userAnchor = chat[i].send_date || null;
-                    break;
+    try {
+        const agentConfig = settings.agentConfigs?.['force-speak'] || {};
+        const stGenerateRaw = (opts) => getContext().generateRaw(opts);
+        const caller = createCaller(agentConfig, stGenerateRaw);
+
+        const pool = buildContextPool({
+            group,
+            enabledMembers,
+            forceSpeakChar: char,
+            characterAvatar: avatar,
+        });
+
+        const response = await execute(agent, {
+            pool,
+            caller,
+            config: { ...settings, call: agentConfig.call },
+        });
+
+        // Clear QUIET_PROMPT
+        setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+
+        if (!response || !Array.isArray(response.speakers) || response.speakers.length === 0) {
+            log('Force-speak LLM returned no valid speakers');
+            return;
+        }
+
+        const parsed = response;
+
+        // Record to ledger with user message anchor
+        if (settings.llmHistoryEnabled) {
+            await addToDirectorHistory(parsed);
+            const history = getDirectorHistory();
+            if (history.length > 0) {
+                let userAnchor = null;
+                for (let i = chat.length - 1; i >= 0; i--) {
+                    if (chat[i].is_user) {
+                        userAnchor = chat[i].send_date || null;
+                        break;
+                    }
+                }
+                if (userAnchor) {
+                    history[history.length - 1]._anchorDate = userAnchor;
+                    await saveChatConditional();
                 }
             }
-            if (userAnchor) {
-                history[history.length - 1]._anchorDate = userAnchor;
-                await saveChatConditional();
+        }
+
+        // Extract script for this character
+        let script = '';
+        if (parsed.scripts && typeof parsed.scripts === 'object') {
+            for (const [name, s] of Object.entries(parsed.scripts)) {
+                const c = matchCharacterByName(name, enabledMembers);
+                if (c && c.name === char.name && s) { script = s; break; }
             }
         }
-    }
+        if (!script && parsed.script) script = parsed.script;
 
-    // Extract script for this character
-    let script = '';
-    if (parsed.scripts && typeof parsed.scripts === 'object') {
-        for (const [name, s] of Object.entries(parsed.scripts)) {
-            const c = matchCharacterByName(name, enabledMembers);
-            if (c && c.name === char.name && s) { script = s; break; }
+        if (script) {
+            directorScripts[char.name] = script;
+            const charScript = await getScriptForChar(char.name, {
+                speakerIndex: 1, speakerIndex0: 0, speakerCount: 1,
+            });
+            if (charScript) {
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+            }
         }
-    }
-    if (!script && parsed.script) script = parsed.script;
 
-    if (script) {
-        directorScripts[char.name] = script;
-        const charScript = await getScriptForChar(char.name, {
-            speakerIndex: 1, speakerIndex0: 0, speakerCount: 1,
-        });
-        if (charScript) {
-            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+        log(`Force-speak LLM: generated script for ${char.name}`);
+    } catch (e) {
+        if (generationStopped || e?.name === 'AbortError') {
+            console.warn('[GroupDirector] Force-speak LLM aborted');
+            return;
         }
+        console.warn('[GroupDirector] Force-speak LLM failed:', e.message);
     }
-
-    log(`Force-speak LLM: generated script for ${char.name}`);
 }
 
 async function initRoundWithLLM() {
@@ -912,193 +990,89 @@ async function initRoundWithLLM() {
     if (!group) return;
 
     const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
-    const maxRetries = 3;
+    const agent = AgentRegistry.get('director');
+    if (!agent) {
+        console.warn('[GroupDirector] Director agent not registered');
+        return;
+    }
 
     try {
         generationStopped = false;
 
-        const llmDepth = Math.min(settings.llmContextDepth, chat.length);
-        const recentMessages = chat.slice(-llmDepth);
+        const agentConfig = settings.agentConfigs?.['director'] || {};
+        const stGenerateRaw = (opts) => getContext().generateRaw(opts);
+        const caller = createCaller(agentConfig, stGenerateRaw);
 
-        const runtimeContext = {
-            recentMessages,
-            enabledMembers,
-            maxSpeakers: settings.llmMaxSpeakers,
-        };
+        const pool = buildContextPool({ group, enabledMembers });
 
-        const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
-        let filled = await renderPrompt(promptTemplate, runtimeContext, {
-            maxPasses: settings.templateMaxPasses,
-            recursive: settings.templateRecursive,
-            debugPlaceholders: settings.templateDebugPlaceholders,
+        const parsed = await execute(agent, {
+            pool,
+            caller,
+            config: { ...settings, call: agentConfig.call },
         });
 
-        // Auto-inject WI if the template lacks the placeholder (custom prompts)
-        if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiState.text) {
-            const wiWrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
-            filled = wiWrapper.replace('{{worldInfo}}', wiState.text) + '\n\n' + filled;
-        }
-
-        // Auto-inject director history continuity if the template lacks the placeholder
-        if (settings.llmHistoryEnabled && settings.llmScriptContinuity) {
-            const hasPrevPlan = promptTemplate.includes('{{previousPlan}}');
-            const hasPrevPlans = promptTemplate.includes('{{previousPlans}}');
-            if (!hasPrevPlan && !hasPrevPlans) {
-                const history = getDirectorHistory();
-                if (history.length > 0) {
-                    if (settings.llmScriptContinuityMode === 'history') {
-                        const count = settings.llmScriptContinuityCount > 0
-                            ? Math.min(settings.llmScriptContinuityCount, history.length)
-                            : history.length;
-                        const plansJson = JSON.stringify(history.slice(-count), null, 2);
-                        const wrapper = settings.llmScriptContinuityHistoryWrapper || '{{previousPlans}}';
-                        filled = wrapper.replace('{{previousPlans}}', plansJson) + '\n\n' + filled;
-                    } else {
-                        const lastJson = JSON.stringify(history[history.length - 1], null, 2);
-                        const wrapper = settings.llmScriptContinuityWrapper || '{{previousPlan}}';
-                        filled = wrapper.replace('{{previousPlan}}', lastJson) + '\n\n' + filled;
-                    }
-                }
-            }
-        }
-
-        // Auto-inject character profiles if the template lacks the placeholder
-        if (settings.profileEnabled && !promptTemplate.includes('{{character_profiles}}')) {
-            const profilesText = buildCharacterProfilesText();
-            if (profilesText) {
-                filled = profilesText + '\n\n' + filled;
-            }
-        }
-
-        const ctx = getContext();
-        let response;
-        let attempts = 0;
-        while (attempts < maxRetries) {
-            if (generationStopped) {
-                console.warn('[GroupDirector] Director LLM aborted by user');
-                llmPickedSet = new Set();
-                llmPickedAvatars = null;
-                return;
-            }
-            attempts++;
-            try {
-                response = await ctx.generateRaw({ prompt: filled });
-                generationStopped = false;
-                break; // success
-            } catch (err) {
-                if (generationStopped || err?.name === 'AbortError') throw err;
-                console.warn(`[GroupDirector] Director LLM attempt ${attempts}/${maxRetries} failed:`, err.message);
-                if (attempts < maxRetries) {
-                    toastr.warning(`Director 决策失败 (${attempts}/${maxRetries})，正在重试...`);
-                    await new Promise(r => setTimeout(r, 2000));
-                }
-            }
-        }
-        if (!response) {
-            throw new Error('Director LLM failed after ' + maxRetries + ' attempts');
-        }
-
-        // Clear quiet prompt extension to prevent Director text leaking
-        // into subsequent character generation prompts.
+        // Clean up QUIET_PROMPT
         setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
-        log('LLM raw response:', response);
-
-        const parsed = parseLlmResponse(response, log);
-        if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
+        if (!parsed || !parsed.speakers?.length) {
             log('LLM returned no valid speakers');
             return;
         }
 
-        // Save full parsed JSON to history (independent of continuity injection)
-        if (settings.llmHistoryEnabled) {
-            await addToDirectorHistory(parsed);
-        }
-
-        // Map names → avatars in declared order; dedupe
-        const orderedAvatars = [];
-        const seen = new Set();
-        for (const name of parsed.speakers) {
-            const c = matchCharacterByName(name, enabledMembers);
-            if (c && !seen.has(c.avatar)) {
-                seen.add(c.avatar);
-                orderedAvatars.push(c.avatar);
-            } else if (!c) {
-                log(`LLM returned unrecognized name: "${name}" — skipped`);
-            }
-        }
-
-        // Cap at maxSpeakers
-        const capped = orderedAvatars.slice(0, settings.llmMaxSpeakers);
-
-        if (capped.length === 0) {
-            log('LLM names did not match any group member. Speakers returned:', parsed.speakers);
-            return;
-        }
+        const capped = parsed.speakers.slice(0, settings.llmMaxSpeakers);
 
         llmPickedAvatars = capped;
         llmPickedSet = new Set(capped);
         llmCursor = 0;
 
-        // Validate: every picked avatar must be a current enabled group member
-        for (const av of capped) {
-            if (!enabledMembers.includes(av)) {
-                console.warn(`[GroupDirector] VALIDATION FAILED: picked avatar ${av} not in enabled members! Removing.`);
-                llmPickedSet.delete(av);
-            }
-        }
-        llmPickedAvatars = capped.filter(av => llmPickedSet.has(av));
-        if (llmPickedAvatars.length === 0) {
-            console.warn('[GroupDirector] All picked speakers failed validation — aborting director round');
-            llmPickedAvatars = null;
-            llmPickedSet = null;
-            return;
+        // Save to history
+        if (settings.llmHistoryEnabled && parsed.reason) {
+            await addToDirectorHistory(parsed);
+        } else if (settings.llmHistoryEnabled) {
+            // Reconstruct history entry
+            await addToDirectorHistory({
+                speakers: parsed.names || capped.map(a => characters.find(c => c.avatar === a)?.name || a),
+                reason: '',
+                scripts: parsed.scripts ?? {},
+                loreAssignments: parsed.loreAssignments ?? {},
+            });
         }
 
-        // Store director script if present
-        // Store per-character scripts from LLM response
+        // Store director scripts
         directorScripts = {};
         if (settings.llmScriptEnabled && parsed.scripts && typeof parsed.scripts === 'object') {
             for (const [name, script] of Object.entries(parsed.scripts)) {
                 if (script && typeof script === 'string') {
-                    // Match to actual character name
                     const c = matchCharacterByName(name, enabledMembers);
                     if (c) directorScripts[c.name] = script;
                 }
             }
         }
-        // Fallback: single script field → assign to all picked characters
-        if (Object.keys(directorScripts).length === 0 && settings.llmScriptEnabled && parsed.script) {
-            for (const a of capped) {
-                const c = characters.find(c => c.avatar === a);
-                if (c) directorScripts[c.name] = parsed.script;
-            }
-        }
 
-        // If strict order requested, takeover the round: suppress ST's loop
-        // then manually drive generation in LLM's declared order.
+        // Takeover
         if (settings.llmRespectOrder) {
             takeoverPending = true;
-            console.warn('[GroupDirector] TAKEOVER SET — suppressing ST order, picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
+            console.warn('[GroupDirector] TAKEOVER SET — picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
         }
 
         log('LLM picked order:', capped.map(a =>
             characters.find(c => c.avatar === a)?.name).join(' → '),
             parsed.reason ? `(${parsed.reason})` : '');
+
     } catch (e) {
         if (generationStopped || e?.name === 'AbortError') {
-            // User-initiated pause — no retry, no history reuse, no toastr. Just stop.
             console.warn('[GroupDirector] Director LLM aborted by user');
             llmPickedSet = new Set();
             llmPickedAvatars = null;
             return;
         }
-        console.error(`[GroupDirector] Director LLM failed after retries:`, e.message || e);
-        // Fallback: reuse the last known director plan from history
+        console.error('[GroupDirector] Director LLM failed:', e.message || e);
+
+        // Fallback: reuse last plan from history
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
-            toastr.warning(`导演决策失败（已重试${maxRetries}次），正在复用上一轮决策...`);
+            toastr.warning('导演决策失败，正在复用上一轮决策...');
             console.warn('[GroupDirector] Director failed — reusing last plan from history');
             const avatars = [];
             for (const name of lastPlan.speakers) {
@@ -1115,16 +1089,12 @@ async function initRoundWithLLM() {
                         if (c) directorScripts[c.name] = script;
                     }
                 }
-                if (settings.llmRespectOrder) {
-                    takeoverPending = true;
-                }
+                if (settings.llmRespectOrder) takeoverPending = true;
                 return;
             }
         }
-        // No history — block the round instead of transparent pass-through
-        toastr.error(`导演决策失败（已重试${maxRetries}次），且无历史记录。请检查网络后重试。`);
-        console.warn('[GroupDirector] Director failed and no history — round blocked');
-        // Set to empty to block all characters (safer than letting chaos through).
+
+        toastr.error('导演决策失败，且无历史记录。请检查网络后重试。');
         llmPickedSet = new Set();
     }
 }
@@ -1288,6 +1258,9 @@ jQuery(async () => {
         getChat: () => chat,
         exportGroup,
         importGroup,
+        AgentRegistry,
+        createCaller,
+        getContext,
     });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

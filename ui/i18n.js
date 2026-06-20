@@ -167,6 +167,9 @@ const I18N = {
         exportImportHint: '将当前群聊的角色卡和激活的世界书打包导出为压缩包，或从压缩包导入。',
         exportGroup: '导出群聊',
         importGroup: '导入群聊',
+
+        agentsDrawerTitle: 'Agent API 独立配置',
+        agentsHint: '为每个 Agent 单独配置 API 端点和密钥。关闭时使用 SillyTavern 主模型。密钥保存在插件设置中，不随聊天导出。',
     },
     en: {
         langLabel: '语言 / Language',
@@ -325,6 +328,9 @@ const I18N = {
         exportImportHint: 'Package the current group\'s character cards and activated world books into a zip archive, or import from one.',
         exportGroup: 'Export Group',
         importGroup: 'Import Group',
+
+        agentsDrawerTitle: 'Agent API Configuration',
+        agentsHint: 'Configure API endpoint and key per agent. When disabled, uses SillyTavern main model. Keys stored in plugin settings, not in chat export.',
     },
 };
 

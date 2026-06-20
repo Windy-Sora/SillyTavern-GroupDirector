@@ -1,0 +1,83 @@
+/**
+ * ForceSpeak Agent — single-character LLM takeover when user manually
+ * triggers a character to speak.
+ *
+ * Extracted from index.js initForceSpeakLLM().
+ * Pipeline: context → prompt → call
+ */
+export function createForceSpeakAgent({
+    renderPrompt,
+    getDefaultLlmPrompt,
+    parseLlmResponse,
+    matchCharacterByName,
+    buildCharacterProfilesText,
+    log,
+}) {
+    return {
+        id: 'force-speak',
+        displayName: 'Force Speak LLM',
+        contextAccess: ['recentMessages', 'characters', 'charactersRaw', 'profilesText', 'worldInfoText',
+            'group', 'settings', 'forceSpeakCharacter', 'forceSpeakPrompt'],
+        pipelineOrder: ['context', 'prompt', 'call'],
+        pipeline: {
+            async context(_input, _ctx, pool, settings) {
+                const group = pool.group();
+                const enabledMembers = group?.members?.filter(a => !group.disabled_members?.includes(a)) ?? [];
+                const char = pool.forceSpeakCharacter?.();
+                const llmDepth = Math.min(settings.llmContextDepth ?? 10, pool.chat()?.length ?? 0);
+                const recentMessages = pool.recentMessages(llmDepth);
+
+                return {
+                    recentMessages,
+                    enabledMembers,
+                    maxSpeakers: 1,
+                    character: char,
+                };
+            },
+
+            async prompt(ctx, _state, pool, settings) {
+                const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
+                const runtimeContext = {
+                    recentMessages: ctx.recentMessages,
+                    enabledMembers: ctx.enabledMembers,
+                    maxSpeakers: 1,
+                };
+                let filled = await renderPrompt(promptTemplate, runtimeContext, {
+                    maxPasses: settings.templateMaxPasses ?? 5,
+                    recursive: settings.templateRecursive ?? true,
+                    debugPlaceholders: settings.templateDebugPlaceholders ?? false,
+                });
+
+                // WI auto-inject
+                const wiText = pool.worldInfoText?.();
+                if (settings.llmWorldInfoEnabled && !promptTemplate.includes('{{worldInfo}}') && wiText) {
+                    const wrapper = settings.llmWorldInfoWrapper || '{{worldInfo}}';
+                    filled = wrapper.replace('{{worldInfo}}', wiText) + '\n\n' + filled;
+                }
+
+                // Profile auto-inject
+                const profEnabled = pool.profileEnabled?.() ?? settings.profileEnabled;
+                if (profEnabled && !promptTemplate.includes('{{character_profiles}}')) {
+                    const profilesText = pool.profilesText?.() ?? buildCharacterProfilesText();
+                    if (profilesText) filled = profilesText + '\n\n' + filled;
+                }
+
+                // Force-speak instruction
+                const char = pool.forceSpeakCharacter?.();
+                const fsPrompt = pool.forceSpeakPrompt?.() ?? settings.forceSpeakPrompt;
+                const systemInstruction = settings.lang === 'zh'
+                    ? `【系统指令】用户已强制触发 {charName} 发言。请只选择 {charName} 一人作为本轮发言者。忽略其他角色。为 {charName} 生成一段简短的舞台指导。`
+                    : `[SYSTEM] Force-speak: {charName} has been manually triggered. You MUST select ONLY {charName}. Do NOT select any other characters. Write a short stage direction for {charName}.`;
+                const finalInstruction = (fsPrompt || systemInstruction).replace(/\{charName\}/g, char?.name ?? '');
+                filled += '\n\n' + finalInstruction;
+
+                return filled;
+            },
+        },
+
+        /** Parse force-speak response (same format as director, but single speaker only) */
+        async parseResponse(raw, enabledMembers) {
+            return parseLlmResponse(raw, log);
+        },
+    };
+}

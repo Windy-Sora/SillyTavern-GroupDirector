@@ -15,6 +15,7 @@ import './sections/chatSummary.js';
 import './sections/templateTester.js';
 import './sections/profile.js';
 import './sections/exportImport.js';
+import './sections/agents.js';
 
 export async function loadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;

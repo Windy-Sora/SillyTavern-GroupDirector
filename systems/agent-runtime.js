@@ -1,0 +1,122 @@
+/**
+ * Agent Runtime — execution engine for the Agent system.
+ *
+ * Provides:
+ *   createScopedPool(pool, access, strictMode) → Proxy-enforced context pool
+ *   managedCall(caller, prompt, callConfig) → retry + timeout
+ *   execute(agent, { pool, caller, config }) → state-driven pipeline execution
+ *   AgentRegistry → register / get / list
+ */
+
+// ─── Agent Registry ──────────────────────────────────────────────────
+
+const registry = new Map();
+
+export const AgentRegistry = {
+    register(agent) {
+        if (!agent || !agent.id) throw new Error('Agent must have an id');
+        registry.set(agent.id, agent);
+    },
+
+    get(id) {
+        return registry.get(id);
+    },
+
+    list() {
+        return [...registry.values()].map(({ id, displayName, contextAccess, pipelineOrder }) => ({
+            id, displayName, contextAccess, pipelineOrder,
+        }));
+    },
+};
+
+// ─── Scoped Context Pool ─────────────────────────────────────────────
+
+export function createScopedPool(pool, access, config = {}) {
+    const strictMode = config?.strictMode === true;
+
+    return new Proxy(pool, {
+        get(target, key) {
+            if (!access.includes(key)) {
+                const msg = `[Agent] "${key}": access denied (not in contextAccess)`;
+                if (strictMode) throw new Error(msg);
+                console.warn(msg);
+                return undefined;
+            }
+            const val = target[key];
+            return typeof val === 'function' ? val.bind(target) : val;
+        },
+    });
+}
+
+// ─── Managed Call (retry + timeout) ──────────────────────────────────
+
+export async function managedCall(caller, prompt, callConfig = {}) {
+    const retries = callConfig.retries ?? 2;
+    const timeoutMs = callConfig.timeout ?? 30000;
+    let lastError;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const result = await withTimeout(caller.generate(prompt), timeoutMs);
+            return result;
+        } catch (e) {
+            lastError = e;
+            if (e.name === 'AbortError') throw e;
+            if (attempt < retries) {
+                console.warn(`[Agent] call attempt ${attempt + 1}/${retries + 1} failed: ${e.message}. Retrying...`);
+                await sleep(2000);
+            }
+        }
+    }
+    throw lastError;
+}
+
+async function withTimeout(promise, ms) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
+    });
+    try {
+        return await Promise.race([promise, timeout]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
+
+// ─── Execute Agent ───────────────────────────────────────────────────
+
+/**
+ * Execute an agent's declared pipeline.
+ *
+ * State object: { ctx, prompt, raw, parsed }
+ *   context phase → state.ctx
+ *   prompt  phase → state.prompt
+ *   call    phase → state.raw
+ *   parse   phase → state.parsed
+ *   validate phase → state.parsed (validated)
+ *
+ * Returns: parsed ?? raw ?? prompt (last meaningful stage output)
+ */
+export async function execute(agent, { pool, caller, config = {} }) {
+    const scoped = createScopedPool(pool, agent.contextAccess, config);
+    const state = {}; // { ctx, prompt, raw, parsed }
+
+    for (const stage of agent.pipelineOrder) {
+        const fn = agent.pipeline[stage];
+
+        if (stage === 'call' && (fn === null || fn === undefined)) {
+            state.raw = await managedCall(caller, state.prompt, config.call);
+        } else if (stage === 'call') {
+            state.raw = await fn(caller, state.prompt, state);
+        } else if (fn) {
+            const input = state.parsed ?? state.raw ?? state.prompt;
+            state[stage] = await fn(input, state.ctx, scoped, config);
+        }
+    }
+
+    return state.parsed ?? state.raw ?? state.prompt;
+}
