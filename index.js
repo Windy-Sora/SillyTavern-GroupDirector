@@ -1015,6 +1015,11 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         for (const intent of freshIntents) {
             await postSpeechSystem.record(msgIndex, msg.name || '?', intent.type, intent.params, policy);
         }
+
+        // Done notification
+        if (typeof toastr !== 'undefined') {
+            toastr.success('PostSpeech done', '', { timeOut: 2000 });
+        }
     } catch (e) {
         // PostSpeech failure never interrupts the conversation
         log('PostSpeech skipped:', e.message);
