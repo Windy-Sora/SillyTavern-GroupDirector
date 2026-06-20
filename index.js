@@ -902,6 +902,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         } finally {
             dismissNotify();
             postSpeechAbortController = null;
+            if (typeof toastr !== 'undefined') {
+                toastr.success(
+                    lang === 'zh' ? 'PostSpeech 回合分析完成' : 'PostSpeech round complete',
+                    '', { timeOut: 2000 }
+                );
+            }
         }
     }
 });
