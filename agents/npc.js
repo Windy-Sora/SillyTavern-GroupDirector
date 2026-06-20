@@ -18,10 +18,10 @@ World books (all selected entries):
 
 Available characters:
 {{existingCharacters}}
+━━━━━━━━━━━━━
 
 Existing NPCs (DO NOT duplicate these names):
 {{existingNpcs}}
-━━━━━━━━━━━━━
 
 Guidelines:
 - Generate {{batchSize}} NPC(s) that feel organic to the current scene and world.
