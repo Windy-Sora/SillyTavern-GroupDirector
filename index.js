@@ -48,7 +48,7 @@ import { createSummaryAgent } from './agents/summary.js';
 import { createNpcAgent } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
-import { runExecutionEngine } from './systems/execution-engine.js';
+import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry } from './systems/capability-registry.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
 
@@ -293,6 +293,15 @@ const npcSystem = createNpcSystem({
 // ─── PostSpeech System ───────────────────────────────────────────────
 const postSpeechSystem = createPostSpeechSystem({
     settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional, log,
+});
+
+// ─── PostSpeech Executor ─────────────────────────────────────────────
+const postSpeechExecutor = createExecutor({
+    blocking: settings.postSpeechBlocking !== false,
+    log,
+    onExecuted: (capId, result) => {
+        if (!result.success) log(`[Executor] ${capId} execution failed: ${result.error}`);
+    },
 });
 
 // ─── Register built-in capabilities ─────────────────────────────────
@@ -880,13 +889,10 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async (msg) => {
         );
         if (!freshIntents.length) { log('PostSpeech: all intents already executed'); return; }
 
-        // Run execution engine with filtered intents
-        const execResult = await runExecutionEngine(
+        // Run executor with filtered intents
+        const execResult = await postSpeechExecutor.run(
             { ...policy, intents: freshIntents },
-            {
-                blocking: settings.postSpeechBlocking !== false,
-                timing: policy.timing || { mode: 'immediate', delay: 0 },
-            }
+            CapabilityRegistry.list()
         );
 
         // Record each executed intent
