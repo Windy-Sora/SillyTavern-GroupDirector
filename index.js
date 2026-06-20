@@ -830,15 +830,17 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     if (settings.postSpeechRoundEnabled && !postSpeechRoundRan) {
         postSpeechRoundRan = true;
 
-        // Set generating state so ST shows stop button.
-        // User clicking stop → GENERATION_STOPPED → we abort.
         generationStopped = false;
         postSpeechAbortController = new AbortController();
-        document.body.dataset.generating = 'true';
-        const restoreUI = () => {
-            document.body.dataset.generating = '';
-            postSpeechAbortController = null;
-        };
+
+        const lang = settings.lang || 'zh';
+        const notifyKey = 'gd-ps-round-notify';
+        toastr.info(
+            lang === 'zh' ? 'PostSpeech 正在分析本轮对话，请勿发送消息...' : 'PostSpeech analyzing this round, please wait...',
+            '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false },
+            notifyKey
+        );
+        const dismissNotify = () => { $(`#${notifyKey}`).fadeOut(200, function () { $(this).remove(); }); };
         try {
             const agent = AgentRegistry.get('post-speech');
             if (agent) {
@@ -860,7 +862,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     onRetry: ({ attempt, maxRetries }) => log(`PostSpeech round retry ${attempt}/${maxRetries}`),
                 };
 
-                if (postSpeechAbortController.signal.aborted) { restoreUI(); return; }
+                if (postSpeechAbortController.signal.aborted) { dismissNotify(); return; }
 
                 const response = await execute(agent, {
                     pool,
@@ -874,7 +876,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     throw e;
                 });
 
-                if (!response) { restoreUI(); return; }
+                if (!response) { dismissNotify(); return; }
 
                 if (response) {
                     const policy = agent.parseResponse(response);
@@ -890,7 +892,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         } catch (e) {
             log('PostSpeech round skipped:', e.message);
         } finally {
-            restoreUI();
+            dismissNotify();
+            postSpeechAbortController = null;
+            toastr.success(
+                lang === 'zh' ? 'PostSpeech 决策已完成' : 'PostSpeech complete',
+                '', { timeOut: 2000 }
+            );
         }
     }
 });
