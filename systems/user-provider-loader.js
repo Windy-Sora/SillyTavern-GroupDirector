@@ -12,7 +12,7 @@
  * Zero server-side dependencies. Fully self-contained.
  */
 
-export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds }) {
+export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, unregisterProvider }) {
     const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
 
     function getStore(type) {
@@ -64,6 +64,9 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             const addedIds = before && after
                 ? after.filter(id => !before.has(id))
                 : [];
+            if (before && after) {
+                log(`Provider import diff: before=${before.size}, after=${after.length}, added=[${addedIds.join(',')}]`);
+            }
 
             // Persist
             store.push({ name, source, importedAt: Date.now(), ids: addedIds });
@@ -84,9 +87,16 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         const store = getStore(type);
         const idx = store.findIndex(p => p.name === name);
         if (idx === -1) return false;
+        const entry = store[idx];
+        // Unregister from runtime
+        if (type === 'provider' && unregisterProvider) {
+            for (const id of (entry.ids || [])) {
+                unregisterProvider(id);
+            }
+        }
         store.splice(idx, 1);
         await saveStore();
-        log(`User ${type} "${name}" deleted (reload to fully unregister)`);
+        log(`User ${type} "${name}" deleted and unregistered`);
         return true;
     }
 
