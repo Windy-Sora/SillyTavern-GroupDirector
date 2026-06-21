@@ -80,8 +80,9 @@ export function createMemorySystem({
         }
 
         existing.push(...result);
-        // Keep max 200 entries per character
-        while (existing.length > 200) existing.shift();
+        // Trim to max entries per character
+        const max = settings.memoryMaxEntries ?? 200;
+        while (existing.length > max) existing.shift();
         setMemories(avatar, existing);
         await saveStore();
 
@@ -147,24 +148,58 @@ export function createMemorySystem({
         await saveStore();
     }
 
-    /** Compress old memories into a summary, keeping recent ones. */
+    const DEFAULT_COMPRESS_PROMPT = `Given the following character memories, produce a concise one-paragraph summary that captures the key events, emotional arcs, and character development. Preserve important names, places, and turning points.
+
+Character: {{charName}}
+Description: {{charDescription}}
+Personality: {{charPersonality}}
+
+Memories to compress:
+{{memories}}
+
+Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the same language as the input memories.`;
+
+    /** Compress old memories into an LLM-generated summary, keeping recent ones. */
     async function compressOldMemories(avatar, keepRecent = 5) {
         const memories = getMemories(avatar);
         if (memories.length <= keepRecent) return null;
 
+        const char = getCharacters().find(c => c.avatar === avatar);
+        if (!char) throw new Error('Character not found');
+
         const oldOnes = memories.slice(0, -keepRecent);
         const recentOnes = memories.slice(-keepRecent);
 
-        // Build a summary from old memories
-        const summary = oldOnes.map(m => m.event).join('; ');
+        // Build prompt
+        const compressPrompt = settings.memoryCompressPrompt || DEFAULT_COMPRESS_PROMPT;
+        const memoriesText = oldOnes.map((m, i) => `${i + 1}. ${m.event} [${m.mood}]`).join('\n');
 
-        // Replace old with one compressed entry
+        let filled = compressPrompt
+            .replace(/\{\{charName\}\}/g, char.name)
+            .replace(/\{\{charDescription\}\}/g, char.description || '')
+            .replace(/\{\{charPersonality\}\}/g, char.personality || '')
+            .replace(/\{\{memories\}\}/g, memoriesText);
+
+        let summary;
+        try {
+            const ctx = getContext();
+            const response = await ctx.generateRaw({ prompt: filled });
+            summary = (typeof response === 'string' ? response : String(response ?? '')).trim();
+            if (!summary) throw new Error('Empty response');
+        } catch (e) {
+            // Fallback: old semicolon join
+            log(`Memory compress LLM failed (${e.message}), falling back to local join`);
+            summary = oldOnes.map(m => m.event).join('; ');
+        }
+
+        // Replace old entries with one compressed entry
         const compressed = [{
-            event: `[压缩记忆] ${summary}`,
-            mood: 'neutral',
+            event: summary,
+            mood: 'mixed',
             round: -1,
             timestamp: Date.now(),
             compressed: true,
+            originalCount: oldOnes.length,
         }];
 
         const newMemories = [...compressed, ...recentOnes];

@@ -59,6 +59,17 @@ export const DEFAULT_MEMORY_RENDER = `{{#charMemory:all}}
   {{?charMemory:all[$it].event}} ({{?charMemory:all[$it].mood}})
 {{/charMemory:all}}`;
 
+export const DEFAULT_MEMORY_COMPRESS_PROMPT = `Given the following character memories, produce a concise one-paragraph summary that captures the key events, emotional arcs, and character development. Preserve important names, places, and turning points.
+
+Character: {{charName}}
+Description: {{charDescription}}
+Personality: {{charPersonality}}
+
+Memories to compress:
+{{memories}}
+
+Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the same language as the input memories.`;
+
 export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
     return {
         id: 'memory',

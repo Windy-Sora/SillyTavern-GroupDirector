@@ -361,6 +361,47 @@
                     <input type="file" id="gd-import-file-input" accept=".zip" style="display:none;">
                 </div>
                 <div id="gd-import-progress" style="display:none;margin-top:6px;font-size:0.9em;color:var(--grey70a);"></div>
+
+                <hr>
+                <h4 data-i18n="profileExportTitle">档案导出 / 导入</h4>
+                <small data-i18n="profileExportHint">将角色档案导出为独立 JSON 文件，或从文件/预设导入档案。</small>
+
+                <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="profileExportSection">导出档案</span>
+                    <span class="menu_button menu_button_icon" id="gd-profile-export-refresh" style="font-size:0.75em;padding:1px 6px;" title="刷新">
+                        <i class="fa-solid fa-rotate"></i>
+                    </span>
+                </div>
+                <div id="gd-profile-export-list" style="margin-top:4px;"></div>
+                <label for="gd-profile-export-note" data-i18n="profileExportNote">导出备注（可选）</label>
+                <input type="text" id="gd-profile-export-note" class="text_pole" style="width:100%;" data-i18n-placeholder="profileExportNotePlaceholder">
+                <span class="menu_button menu_button_icon" id="gd-profile-export-btn" style="margin-top:4px;">
+                    <i class="fa-solid fa-file-export"></i> <span data-i18n="profileExportBtn">导出选中</span>
+                </span>
+
+                <div style="margin-top:10px;font-weight:bold;font-size:0.9em;" data-i18n="profileImportSection">导入档案</div>
+                <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <span class="menu_button menu_button_icon" id="gd-profile-import-btn" style="font-size:0.85em;">
+                        <i class="fa-solid fa-file-import"></i> <span data-i18n="profileImportFile">选择文件</span>
+                    </span>
+                    <input type="file" id="gd-profile-import-file" accept=".json" style="display:none;">
+                    <select id="gd-profile-import-preset" class="text_pole" style="width:auto;font-size:0.85em;">
+                        <option value="" data-i18n="profileImportPresetPlaceholder">或从预设加载...</option>
+                    </select>
+                </div>
+                <div id="gd-profile-import-list" style="margin-top:8px;"></div>
+                <label class="checkbox_label" for="gd-profile-import-template" style="margin-top:4px;">
+                    <input type="checkbox" id="gd-profile-import-template">
+                    <span data-i18n="profileImportTemplate">同时导入模板配置（生成器 Prompt / Schema / 渲染模板）</span>
+                </label>
+                <div style="margin-top:4px;display:flex;gap:6px;">
+                    <span class="menu_button menu_button_icon" id="gd-profile-import-apply">
+                        <i class="fa-solid fa-check"></i> <span data-i18n="profileImportApply">导入选中</span>
+                    </span>
+                    <span class="menu_button menu_button_icon" id="gd-profile-import-cancel" style="background:rgba(244,67,54,0.15);">
+                        <i class="fa-solid fa-xmark"></i> <span data-i18n="profileImportCancel">取消</span>
+                    </span>
+                </div>
             </div>
 
             <hr>
@@ -398,6 +439,13 @@
                     <i class="fa-solid fa-rotate-left"></i> <span data-i18n="memoryRenderReset">恢复默认</span>
                 </div>
 
+                <label for="gd-memory-compress-prompt" data-i18n="memoryCompressPromptLabel" style="margin-top:8px;">压缩 Prompt（留空使用内置默认）</label>
+                <small data-i18n="memoryCompressPromptHint">用于将旧记忆摘要压缩为一条。占位符：<code>{{charName}}</code> <code>{{charDescription}}</code> <code>{{charPersonality}}</code> <code>{{memories}}</code></small>
+                <textarea id="gd-memory-compress-prompt" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
+                <div class="menu_button menu_button_icon" id="gd-memory-compress-prompt-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> <span data-i18n="memoryCompressPromptReset">恢复默认</span>
+                </div>
+
                 <hr>
                 <h4 data-i18n="memoryManagementTitle">记忆管理</h4>
                 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
@@ -409,6 +457,9 @@
                 </div>
                 <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent" style="margin-top:2px;">压缩时保留最近条数</label>
                 <input type="number" id="gd-memory-keep-recent" class="text_pole" min="1" max="100" step="1" style="width:80px;">
+
+                <label for="gd-memory-max-entries" data-i18n="memoryMaxEntries" style="margin-top:4px;">单角色记忆上限</label>
+                <input type="number" id="gd-memory-max-entries" class="text_pole" min="10" max="2000" step="10" style="width:100px;">
                 <div id="gd-memory-list" style="margin-top:6px;max-height:400px;overflow-y:auto;"></div>
 
                 <!-- Inline edit panel -->
@@ -432,6 +483,53 @@
                         <span class="menu_button menu_button_icon" id="gd-mem-edit-cancel"><i class="fa-solid fa-xmark"></i> <span data-i18n="memoryEditCancel">取消</span></span>
                     </div>
                 </div>
+
+                <hr>
+                <h4 data-i18n="memoryExportTitle">记忆导出 / 导入</h4>
+                <small data-i18n="memoryExportHint">将角色记忆导出为 JSON 文件（含模板配置），或从外部文件导入。支持精确匹配、名称匹配和手动指定目标角色。</small>
+
+                <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="memoryExportSection">导出记忆</span>
+                    <span class="menu_button menu_button_icon" id="gd-memory-export-refresh" style="font-size:0.75em;padding:1px 6px;" title="刷新">
+                        <i class="fa-solid fa-rotate"></i>
+                    </span>
+                </div>
+                <div id="gd-memory-export-list" style="margin-top:4px;"></div>
+                <label for="gd-memory-export-note" data-i18n="memoryExportNote">导出备注（可选）</label>
+                <input type="text" id="gd-memory-export-note" class="text_pole" style="width:100%;" data-i18n-placeholder="memoryExportNotePlaceholder">
+                <span class="menu_button menu_button_icon" id="gd-memory-export-btn" style="margin-top:4px;">
+                    <i class="fa-solid fa-file-export"></i> <span data-i18n="memoryExportBtn">导出选中</span>
+                </span>
+
+                <div style="margin-top:10px;font-weight:bold;font-size:0.9em;" data-i18n="memoryImportSection">导入记忆</div>
+                <div style="margin-top:4px;display:flex;gap:6px;">
+                    <span class="menu_button menu_button_icon" id="gd-memory-import-btn" style="font-size:0.85em;">
+                        <i class="fa-solid fa-file-import"></i> <span data-i18n="memoryImportBtn">选择文件</span>
+                    </span>
+                    <input type="file" id="gd-memory-import-file" accept=".json" style="display:none;">
+                </div>
+                <div id="gd-memory-import-list" style="margin-top:8px;"></div>
+                <label class="checkbox_label" for="gd-memory-import-template" style="margin-top:4px;">
+                    <input type="checkbox" id="gd-memory-import-template">
+                    <span data-i18n="memoryImportTemplate">同时导入模板配置（Prompt / Schema / Render / Compress）</span>
+                </label>
+                <div style="margin-top:4px;display:flex;gap:6px;">
+                    <span class="menu_button menu_button_icon" id="gd-memory-import-apply">
+                        <i class="fa-solid fa-check"></i> <span data-i18n="memoryImportApply">导入选中</span>
+                    </span>
+                    <span class="menu_button menu_button_icon" id="gd-memory-import-cancel" style="background:rgba(244,67,54,0.15);">
+                        <i class="fa-solid fa-xmark"></i> <span data-i18n="memoryImportCancel">取消</span>
+                    </span>
+                </div>
+
+            </div>
+
+            <hr>
+            <h4 data-i18n="identityTitle">身份锚定 (Identity Anchor)</h4>
+            <small data-i18n="identityHint">用户自定义的身份锚定提示词。在此书写指令告诉 LLM 如何看待下方数据（档案、记忆、摘要等）。通过 <code>{{identity}}</code> 占位符手动注入到 Director Prompt 或任何模板中，不会自动注入。</small>
+            <textarea id="gd-identity-prompt" class="text_pole textarea_compact" rows="10" style="width:100%;" data-i18n-placeholder="identityPromptPlaceholder"></textarea>
+            <div class="menu_button menu_button_icon" id="gd-identity-reset" style="margin-top:4px;">
+                <i class="fa-solid fa-trash"></i> <span data-i18n="identityReset">清空</span>
             </div>
 
             <hr>
@@ -468,6 +566,47 @@
                 </div>
 
                 <div id="gd-npc-list" style="margin-top:8px;"></div>
+
+                <hr>
+                <h4 data-i18n="npcExportTitle">NPC 导出 / 导入</h4>
+                <small data-i18n="npcExportHint">将 NPC 导出为独立 JSON 文件（含生成 Prompt），或从外部 JSON 文件/预设导入 NPC。</small>
+
+                <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="npcExportSection">导出 NPC</span>
+                    <span class="menu_button menu_button_icon" id="gd-npc-export-refresh" style="font-size:0.75em;padding:1px 6px;" title="刷新">
+                        <i class="fa-solid fa-rotate"></i>
+                    </span>
+                </div>
+                <div id="gd-npc-export-list" style="margin-top:4px;"></div>
+                <label for="gd-npc-export-note" data-i18n="npcExportNote">导出备注（可选）</label>
+                <input type="text" id="gd-npc-export-note" class="text_pole" style="width:100%;" data-i18n-placeholder="npcExportNotePlaceholder">
+                <span class="menu_button menu_button_icon" id="gd-npc-export-btn" style="margin-top:4px;">
+                    <i class="fa-solid fa-file-export"></i> <span data-i18n="npcExportBtn">导出选中</span>
+                </span>
+
+                <div style="margin-top:10px;font-weight:bold;font-size:0.9em;" data-i18n="npcImportSection">导入 NPC</div>
+                <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <span class="menu_button menu_button_icon" id="gd-npc-import-btn" style="font-size:0.85em;">
+                        <i class="fa-solid fa-file-import"></i> <span data-i18n="npcImportFile">选择文件</span>
+                    </span>
+                    <input type="file" id="gd-npc-import-file" accept=".json" style="display:none;">
+                    <select id="gd-npc-import-preset" class="text_pole" style="width:auto;font-size:0.85em;">
+                        <option value="" data-i18n="npcImportPresetPlaceholder">或从预设加载...</option>
+                    </select>
+                </div>
+                <div id="gd-npc-import-list" style="margin-top:8px;"></div>
+                <label class="checkbox_label" for="gd-npc-import-template" style="margin-top:4px;">
+                    <input type="checkbox" id="gd-npc-import-template">
+                    <span data-i18n="npcImportTemplate">同时导入生成 Prompt 配置</span>
+                </label>
+                <div style="margin-top:4px;display:flex;gap:6px;">
+                    <span class="menu_button menu_button_icon" id="gd-npc-import-apply">
+                        <i class="fa-solid fa-check"></i> <span data-i18n="npcImportApply">导入选中</span>
+                    </span>
+                    <span class="menu_button menu_button_icon" id="gd-npc-import-cancel" style="background:rgba(244,67,54,0.15);">
+                        <i class="fa-solid fa-xmark"></i> <span data-i18n="npcImportCancel">取消</span>
+                    </span>
+                </div>
             </div>
 
         </div>
@@ -532,6 +671,35 @@
                 <div class="menu_button menu_button_icon" id="gd-summary-result-save" style="margin-top:4px;">
                     <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="summaryResultSave">保存编辑</span>
                 </div>
+            </div>
+
+            <hr>
+            <h4 data-i18n="summaryExportTitle">摘要导出 / 导入</h4>
+            <small data-i18n="summaryExportHint">导出当前激活摘要为 JSON 文件，或导入外部摘要（独立于生成系统，通过 <code>{{importedSummary}}</code> 注入）。</small>
+
+            <div style="margin-top:6px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-weight:bold;font-size:0.9em;" data-i18n="summaryExportSection">导出激活摘要</span>
+                    <span class="menu_button menu_button_icon" id="gd-summary-import-panel-refresh" style="font-size:0.75em;padding:1px 6px;" title="刷新">
+                        <i class="fa-solid fa-rotate"></i>
+                    </span>
+                </div>
+                <label for="gd-summary-export-note" data-i18n="summaryExportNote">导出备注（可选）</label>
+                <input type="text" id="gd-summary-export-note" class="text_pole" style="width:100%;" data-i18n-placeholder="summaryExportNotePlaceholder">
+                <span class="menu_button menu_button_icon" id="gd-summary-export-btn" style="margin-top:4px;">
+                    <i class="fa-solid fa-file-export"></i> <span data-i18n="summaryExportBtn">导出当前摘要</span>
+                </span>
+            </div>
+
+            <div style="margin-top:10px;">
+                <span style="font-weight:bold;font-size:0.9em;" data-i18n="summaryImportSection">导入的摘要（勾选启用）</span>
+                <div style="margin-top:4px;display:flex;gap:6px;">
+                    <span class="menu_button menu_button_icon" id="gd-summary-import-btn" style="font-size:0.85em;">
+                        <i class="fa-solid fa-file-import"></i> <span data-i18n="summaryImportBtn">导入摘要文件</span>
+                    </span>
+                    <input type="file" id="gd-summary-import-file" accept=".json" style="display:none;">
+                </div>
+                <div id="gd-summary-imported-list" style="margin-top:6px;"></div>
             </div>
 
             <hr>

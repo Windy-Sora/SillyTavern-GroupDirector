@@ -29,6 +29,8 @@ import { register as registerMoonPhase } from './assets/providers/moon-phase.js'
 import { register as registerTimeOfDay } from './assets/providers/time-of-day.js';
 import { register as registerKnowledge } from './assets/providers/knowledge.js';
 import { register as registerChatSummary } from './assets/providers/chat-summary.js';
+import { register as registerImportedSummary } from './assets/providers/imported-summary.js';
+import { register as registerIdentity } from './assets/providers/identity.js';
 import { register as registerNpcList } from './assets/providers/npc-list.js';
 import { register as registerNewRecentMessages } from './assets/providers/new-recent-messages.js';
 import { register as registerCharMemory } from './assets/providers/char-memory.js';
@@ -38,6 +40,10 @@ import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
+import { createProfileExportSystem } from './systems/profile-export-system.js';
+import { createNpcExportSystem } from './systems/npc-export-system.js';
+import { createSummaryExportSystem } from './systems/summary-export-system.js';
+import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
@@ -49,9 +55,9 @@ import { createDirectorAgent } from './agents/director.js';
 import { createForceSpeakAgent } from './agents/force-speak.js';
 import { createProfileAgent } from './agents/profile.js';
 import { createSummaryAgent } from './agents/summary.js';
-import { createNpcAgent } from './agents/npc.js';
+import { createNpcAgent, DEFAULT_NPC_PROMPT } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
-import { createMemoryAgent } from './agents/memory.js';
+import { createMemoryAgent, DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER, DEFAULT_MEMORY_COMPRESS_PROMPT } from './agents/memory.js';
 import { createMemorySystem } from './systems/memory-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
 import { createExecutor } from './systems/executor.js';
@@ -194,6 +200,42 @@ function log(...args) {
 const { exportGroup, importGroup } = createExportImportSystem({
     settings, getCurrentGroup, getChat, getCharacters,
     world_names, selected_world_info, world_info, getChatMetadata, log,
+});
+
+// ─── Profile Export System ──────────────────────────────────────────
+const { exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames } =
+    createProfileExportSystem({
+        settings, getProfiles, saveSettings,
+        getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
+        getCurrentGroup, getCharacters, saveChatConditional,
+        refreshProfileManagementUI, log,
+    });
+
+// ─── NPC Export System ──────────────────────────────────────────────
+const { exportNpcs, parseImportFile: parseNpcImportFile, applyImport: applyNpcImport,
+    loadPreset: loadNpcPreset, getPresetNames: getNpcPresetNames } =
+    createNpcExportSystem({
+        settings, EXT_KEY, saveSettings, getCurrentGroup, getChatMetadata, saveChatConditional,
+        defaultNpcPrompt: DEFAULT_NPC_PROMPT, log,
+    });
+
+// ─── Summary Export System ──────────────────────────────────────────
+const summaryExportSystem = createSummaryExportSystem({
+    settings, EXT_KEY, getChatMetadata, saveChatConditional,
+    chatSummarySystem: chatSummarySystem,
+    getCurrentGroup,
+    defaultSummaryPrompt: '',
+    log,
+});
+
+// ─── Memory Export System ───────────────────────────────────────────
+const memoryExportSystem = createMemoryExportSystem({
+    settings, EXT_KEY, getChatMetadata, getCharacters, getCurrentGroup,
+    saveChatConditional, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
+    defaultMemoryPrompt: DEFAULT_MEMORY_PROMPT,
+    defaultMemorySchema: DEFAULT_MEMORY_SCHEMA,
+    defaultMemoryRender: DEFAULT_MEMORY_RENDER,
+    defaultMemoryCompressPrompt: DEFAULT_MEMORY_COMPRESS_PROMPT,
 });
 
 // ─── Agent Runtime — Context Pool Builder ─────────────────────────────
@@ -1554,7 +1596,7 @@ Reply with ONLY a JSON object, no prose, no code fences:
 // ─── Register Built-in Providers ──────────────────────────────────────
 registerRecentMessages();
 registerCharacters(settings, characters, buildCharacterProfilesText);
-registerCharacterProfiles(buildCharacterProfilesText);
+registerCharacterProfiles(buildCharacterProfilesText, getProfiles);
 
 // MaxSpeakersProvider — kept inline (single-line, no deps needed)
 registerProvider({
@@ -1577,6 +1619,8 @@ registerMoonPhase(settings);
 registerTimeOfDay(settings);
 registerKnowledge(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
+registerImportedSummary(() => summaryExportSystem.renderEnabledSummaries());
+registerIdentity(settings);
 registerCharMemory({
     getMemoriesForAll: () => {
         const result = {};
@@ -1639,6 +1683,7 @@ jQuery(async () => {
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
         getChat: () => chat,
+        getCharacters: () => characters,
         exportGroup,
         importGroup,
         AgentRegistry,
@@ -1650,6 +1695,10 @@ jQuery(async () => {
         postSpeechSystem,
         userProviderLoader,
         memorySystem,
+        exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames,
+        exportNpcs, parseNpcImportFile, applyNpcImport, loadNpcPreset, getNpcPresetNames,
+        summaryExportSystem,
+        memoryExportSystem,
     });
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.

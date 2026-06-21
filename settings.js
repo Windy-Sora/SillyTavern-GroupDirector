@@ -52,6 +52,7 @@ export const DEFAULT_SETTINGS = {
     // World Book
     worldBookSelection: {},
     worldBookMaxEntries: 20,
+    identityPrompt: '', // '' = use DEFAULT_IDENTITY_PROMPT
     debugLogging: false,
     lang: 'zh',
     // Character Profile System
@@ -75,6 +76,8 @@ export const DEFAULT_SETTINGS = {
     memoryJsonSchema: '',
     memoryRenderTemplate: '',
     memoryKeepRecent: 5,
+    memoryMaxEntries: 200,
+    memoryCompressPrompt: '',
     traceMaxEntries: 50,
     // PostSpeech — multimodal policy after each character message
     postSpeechMessageEnabled: false,

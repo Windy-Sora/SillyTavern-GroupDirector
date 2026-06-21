@@ -228,6 +228,9 @@ registerSection('npc', function (ctx) {
         });
     }
 
+    // Expose render function for other sections (e.g. NPC export)
+    ctx.renderNpcList = renderNpcList;
+
     // Initial render
     if (settings.npcEnabled) renderNpcList();
 });

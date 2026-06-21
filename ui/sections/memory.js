@@ -1,5 +1,5 @@
 import { registerSection } from './registry.js';
-import { DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER } from '../../agents/memory.js';
+import { DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER, DEFAULT_MEMORY_COMPRESS_PROMPT } from '../../agents/memory.js';
 
 registerSection('memory', function (ctx) {
     const { settings, $c, saveSettings, getCurrentGroup, toastr, memorySystem } = ctx;
@@ -18,7 +18,9 @@ registerSection('memory', function (ctx) {
     $c('memory-prompt').val(settings.memoryPrompt || DEFAULT_MEMORY_PROMPT);
     $c('memory-json-schema').val(settings.memoryJsonSchema || DEFAULT_MEMORY_SCHEMA);
     $c('memory-render-template').val(settings.memoryRenderTemplate || DEFAULT_MEMORY_RENDER);
+    $c('memory-compress-prompt').val(settings.memoryCompressPrompt || DEFAULT_MEMORY_COMPRESS_PROMPT);
     $c('memory-keep-recent').val(settings.memoryKeepRecent ?? 5);
+    $c('memory-max-entries').val(settings.memoryMaxEntries ?? 200);
 
     // ── Events ──
     $c('memory-enabled').on('change', function () {
@@ -32,10 +34,13 @@ registerSection('memory', function (ctx) {
     $c('memory-json-schema').on('input', function () { settings.memoryJsonSchema = $(this).val(); saveSettings(); });
     $c('memory-render-template').on('input', function () { settings.memoryRenderTemplate = $(this).val(); saveSettings(); });
     $c('memory-keep-recent').on('input', function () { settings.memoryKeepRecent = Math.max(1, parseInt($(this).val()) || 5); saveSettings(); });
+    $c('memory-max-entries').on('input', function () { settings.memoryMaxEntries = Math.max(10, parseInt($(this).val()) || 200); saveSettings(); });
 
     $c('memory-prompt-reset').on('click', () => { settings.memoryPrompt = ''; $c('memory-prompt').val(DEFAULT_MEMORY_PROMPT); saveSettings(); });
     $c('memory-schema-reset').on('click', () => { settings.memoryJsonSchema = ''; $c('memory-json-schema').val(DEFAULT_MEMORY_SCHEMA); saveSettings(); });
     $c('memory-render-reset').on('click', () => { settings.memoryRenderTemplate = ''; $c('memory-render-template').val(DEFAULT_MEMORY_RENDER); saveSettings(); });
+    $c('memory-compress-prompt').on('input', function () { settings.memoryCompressPrompt = $(this).val(); saveSettings(); });
+    $c('memory-compress-prompt-reset').on('click', () => { settings.memoryCompressPrompt = ''; $c('memory-compress-prompt').val(DEFAULT_MEMORY_COMPRESS_PROMPT); saveSettings(); });
 
     // ── Actions ──
     $c('memory-refresh').on('click', () => renderMemoryList());
@@ -72,7 +77,7 @@ registerSection('memory', function (ctx) {
 
             html += `<div style="margin-top:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" class="gd-mem-char-toggle" data-av="${escAttr(avatar)}">
-                    <span><b>${esc(name)}</b> <span style="font-size:0.85em;color:var(--grey70a);">${count} ${L('条记忆', 'memories')}</span></span>
+                    <span><b>${escHtml(name)}</b> <span style="font-size:0.85em;color:var(--grey70a);">${count} ${L('条记忆', 'memories')}</span></span>
                     <span style="display:flex;gap:4px;">
                         <span class="menu_button menu_button_icon gd-mem-gen-btn" data-av="${escAttr(avatar)}" style="font-size:0.8em;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${L('提取', 'Extract')}</span>
                         <span class="menu_button menu_button_icon gd-mem-compress-btn" data-av="${escAttr(avatar)}" style="font-size:0.8em;"><i class="fa-solid fa-compress"></i> ${L('压缩', 'Compress')}</span>
@@ -88,7 +93,7 @@ registerSection('memory', function (ctx) {
                 for (let ri = mems.length - 1; ri >= 0; ri--) {
                     const m = mems[ri];
                     html += `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
-                        <span style="flex:1;">${m.compressed ? '[压缩] ' : ''}${esc(m.event)} <span style="color:var(--grey70a);">[${esc(m.mood)}]</span></span>
+                        <span style="flex:1;">${m.compressed ? '[压缩] ' : ''}${escHtml(m.event)} <span style="color:var(--grey70a);">[${escHtml(m.mood)}]</span></span>
                         <span style="white-space:nowrap;display:flex;gap:2px;">
                             <span class="menu_button menu_button_icon gd-mem-edit-btn" data-av="${escAttr(avatar)}" data-ix="${ri}" style="font-size:0.7em;"><i class="fa-solid fa-pencil"></i></span>
                             <span class="menu_button menu_button_icon gd-mem-del-btn" data-av="${escAttr(avatar)}" data-ix="${ri}" style="font-size:0.7em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
@@ -190,16 +195,17 @@ registerSection('memory', function (ctx) {
     });
     $c('mem-edit-cancel').on('click', () => { $('#gd-mem-edit-panel').hide(); });
 
-    function esc(s) {
-        if (!s) return '';
-        const div = document.createElement('div');
-        div.textContent = String(s);
-        return div.innerHTML;
+    function escHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
     function escAttr(s) {
-        if (!s) return '';
-        return String(s).replace(/"/g, '&quot;').replace(/\\/g, '\\\\');
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
     }
+
+    // Expose for other sections (e.g. memory export)
+    ctx.renderMemoryList = renderMemoryList;
 
     if (settings.memoryEnabled) renderMemoryList();
 });
