@@ -136,7 +136,7 @@ const I18N = {
         worldInfoWrapperHint: '<code>{{worldInfo}}</code> 占位符会被替换为当前激活的世界书条目文本。',
 
         scriptWrapper: '剧本注入包装模板（Script Wrapper）',
-        scriptWrapperHint: '控制剧本如何包裹后注入角色 prompt。<code>{{script}}</code> 占位符会被替换为实际剧本内容。',
+        scriptWrapperHint: '控制剧本如何包裹后注入角色 prompt。<code>{{script}}</code> 占位符会被替换为实际剧本内容。<code>{{charMemoryCurrent}}</code> 注入当前角色记忆。
 
         promptTitle: 'Director Prompt 模板',
         promptDrawerTitle: 'Director Prompt 模板',
@@ -376,7 +376,7 @@ const I18N = {
         worldInfoWrapperHint: '<code>{{worldInfo}}</code> is replaced with the currently activated lorebook entry text.',
 
         scriptWrapper: 'Script Injection Wrapper',
-        scriptWrapperHint: 'Controls how the script is wrapped before injection into character prompt. <code>{{script}}</code> is replaced with the actual script content.',
+        scriptWrapperHint: 'Controls how the script is wrapped before injection into character prompt. <code>{{script}}</code> is replaced with the actual script content. <code>{{charMemoryCurrent}}</code> injects current character memories.
 
         promptTitle: 'Director Prompt Template',
         promptDrawerTitle: 'Director Prompt Template',

@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS = {
     // Director script
     llmScriptEnabled: false,
     llmScriptPrompt: '',
-    llmScriptWrapper: '{{characterLore}}[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmScriptWrapper: '{{charMemoryCurrent}}{{characterLore}}[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
     llmHistoryEnabled: true,
     llmScriptContinuity: false,
     llmScriptContinuityMode: 'last',
