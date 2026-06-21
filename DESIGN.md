@@ -399,8 +399,20 @@ SillyTavern-GroupDirector/
 ├── settings.js                # 常量 + 默认设置（单一真相源）
 ├── settings.html              # 设置面板
 ├── style.css
-├── prompt-renderer.js         # 五阶段模板渲染引擎
+├── prompt-renderer.js         # 五阶段模板渲染引擎（含 locals + passthrough）
 ├── provider-registry.js       # Provider 注册表
+│
+├── assets/                    # 可插拔资源
+│   ├── providers/             # 19 个内置 Provider（旧签名，稳定优先）
+│   │   ├── manifest.js        # 模块名清单
+│   │   ├── recent-messages.js # {{recentMessages}}
+│   │   ├── characters.js      # {{characters}}
+│   │   └── ...
+│   └── capabilities/          # 3 个内置 Capability（统一 register(deps)）
+│       ├── manifest.js        # 模块名清单
+│       ├── emotion.js
+│       ├── tts.js
+│       └── image.js
 │
 ├── agents/                    # Agent 层 — 每个 Agent 一个文件
 │   ├── director.js            # Director Agent (context→prompt→call→parse→validate)
@@ -412,30 +424,12 @@ SillyTavern-GroupDirector/
 │   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry + Execution Trace
 │   ├── history-system.js      # 导演账本 CRUD + send_date 锚定裁剪
 │   ├── world-info-system.js   # ST checkWorldInfo() 封装
+│   ├── asset-loader.js        # 动态导入 + 注册 assets/ 模块
+│   ├── user-provider-loader.js # 用户 Provider/Capability 导入（Blob URL + 持久化）
 │   ├── profile-system.js      # 角色档案全流程
 │   ├── world-book-scanner.js  # 世界书扫描 + 重要性计算
 │   ├── chat-summary-system.js # 上下文总结
 │   └── export-import-system.js# 群聊导出/导入
-│
-├── providers/                 # Provider — 每个占位符一个文件（无状态）
-│   ├── recent-messages.js     # {{recentMessages}}
-│   ├── new-recent-messages.js # {{newRecentMessages}}
-│   ├── characters.js          # {{characters}}
-│   ├── character-profiles.js  # {{character_profiles}}
-│   ├── world-info.js          # {{worldInfo}}
-│   ├── history.js             # {{previousPlan}} + {{previousPlans}}
-│   ├── director-ledger.js     # {{directorLedger}} + {{directorHistory}}
-│   ├── world-books.js         # {{worldBooks}}
-│   ├── world-book-importance.js # {{worldBookImportance}}
-│   ├── character-lore.js      # {{characterLore}}
-│   ├── chat-summary.js        # {{chatSummary}}
-│   ├── system-time.js         # {{systemTime}}
-│   ├── random-dice.js         # {{randomDice}}
-│   ├── dice.js                # {{dice}}
-│   ├── moon-phase.js          # {{moonPhase}}
-│   ├── time-of-day.js         # {{timeOfDay}}
-│   ├── knowledge.js           # {{knowledge}}
-│   └── test-provider.js       # {{test}}
 │
 ├── utils/                     # 纯函数工具
 │   ├── custom-api.js          # createCaller (ST/OpenAI/Anthropic)
@@ -619,7 +613,86 @@ await executor.run(policy, CapabilityRegistry.list());
 
 ---
 
-## 12. 失败回退 (v2)
+## 12. 资产管理 & 用户导入
+
+### 12.1 AssetLoader
+
+统一加载 `assets/` 下的扩展模块：
+
+```js
+// 加载 providers
+AssetLoader.providers({ basePath: '../assets/providers', modules }, deps);
+// 加载 capabilities
+AssetLoader.capabilities({ basePath: '../assets/capabilities', modules }, deps);
+```
+
+每个 assets 子目录有 `manifest.js` → 列出模块名 → AssetLoader 动态 `import()` + `register(deps)`。
+
+### 12.2 用户导入系统（User Provider/Capability Import）
+
+**流程**：选 `.js` → FileReader 读源码 → 存 `extension_settings` → Blob URL → `import(url)` → `register(deps)`。
+
+**持久化**：源码保存在 `extension_settings[EXT_KEY]`（userProviders / userCapabilities），`localStorage` 持久化，重启自动恢复。
+
+**依赖注入**：由于 Blob URL 无法解析相对 `import` 路径，核心 API 通过两种方式注入：
+
+```js
+// 方式 1：register(deps) 参数
+export function register({ registerProvider, CapabilityRegistry, log }) { ... }
+
+// 方式 2：全局 window.GroupDirector
+export function register() {
+    const { CapabilityRegistry } = window.GroupDirector;
+}
+```
+
+`window.GroupDirector = { CapabilityRegistry, registerProvider, log }` — 启动时挂载。
+
+**规范**：
+- 新 Provider/Capability 必须导出 `register(deps)`
+- 不得使用相对 `import` 引用插件内部模块
+- 导入后立即生效，刷新后自动恢复
+
+### 12.3 资产管理抽屉
+
+GUI 抽屉 7 `资产管理` — 统一管理用户导入的扩展：
+
+```
+资产管理
+├ 导入 Provider   [导入 .js] [列表/删除/测试]
+└ 导入 Capability [导入 .js] [列表/删除/测试]
+```
+
+- **测试按钮**：Provider → 渲染 `{{placeholder}}` 显示输出；Capability → 显示注册 schema
+- **删除**：从 `extension_settings` 移除，重启后生效
+
+---
+
+## 13. Template Rendering Features
+
+### 13.1 Locals（Per-call 占位符）
+
+```js
+await renderPrompt(template, ctx, {
+    locals: { existingCharacters: charText, batchSize: '3' },
+});
+```
+
+Agent 私有数据注入，不污染全局 Provider 注册表。
+
+### 13.2 Passthrough（ST 原生占位符保护）
+
+```js
+await renderPrompt(template, ctx, {
+    passthrough: ['User','user','char','original','description',...],
+});
+```
+
+ST Handlebars 占位符（`{{User}}`、`{{char}}` 等）在 renderPrompt 中不被清除，留待 ST 自己的管线处理。
+
+---
+
+## 14. 失败回退 (v2)
 
 - Agent 调用失败 → managedCall 重试 `retries` 次 → 复用历史 → 阻塞轮次
 - 用户主动暂停 → `generationStopped` 标记 → 静默切断
@@ -636,18 +709,21 @@ await executor.run(policy, CapabilityRegistry.list());
 | 加新 Agent | `agents/xxx.js`（新建）+ `index.js` register + UI 自动生成 |
 | 改 Agent 行为 | `agents/xxx.js` → pipeline 对应阶段方法 |
 | 加新协议 | `utils/custom-api.js` → 加 `makeXxxCaller()` |
-| 加 Prompt 占位符 | `providers/*.js`（新建）+ `index.js` import/register |
+| 加 Prompt 占位符 | `assets/providers/xxx.js`（新建）+ manifest.js 加一行 + `index.js` import/register |
 | 加业务逻辑模块 | `systems/*.js`（新建）+ `index.js` import/组装 |
 | 加设置项 | `settings.js` + `settings.html` + `ui/sections/*.js` |
 | 加 UI 抽屉 | `settings.html`（inline-drawer）+ `ui/sections/newname.js` + `ui/settings-init.js` import |
 | 加 UI 文字 | `ui/i18n.js`（zh+en）+ `settings.html` data-i18n |
 | 改渲染引擎 | `prompt-renderer.js` |
 | 改 LLM 响应解析 | `utils/json-utils.js` |
+| 加新 Capability | `assets/capabilities/xxx.js`（新建，`export function register(deps)`）+ manifest 加一行 |
+| 加新 Provider（新规范） | `assets/providers/xxx.js`（新建，`export function register(deps)`）+ manifest 加一行 |
+| 用户导入扩展 | GUI 资产管理 → 选 `.js` 文件 → 自动注册 + 持久化 |
 | 改拦截器行为 | `index.js` → `groupDirector_Interceptor` |
 
 ---
 
-## 13. 开发规范
+## 15. 开发规范
 
 ### Agent 规范
 
@@ -658,6 +734,17 @@ await executor.run(policy, CapabilityRegistry.list());
 4. Agent 不碰网络         — 只接收 caller.generate()，协议细节完全隔离。
 5. 新增 Agent 只需三步    — agents/xxx.js → index.js register → 自动 UI。
 6. UI 配置块自动生成      — 从 AgentRegistry.list() 读取，无需手写 HTML。
+```
+
+### 用户导入扩展规范
+
+```
+1. 导出 register(deps) 函数 — deps = { registerProvider, CapabilityRegistry, log }
+2. 不 import 插件内部路径 — Blob URL 无法解析相对路径
+3. 可用 window.GroupDirector 全局替代 import
+4. Provider: deps.registerProvider({ id, render, ... })
+5. Capability: deps.CapabilityRegistry.register({ id, executor, ... })
+6. 导入后立即生效，重启自动恢复（extension_settings 持久化）
 ```
 
 ### Provider vs Locals
