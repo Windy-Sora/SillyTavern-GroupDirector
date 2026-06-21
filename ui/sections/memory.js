@@ -68,12 +68,15 @@ registerSection('memory', function (ctx) {
 
     // Scan existing conversation for all characters
     $c('memory-scan').on('click', async function () {
+        if (!confirm(L('扫描全量对话并提取记忆？将调用 LLM 处理。', 'Scan full conversation for all characters? Will call LLM.'))) return;
         const btn = $(this);
         btn.prop('disabled', true);
         try {
             const results = await memorySystem.generateForAll();
             const total = Object.values(results).filter(r => Array.isArray(r)).reduce((s, r) => s + r.length, 0);
-            toastr.success(L(`扫描完成: ${Object.keys(results).length} 个角色, ${total} 条记忆`, `Scan done: ${Object.keys(results).length} chars, ${total} entries`));
+            const errors = Object.values(results).filter(r => !Array.isArray(r)).length;
+            toastr.success(L(`扫描完成: ${Object.keys(results).length} 个角色, ${total} 条记忆` + (errors ? `, ${errors} 失败` : ''),
+                `Scan done: ${Object.keys(results).length} chars, ${total} entries` + (errors ? `, ${errors} failed` : '')));
             refreshAll();
         } catch (e) {
             toastr.error(L('扫描失败: ' + e.message, 'Scan failed: ' + e.message));
@@ -83,6 +86,8 @@ registerSection('memory', function (ctx) {
     // Generate for selected character
     $c('memory-generate').on('click', async function () {
         const avatar = $charSelect.val();
+        if (!avatar) { toastr.warning(L('请先选择角色', 'Select a character first')); return; }
+        if (!confirm(L('为选中角色提取新记忆？将调用 LLM 处理。', 'Extract new memories for selected character? Will call LLM.'))) return;
         const btn = $(this);
         btn.prop('disabled', true);
         try {
@@ -96,12 +101,15 @@ registerSection('memory', function (ctx) {
 
     // Generate for all
     $c('memory-generate-all').on('click', async function () {
+        if (!confirm(L('为全部角色提取新记忆？将调用 LLM 处理。', 'Extract new memories for all characters? Will call LLM.'))) return;
         const btn = $(this);
         btn.prop('disabled', true);
         try {
             const results = await memorySystem.generateForAll();
             const total = Object.values(results).filter(r => Array.isArray(r)).reduce((s, r) => s + r.length, 0);
-            toastr.success(L(`为 ${Object.keys(results).length} 个角色提取了 ${total} 条记忆`, `Extracted ${total} memories for ${Object.keys(results).length} characters`));
+            const errors = Object.values(results).filter(r => !Array.isArray(r)).length;
+            toastr.success(L(`为 ${Object.keys(results).length} 个角色提取了 ${total} 条记忆` + (errors ? `, ${errors} 失败` : ''),
+                `Extracted ${total} memories for ${Object.keys(results).length} characters` + (errors ? `, ${errors} failed` : '')));
             refreshAll();
         } catch (e) {
             toastr.error(L('提取失败: ' + e.message, 'Extraction failed: ' + e.message));
