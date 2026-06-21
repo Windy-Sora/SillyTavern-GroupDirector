@@ -2,7 +2,11 @@
  * Provider manifest — module names (without path or .js extension).
  * AssetLoader resolves them against the basePath at load time.
  *
- * Add new providers by appending their module name here.
+ * NEW providers MUST export: export function register(deps)
+ *   — deps is an object passed by AssetLoader.providers({ ... }, deps).
+ *
+ * Existing 19 providers (below) use legacy signatures for stability.
+ * Do NOT modify them — they work. New ones follow the standard.
  */
 export const providerModules = [
     'recent-messages',
