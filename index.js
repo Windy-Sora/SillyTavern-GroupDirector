@@ -31,6 +31,7 @@ import { register as registerKnowledge } from './assets/providers/knowledge.js';
 import { register as registerChatSummary } from './assets/providers/chat-summary.js';
 import { register as registerNpcList } from './assets/providers/npc-list.js';
 import { register as registerNewRecentMessages } from './assets/providers/new-recent-messages.js';
+import { register as registerCharMemory } from './assets/providers/char-memory.js';
 import { createHistorySystem } from './systems/history-system.js';
 import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
@@ -1576,6 +1577,22 @@ registerMoonPhase(settings);
 registerTimeOfDay(settings);
 registerKnowledge(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
+registerCharMemory({
+    getMemoriesForAll: () => {
+        const result = {};
+        const stats = memorySystem.getStats();
+        for (const [av] of Object.entries(stats)) {
+            const mems = memorySystem.listMemories(av);
+            if (mems.length) result[av] = mems;
+        }
+        return result;
+    },
+    getMemoriesForChar: (name) => {
+        const char = characters.find(c => c.name === name);
+        return char ? memorySystem.listMemories(char.avatar) : [];
+    },
+    log,
+});
 registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
 registerNpcList(() => npcSystem.getNpcs());
 
