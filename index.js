@@ -318,6 +318,15 @@ const userProviderLoader = createUserProviderLoader({
     extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
 });
 
+// ─── Expose core modules globally for user-imported .js files ───────
+// User modules loaded via Blob URL can't resolve relative imports.
+// These globals let user code use: const { CapabilityRegistry } = window.GroupDirector;
+window.GroupDirector = {
+    CapabilityRegistry,
+    registerProvider: (p) => registerProvider(p),
+    log,
+};
+
 // ─── Register built-in capabilities via AssetLoader ─────────────────
 import { capabilityModules } from './assets/capabilities/manifest.js';
 AssetLoader.capabilities({ basePath: '../assets/capabilities', modules: capabilityModules }, { log });
@@ -1571,8 +1580,10 @@ jQuery(async () => {
         postSpeechSystem,
         userProviderLoader,
     });
-    // Restore user-imported providers and capabilities from persistent storage
-    userProviderLoader.restoreAll('provider', { log });
-    userProviderLoader.restoreAll('capability', { log });
+    // Restore user-imported providers and capabilities from persistent storage.
+    // Inject window.GroupDirector so user modules don't need relative imports.
+    const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
+    userProviderLoader.restoreAll('provider', userDeps);
+    userProviderLoader.restoreAll('capability', userDeps);
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });
