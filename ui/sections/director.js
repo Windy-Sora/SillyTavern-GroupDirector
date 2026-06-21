@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { toggleCharDescLength } from '../i18n.js';
+import { DEFAULT_SETTINGS } from '../../settings.js';
 
 registerSection('director', function (ctx) {
     const { settings, $c, saveSettings, EXT_KEY, chat_metadata, saveChatConditional, getDefaultLlmPrompt } = ctx;
@@ -34,6 +35,11 @@ registerSection('director', function (ctx) {
         saveSettings();
     });
     $c('llm-script-wrapper').on('input', () => { settings.llmScriptWrapper = $c('llm-script-wrapper').val(); saveSettings(); });
+    $c('llm-script-wrapper-reset').on('click', () => {
+        settings.llmScriptWrapper = DEFAULT_SETTINGS.llmScriptWrapper;
+        $c('llm-script-wrapper').val(DEFAULT_SETTINGS.llmScriptWrapper);
+        saveSettings();
+    });
 
     $c('llm-history-enabled').prop('checked', settings.llmHistoryEnabled);
     $c('llm-history-enabled').on('input', () => { settings.llmHistoryEnabled = !!$c('llm-history-enabled').prop('checked'); saveSettings(); });
