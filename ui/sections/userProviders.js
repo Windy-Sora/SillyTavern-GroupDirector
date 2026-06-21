@@ -12,8 +12,14 @@ registerSection('userProviders', function (ctx) {
 
     renderList('provider', $pList);
 
+    const deps = {
+        log: ctx.log || console.log,
+        registerProvider: window.GroupDirector?.registerProvider,
+        CapabilityRegistry: window.GroupDirector?.CapabilityRegistry,
+    };
+
     $('#gd-user-provider-import').on('click', () => { $pFile.trigger('click'); });
-    $pFile.on('change', handleImport('provider', $pFile, '#gd-user-provider-import', $pList, { log: ctx.log }));
+    $pFile.on('change', handleImport('provider', $pFile, '#gd-user-provider-import', $pList, deps));
 
     // ── Capability import ──
     const $cList = $('#gd-user-capability-list');
@@ -22,7 +28,7 @@ registerSection('userProviders', function (ctx) {
     renderList('capability', $cList);
 
     $('#gd-user-capability-import').on('click', () => { $cFile.trigger('click'); });
-    $cFile.on('change', handleImport('capability', $cFile, '#gd-user-capability-import', $cList, { log: ctx.log, CapabilityRegistry }));
+    $cFile.on('change', handleImport('capability', $cFile, '#gd-user-capability-import', $cList, deps));
 
     // ── Helpers ──
     function handleImport(type, $file, btnId, $list, deps) {
