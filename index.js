@@ -1581,15 +1581,26 @@ registerCharMemory({
     getMemoriesForAll: () => {
         const result = {};
         const stats = memorySystem.getStats();
-        for (const [av] of Object.entries(stats)) {
+        for (const [av, s] of Object.entries(stats)) {
             const mems = memorySystem.listMemories(av);
-            if (mems.length) result[av] = mems;
+            if (mems.length) result[s.name || av] = mems;
         }
         return result;
     },
     getMemoriesForChar: (name) => {
         const char = characters.find(c => c.name === name);
-        return char ? memorySystem.listMemories(char.avatar) : [];
+        let avatar = char?.avatar;
+        // Try exact avatar match first
+        if (avatar) {
+            const mems = memorySystem.listMemories(avatar);
+            if (mems.length > 0) return mems;
+        }
+        // Fallback: scan all store keys matching this character name
+        const stats = memorySystem.getStats();
+        for (const [av, s] of Object.entries(stats)) {
+            if (s.name === name) return memorySystem.listMemories(av);
+        }
+        return [];
     },
     log,
 });
