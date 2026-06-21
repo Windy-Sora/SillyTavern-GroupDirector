@@ -17,6 +17,7 @@ const I18N = {
         drawerProfiles: '角色档案与数据',
         drawerContextLedger: '上下文与账本',
         drawerAgentsTools: 'Agent 与工具',
+        drawerAssetManager: '资产管理',
         drawerMultimodal: '多模态与更多拓展',
 
         langLabel: '语言 / Language',
@@ -225,6 +226,7 @@ const I18N = {
         drawerProfiles: 'Profiles & Data',
         drawerContextLedger: 'Context & Ledger',
         drawerAgentsTools: 'Agents & Tools',
+        drawerAssetManager: 'Asset Manager',
         drawerMultimodal: 'Multimodal & Extensions',
 
         langLabel: '语言 / Language',
