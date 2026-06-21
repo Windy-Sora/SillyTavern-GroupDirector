@@ -1,7 +1,7 @@
 import { registerSection } from './registry.js';
 
 registerSection('userProviders', function (ctx) {
-    const { settings, toastr, userProviderLoader, CapabilityRegistry } = ctx;
+    const { settings, toastr, userProviderLoader, CapabilityRegistry, renderPrompt, getProviders } = ctx;
     if (!userProviderLoader) return;
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
@@ -59,10 +59,46 @@ registerSection('userProviders', function (ctx) {
             html += `
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--SmartThemeBorderColor);">
                     <span><b>${esc(p.name)}</b> <span style="font-size:0.8em;color:var(--grey70a);">${time}</span></span>
-                    <span class="menu_button menu_button_icon gd-user-asset-delete" data-type="${type}" data-name="${esc(p.name)}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+                    <div style="display:flex;gap:4px;">
+                        <span class="menu_button menu_button_icon gd-user-asset-test" data-type="${type}" data-name="${esc(p.name)}" style="font-size:0.75em;"><i class="fa-solid fa-flask"></i> ${L('测试', 'Test')}</span>
+                        <span class="menu_button menu_button_icon gd-user-asset-delete" data-type="${type}" data-name="${esc(p.name)}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+                    </div>
                 </div>`;
         });
         $list.html(html);
+
+        $list.find('.gd-user-asset-test').on('click', async function () {
+            const name = $(this).data('name');
+            const t = $(this).data('type');
+            const btn = $(this);
+            btn.prop('disabled', true);
+
+            try {
+                if (t === 'provider' && renderPrompt) {
+                    const id = name;
+                    const result = await renderPrompt(`{{${id}}}`, {});
+                    alert(L(
+                        `Provider "${id}" 渲染结果:\n\n${result || '(空)'}`,
+                        `Provider "${id}" rendered:\n\n${result || '(empty)'}`
+                    ));
+                } else if (t === 'capability' && CapabilityRegistry) {
+                    const cap = CapabilityRegistry.get(name);
+                    if (cap) {
+                        const info = `id: ${cap.id}\nenabled: ${cap.enabled}\ndescription: ${cap.description || '—'}\nschema: ${JSON.stringify(cap.schema, null, 2)}`;
+                        alert(L(
+                            `Capability "${name}" 信息:\n\n${info}`,
+                            `Capability "${name}" info:\n\n${info}`
+                        ));
+                    } else {
+                        toastr.warning(L(`Capability "${name}" 未找到`, `Capability "${name}" not found`));
+                    }
+                }
+            } catch (e) {
+                toastr.error(L('测试失败: ' + e.message, 'Test failed: ' + e.message));
+            } finally {
+                btn.prop('disabled', false);
+            }
+        });
 
         $list.find('.gd-user-asset-delete').on('click', async function () {
             const name = $(this).data('name');
