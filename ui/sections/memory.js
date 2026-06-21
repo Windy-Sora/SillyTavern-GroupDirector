@@ -66,6 +66,9 @@ registerSection('memory', function (ctx) {
         refreshAll();
     });
 
+    // Refresh list from storage
+    $c('memory-refresh').on('click', () => refreshAll());
+
     // Scan existing conversation for all characters
     $c('memory-scan').on('click', async function () {
         if (!confirm(L('扫描全量对话并提取记忆？将调用 LLM 处理。', 'Scan full conversation for all characters? Will call LLM.'))) return;
