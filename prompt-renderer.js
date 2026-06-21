@@ -1,7 +1,7 @@
 import { providers } from './provider-registry.js';
 import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
 import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils/counter.js';
-import { unescapeKnowledge } from './providers/knowledge.js';
+import { unescapeKnowledge } from './assets/providers/knowledge.js';
 
 /**
  * Render a template by executing all registered providers once,
