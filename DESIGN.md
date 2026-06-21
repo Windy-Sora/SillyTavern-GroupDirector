@@ -613,9 +613,69 @@ await executor.run(policy, CapabilityRegistry.list());
 
 ---
 
-## 12. 资产管理 & 用户导入
+## 12. 角色记忆系统（Character Memory）
 
-### 12.1 AssetLoader
+### 12.1 架构
+
+每个角色维护一个动态记忆列表，手动触发提取。融合 Profile（结构管理）和 Summary（对话扫描）：
+
+```
+角色发言记录 → 手动点击"扫描/提取"
+                    ↓
+              Memory Agent (per-character)
+              ┌─ context:  已有记忆 + 角色信息 + 对话上下文
+              ├─ prompt:   用户自定义模板（支持 Provider 渲染）
+              ├─ call:     LLM 提取新记忆
+              ├─ parse:    JSON → 结构化条目
+              └─ validate: 去重（event 文本匹配）
+                    ↓
+              chat_metadata.charMemories[avatar] += [{ event, mood, round, timestamp }]
+```
+
+### 12.2 和 Profile / Summary 的关系
+
+| | Profile | Summary | Memory |
+|------|---------|---------|--------|
+| 粒度 | 角色 | 全局 | 角色 |
+| 触发 | 手动 | 手动 | 手动 |
+| Schema | 自定义 JSON | 无 | 自定义 JSON |
+| 渲染 | `{{character_profiles}}` | `{{chatSummary}}` | `{{charMemory}}` + `{{charMemoryCurrent}}` |
+| 去重 | 无 | 无 | event 文本匹配 |
+| 压缩 | 无 | 覆盖/追加 | 旧记忆合并摘要 + 保留最近 N 条 |
+
+### 12.3 Provider
+
+| Provider | 内容 | 用途 |
+|----------|------|------|
+| `{{charMemory}}` | 所有角色记忆 | Director Prompt 全局视角 |
+| `{{charMemoryCurrent}}` | 当前发言角色记忆 | Script Wrapper 角色视角 |
+
+**多级匹配**：avatar 精确 → name 精确 → 子串模糊 → 自动迁移旧记忆到新 avatar key。角色卡替换/重命名时无缝过渡。
+
+### 12.4 默认 Schema
+
+```json
+{
+  "event": "主人夸了咖啡，脸红了",
+  "mood": "happy"
+}
+```
+
+用户可自定义 JSON Schema + Render Template + Prompt，和 Profile 完全对称。
+
+### 12.5 GUI 功能
+
+- 三个按钮：刷新、扫描已有对话、提取全部角色、检测失联、重置全部
+- 每个角色一张展开卡片：记忆计数 + 展开列表 + 编辑/删除单条
+- 角色级操作：提取、压缩、回退
+- 压缩：旧记忆合并为摘要条目，保留最近 N 条原文
+- 失联检测：MESSAGE_DELETED 后标记漂移记忆
+
+---
+
+## 13. 资产管理 & 用户导入
+
+### 13.1 AssetLoader
 
 统一加载 `assets/` 下的扩展模块：
 
@@ -628,7 +688,7 @@ AssetLoader.capabilities({ basePath: '../assets/capabilities', modules }, deps);
 
 每个 assets 子目录有 `manifest.js` → 列出模块名 → AssetLoader 动态 `import()` + `register(deps)`。
 
-### 12.2 用户导入系统（User Provider/Capability Import）
+### 13.2 用户导入系统（User Provider/Capability Import）
 
 **流程**：选 `.js` → FileReader 读源码 → 存 `extension_settings` → Blob URL → `import(url)` → `register(deps)`。
 
@@ -653,7 +713,7 @@ export function register() {
 - 不得使用相对 `import` 引用插件内部模块
 - 导入后立即生效，刷新后自动恢复
 
-### 12.3 资产管理抽屉
+### 13.3 资产管理抽屉
 
 GUI 抽屉 7 `资产管理` — 统一管理用户导入的扩展：
 
@@ -668,9 +728,9 @@ GUI 抽屉 7 `资产管理` — 统一管理用户导入的扩展：
 
 ---
 
-## 13. Template Rendering Features
+## 14. Template Rendering Features
 
-### 13.1 Locals（Per-call 占位符）
+### 14.1 Locals（Per-call 占位符）
 
 ```js
 await renderPrompt(template, ctx, {
@@ -680,7 +740,7 @@ await renderPrompt(template, ctx, {
 
 Agent 私有数据注入，不污染全局 Provider 注册表。
 
-### 13.2 Passthrough（ST 原生占位符保护）
+### 14.2 Passthrough（ST 原生占位符保护）
 
 ```js
 await renderPrompt(template, ctx, {
