@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 // Lunar cycle in days
 const SYNODIC_MONTH = 29.53058867;

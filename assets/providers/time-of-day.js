@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 // Month-based seasons (Northern Hemisphere)
 const SEASONS_ZH = ['冬','春','夏','秋'];

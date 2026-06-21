@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 /**
  * Provider that exposes the latest director decision as structured data.

@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 export function register(settings) {
     registerProvider({

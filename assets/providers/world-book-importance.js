@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 /**
  * {{worldBookImportance}} — per-entry importance scores (0.000–1.000).

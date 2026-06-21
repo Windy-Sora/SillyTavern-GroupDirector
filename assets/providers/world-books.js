@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 /**
  * {{worldBooks}} — full inventory of all world books and their entries.

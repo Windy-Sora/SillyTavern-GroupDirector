@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 // Echo test provider — returns fixed structured data for template syntax testing.
 // {{test}}                  → "Hello from test provider"

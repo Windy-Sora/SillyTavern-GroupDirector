@@ -1,4 +1,4 @@
-import { registerProvider } from '../provider-registry.js';
+import { registerProvider } from '../../provider-registry.js';
 
 /**
  * {{characterLore}} — injects the director's loreAssignments as keywords
