@@ -3,15 +3,13 @@ import { DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER } f
 
 registerSection('memory', function (ctx) {
     const { settings, $c, saveSettings, getCurrentGroup, toastr, memorySystem } = ctx;
-    const getCharacters = () => window.characters || [];
     if (!memorySystem) return;
+    const getCharacters = () => window.characters || [];
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
 
     const $section = $('#gd-memory-section');
-    const $charSelect = $c('memory-char-select');
-    const $stats = $c('memory-stats');
-    const $list = $c('memory-list');
+    const $list = $('#gd-memory-list');
 
     // ── Bind values ──
     $c('memory-enabled').prop('checked', settings.memoryEnabled ?? false);
@@ -26,7 +24,7 @@ registerSection('memory', function (ctx) {
     $c('memory-enabled').on('change', function () {
         settings.memoryEnabled = !!$(this).prop('checked');
         $section.toggle(settings.memoryEnabled);
-        if (settings.memoryEnabled) refreshAll();
+        if (settings.memoryEnabled) renderMemoryList();
         saveSettings();
     });
     $c('memory-token-budget').on('input', function () { settings.memoryTokenBudget = Math.max(100, parseInt($(this).val()) || 2000); saveSettings(); });
@@ -34,170 +32,127 @@ registerSection('memory', function (ctx) {
     $c('memory-json-schema').on('input', function () { settings.memoryJsonSchema = $(this).val(); saveSettings(); });
     $c('memory-render-template').on('input', function () { settings.memoryRenderTemplate = $(this).val(); saveSettings(); });
     $c('memory-keep-recent').on('input', function () { settings.memoryKeepRecent = Math.max(1, parseInt($(this).val()) || 5); saveSettings(); });
-    $charSelect.on('change', () => renderMemoryList());
 
-    // Reset buttons
     $c('memory-prompt-reset').on('click', () => { settings.memoryPrompt = ''; $c('memory-prompt').val(DEFAULT_MEMORY_PROMPT); saveSettings(); });
     $c('memory-schema-reset').on('click', () => { settings.memoryJsonSchema = ''; $c('memory-json-schema').val(DEFAULT_MEMORY_SCHEMA); saveSettings(); });
     $c('memory-render-reset').on('click', () => { settings.memoryRenderTemplate = ''; $c('memory-render-template').val(DEFAULT_MEMORY_RENDER); saveSettings(); });
 
-    // Scan orphans
+    // ── Actions ──
+    $c('memory-refresh').on('click', () => renderMemoryList());
     $c('memory-detect-orphans').on('click', function () {
         const orphans = memorySystem.detectOrphans();
-        if (!orphans.length) {
-            toastr.info(L('所有记忆完好', 'All memories intact'));
-            return;
-        }
-        const msg = orphans.map(o => L(`${o.name}: ${o.staleCount} 条失联`, `${o.name}: ${o.staleCount} orphaned`)).join('\n');
-        toastr.warning(L('发现失联记忆:\n' + msg, 'Orphan memories detected:\n' + msg));
+        if (!orphans.length) { toastr.info(L('所有记忆完好', 'All memories intact')); return; }
+        toastr.warning(orphans.map(o => `${o.name}: ${o.staleCount}`).join(', ') + L(' 条失联', ' orphaned'));
     });
-
-    // Compress
-    $c('memory-compress').on('click', async function () {
-        const avatar = $charSelect.val();
-        if (!avatar) { toastr.warning(L('请先选择角色', 'Select a character first')); return; }
-        if (!confirm(L('压缩旧记忆？最近 N 条保留，其余合并为摘要。', 'Compress old memories? Recent entries kept, rest merged.'))) return;
-        const result = await memorySystem.compressOldMemories(avatar, settings.memoryKeepRecent ?? 5);
-        if (result) {
-            toastr.success(L(`已压缩: ${result.removed} → ${result.compressed} 摘要 + ${result.kept} 保留`, `Compressed: ${result.removed} → ${result.compressed} summary + ${result.kept} kept`));
-        } else {
-            toastr.info(L('无需压缩', 'No compression needed'));
-        }
-        refreshAll();
-    });
-
-    // Refresh list from storage
-    $c('memory-refresh').on('click', () => refreshAll());
-
-    // Scan existing conversation for all characters
-    $c('memory-scan').on('click', async function () {
-        if (!confirm(L('扫描全量对话并提取记忆？将调用 LLM 处理。', 'Scan full conversation for all characters? Will call LLM.'))) return;
-        const btn = $(this);
-        btn.prop('disabled', true);
-        try {
-            const results = await memorySystem.generateForAll();
-            const total = Object.values(results).filter(r => Array.isArray(r)).reduce((s, r) => s + r.length, 0);
-            const errors = Object.values(results).filter(r => !Array.isArray(r)).length;
-            toastr.success(L(`扫描完成: ${Object.keys(results).length} 个角色, ${total} 条记忆` + (errors ? `, ${errors} 失败` : ''),
-                `Scan done: ${Object.keys(results).length} chars, ${total} entries` + (errors ? `, ${errors} failed` : '')));
-            refreshAll();
-        } catch (e) {
-            toastr.error(L('扫描失败: ' + e.message, 'Scan failed: ' + e.message));
-        } finally { btn.prop('disabled', false); }
-    });
-
-    // Generate for selected character
-    $c('memory-generate').on('click', async function () {
-        const avatar = $charSelect.val();
-        if (!avatar) { toastr.warning(L('请先选择角色', 'Select a character first')); return; }
-        if (!confirm(L('为选中角色提取新记忆？将调用 LLM 处理。', 'Extract new memories for selected character? Will call LLM.'))) return;
-        const btn = $(this);
-        btn.prop('disabled', true);
-        try {
-            const result = await memorySystem.generateForCharacter(avatar);
-            toastr.success(L(`提取了 ${result.length} 条记忆`, `Extracted ${result.length} memories`));
-            refreshAll();
-        } catch (e) {
-            toastr.error(L('提取失败: ' + e.message, 'Extraction failed: ' + e.message));
-        } finally { btn.prop('disabled', false); }
-    });
-
-    // Generate for all
-    $c('memory-generate-all').on('click', async function () {
-        if (!confirm(L('为全部角色提取新记忆？将调用 LLM 处理。', 'Extract new memories for all characters? Will call LLM.'))) return;
-        const btn = $(this);
-        btn.prop('disabled', true);
-        try {
-            const results = await memorySystem.generateForAll();
-            const total = Object.values(results).filter(r => Array.isArray(r)).reduce((s, r) => s + r.length, 0);
-            const errors = Object.values(results).filter(r => !Array.isArray(r)).length;
-            toastr.success(L(`为 ${Object.keys(results).length} 个角色提取了 ${total} 条记忆` + (errors ? `, ${errors} 失败` : ''),
-                `Extracted ${total} memories for ${Object.keys(results).length} characters` + (errors ? `, ${errors} failed` : '')));
-            refreshAll();
-        } catch (e) {
-            toastr.error(L('提取失败: ' + e.message, 'Extraction failed: ' + e.message));
-        } finally { btn.prop('disabled', false); }
-    });
-
-    // Revert
-    $c('memory-revert').on('click', async function () {
-        const avatar = $charSelect.val();
-        if (!avatar) { toastr.warning(L('请先选择角色', 'Select a character first')); return; }
-        if (!confirm(L('回退最近一次提取？', 'Revert last extraction?'))) return;
-        const removed = await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
-        toastr.info(L(`已回退 ${removed.length} 条记忆`, `Reverted ${removed.length} entries`));
-        refreshAll();
-    });
-
-    // Reset all
-    $c('memory-reset').on('click', async function () {
-        if (!confirm(L('重置所有角色的全部记忆？不可撤销！', 'Reset ALL memories for ALL characters? Undoable!'))) return;
+    $c('memory-reset').on('click', async () => {
+        if (!confirm(L('重置所有角色的全部记忆？', 'Reset ALL memories?'))) return;
         await memorySystem.resetAll();
-        toastr.success(L('已重置', 'Reset complete'));
-        refreshAll();
+        renderMemoryList();
     });
 
-    // ── Render helpers ──
-    function refreshAll() {
-        refreshCharSelect();
-        renderMemoryList();
-    }
-
-    function refreshCharSelect() {
+    // ── Render ──
+    function renderMemoryList() {
         const group = getCurrentGroup();
         const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) ?? [];
-        const stats = memorySystem.getStats();
-
-        let html = '<option value="">' + L('全部角色', 'All characters') + '</option>';
-        for (const avatar of members) {
-            const c = getCharacters().find(ch => ch.avatar === avatar);
-            const name = c?.name || avatar;
-            const count = stats[avatar]?.count || 0;
-            html += `<option value="${esc(avatar)}">${esc(name)} (${count} ${L('条', 'entries')})</option>`;
+        if (!members.length) {
+            $list.html(`<small style="color:var(--grey70a);">${L('请先在群聊中打开此设置面板', 'Open from a group chat')}</small>`);
+            return;
         }
-        $charSelect.html(html);
 
-        const total = memorySystem.totalCount();
-        $stats.text(L(`共 ${total} 条记忆`, `${total} total entries`));
-    }
+        let html = '';
+        const stats = memorySystem.getStats();
+        let total = 0;
 
-    function renderMemoryList() {
-        const avatar = $charSelect.val();
-        if (!avatar) {
-            // Show all
-            const stats = memorySystem.getStats();
-            let html = '';
-            for (const [av, s] of Object.entries(stats)) {
-                const mems = memorySystem.listMemories(av);
-                if (!mems.length) continue;
-                html += `<div style="margin-top:4px;"><b>${esc(s.name)} (${s.count})</b></div>`;
-                // Show last 10, newest first, with correct original indices
-                const recent = mems.slice(-10);
-                for (let ri = recent.length - 1; ri >= 0; ri--) {
-                    const idx = mems.length - recent.length + ri;
-                    html += renderEntry(av, idx, recent[ri]);
+        for (const avatar of members) {
+            const char = getCharacters().find(c => c.avatar === avatar);
+            const name = char?.name || avatar;
+            const mems = memorySystem.listMemories(avatar);
+            const count = mems.length;
+            total += count;
+
+            html += `<div style="margin-top:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" class="gd-mem-char-toggle" data-av="${escAttr(avatar)}">
+                    <span><b>${esc(name)}</b> <span style="font-size:0.85em;color:var(--grey70a);">${count} ${L('条记忆', 'memories')}</span></span>
+                    <span style="display:flex;gap:4px;">
+                        <span class="menu_button menu_button_icon gd-mem-gen-btn" data-av="${escAttr(avatar)}" style="font-size:0.8em;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${L('提取', 'Extract')}</span>
+                        <span class="menu_button menu_button_icon gd-mem-compress-btn" data-av="${escAttr(avatar)}" style="font-size:0.8em;"><i class="fa-solid fa-compress"></i> ${L('压缩', 'Compress')}</span>
+                        <span class="menu_button menu_button_icon gd-mem-revert-btn" data-av="${escAttr(avatar)}" style="font-size:0.8em;"><i class="fa-solid fa-undo"></i></span>
+                        <i class="fa-solid fa-chevron-down gd-mem-chevron" data-av="${escAttr(avatar)}"></i>
+                    </span>
+                </div>
+                <div class="gd-mem-entries" data-av="${escAttr(avatar)}" style="display:none;margin-top:4px;">`;
+
+            if (!count) {
+                html += `<small style="color:var(--grey70a);">${L('暂无记忆', 'No memories yet')}</small>`;
+            } else {
+                for (let ri = mems.length - 1; ri >= 0; ri--) {
+                    const m = mems[ri];
+                    html += `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--SmartThemeBorderColor);font-size:0.85em;">
+                        <span style="flex:1;">${m.compressed ? '[压缩] ' : ''}${esc(m.event)} <span style="color:var(--grey70a);">[${esc(m.mood)}]</span></span>
+                        <span style="white-space:nowrap;display:flex;gap:2px;">
+                            <span class="menu_button menu_button_icon gd-mem-edit-btn" data-av="${escAttr(avatar)}" data-ix="${ri}" style="font-size:0.7em;"><i class="fa-solid fa-pencil"></i></span>
+                            <span class="menu_button menu_button_icon gd-mem-del-btn" data-av="${escAttr(avatar)}" data-ix="${ri}" style="font-size:0.7em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+                        </span>
+                    </div>`;
                 }
             }
-            if (!html) html = `<small style="color:var(--grey70a);">${L('暂无记忆，点击生成', 'No memories yet')}</small>`;
-            $list.html(html);
-        } else {
-            const mems = memorySystem.listMemories(avatar);
-            if (!mems.length) {
-                $list.html(`<small style="color:var(--grey70a);">${L('暂无记忆，点击生成', 'No memories yet')}</small>`);
-                return;
-            }
-            // Show newest first, correct original indices
-            let html = '';
-            for (let ri = mems.length - 1; ri >= 0; ri--) {
-                html += renderEntry(avatar, ri, mems[ri]);
-            }
-            $list.html(html);
+
+            html += `</div></div>`;
         }
 
-        // Edit events
+        // Summary line
+        const summary = L(`${members.length} 个角色, 共 ${total} 条记忆`, `${members.length} chars, ${total} total entries`);
+        $list.html(`<small style="color:var(--grey70a);margin-bottom:4px;">${summary}</small>` + html);
+
+        // Toggle expand
+        $list.find('.gd-mem-char-toggle').off('click').on('click', function () {
+            const av = $(this).data('av');
+            const el = $list.find(`.gd-mem-entries[data-av="${av}"]`);
+            const chevron = $list.find(`.gd-mem-chevron[data-av="${av}"]`);
+            el.toggle();
+            chevron.toggleClass('fa-chevron-down fa-chevron-up');
+        });
+
+        // Extract for character
+        $list.find('.gd-mem-gen-btn').off('click').on('click', async function () {
+            const avatar = $(this).data('av');
+            if (!confirm(L('为此角色提取新记忆？将调用 LLM。', 'Extract new memories? Will call LLM.'))) return;
+            const btn = $(this); btn.prop('disabled', true);
+            try {
+                const result = await memorySystem.generateForCharacter(avatar);
+                toastr.success(L(`提取了 ${result.length} 条记忆`, `Extracted ${result.length} entries`));
+                renderMemoryList();
+            } catch (e) { toastr.error(e.message); }
+            finally { btn.prop('disabled', false); }
+        });
+
+        // Compress for character
+        $list.find('.gd-mem-compress-btn').off('click').on('click', async function () {
+            const avatar = $(this).data('av');
+            if (!confirm(L('压缩该角色旧记忆？', 'Compress old memories?'))) return;
+            const btn = $(this); btn.prop('disabled', true);
+            try {
+                const result = await memorySystem.compressOldMemories(avatar, settings.memoryKeepRecent ?? 5);
+                if (result) {
+                    toastr.success(L(`已压缩: ${result.removed} → ${result.compressed} 摘要 + ${result.kept} 保留`, `Compressed`));
+                } else { toastr.info(L('无需压缩', 'Nothing to compress')); }
+                renderMemoryList();
+            } catch (e) { toastr.error(e.message); }
+            finally { btn.prop('disabled', false); }
+        });
+
+        // Revert for character
+        $list.find('.gd-mem-revert-btn').off('click').on('click', async function () {
+            const avatar = $(this).data('av');
+            if (!confirm(L('回退最近一次提取？', 'Revert last extraction?'))) return;
+            await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
+            renderMemoryList();
+        });
+
+        // Edit
         $list.find('.gd-mem-edit-btn').off('click').on('click', function () {
-            const avatar = $(this).attr('data-avatar');
-            const idx = parseInt($(this).attr('data-idx'));
+            const avatar = $(this).attr('data-av');
+            const idx = parseInt($(this).attr('data-ix'));
             if (isNaN(idx)) return;
             const mems = memorySystem.listMemories(avatar);
             const m = mems[idx];
@@ -209,10 +164,10 @@ registerSection('memory', function (ctx) {
             $('#gd-mem-edit-panel').show();
         });
 
-        // Delete events
+        // Delete
         $list.find('.gd-mem-del-btn').off('click').on('click', async function () {
-            const avatar = $(this).attr('data-avatar');
-            const idx = parseInt($(this).attr('data-idx'));
+            const avatar = $(this).attr('data-av');
+            const idx = parseInt($(this).attr('data-ix'));
             if (isNaN(idx)) return;
             if (!confirm(L('删除这条记忆？', 'Delete this memory?'))) return;
             await memorySystem.deleteEntry(avatar, idx);
@@ -220,17 +175,7 @@ registerSection('memory', function (ctx) {
         });
     }
 
-    function renderEntry(avatar, idx, m) {
-        return `<div style="font-size:0.82em;padding:2px 0;border-bottom:1px solid var(--SmartThemeBorderColor);display:flex;justify-content:space-between;align-items:flex-start;">
-            <span>${esc(m.compressed ? '[压缩] ' : '')}${esc(m.event)} <span style="color:var(--grey70a);">[${esc(m.mood)}]</span></span>
-            <span style="white-space:nowrap;display:flex;gap:2px;">
-                <span class="menu_button menu_button_icon gd-mem-edit-btn" data-avatar="${avatar.replace(/"/g,'&quot;')}" data-idx="${idx}" style="font-size:0.75em;"><i class="fa-solid fa-pencil"></i></span>
-                <span class="menu_button menu_button_icon gd-mem-del-btn" data-avatar="${avatar.replace(/"/g,'&quot;')}" data-idx="${idx}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
-            </span>
-        </div>`;
-    }
-
-    // Edit panel events
+    // Edit panel
     $c('mem-edit-save').on('click', async function () {
         const avatar = $c('mem-edit-avatar').val();
         const idx = parseInt($c('mem-edit-idx').val());
@@ -248,6 +193,10 @@ registerSection('memory', function (ctx) {
         div.textContent = String(s);
         return div.innerHTML;
     }
+    function escAttr(s) {
+        if (!s) return '';
+        return String(s).replace(/"/g, '&quot;').replace(/\\/g, '\\\\');
+    }
 
-    refreshAll();
+    if (settings.memoryEnabled) renderMemoryList();
 });

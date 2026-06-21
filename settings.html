@@ -397,29 +397,16 @@
 
                 <hr>
                 <h4 data-i18n="memoryManagementTitle">记忆管理</h4>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
                     <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="memoryRefresh">刷新列表</span></span>
                     <span class="menu_button menu_button_icon" id="gd-memory-scan"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="memoryScan">扫描已有对话</span></span>
-                    <span class="menu_button menu_button_icon" id="gd-memory-generate"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="memoryGenerate">提取选中角色</span></span>
                     <span class="menu_button menu_button_icon" id="gd-memory-generate-all"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="memoryGenerateAll">提取全部角色</span></span>
-                    <span class="menu_button menu_button_icon" id="gd-memory-compress"><i class="fa-solid fa-compress"></i> <span data-i18n="memoryCompress">压缩旧记忆</span></span>
-                </div>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
-                    <span class="menu_button menu_button_icon" id="gd-memory-revert"><i class="fa-solid fa-undo"></i> <span data-i18n="memoryRevert">回退</span></span>
-                    <span class="menu_button menu_button_icon" id="gd-memory-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="memoryReset">重置全部</span></span>
                     <span class="menu_button menu_button_icon" id="gd-memory-detect-orphans"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="memoryDetectOrphans">检测失联</span></span>
+                    <span class="menu_button menu_button_icon" id="gd-memory-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="memoryReset">重置全部</span></span>
                 </div>
-
-                <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent" style="margin-top:6px;">压缩时保留最近条数</label>
+                <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent" style="margin-top:2px;">压缩时保留最近条数</label>
                 <input type="number" id="gd-memory-keep-recent" class="text_pole" min="1" max="100" step="1" style="width:80px;">
-
-                <label for="gd-memory-char-select" data-i18n="memoryCharSelect" style="margin-top:6px;">角色选择</label>
-                <select id="gd-memory-char-select" class="text_pole" style="width:auto;"></select>
-
-                <div style="margin-top:6px;">
-                    <span id="gd-memory-stats" style="font-size:0.9em;color:var(--grey70a);"></span>
-                </div>
-                <div id="gd-memory-list" style="margin-top:4px;max-height:300px;overflow-y:auto;"></div>
+                <div id="gd-memory-list" style="margin-top:6px;max-height:400px;overflow-y:auto;"></div>
 
                 <!-- Inline edit panel -->
                 <div id="gd-mem-edit-panel" style="display:none;margin-top:6px;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
