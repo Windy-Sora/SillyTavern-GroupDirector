@@ -4,7 +4,12 @@
  * Separate from AgentRegistry. Each capability describes WHAT it can do,
  * not HOW. The Execution Engine maps intents → capabilities → executors.
  *
- * Capability = { id, displayName, description, schema, executor, constraints }
+ * Capability = { id, displayName, description, schema, executor, constraints, scope }
+ *
+ * Provider integration:
+ *   registerCapabilityProviders({ registerProvider }) creates two providers:
+ *   - {{capabilityListMessage}} — scope 'message' or 'both'
+ *   - {{capabilityListRound}}   — scope 'round' or 'both'
  */
 
 const capabilities = new Map();
@@ -70,3 +75,66 @@ export const CapabilityRegistry = {
     /** Last-used timestamps for cooldown tracking. */
     _cooldowns: {},
 };
+
+// ─── Provider Integration ────────────────────────────────────────────
+
+/**
+ * Register two capability-list providers for PostSpeech templates.
+ *
+ *   {{capabilityListMessage}} → capabilities active in per-message mode
+ *   {{capabilityListRound}}   → capabilities active in per-round mode
+ *
+ * Call this once at startup, passing the plugin's registerProvider function.
+ */
+export function registerCapabilityProviders({ registerProvider }) {
+    const buildList = (mode) => {
+        const caps = CapabilityRegistry.listForMode(mode);
+        if (!caps.length) return { content: '(none available)', data: { length: 0, all: [] } };
+
+        const parts = [];
+        for (const cap of caps) {
+            let text = `- ${cap.id}: ${cap.description || cap.displayName}\n`;
+            if (cap.schema?.params) {
+                const paramDescs = [];
+                for (const [k, def] of Object.entries(cap.schema.params)) {
+                    let pd = `  ${k}`;
+                    if (def.values) pd += `(${def.values.join('/')})`;
+                    if (def.required) pd += '*';
+                    if (def.description) pd += `: ${def.description}`;
+                    paramDescs.push(pd);
+                }
+                if (paramDescs.length) text += `  Params: ${paramDescs.join(', ')}\n`;
+            }
+            if (cap.promptHint) text += `  When: ${cap.promptHint}\n`;
+            parts.push(text);
+        }
+
+        return {
+            content: parts.join('\n'),
+            data: { length: caps.length, all: caps.map(c => ({ id: c.id, displayName: c.displayName, description: c.description })) },
+        };
+    };
+
+    registerProvider({
+        id: 'capabilityListMessage',
+        placeholder: '{{capabilityListMessage}}',
+        render: () => buildList('message'),
+    });
+
+    registerProvider({
+        id: 'capabilityListRound',
+        placeholder: '{{capabilityListRound}}',
+        render: () => buildList('round'),
+    });
+
+    // Backward-compat: {{capabilityList}} shows all enabled capabilities
+    registerProvider({
+        id: 'capabilityList',
+        placeholder: '{{capabilityList}}',
+        render: () => {
+            const all = CapabilityRegistry.list().filter(c => c.enabled && c.scope !== 'off');
+            return buildList('both')(all);
+        },
+    });
+}
+

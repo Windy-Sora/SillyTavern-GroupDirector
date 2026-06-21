@@ -1,5 +1,5 @@
 import { registerSection } from './registry.js';
-import { DEFAULT_PROMPT } from '../../agents/post-speech.js';
+import { DEFAULT_PROMPT_MESSAGE, DEFAULT_PROMPT_ROUND } from '../../agents/post-speech.js';
 
 registerSection('postSpeech', function (ctx) {
     const { settings, $c, saveSettings, CapabilityRegistry, toastr } = ctx;
@@ -12,7 +12,7 @@ registerSection('postSpeech', function (ctx) {
     const $msgSection = $('#gd-ps-msg-section');
     $c('ps-msg-enabled').prop('checked', settings.postSpeechMessageEnabled ?? false);
     $msgSection.toggle(settings.postSpeechMessageEnabled ?? false);
-    $c('ps-msg-prompt').val(settings.postSpeechMessagePrompt || DEFAULT_PROMPT);
+    $c('ps-msg-prompt').val(settings.postSpeechMessagePrompt || DEFAULT_PROMPT_MESSAGE);
 
     $c('ps-msg-enabled').on('change', function () {
         settings.postSpeechMessageEnabled = !!$(this).prop('checked');
@@ -25,7 +25,7 @@ registerSection('postSpeech', function (ctx) {
     });
     $c('ps-msg-prompt-reset').on('click', function () {
         settings.postSpeechMessagePrompt = '';
-        $c('ps-msg-prompt').val(DEFAULT_PROMPT);
+        $c('ps-msg-prompt').val(DEFAULT_PROMPT_MESSAGE);
         saveSettings();
         toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
     });
@@ -34,7 +34,7 @@ registerSection('postSpeech', function (ctx) {
     const $roundSection = $('#gd-ps-round-section');
     $c('ps-round-enabled').prop('checked', settings.postSpeechRoundEnabled ?? false);
     $roundSection.toggle(settings.postSpeechRoundEnabled ?? false);
-    $c('ps-round-prompt').val(settings.postSpeechRoundPrompt || DEFAULT_PROMPT);
+    $c('ps-round-prompt').val(settings.postSpeechRoundPrompt || DEFAULT_PROMPT_ROUND);
 
     $c('ps-round-enabled').on('change', function () {
         settings.postSpeechRoundEnabled = !!$(this).prop('checked');
@@ -47,7 +47,7 @@ registerSection('postSpeech', function (ctx) {
     });
     $c('ps-round-prompt-reset').on('click', function () {
         settings.postSpeechRoundPrompt = '';
-        $c('ps-round-prompt').val(DEFAULT_PROMPT);
+        $c('ps-round-prompt').val(DEFAULT_PROMPT_ROUND);
         saveSettings();
         toastr.info(L('已恢复默认 Prompt', 'Prompt reset to default'));
     });

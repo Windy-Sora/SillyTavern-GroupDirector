@@ -20,12 +20,13 @@ const ST_NATIVE_PLACEHOLDERS = [
     'description', 'personality', 'scenario',
 ];
 
-export const DEFAULT_PROMPT = `You are a multimodal policy generator. Based on the character's message and the conversation context, decide which sensory capabilities should be activated for the user.
+/** Default prompt for per-message PostSpeech. Uses {{capabilityListMessage}}. */
+export const DEFAULT_PROMPT_MESSAGE = `You are a multimodal policy generator. Based on the character's message and the conversation context, decide which sensory capabilities should be activated for the user.
 
 ━━━ Available Capabilities ━━━
 Each capability lists its params and when to use it. Only activate those whose "When" condition matches the current message.
 
-{{capabilityList}}
+{{capabilityListMessage}}
 
 ━━━ Context ━━━
 Recent messages:
@@ -60,6 +61,42 @@ Reply with ONLY a JSON object, no prose, no code fences:
   "timing": { "mode": "immediate" }
 }`;
 
+/** Default prompt for per-round PostSpeech. Uses {{capabilityListRound}}. */
+export const DEFAULT_PROMPT_ROUND = `You are a multimodal policy generator. Based on the complete conversation round, decide which sensory capabilities should be activated.
+
+━━━ Available Capabilities ━━━
+Each capability lists its params and when to use it. Only activate those whose "When" condition matches the current scene.
+
+{{capabilityListRound}}
+
+━━━ Context ━━━
+Round summary — recent messages from this round:
+{{newRecentMessages}}
+
+World info (activated entries):
+{{worldInfo}}
+
+World books (all selected entries):
+{{worldBookImportance}}
+━━━━━━━━━━━━━
+
+Guidelines:
+- Analyze the ENTIRE round, not just a single message.
+- "image" → generate a scene image for striking visual elements that emerged during this round.
+- "emotion" → summarize the dominant emotional tone of the round.
+- Output 0-2 intents per round. Do NOT activate anything if nothing fits.
+
+Reply with ONLY a JSON object, no prose, no code fences:
+{
+  "intents": [
+    {
+      "type": "capability-id",
+      "params": { "key": "value" }
+    }
+  ],
+  "timing": { "mode": "immediate" }
+}`;
+
 export function createPostSpeechAgent({ renderPrompt, log }) {
     return {
         id: 'post-speech',
@@ -75,34 +112,11 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
                 const mode = pool.postSpeechMode?.() ?? settings.postSpeechMode ?? 'message';
                 const capabilities = CapabilityRegistry.listForMode(mode);
 
-                // Build per-capability decision guidance
-                const capListParts = [];
-                for (const cap of capabilities) {
-                    let text = `- ${cap.id}: ${cap.description || cap.displayName}\n`;
-                    // Param schema hints
-                    if (cap.schema?.params) {
-                        const paramDescs = [];
-                        for (const [k, def] of Object.entries(cap.schema.params)) {
-                            let pd = `  ${k}`;
-                            if (def.values) pd += `(${def.values.join('/')})`;
-                            if (def.required) pd += '*';
-                            if (def.description) pd += `: ${def.description}`;
-                            paramDescs.push(pd);
-                        }
-                        if (paramDescs.length) text += `  Params: ${paramDescs.join(', ')}\n`;
-                    }
-                    // Decision guidance
-                    if (cap.promptHint) text += `  When: ${cap.promptHint}\n`;
-                    capListParts.push(text);
-                }
-
                 return {
                     speakerMessage: msg,
                     speakerName,
                     speakerDescription: speakerDesc,
-                    capabilityList: capabilities.length > 0
-                        ? capListParts.join('\n')
-                        : '(none available)',
+                    postSpeechMode: mode,
                     hasCapabilities: capabilities.length > 0,
                 };
             },
@@ -110,22 +124,15 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
             async prompt(ctx, _state, pool, settings) {
                 if (!ctx.hasCapabilities) return null;
 
-                const template = settings.postSpeechPrompt || DEFAULT_PROMPT;
+                const mode = ctx.postSpeechMode ?? 'message';
+                const defaultPrompt = mode === 'round' ? DEFAULT_PROMPT_ROUND : DEFAULT_PROMPT_MESSAGE;
+                const template = settings.postSpeechPrompt || defaultPrompt;
 
-                let filled = template
-                    .replace(/\{\{speakerName\}\}/g, ctx.speakerName)
-                    .replace(/\{\{speakerMessage\}\}/g, ctx.speakerMessage)
-                    .replace(/\{\{speakerDescription\}\}/g, ctx.speakerDescription)
-                    .replace(/\{\{capabilityList\}\}/g, ctx.capabilityList);
-
-                // Resolve Provider placeholders via renderPrompt
-                // Passthrough ST-native placeholders ({{User}}, {{char}}, etc.) — they are
-                // substituted later by ST's own pipeline, not by Group Director.
-                filled = await renderPrompt(filled, {}, {
+                // Resolve all {{...}} via renderPrompt. Capability lists are registered
+                // Providers ({{capabilityListMessage}}, {{capabilityListRound}}, {{capabilityList}}).
+                return await renderPrompt(template, {}, {
                     passthrough: ST_NATIVE_PLACEHOLDERS,
                 });
-
-                return filled;
             },
         },
 

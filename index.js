@@ -52,7 +52,7 @@ import { createNpcAgent } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
 import { createExecutor } from './systems/executor.js';
-import { CapabilityRegistry } from './systems/capability-registry.js';
+import { CapabilityRegistry, registerCapabilityProviders } from './systems/capability-registry.js';
 import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
 
@@ -334,6 +334,8 @@ window.GroupDirector = {
 // ─── Register built-in capabilities via AssetLoader ─────────────────
 import { capabilityModules } from './assets/capabilities/manifest.js';
 AssetLoader.capabilities({ basePath: '../assets/capabilities', modules: capabilityModules }, { log });
+// Register capability-list providers for both PostSpeech modes
+registerCapabilityProviders({ registerProvider });
 log('CapabilityRegistry:', CapabilityRegistry.list().map(c => c.id).join(', '));
 
 // ─── Trigger Engine ───────────────────────────────────────────────────
