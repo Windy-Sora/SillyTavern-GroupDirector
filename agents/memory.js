@@ -64,7 +64,7 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
         id: 'memory',
         displayName: 'Memory Extractor',
         contextAccess: ['chat', 'recentMessages', 'characters', 'settings', 'group',
-            'memoryCharacter', 'memoryExistingList'],
+            'memoryCharacter', 'memoryExistingList', 'llmContextDepth'],
         pipelineOrder: ['context', 'prompt', 'call', 'parse', 'validate'],
         pipeline: {
             async context(_input, _ctx, pool, settings) {

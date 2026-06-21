@@ -237,6 +237,9 @@ function buildContextPool(overrides = {}) {
         speakerName: () => overrides.speakerName ?? '',
         speakerDescription: () => overrides.speakerDescription ?? '',
         postSpeechMode: () => overrides.postSpeechMode ?? 'message',
+        // Memory system (passed via overrides)
+        memoryCharacter: () => overrides.memoryCharacter ?? null,
+        memoryExistingList: () => overrides.memoryExistingList?.() ?? [],
         // Settings accessors
         settings: () => settings,
         llmWorldInfoEnabled: () => settings.llmWorldInfoEnabled,
