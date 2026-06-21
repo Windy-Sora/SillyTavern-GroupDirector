@@ -114,7 +114,8 @@ registerSection('memory', function (ctx) {
         });
 
         // Extract for character
-        $list.find('.gd-mem-gen-btn').off('click').on('click', async function () {
+        $list.find('.gd-mem-gen-btn').off('click').on('click', async function (e) {
+            e.stopPropagation();
             const avatar = $(this).data('av');
             if (!confirm(L('为此角色提取新记忆？将调用 LLM。', 'Extract new memories? Will call LLM.'))) return;
             const btn = $(this); btn.prop('disabled', true);
@@ -127,7 +128,8 @@ registerSection('memory', function (ctx) {
         });
 
         // Compress for character
-        $list.find('.gd-mem-compress-btn').off('click').on('click', async function () {
+        $list.find('.gd-mem-compress-btn').off('click').on('click', async function (e) {
+            e.stopPropagation();
             const avatar = $(this).data('av');
             if (!confirm(L('压缩该角色旧记忆？', 'Compress old memories?'))) return;
             const btn = $(this); btn.prop('disabled', true);
@@ -142,7 +144,8 @@ registerSection('memory', function (ctx) {
         });
 
         // Revert for character
-        $list.find('.gd-mem-revert-btn').off('click').on('click', async function () {
+        $list.find('.gd-mem-revert-btn').off('click').on('click', async function (e) {
+            e.stopPropagation();
             const avatar = $(this).data('av');
             if (!confirm(L('回退最近一次提取？', 'Revert last extraction?'))) return;
             await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
