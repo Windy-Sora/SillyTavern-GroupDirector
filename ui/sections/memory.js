@@ -2,7 +2,8 @@ import { registerSection } from './registry.js';
 import { DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER } from '../../agents/memory.js';
 
 registerSection('memory', function (ctx) {
-    const { settings, $c, saveSettings, getCurrentGroup, toastr, memorySystem, getCharacters } = ctx;
+    const { settings, $c, saveSettings, getCurrentGroup, toastr, memorySystem } = ctx;
+    const getCharacters = () => window.characters || [];
     if (!memorySystem) return;
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
@@ -63,6 +64,20 @@ registerSection('memory', function (ctx) {
             toastr.info(L('无需压缩', 'No compression needed'));
         }
         refreshAll();
+    });
+
+    // Scan existing conversation for all characters
+    $c('memory-scan').on('click', async function () {
+        const btn = $(this);
+        btn.prop('disabled', true);
+        try {
+            const results = await memorySystem.generateForAll();
+            const total = Object.values(results).filter(r => Array.isArray(r)).reduce((s, r) => s + r.length, 0);
+            toastr.success(L(`扫描完成: ${Object.keys(results).length} 个角色, ${total} 条记忆`, `Scan done: ${Object.keys(results).length} chars, ${total} entries`));
+            refreshAll();
+        } catch (e) {
+            toastr.error(L('扫描失败: ' + e.message, 'Scan failed: ' + e.message));
+        } finally { btn.prop('disabled', false); }
     });
 
     // Generate for selected character
