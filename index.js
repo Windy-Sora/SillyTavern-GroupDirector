@@ -1589,16 +1589,34 @@ registerCharMemory({
     },
     getMemoriesForChar: (name) => {
         const char = characters.find(c => c.name === name);
-        let avatar = char?.avatar;
-        // Try exact avatar match first
+        const avatar = char?.avatar;
+        // 1. Exact avatar match
         if (avatar) {
             const mems = memorySystem.listMemories(avatar);
             if (mems.length > 0) return mems;
         }
-        // Fallback: scan all store keys matching this character name
+        // 2. Exact name match in stats
         const stats = memorySystem.getStats();
         for (const [av, s] of Object.entries(stats)) {
             if (s.name === name) return memorySystem.listMemories(av);
+        }
+        // 3. Fuzzy match: avatar or name is a substring of the other
+        for (const [av, s] of Object.entries(stats)) {
+            if (!s.name || s.name === name) continue;
+            const a = s.name.toLowerCase(), b = name.toLowerCase();
+            if (a.includes(b) || b.includes(a)) {
+                const mems = memorySystem.listMemories(av);
+                if (mems.length > 0) {
+                    // Auto-migrate: move memories to the current avatar key and clean old
+                    if (avatar && av !== avatar) {
+                        const existing = memorySystem.listMemories(avatar);
+                        memorySystem._setMemories?.(avatar, [...existing, ...mems]);
+                        memorySystem._deleteKey?.(av);
+                        log(`[charMemory] auto-migrated ${mems.length} memories: "${av}" → "${avatar}"`);
+                    }
+                    return avatar ? memorySystem.listMemories(avatar) : mems;
+                }
+            }
         }
         return [];
     },

@@ -230,5 +230,8 @@ export function createMemorySystem({
         revertLast, resetAll, compressOldMemories,
         getStats, detectOrphans, listMemories, totalCount,
         getMemories,
+        // Internal helpers for auto-migration
+        _setMemories: (avatar, mems) => { setMemories(avatar, mems); saveStore(); },
+        _deleteKey: (avatar) => { delete getStore()[avatar]; saveStore(); },
     };
 }
