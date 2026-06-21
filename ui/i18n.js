@@ -376,7 +376,7 @@ const I18N = {
         worldInfoWrapperHint: '<code>{{worldInfo}}</code> is replaced with the currently activated lorebook entry text.',
 
         scriptWrapper: 'Script Injection Wrapper',
-        scriptWrapperHint: 'Controls how the script is wrapped before injection into character prompt. <code>{{script}}</code> is replaced with the actual script content. <code>{{charMemoryCurrent}}</code> injects current character memories.
+        scriptWrapperHint: 'Controls how the script is wrapped before injection into character prompt. <code>{{script}}</code> is replaced with the actual script content. <code>{{charMemoryCurrent}}</code> injects current character memories.',
 
         promptTitle: 'Director Prompt Template',
         promptDrawerTitle: 'Director Prompt Template',
