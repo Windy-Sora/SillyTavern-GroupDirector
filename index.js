@@ -1479,6 +1479,9 @@ Available characters:
 Character profiles (detailed analysis):
 {{character_profiles}}
 
+Character memories (recent experiences):
+{{charMemory}}
+
 NPCs in the current scene (for context only — do NOT pick these as speakers):
 {{npcList}}
 

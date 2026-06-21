@@ -140,7 +140,7 @@ const I18N = {
 
         promptTitle: 'Director Prompt 模板',
         promptDrawerTitle: 'Director Prompt 模板',
-        promptHint: '可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code>、<code>{{npcList}}</code>、<code>{{worldInfo}}</code> 等。<br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。启用剧本后还需包含 <code>"script": "..."</code>。<code>speakers</code> 数组<b>顺序就是发言顺序</b>。',
+        promptHint: '可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code>、<code>{{npcList}}</code>、<code>{{charMemory}}</code>、<code>{{worldInfo}}</code> 等。<br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。启用剧本后还需包含 <code>"script": "..."</code>。<code>speakers</code> 数组<b>顺序就是发言顺序</b>。',
         promptReset: '恢复默认 Prompt',
         promptNote: '注意：每轮群聊生成会额外调用一次主模型来做导演决策。LLM 调用失败时插件会透明放行（不影响聊天）。',
         templateRecursiveTitle: '模板递归渲染',
@@ -380,7 +380,7 @@ const I18N = {
 
         promptTitle: 'Director Prompt Template',
         promptDrawerTitle: 'Director Prompt Template',
-        promptHint: 'Placeholders: <code>{{recentMessages}}</code>, <code>{{characters}}</code>, <code>{{maxSpeakers}}</code><br>Model must return JSON: <code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>. With script enabled, also include <code>"script": "..."</code>. <code>speakers</code> array <b>order is speaking order</b>.',
+        promptHint: 'Placeholders: <code>{{recentMessages}}</code>, <code>{{characters}}</code>, <code>{{maxSpeakers}}</code>, <code>{{npcList}}</code>, <code>{{charMemory}}</code>, <code>{{worldInfo}}</code>, etc.<br>Model must return JSON: <code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>. With script enabled, also include <code>"script": "..."</code>. <code>speakers</code> array <b>order is speaking order</b>.',
         promptReset: 'Restore Default Prompt',
         promptNote: 'Note: Each round of group chat generation makes one extra main-model call for the director decision. LLM call failures are transparent (chat continues unaffected).',
         templateRecursiveTitle: 'Template Recursive Rendering',
