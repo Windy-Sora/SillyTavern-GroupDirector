@@ -1,56 +1,53 @@
 /**
- * User Provider Loader — imports, persists, and auto-loads user-added providers.
+ * User Asset Loader — imports, persists, and auto-loads user-added modules.
+ *
+ * Supports both 'provider' and 'capability' asset types.
  *
  * Flow:
  *   1. User selects a .js file via GUI
- *   2. Source stored in extension_settings[EXT_KEY].userProviders
+ *   2. Source stored in extension_settings[EXT_KEY].userProviders / userCapabilities
  *   3. Source → Blob URL → dynamic import() → register(deps)
- *   4. On startup, all stored providers are restored and registered
+ *   4. On startup, all stored assets are restored and registered
  *
  * Zero server-side dependencies. Fully self-contained.
  */
 
 export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log }) {
-    const STORE_KEY = 'userProviders';
+    const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
 
-    function getStore() {
+    function getStore(type) {
+        const key = STORE_KEYS[type];
         if (!extension_settings[EXT_KEY]) extension_settings[EXT_KEY] = {};
-        if (!extension_settings[EXT_KEY][STORE_KEY]) extension_settings[EXT_KEY][STORE_KEY] = [];
-        return extension_settings[EXT_KEY][STORE_KEY];
+        if (!extension_settings[EXT_KEY][key]) extension_settings[EXT_KEY][key] = [];
+        return extension_settings[EXT_KEY][key];
     }
 
     async function saveStore() {
-        // Using ST's debounced save
-        if (typeof saveSettings === 'function') {
-            saveSettings();
-        }
+        if (typeof saveSettings === 'function') saveSettings();
     }
 
     /**
-     * Import a user-selected .js file.
-     * Reads the source, persists it, and dynamically registers the provider.
+     * Import a user-selected .js file as a provider or capability.
      *
      * @param {File} file - File object from <input type="file">
+     * @param {'provider'|'capability'} type - Asset type
+     * @param {object} deps - Dependencies passed to register(deps)
      * @returns {Promise<{ ok: boolean, name: string, error?: string }>}
      */
-    async function importProvider(file) {
+    async function importAsset(file, type, deps = {}) {
         if (!file || !file.name.endsWith('.js')) {
             return { ok: false, name: file?.name || 'unknown', error: 'Only .js files are supported' };
         }
 
         const name = file.name.replace(/\.js$/, '');
-
-        // Check for duplicates
-        const store = getStore();
+        const store = getStore(type);
         if (store.some(p => p.name === name)) {
-            return { ok: false, name, error: `Provider "${name}" already exists. Delete it first to re-import.` };
+            return { ok: false, name, error: `"${name}" already exists. Delete it first to re-import.` };
         }
 
         try {
             const source = await readFileAsText(file);
             const blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
-
-            // Try importing — validates the module can be loaded
             const mod = await import(blobUrl);
 
             if (typeof mod.register !== 'function') {
@@ -58,49 +55,47 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 return { ok: false, name, error: 'Module must export function register(deps)' };
             }
 
-            // Register it
-            mod.register({ log });
+            // Register immediately
+            mod.register(deps);
 
             // Persist
             store.push({ name, source, importedAt: Date.now() });
             await saveStore();
 
-            log(`User provider "${name}" imported and registered`);
+            log(`User ${type} "${name}" imported and registered`);
             return { ok: true, name };
         } catch (e) {
-            log(`User provider "${name}" import failed:`, e.message);
+            log(`User ${type} "${name}" import failed:`, e.message);
             return { ok: false, name, error: e.message };
         }
     }
 
     /**
-     * Delete a user-imported provider.
+     * Delete a user-imported asset.
      */
-    async function deleteProvider(name) {
-        const store = getStore();
+    async function deleteAsset(name, type) {
+        const store = getStore(type);
         const idx = store.findIndex(p => p.name === name);
         if (idx === -1) return false;
         store.splice(idx, 1);
         await saveStore();
-        log(`User provider "${name}" deleted (reload to fully unregister)`);
+        log(`User ${type} "${name}" deleted (reload to fully unregister)`);
         return true;
     }
 
     /**
-     * List all imported providers.
+     * List all imported assets of a given type.
      */
-    function listProviders() {
-        return getStore().map(p => ({ name: p.name, importedAt: p.importedAt }));
+    function listAssets(type) {
+        return getStore(type).map(p => ({ name: p.name, importedAt: p.importedAt }));
     }
 
     /**
-     * Restore all persisted providers on startup.
-     * Called once during plugin init.
+     * Restore all persisted assets of a given type on startup.
      */
-    async function restoreAll(deps = {}) {
-        const store = getStore();
-        const loaded = [];
-        const failed = [];
+    async function restoreAll(type, deps = {}) {
+        const store = getStore(type);
+        const loaded = [], failed = [];
 
         for (const p of store) {
             try {
@@ -119,7 +114,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         }
 
         if (loaded.length || failed.length) {
-            log(`User providers: ${loaded.length} restored` +
+            log(`User ${type}s: ${loaded.length} restored` +
                 (failed.length ? `, ${failed.length} failed` : ''));
         }
         return { loaded, failed };
@@ -134,5 +129,5 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         });
     }
 
-    return { importProvider, deleteProvider, listProviders, restoreAll };
+    return { importAsset, deleteAsset, listAssets, restoreAll };
 }

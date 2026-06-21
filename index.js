@@ -1571,7 +1571,8 @@ jQuery(async () => {
         postSpeechSystem,
         userProviderLoader,
     });
-    // Restore user-imported providers from persistent storage
-    userProviderLoader.restoreAll({ log });
+    // Restore user-imported providers and capabilities from persistent storage
+    userProviderLoader.restoreAll('provider', { log });
+    userProviderLoader.restoreAll('capability', { log });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

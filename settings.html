@@ -554,6 +554,15 @@
             </div>
             <div id="gd-user-provider-list" style="margin-top:6px;"></div>
 
+            <hr>
+            <h4 data-i18n="userCapabilityTitle">导入 Capability</h4>
+            <small data-i18n="userCapabilityHint">导入自定义 .js Capability 文件。仅需导出 register(deps) 函数。导入后立即生效，重启后自动恢复。</small>
+            <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="menu_button menu_button_icon" id="gd-user-capability-import" style="font-size:0.85em;"><i class="fa-solid fa-file-import"></i> <span data-i18n="userCapabilityImport">导入 .js 文件</span></span>
+                <input type="file" id="gd-user-capability-file" accept=".js" style="display:none;">
+            </div>
+            <div id="gd-user-capability-list" style="margin-top:6px;"></div>
+
         </div>
     </div>
 

@@ -1,64 +1,79 @@
 import { registerSection } from './registry.js';
 
 registerSection('userProviders', function (ctx) {
-    const { settings, toastr, userProviderLoader } = ctx;
+    const { settings, toastr, userProviderLoader, CapabilityRegistry } = ctx;
     if (!userProviderLoader) return;
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
 
-    const $list = $('#gd-user-provider-list');
-    if (!$list.length) return;
+    // ── Provider import ──
+    const $pList = $('#gd-user-provider-list');
+    const $pFile = $('#gd-user-provider-file');
 
-    function renderList() {
-        const providers = userProviderLoader.listProviders();
-        if (!providers.length) {
-            $list.html(`<small style="color:var(--grey70a);">${L('暂无导入的 Provider', 'No imported providers')}</small>`);
+    renderList('provider', $pList);
+
+    $('#gd-user-provider-import').on('click', () => { $pFile.trigger('click'); });
+    $pFile.on('change', handleImport('provider', $pFile, '#gd-user-provider-import', $pList, { log: ctx.log }));
+
+    // ── Capability import ──
+    const $cList = $('#gd-user-capability-list');
+    const $cFile = $('#gd-user-capability-file');
+
+    renderList('capability', $cList);
+
+    $('#gd-user-capability-import').on('click', () => { $cFile.trigger('click'); });
+    $cFile.on('change', handleImport('capability', $cFile, '#gd-user-capability-import', $cList, { log: ctx.log, CapabilityRegistry }));
+
+    // ── Helpers ──
+    function handleImport(type, $file, btnId, $list, deps) {
+        return async function () {
+            const file = this.files?.[0];
+            if (!file) return;
+            const btn = $(btnId);
+            btn.prop('disabled', true);
+            try {
+                const result = await userProviderLoader.importAsset(file, type, deps);
+                if (result.ok) {
+                    toastr.success(L(`已导入: ${result.name}`, `Imported: ${result.name}`));
+                    renderList(type, $list);
+                } else {
+                    toastr.error((L('导入失败', 'Import failed') + ': ') + (result.error || ''));
+                }
+            } catch (e) {
+                toastr.error(L('导入出错: ' + e.message, 'Import error: ' + e.message));
+            }
+            btn.prop('disabled', false);
+            $(this).val('');
+        };
+    }
+
+    function renderList(type, $list) {
+        const items = userProviderLoader.listAssets(type);
+        if (!items.length) {
+            $list.html(`<small style="color:var(--grey70a);">${L('暂无', 'None')}</small>`);
             return;
         }
         let html = '';
-        providers.forEach(p => {
+        items.forEach(p => {
             const time = new Date(p.importedAt).toLocaleString();
             html += `
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--SmartThemeBorderColor);">
                     <span><b>${esc(p.name)}</b> <span style="font-size:0.8em;color:var(--grey70a);">${time}</span></span>
-                    <span class="menu_button menu_button_icon gd-user-provider-delete" data-name="${esc(p.name)}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+                    <span class="menu_button menu_button_icon gd-user-asset-delete" data-type="${type}" data-name="${esc(p.name)}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
                 </div>`;
         });
         $list.html(html);
 
-        $list.find('.gd-user-provider-delete').on('click', async function () {
+        $list.find('.gd-user-asset-delete').on('click', async function () {
             const name = $(this).data('name');
-            if (confirm(L(`删除 Provider "${name}"？重启后生效。`, `Delete provider "${name}"? Takes effect after reload.`))) {
-                await userProviderLoader.deleteProvider(name);
-                renderList();
-                toastr.info(L(`已删除 "${name}"，重启后生效`, `Deleted "${name}", reload to apply`));
+            const t = $(this).data('type');
+            if (confirm(L(`删除 "${name}"？重启后生效。`, `Delete "${name}"? Takes effect after reload.`))) {
+                await userProviderLoader.deleteAsset(name, t);
+                renderList(t, type === 'provider' ? $pList : $cList);
+                toastr.info(L(`已删除 "${name}"`, `Deleted "${name}"`));
             }
         });
     }
-
-    $('#gd-user-provider-import').on('click', () => {
-        $('#gd-user-provider-file').trigger('click');
-    });
-
-    $('#gd-user-provider-file').on('change', async function () {
-        const file = this.files?.[0];
-        if (!file) return;
-        const btn = $('#gd-user-provider-import');
-        btn.prop('disabled', true);
-        try {
-            const result = await userProviderLoader.importProvider(file);
-            if (result.ok) {
-                toastr.success(L(`Provider "${result.name}" 已导入并注册`, `Provider "${result.name}" imported and active`));
-                renderList();
-            } else {
-                toastr.error((L('导入失败', 'Import failed') + ': ') + (result.error || ''));
-            }
-        } catch (e) {
-            toastr.error(L('导入出错: ' + e.message, 'Import error: ' + e.message));
-        }
-        btn.prop('disabled', false);
-        $(this).val('');
-    });
 
     function esc(s) {
         if (!s) return '';
@@ -66,6 +81,4 @@ registerSection('userProviders', function (ctx) {
         div.textContent = String(s);
         return div.innerHTML;
     }
-
-    renderList();
 });

@@ -184,6 +184,10 @@ const I18N = {
         userProviderTitle: '导入 Provider',
         userProviderHint: '导入自定义 .js Provider 文件。仅需导出 register(deps) 函数。导入后立即生效，重启后自动恢复。',
         userProviderImport: '导入 .js 文件',
+
+        userCapabilityTitle: '导入 Capability',
+        userCapabilityHint: '导入自定义 .js Capability 文件。仅需导出 register(deps) 函数。导入后立即生效，重启后自动恢复。',
+        userCapabilityImport: '导入 .js 文件',
     },
     en: {
 
@@ -393,6 +397,10 @@ const I18N = {
         userProviderTitle: 'Import Provider',
         userProviderHint: 'Import custom .js Provider files. Must export register(deps) function. Takes effect immediately, auto-restored on reload.',
         userProviderImport: 'Import .js file',
+
+        userCapabilityTitle: 'Import Capability',
+        userCapabilityHint: 'Import custom .js Capability files. Must export register(deps). Takes effect immediately, auto-restored on reload.',
+        userCapabilityImport: 'Import .js file',
     },
     en: {
 
