@@ -171,10 +171,12 @@ registerSection('memory', function (ctx) {
                 const mems = memorySystem.listMemories(av);
                 if (!mems.length) continue;
                 html += `<div style="margin-top:4px;"><b>${esc(s.name)} (${s.count})</b></div>`;
-                html += mems.slice(-10).reverse().map((m, i) => {
-                    const idx = mems.length - 10 + i;
-                    return renderEntry(av, idx, m);
-                }).join('');
+                // Show last 10, newest first, with correct original indices
+                const recent = mems.slice(-10);
+                for (let ri = recent.length - 1; ri >= 0; ri--) {
+                    const idx = mems.length - recent.length + ri;
+                    html += renderEntry(av, idx, recent[ri]);
+                }
             }
             if (!html) html = `<small style="color:var(--grey70a);">${L('暂无记忆，点击生成', 'No memories yet')}</small>`;
             $list.html(html);
@@ -184,7 +186,11 @@ registerSection('memory', function (ctx) {
                 $list.html(`<small style="color:var(--grey70a);">${L('暂无记忆，点击生成', 'No memories yet')}</small>`);
                 return;
             }
-            const html = [...mems].reverse().map((m, i) => renderEntry(avatar, mems.length - 1 - i, m)).join('');
+            // Show newest first, correct original indices
+            let html = '';
+            for (let ri = mems.length - 1; ri >= 0; ri--) {
+                html += renderEntry(avatar, ri, mems[ri]);
+            }
             $list.html(html);
         }
 
