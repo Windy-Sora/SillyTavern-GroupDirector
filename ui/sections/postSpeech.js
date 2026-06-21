@@ -99,5 +99,6 @@ registerSection('postSpeech', function (ctx) {
         return div.innerHTML;
     }
 
+    $('#gd-cap-refresh').on('click', renderCapabilities);
     renderCapabilities();
 });
