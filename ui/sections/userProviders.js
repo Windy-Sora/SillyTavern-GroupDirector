@@ -96,7 +96,11 @@ registerSection('userProviders', function (ctx) {
                             `Capability "${name}" info:\n\n${info}`
                         ));
                     } else {
-                        toastr.warning(L(`Capability "${name}" 未找到`, `Capability "${name}" not found`));
+                        const list = CapabilityRegistry.list().map(c => `${c.id} | ${c.displayName || c.id} | enabled: ${c.enabled}`).join('\n');
+                        alert(L(
+                            `Capability "${name}" 未精确匹配。已注册的能力:\n\n${list}`,
+                            `Capability "${name}" not matched. Registered:\n\n${list}`
+                        ));
                     }
                 }
             } catch (e) {
