@@ -17,6 +17,7 @@ import './sections/templateTester.js';
 import './sections/profile.js';
 import './sections/exportImport.js';
 import './sections/npc.js';
+import './sections/memory.js';
 import './sections/executionTrace.js';
 import './sections/postSpeech.js';
 import './sections/userProviders.js';

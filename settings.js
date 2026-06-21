@@ -68,6 +68,13 @@ export const DEFAULT_SETTINGS = {
     npcBatchSize: 3,
     npcGenerateFirstMes: false,
     npcPrompt: '',
+    // Character Memory System
+    memoryEnabled: false,
+    memoryTokenBudget: 2000,
+    memoryPrompt: '',
+    memoryJsonSchema: '',
+    memoryRenderTemplate: '',
+    memoryKeepRecent: 5,
     traceMaxEntries: 50,
     // PostSpeech — multimodal policy after each character message
     postSpeechMessageEnabled: false,

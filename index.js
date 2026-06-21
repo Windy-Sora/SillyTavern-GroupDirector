@@ -50,6 +50,8 @@ import { createProfileAgent } from './agents/profile.js';
 import { createSummaryAgent } from './agents/summary.js';
 import { createNpcAgent } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
+import { createMemoryAgent } from './agents/memory.js';
+import { createMemorySystem } from './systems/memory-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
 import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry, registerCapabilityProviders } from './systems/capability-registry.js';
@@ -297,6 +299,14 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 const npcSystem = createNpcSystem({
     settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
+});
+
+// ─── Memory Agent + System ───────────────────────────────────────────
+AgentRegistry.register(createMemoryAgent({ renderPrompt, extractJsonObject, log }));
+
+const memorySystem = createMemorySystem({
+    settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, log,
+    AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext,
 });
 
 // ─── PostSpeech System ───────────────────────────────────────────────
@@ -1587,6 +1597,7 @@ jQuery(async () => {
         CapabilityRegistry,
         postSpeechSystem,
         userProviderLoader,
+        memorySystem,
     });
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.
