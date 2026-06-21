@@ -132,8 +132,18 @@ export function registerCapabilityProviders({ registerProvider }) {
         id: 'capabilityList',
         placeholder: '{{capabilityList}}',
         render: () => {
-            const all = CapabilityRegistry.list().filter(c => c.enabled && c.scope !== 'off');
-            return buildList('both')(all);
+            const caps = CapabilityRegistry.list().filter(c => c.enabled && c.scope !== 'off');
+            if (!caps.length) return { content: '(none available)', data: { length: 0, all: [] } };
+            const parts = [];
+            for (const cap of caps) {
+                let text = `${cap.id}: ${cap.description || cap.displayName}\n`;
+                if (cap.promptHint) text += `  When: ${cap.promptHint}\n`;
+                parts.push(text);
+            }
+            return {
+                content: parts.join('\n'),
+                data: { length: caps.length, all: caps.map(c => ({ id: c.id, displayName: c.displayName })) },
+            };
         },
     });
 }
