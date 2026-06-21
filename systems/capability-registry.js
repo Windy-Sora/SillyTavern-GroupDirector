@@ -28,6 +28,7 @@ export const CapabilityRegistry = {
             // Constraints: { maxPerMessage, requires, cooldown }
             constraints: Object.assign({ maxPerMessage: 1, cooldown: 0 }, cap.constraints),
             enabled: cap.enabled !== false,
+            scope: cap.scope || 'both',  // 'message' | 'round' | 'both' | 'off'
         });
     },
 
@@ -39,11 +40,25 @@ export const CapabilityRegistry = {
         return [...capabilities.values()];
     },
 
-    /** List only enabled capabilities — used for LLM prompt injection. */
-    listEnabled() {
+    /**
+     * List capabilities that are active for a given mode.
+     * @param {'message'|'round'} mode — which PostSpeech mode is running
+     */
+    listForMode(mode) {
         return [...capabilities.values()]
-            .filter(c => c.enabled)
+            .filter(c => c.enabled && (c.scope === 'both' || c.scope === mode))
             .map(c => ({ id: c.id, displayName: c.displayName, description: c.description, promptHint: c.promptHint, schema: c.schema }));
+    },
+
+    /** Deprecated — use listForMode() instead. */
+    listEnabled() {
+        return this.listForMode('message');
+    },
+
+    /** Set scope for a capability. */
+    setScope(id, scope) {
+        const c = capabilities.get(id);
+        if (c) c.scope = scope;
     },
 
     /** Enable/disable a capability at runtime. */

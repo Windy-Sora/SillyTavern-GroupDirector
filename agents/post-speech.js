@@ -72,7 +72,8 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
                 const msg = pool.speakerMessage?.() ?? '';
                 const speakerName = pool.speakerName?.() ?? '';
                 const speakerDesc = pool.speakerDescription?.() ?? '';
-                const capabilities = CapabilityRegistry.listEnabled();
+                const mode = pool.postSpeechMode?.() ?? settings.postSpeechMode ?? 'message';
+                const capabilities = CapabilityRegistry.listForMode(mode);
 
                 // Build per-capability decision guidance
                 const capListParts = [];

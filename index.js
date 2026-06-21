@@ -234,6 +234,7 @@ function buildContextPool(overrides = {}) {
         speakerMessage: () => overrides.speakerMessage ?? '',
         speakerName: () => overrides.speakerName ?? '',
         speakerDescription: () => overrides.speakerDescription ?? '',
+        postSpeechMode: () => overrides.postSpeechMode ?? 'message',
         // Settings accessors
         settings: () => settings,
         llmWorldInfoEnabled: () => settings.llmWorldInfoEnabled,
@@ -883,6 +884,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     speakerMessage: '',    // round summary — no single speaker
                     speakerName: '',
                     speakerDescription: '',
+                    postSpeechMode: 'round',
                 });
 
                 const callCfg = {
@@ -911,7 +913,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const policy = agent.parseResponse(response);
                     if (policy?.intents?.length) {
                         log('PostSpeech round policy:', policy);
-                        await postSpeechExecutor.run(policy, CapabilityRegistry.list());
+                        await postSpeechExecutor.run(policy, CapabilityRegistry.listForMode('round'));
                         for (const intent of policy.intents) {
                             await postSpeechSystem.record(chat.length - 1, '_round_', intent.type, intent.params, policy);
                         }
@@ -986,6 +988,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             speakerMessage: msg.mes || '',
             speakerName: charName,
             speakerDescription: char?.description || '',
+            postSpeechMode: 'message',
         });
 
         const callCfg = {
@@ -1004,7 +1007,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         // Dedup: skip if no new capabilities would be triggered.
         // For swipe/regenerate, allow re-analysis (message content changed).
         if (!isReroll) {
-            const enabledCaps = CapabilityRegistry.listEnabled().map(c => c.id);
+            const enabledCaps = CapabilityRegistry.listForMode('message').map(c => c.id);
             const allAlreadyExecuted = enabledCaps.every(cid =>
                 postSpeechSystem.wasExecuted(msgIndex, cid));
             if (allAlreadyExecuted) {
@@ -1032,7 +1035,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         if (timing === 'message' || timing === 'both') {
             const execResult = await postSpeechExecutor.run(
                 { ...policy, intents: freshIntents },
-                CapabilityRegistry.list()
+                CapabilityRegistry.listForMode('message')
             );
             log('PostSpeech execution (message):', execResult);
         }

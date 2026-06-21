@@ -76,19 +76,28 @@ registerSection('postSpeech', function (ctx) {
         }
         let html = '';
         caps.forEach(cap => {
+            const scope = cap.scope || 'both';
             html += `
                 <div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--SmartThemeBorderColor);">
-                    <input type="checkbox" class="gd-cap-enabled" data-cap="${cap.id}" ${cap.enabled ? 'checked' : ''}>
+                    <select class="gd-cap-scope text_pole" data-cap="${cap.id}" style="width:auto;font-size:0.85em;padding:1px 4px;">
+                        <option value="both" ${scope === 'both' ? 'selected' : ''}>全局</option>
+                        <option value="message" ${scope === 'message' ? 'selected' : ''}>发言后</option>
+                        <option value="round" ${scope === 'round' ? 'selected' : ''}>回合后</option>
+                        <option value="off" ${scope === 'off' ? 'selected' : ''}>关闭</option>
+                    </select>
                     <b>${esc(cap.displayName || cap.id)}</b>
                     <span style="font-size:0.8em;color:var(--grey70a);">${esc(cap.description || '')}</span>
                 </div>`;
         });
         $capsList.html(html);
 
-        $capsList.find('.gd-cap-enabled').on('change', function () {
+        $capsList.find('.gd-cap-scope').on('change', function () {
             const capId = $(this).data('cap');
-            const enabled = !!$(this).prop('checked');
-            if (CapabilityRegistry) CapabilityRegistry.setEnabled(capId, enabled);
+            const scope = $(this).val();
+            if (CapabilityRegistry) {
+                CapabilityRegistry.setScope(capId, scope);
+                CapabilityRegistry.setEnabled(capId, scope !== 'off');
+            }
         });
     }
 
