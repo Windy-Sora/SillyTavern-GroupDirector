@@ -312,13 +312,9 @@ const postSpeechExecutor = createExecutor({
 });
 
 // ─── Register built-in capabilities ─────────────────────────────────
-import { register as registerEmotionCap } from './capabilities/emotion.js';
-import { register as registerTtsCap } from './capabilities/tts.js';
-import { register as registerImageCap } from './capabilities/image.js';
-registerEmotionCap({ log });
-registerTtsCap({ log });
-registerImageCap({ log });
-
+// ─── Register built-in capabilities via AssetLoader ─────────────────
+import { capabilityModules } from './assets/capabilities/manifest.js';
+AssetLoader.capabilities({ basePath: '../assets/capabilities', modules: capabilityModules }, { log });
 log('CapabilityRegistry:', CapabilityRegistry.list().map(c => c.id).join(', '));
 
 // ─── Trigger Engine ───────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { CapabilityRegistry } from '../systems/capability-registry.js';
+import { CapabilityRegistry } from '../../systems/capability-registry.js';
 
 export function register({ log }) {
     CapabilityRegistry.register({
