@@ -178,9 +178,10 @@ registerSection('memory', function (ctx) {
         }
 
         // Edit events
-        $list.find('.gd-mem-edit-btn').on('click', function () {
-            const avatar = $(this).data('avatar');
-            const idx = $(this).data('idx');
+        $list.find('.gd-mem-edit-btn').off('click').on('click', function () {
+            const avatar = $(this).attr('data-avatar');
+            const idx = parseInt($(this).attr('data-idx'));
+            if (isNaN(idx)) return;
             const mems = memorySystem.listMemories(avatar);
             const m = mems[idx];
             if (!m) return;
@@ -192,9 +193,10 @@ registerSection('memory', function (ctx) {
         });
 
         // Delete events
-        $list.find('.gd-mem-del-btn').on('click', async function () {
-            const avatar = $(this).data('avatar');
-            const idx = $(this).data('idx');
+        $list.find('.gd-mem-del-btn').off('click').on('click', async function () {
+            const avatar = $(this).attr('data-avatar');
+            const idx = parseInt($(this).attr('data-idx'));
+            if (isNaN(idx)) return;
             if (!confirm(L('删除这条记忆？', 'Delete this memory?'))) return;
             await memorySystem.deleteEntry(avatar, idx);
             renderMemoryList();
@@ -205,8 +207,8 @@ registerSection('memory', function (ctx) {
         return `<div style="font-size:0.82em;padding:2px 0;border-bottom:1px solid var(--SmartThemeBorderColor);display:flex;justify-content:space-between;align-items:flex-start;">
             <span>${esc(m.compressed ? '[压缩] ' : '')}${esc(m.event)} <span style="color:var(--grey70a);">[${esc(m.mood)}]</span></span>
             <span style="white-space:nowrap;display:flex;gap:2px;">
-                <span class="menu_button menu_button_icon gd-mem-edit-btn" data-avatar="${esc(avatar)}" data-idx="${idx}" style="font-size:0.75em;"><i class="fa-solid fa-pencil"></i></span>
-                <span class="menu_button menu_button_icon gd-mem-del-btn" data-avatar="${esc(avatar)}" data-idx="${idx}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
+                <span class="menu_button menu_button_icon gd-mem-edit-btn" data-avatar="${avatar.replace(/"/g,'&quot;')}" data-idx="${idx}" style="font-size:0.75em;"><i class="fa-solid fa-pencil"></i></span>
+                <span class="menu_button menu_button_icon gd-mem-del-btn" data-avatar="${avatar.replace(/"/g,'&quot;')}" data-idx="${idx}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
             </span>
         </div>`;
     }
