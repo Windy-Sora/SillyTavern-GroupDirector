@@ -180,6 +180,12 @@ const I18N = {
         agentsDrawerTitle: 'Agent API 独立配置',
         agentsHint: '为每个 Agent 单独配置 API 端点和密钥。关闭时使用 SillyTavern 主模型。密钥保存在插件设置中，不随聊天导出。',
 
+        userProviderTitle: '导入 Provider',
+        userProviderHint: '导入自定义 .js Provider 文件。仅需导出 register(deps) 函数。导入后立即生效，重启后自动恢复。',
+        userProviderImport: '导入 .js 文件',
+    },
+    en: {
+
         npcTitle: 'NPC 生成系统',
         npcHint: '根据上下文批量生成 NPC，支持导入为角色卡。生成前会将已有 NPC 和角色名单传给 LLM 避免重复。',
         npcEnabled: '启用 NPC 生成',
@@ -381,6 +387,12 @@ const I18N = {
 
         agentsDrawerTitle: 'Agent API Configuration',
         agentsHint: 'Configure API endpoint and key per agent. When disabled, uses SillyTavern main model. Keys stored in plugin settings, not in chat export.',
+
+        userProviderTitle: 'Import Provider',
+        userProviderHint: 'Import custom .js Provider files. Must export register(deps) function. Takes effect immediately, auto-restored on reload.',
+        userProviderImport: 'Import .js file',
+    },
+    en: {
 
         npcTitle: 'NPC Generation',
         npcHint: 'Generate NPCs from context. Existing NPCs and characters are fed to the LLM to avoid duplicates. Import as character cards when ready.',

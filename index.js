@@ -53,6 +53,7 @@ import { createNpcSystem } from './systems/npc-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
 import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry } from './systems/capability-registry.js';
+import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
@@ -312,6 +313,11 @@ const postSpeechExecutor = createExecutor({
 });
 
 // ─── Register built-in capabilities ─────────────────────────────────
+// ─── User Provider Loader ────────────────────────────────────────────
+const userProviderLoader = createUserProviderLoader({
+    extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
+});
+
 // ─── Register built-in capabilities via AssetLoader ─────────────────
 import { capabilityModules } from './assets/capabilities/manifest.js';
 AssetLoader.capabilities({ basePath: '../assets/capabilities', modules: capabilityModules }, { log });
@@ -1563,6 +1569,9 @@ jQuery(async () => {
         npcSystem,
         CapabilityRegistry,
         postSpeechSystem,
+        userProviderLoader,
     });
+    // Restore user-imported providers from persistent storage
+    userProviderLoader.restoreAll({ log });
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

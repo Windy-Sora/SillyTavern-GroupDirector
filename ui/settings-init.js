@@ -19,6 +19,7 @@ import './sections/exportImport.js';
 import './sections/npc.js';
 import './sections/executionTrace.js';
 import './sections/postSpeech.js';
+import './sections/userProviders.js';
 import './sections/agents.js';
 
 export async function loadSettingsUI(deps) {

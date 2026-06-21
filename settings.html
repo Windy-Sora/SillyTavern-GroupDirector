@@ -551,6 +551,15 @@
             <div id="gd-agents-list" style="margin-top:8px;"></div>
 
             <hr>
+            <h4 data-i18n="userProviderTitle">导入 Provider</h4>
+            <small data-i18n="userProviderHint">导入自定义 .js Provider 文件。仅需导出 register(deps) 函数。导入后立即生效，重启后自动恢复。</small>
+            <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="menu_button menu_button_icon" id="gd-user-provider-import" style="font-size:0.85em;"><i class="fa-solid fa-file-import"></i> <span data-i18n="userProviderImport">导入 .js 文件</span></span>
+                <input type="file" id="gd-user-provider-file" accept=".js" style="display:none;">
+            </div>
+            <div id="gd-user-provider-list" style="margin-top:6px;"></div>
+
+            <hr>
             <h4 data-i18n="traceTitle">执行追踪</h4>
             <small data-i18n="traceHint">查看 Agent 执行记录（需开启调试日志）。展开可查看每个阶段的耗时和输出。</small>
             <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
