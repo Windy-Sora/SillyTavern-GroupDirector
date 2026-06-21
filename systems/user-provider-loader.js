@@ -56,17 +56,22 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             }
 
             // Snapshot → register → diff to find added IDs
-            const before = type === 'provider' && getRegisteredProviderIds
-                ? new Set(getRegisteredProviderIds())
+            const before = (getRegisteredProviderIds || deps.CapabilityRegistry)
+                ? new Set(
+                    type === 'provider' ? (getRegisteredProviderIds?.() ?? [])
+                    : (deps.CapabilityRegistry?.list().map(c => c.id) ?? [])
+                )
                 : null;
             mod.register(deps);
-            const after = before ? getRegisteredProviderIds() : null;
+            const after = before
+                ? (type === 'provider'
+                    ? (getRegisteredProviderIds?.() ?? [])
+                    : (deps.CapabilityRegistry?.list().map(c => c.id) ?? []))
+                : null;
             const addedIds = before && after
                 ? after.filter(id => !before.has(id))
                 : [];
-            if (before && after) {
-                log(`Provider import diff: before=${before.size}, after=${after.length}, added=[${addedIds.join(',')}]`);
-            }
+            log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
 
             // Persist
             store.push({ name, source, importedAt: Date.now(), ids: addedIds });
