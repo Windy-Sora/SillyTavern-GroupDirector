@@ -62,9 +62,12 @@ registerSection('userProviders', function (ctx) {
         let html = '';
         items.forEach(p => {
             const time = new Date(p.importedAt).toLocaleString();
+            const idTags = (p.ids || []).length > 0
+                ? ` → <code style="font-size:0.8em;">${p.ids.map(esc).join('</code> <code style="font-size:0.8em;">')}</code>`
+                : '';
             html += `
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--SmartThemeBorderColor);">
-                    <span><b>${esc(p.name)}</b> <span style="font-size:0.8em;color:var(--grey70a);">${time}</span></span>
+                    <span><b>${esc(p.name)}</b>${idTags} <span style="font-size:0.8em;color:var(--grey70a);">${time}</span></span>
                     <div style="display:flex;gap:4px;">
                         <span class="menu_button menu_button_icon gd-user-asset-test" data-type="${type}" data-name="${esc(p.name)}" style="font-size:0.75em;"><i class="fa-solid fa-flask"></i> ${L('测试', 'Test')}</span>
                         <span class="menu_button menu_button_icon gd-user-asset-delete" data-type="${type}" data-name="${esc(p.name)}" style="font-size:0.75em;color:#ff5555;"><i class="fa-solid fa-trash"></i></span>

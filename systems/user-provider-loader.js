@@ -12,7 +12,7 @@
  * Zero server-side dependencies. Fully self-contained.
  */
 
-export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log }) {
+export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds }) {
     const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
 
     function getStore(type) {
@@ -55,11 +55,18 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 return { ok: false, name, error: 'Module must export function register(deps)' };
             }
 
-            // Register immediately
+            // Snapshot → register → diff to find added IDs
+            const before = type === 'provider' && getRegisteredProviderIds
+                ? new Set(getRegisteredProviderIds())
+                : null;
             mod.register(deps);
+            const after = before ? getRegisteredProviderIds() : null;
+            const addedIds = before && after
+                ? after.filter(id => !before.has(id))
+                : [];
 
             // Persist
-            store.push({ name, source, importedAt: Date.now() });
+            store.push({ name, source, importedAt: Date.now(), ids: addedIds });
             await saveStore();
 
             log(`User ${type} "${name}" imported and registered`);
@@ -87,7 +94,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
      * List all imported assets of a given type.
      */
     function listAssets(type) {
-        return getStore(type).map(p => ({ name: p.name, importedAt: p.importedAt }));
+        return getStore(type).map(p => ({ name: p.name, importedAt: p.importedAt, ids: p.ids || [] }));
     }
 
     /**
