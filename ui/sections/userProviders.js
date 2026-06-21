@@ -82,16 +82,21 @@ registerSection('userProviders', function (ctx) {
             const btn = $(this);
             btn.prop('disabled', true);
 
+            // Use the first registered ID, fall back to file name
+            const items = userProviderLoader.listAssets(t);
+            const item = items.find(i => i.name === name);
+            const registeredId = (item?.ids?.length > 0) ? item.ids[0] : name;
+
             try {
                 if (t === 'provider' && renderPrompt) {
-                    const id = name;
+                    const id = registeredId;
                     const result = await renderPrompt(`{{${id}}}`, {});
                     alert(L(
                         `Provider "${id}" 渲染结果:\n\n${result || '(空)'}`,
                         `Provider "${id}" rendered:\n\n${result || '(empty)'}`
                     ));
                 } else if (t === 'capability' && CapabilityRegistry) {
-                    const cap = CapabilityRegistry.get(name);
+                    const cap = CapabilityRegistry.get(registeredId);
                     if (cap) {
                         const info = `id: ${cap.id}\nenabled: ${cap.enabled}\ndescription: ${cap.description || '—'}\nschema: ${JSON.stringify(cap.schema, null, 2)}`;
                         alert(L(
