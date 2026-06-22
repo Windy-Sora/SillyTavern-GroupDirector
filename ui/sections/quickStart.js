@@ -181,9 +181,8 @@ registerSection('quickStart', function (ctx) {
         ctx.renderWorldBookList = wrapRefresh(ctx.renderWorldBookList, refreshQuickWorldBookList);
     }
 
-    // World books refresh button
-    $c('qs-wb-refresh').off('click').on('click', async () => {
-        if (ctx.renderWorldBookList) await ctx.renderWorldBookList();
+    // World books refresh button — event delegation from container
+    $container.off('click', '#gd-qs-wb-refresh').on('click', '#gd-qs-wb-refresh', () => {
         refreshQuickWorldBookList();
     });
 
