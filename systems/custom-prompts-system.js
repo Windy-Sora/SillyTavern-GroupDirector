@@ -116,5 +116,73 @@ export function createCustomPromptsSystem(deps) {
         if (list.length) log(`${list.filter(e => e.enabled).length}/${list.length} custom prompts enabled`);
     }
 
-    return { getList, add, update, remove, toggle, initAll, validateName, hasSelfReference };
+    // ── Export/Import ───────────────────────────────────────────────
+
+    function exportPrompts(selectedIds) {
+        const list = getList();
+        const selected = list.filter(e => selectedIds.includes(e.id));
+        if (!selected.length) return null;
+        const json = {
+            version: 1,
+            type: 'custom-prompt-export',
+            exportedAt: new Date().toISOString(),
+            prompts: selected.map(e => ({ name: e.name, content: e.content, enabled: e.enabled })),
+        };
+        const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const dateStr = new Date().toISOString().slice(0, 10);
+        a.download = `custom-prompts-${dateStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        log(`Exported ${selected.length} custom prompt(s)`);
+        return json;
+    }
+
+    function parseImportFile(jsonText) {
+        let obj;
+        try { obj = JSON.parse(jsonText); } catch (e) {
+            return { ok: false, error: `Invalid JSON: ${e.message}` };
+        }
+        if (obj.type !== 'custom-prompt-export') return { ok: false, error: 'Not a custom prompt export file' };
+        if (!Array.isArray(obj.prompts)) return { ok: false, error: 'Missing prompts array' };
+        return { ok: true, data: obj };
+    }
+
+    function importPrompts(data, overwriteConflicts = false) {
+        const list = getList();
+        const existingNames = new Set(list.map(e => e.name));
+        let added = 0;
+        let overwritten = 0;
+
+        // Detect conflicts
+        const conflicts = data.prompts.filter(p => existingNames.has(p.name));
+
+        for (const p of data.prompts) {
+            if (!p.name || !NAME_RE.test(p.name)) continue;
+            const existing = list.find(e => e.name === p.name);
+            if (existing) {
+                if (overwriteConflicts) {
+                    existing.content = p.content;
+                    existing.enabled = p.enabled !== false;
+                    syncOne(existing);
+                    overwritten++;
+                }
+                // else: skip conflicting ones
+            } else {
+                const entry = { id: genId(), name: p.name, content: p.content || '', enabled: p.enabled !== false };
+                list.push(entry);
+                syncOne(entry);
+                added++;
+            }
+        }
+        saveSettings();
+        log(`Imported custom prompts: ${added} added, ${overwritten} overwritten`);
+        return { added, overwritten, conflicts: conflicts.map(p => p.name) };
+    }
+
+    return { getList, add, update, remove, toggle, initAll, validateName, hasSelfReference, exportPrompts, parseImportFile, importPrompts };
 }

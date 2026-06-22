@@ -115,6 +115,45 @@ registerSection('customPrompts', function (ctx) {
         } catch (e) { toastr.error(e.message); }
     });
 
+    // ── Export/Import ───────────────────────────────────────────────
+
+    $c('cp-export-btn').off('click').on('click', () => {
+        const list = sys.getList();
+        if (!list.length) { toastr.warning(isZh() ? '无自定义 Prompt 可导出' : 'No custom prompts to export'); return; }
+        sys.exportPrompts(list.map(e => e.id));
+        toastr.success(isZh() ? `已导出 ${list.length} 个 Prompt` : `Exported ${list.length} prompt(s)`);
+    });
+
+    $c('cp-import-file').off('change').on('change', function () {
+        const file = this.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function () {
+            const result = sys.parseImportFile(reader.result);
+            if (!result.ok) { toastr.error((isZh() ? '导入失败: ' : 'Import failed: ') + result.error); return; }
+            const conflicts = result.data.prompts.filter(p => {
+                const list = sys.getList();
+                return list.some(e => e.name === p.name);
+            });
+            let overwrite = false;
+            if (conflicts.length > 0) {
+                overwrite = confirm(isZh()
+                    ? `检测到 ${conflicts.length} 个同名 Prompt：${conflicts.map(p => p.name).join(', ')}。\n确定=覆盖同名，取消=仅添加不同名的`
+                    : `Found ${conflicts.length} same-name prompt(s): ${conflicts.map(p => p.name).join(', ')}.\nOK=overwrite conflicts, Cancel=add only new ones`);
+            }
+            const result2 = sys.importPrompts(result.data, overwrite);
+            renderList();
+            let msg = isZh() ? `已导入：${result2.added} 新增` : `Imported: ${result2.added} added`;
+            if (result2.overwritten > 0) msg += isZh() ? `, ${result2.overwritten} 覆盖` : `, ${result2.overwritten} overwritten`;
+            if (result2.conflicts.length > 0 && !overwrite) msg += isZh() ? `, ${result2.conflicts.length} 跳过` : `, ${result2.conflicts.length} skipped`;
+            toastr.success(msg);
+        };
+        reader.readAsText(file);
+        this.value = '';
+    });
+
+    $c('cp-import-btn').off('click').on('click', () => $('#gd-cp-import-file').click());
+
     // ── Initial ─────────────────────────────────────────────────────
 
     renderList();

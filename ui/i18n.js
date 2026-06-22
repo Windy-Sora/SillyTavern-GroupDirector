@@ -244,6 +244,8 @@ const I18N = {
         customPromptsNamePlaceholder: 'name',
         customPromptsContentPlaceholder: 'Prompt 内容（支持 {{占位符}}）',
         customPromptsAddBtn: '添加',
+        customPromptsExportBtn: '导出全部',
+        customPromptsImportBtn: '导入',
     },
     en: {
 
@@ -571,6 +573,8 @@ const I18N = {
         customPromptsNamePlaceholder: 'name',
         customPromptsContentPlaceholder: 'Prompt content (supports {{placeholders}})',
         customPromptsAddBtn: 'Add',
+        customPromptsExportBtn: 'Export All',
+        customPromptsImportBtn: 'Import',
     },
     en: {
 
