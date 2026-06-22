@@ -69,6 +69,7 @@
     "postSpeechBlocking": true,
     "postSpeechDecisionLimit": 20,
     "agentConfigs": {},
+    "customPrompts": [],
     "traceMaxEntries": 50
   }
 }
