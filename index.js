@@ -44,6 +44,7 @@ import { createProfileExportSystem } from './systems/profile-export-system.js';
 import { createNpcExportSystem } from './systems/npc-export-system.js';
 import { createSummaryExportSystem } from './systems/summary-export-system.js';
 import { createMemoryExportSystem } from './systems/memory-export-system.js';
+import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
@@ -237,6 +238,12 @@ const memoryExportSystem = createMemoryExportSystem({
     defaultMemoryRender: DEFAULT_MEMORY_RENDER,
     defaultMemoryCompressPrompt: DEFAULT_MEMORY_COMPRESS_PROMPT,
 });
+
+// ─── Config Profile System ──────────────────────────────────────────
+const configProfileSystem = createConfigProfileSystem({
+    settings, EXT_KEY, extension_settings, saveSettingsDebounced, log,
+});
+const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 
 // ─── Agent Runtime — Context Pool Builder ─────────────────────────────
 
@@ -1699,6 +1706,8 @@ jQuery(async () => {
         exportNpcs, parseNpcImportFile, applyNpcImport, loadNpcPreset, getNpcPresetNames,
         summaryExportSystem,
         memoryExportSystem,
+        configProfileSystem,
+        getConfigPresetNames, loadConfigPreset,
     });
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.

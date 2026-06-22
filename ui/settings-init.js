@@ -6,6 +6,7 @@ import { initAllSections } from './sections/registry.js';
 // Side-effect imports: each section module self-registers on load
 import './sections/modes.js';
 import './sections/formula.js';
+import './sections/configProfiles.js';
 import './sections/director.js';
 import './sections/continuity.js';
 import './sections/worldinfo.js';

@@ -93,6 +93,43 @@
                 <input type="number" id="gd-initiative-base" class="text_pole" min="0" step="1">
             </div>
 
+            <hr>
+            <h4 data-i18n="configProfilesTitle">配置档管理</h4>
+            <small data-i18n="configProfilesHint">保存、导出、导入全局配置。可创建多套配置档按需切换，也可导出为 .zip 分享给他人。</small>
+
+            <div id="gd-config-profiles-list" style="margin-top:6px;"></div>
+
+            <div style="margin-top:10px;font-weight:bold;font-size:0.9em;" data-i18n="configProfilesSaveTitle">保存当前为配置档</div>
+            <label for="gd-cfg-save-name" data-i18n="configProfilesSaveName">配置档名称</label>
+            <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;" data-i18n-placeholder="configProfilesSaveNamePlaceholder">
+
+            <label for="gd-cfg-save-desc" data-i18n="configProfilesSaveDesc">备注（可选）</label>
+            <input type="text" id="gd-cfg-save-desc" class="text_pole" style="width:100%;" data-i18n-placeholder="configProfilesSaveDescPlaceholder">
+
+            <div style="margin-top:4px;font-size:0.85em;color:var(--grey70a);" data-i18n="configProfilesSaveDrawers">导出范围（按抽屉选择）：</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:2px;">
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-directorLlm" checked> <span data-i18n="configDrawerDirectorLlm">Director LLM</span></label>
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-worldBooks" checked> <span data-i18n="configDrawerWorldBooks">世界书</span></label>
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-profilesAndData" checked> <span data-i18n="configDrawerProfilesAndData">角色档案与数据</span></label>
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-contextLedger" checked> <span data-i18n="configDrawerContextLedger">上下文与账本</span></label>
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-multimodal"> <span data-i18n="configDrawerMultimodal">多模态</span></label>
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-assetManager"> <span data-i18n="configDrawerAssetManager">资产管理</span></label>
+                <label class="checkbox_label"><input type="checkbox" class="gd-cfg-drawer" id="gd-cfg-drawer-agentsTools" checked> <span data-i18n="configDrawerAgentsTools">Agent 与工具</span></label>
+            </div>
+
+            <div style="margin-top:6px;display:flex;gap:6px;">
+                <span class="menu_button menu_button_icon" id="gd-cfg-save-btn">
+                    <i class="fa-solid fa-floppy-disk"></i> <span data-i18n="configProfilesSaveBtn">保存为配置档</span>
+                </span>
+                <span class="menu_button menu_button_icon" id="gd-cfg-import-btn">
+                    <i class="fa-solid fa-file-zipper"></i> <span data-i18n="configProfilesImportBtn">导入 .zip</span>
+                </span>
+                <select id="gd-cfg-preset" class="text_pole" style="width:auto;font-size:0.85em;">
+                    <option value="" data-i18n="configPresetPlaceholder">或加载预设...</option>
+                </select>
+                <input type="file" id="gd-cfg-import-file" accept=".zip" style="display:none;">
+            </div>
+
         </div>
     </div>
 
