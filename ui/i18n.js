@@ -237,6 +237,13 @@ const I18N = {
         userCapabilityTitle: '导入 Capability',
         userCapabilityHint: '导入自定义 .js Capability 文件。仅需导出 register(deps) 函数。导入后立即生效，重启后自动恢复。',
         userCapabilityImport: '导入 .js 文件',
+
+        customPromptsTitle: '自定义 Prompt 模板',
+        customPromptsHint: '创建自定义占位符，注册为 <code>{{name}}</code> Provider。可在 Director Prompt 等任意模板中引用。启用后立即生效。',
+        customPromptsAddTitle: '新建',
+        customPromptsNamePlaceholder: 'name',
+        customPromptsContentPlaceholder: 'Prompt 内容（支持 {{占位符}}）',
+        customPromptsAddBtn: '添加',
     },
     en: {
 
@@ -557,6 +564,13 @@ const I18N = {
         userCapabilityTitle: 'Import Capability',
         userCapabilityHint: 'Import custom .js Capability files. Must export register(deps). Takes effect immediately, auto-restored on reload.',
         userCapabilityImport: 'Import .js file',
+
+        customPromptsTitle: 'Custom Prompt Templates',
+        customPromptsHint: 'Create custom placeholders registered as <code>{{name}}</code> Providers. Reference them in Director Prompt or any other template. Takes effect immediately on enable.',
+        customPromptsAddTitle: 'New',
+        customPromptsNamePlaceholder: 'name',
+        customPromptsContentPlaceholder: 'Prompt content (supports {{placeholders}})',
+        customPromptsAddBtn: 'Add',
     },
     en: {
 

@@ -849,6 +849,20 @@
             </div>
             <div id="gd-user-capability-list" style="margin-top:6px;"></div>
 
+            <hr>
+            <h4 data-i18n="customPromptsTitle">自定义 Prompt 模板</h4>
+            <small data-i18n="customPromptsHint">创建自定义占位符，注册为 <code>{{name}}</code> Provider。可在 Director Prompt 等任意模板中引用。</small>
+
+            <div id="gd-custom-prompt-list" style="margin-top:6px;"></div>
+
+            <div style="margin-top:8px;font-weight:bold;font-size:0.9em;" data-i18n="customPromptsAddTitle">新建</div>
+            <input type="text" id="gd-cp-new-name" class="text_pole" style="width:120px;margin-top:2px;" placeholder="name" data-i18n-placeholder="customPromptsNamePlaceholder">
+            <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
+            <textarea id="gd-cp-new-content" class="text_pole textarea_compact" rows="3" style="width:100%;margin-top:2px;" data-i18n-placeholder="customPromptsContentPlaceholder"></textarea>
+            <span class="menu_button menu_button_icon" id="gd-cp-add-btn" style="margin-top:4px;">
+                <i class="fa-solid fa-plus"></i> <span data-i18n="customPromptsAddBtn">添加</span>
+            </span>
+
         </div>
     </div>
 

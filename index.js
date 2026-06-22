@@ -45,6 +45,7 @@ import { createNpcExportSystem } from './systems/npc-export-system.js';
 import { createSummaryExportSystem } from './systems/summary-export-system.js';
 import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { createConfigProfileSystem } from './systems/config-profile-system.js';
+import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
@@ -244,6 +245,15 @@ const configProfileSystem = createConfigProfileSystem({
     settings, EXT_KEY, extension_settings, saveSettingsDebounced, log,
 });
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
+
+// ─── Custom Prompts System ──────────────────────────────────────────
+const customPromptsSystem = createCustomPromptsSystem({
+    settings, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(),
+    registerProvider: (p) => registerProvider(p),
+    unregisterProvider: (id) => unregisterProvider(id),
+    getProviders: () => getProviders(),
+    log,
+});
 
 // ─── Agent Runtime — Context Pool Builder ─────────────────────────────
 
@@ -1708,11 +1718,13 @@ jQuery(async () => {
         memoryExportSystem,
         configProfileSystem,
         getConfigPresetNames, loadConfigPreset,
+        customPromptsSystem,
     });
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
     userProviderLoader.restoreAll('provider', userDeps);
     userProviderLoader.restoreAll('capability', userDeps);
+    customPromptsSystem.initAll();
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

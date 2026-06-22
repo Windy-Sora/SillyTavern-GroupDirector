@@ -48,7 +48,7 @@ const DRAWER_KEYS = {
         'postSpeechRoundEnabled', 'postSpeechRoundPrompt',
         'postSpeechBlocking', 'postSpeechDecisionLimit',
     ],
-    assetManager: ['userProviders', 'userCapabilities'],
+    assetManager: ['userProviders', 'userCapabilities', 'customPrompts'],
     agentsTools: ['agentConfigs', 'traceMaxEntries'],
 };
 
