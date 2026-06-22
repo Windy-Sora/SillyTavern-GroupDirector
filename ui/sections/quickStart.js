@@ -166,8 +166,8 @@ registerSection('quickStart', function (ctx) {
 
     function wrapRefresh(fn, quickFn) {
         if (typeof fn !== 'function') return fn;
-        return function () {
-            const result = fn.apply(this, arguments);
+        return async function () {
+            const result = await fn.apply(this, arguments);
             try { quickFn(); } catch (_) {}
             return result;
         };
