@@ -602,15 +602,23 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     // Non-message types (image, TTS, voice, etc.) pass through untouched.
     if (type !== 'normal' && type !== 'swipe' && type !== 'regenerate') return;
 
-    // Gate 2: manual force-speak detection — works even when director mode is off.
-    const isForceSpeak = !roundInitialized
+    // Gate 2: detect /send, /sendas, and force-speak button.
+    // All use Generate('normal', { force_chid }) — a single-member generation
+    // in a group chat not part of the normal wrapper activation loop.
+    const lastMsgIsUser = chat.length > 0 && !!chat[chat.length - 1]?.is_user;
+    const isForceTriggered = !roundInitialized
         && roundGenerateType !== 'swipe'
         && roundGenerateType !== 'regenerate'
-        && chat.length > 0
-        && !chat[chat.length - 1]?.is_user
-        && !!getCurrentGroup();  // group chat only — irrelevant in 1-on-1
+        && !!getCurrentGroup();
 
-    if (isForceSpeak) {
+    if (isForceTriggered) {
+        // /send, /sendas, /ask etc. — user-initiated with a message already in chat.
+        // Pass through transparently. Don't block, don't evaluate.
+        if (lastMsgIsUser) {
+            return;
+        }
+
+        // Force-speak button (no preceding user message) — follow forceSpeakMode
         const mode = settings.forceSpeakMode || 'native';
         if (mode === 'block') {
             abort(false);
