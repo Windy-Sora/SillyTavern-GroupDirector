@@ -6,7 +6,7 @@ import { groups, selected_group } from '../../../group-chats.js';
 import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, selected_world_info, world_info } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
-import { registerProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
+import { registerProvider, unregisterProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
 import { renderPrompt } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
