@@ -69,10 +69,14 @@ function snapshotSettings(settings, drawers) {
 }
 
 /** Apply a snapshot back to settings. Returns list of changed keys. */
-function applySnapshot(settings, snap) {
+function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
-        if (k === 'userProviders' || k === 'userCapabilities') continue; // handled separately
+        if (k === 'userProviders' || k === 'userCapabilities') continue;
+        if (k === 'customPrompts') {
+            // Merged separately — applyProfile handles conflicts
+            if (!options.customPromptsApplied) continue;
+        }
         if (JSON.stringify(settings[k]) !== JSON.stringify(v)) {
             changed.push(k);
         }
@@ -143,14 +147,49 @@ export function createConfigProfileSystem(deps) {
         saveAll();
     }
 
-    function applyProfile(id) {
+    function applyProfile(id, customPromptMerge = 'replace') {
         const list = getProfiles();
         const profile = list.find(p => p.id === id);
-        if (!profile) return [];
+        if (!profile) return { changed: [], customPromptConflicts: [] };
 
-        const changed = applySnapshot(settings, profile.settings);
+        // ── Custom prompts conflict detection ──
+        let customPromptConflicts = [];
+        const incoming = profile.settings.customPrompts;
+        if (incoming && Array.isArray(incoming) && incoming.length > 0) {
+            const existing = settings.customPrompts || [];
+            const existingNames = new Set(existing.map(e => e.name));
+            customPromptConflicts = incoming.filter(e => existingNames.has(e.name)).map(e => e.name);
+        }
 
-        // Restore userProviders/userCapabilities if they were in the snapshot
+        // ── Apply snapshot ──
+        const opts = { customPromptsApplied: customPromptMerge !== 'skip' };
+        const changed = applySnapshot(settings, profile.settings, opts);
+
+        // ── Merge custom prompts ──
+        if (incoming && Array.isArray(incoming) && incoming.length > 0) {
+            if (!settings.customPrompts) settings.customPrompts = [];
+            const existing = settings.customPrompts;
+            const existingNames = new Set(existing.map(e => e.name));
+
+            if (customPromptMerge === 'replace') {
+                // 'keep': keep existing same-names, add only different ones
+                const toAdd = incoming.filter(e => !existingNames.has(e.name));
+                existing.push(...toAdd.map(e => JSON.parse(JSON.stringify(e))));
+            } else if (customPromptMerge === 'overwrite') {
+                // Overwrite same-names, add different ones
+                for (const e of incoming) {
+                    const idx = existing.findIndex(x => x.name === e.name);
+                    if (idx >= 0) {
+                        existing[idx] = JSON.parse(JSON.stringify(e));
+                    } else {
+                        existing.push(JSON.parse(JSON.stringify(e)));
+                    }
+                }
+            }
+            // 'skip': don't touch customPrompts at all
+        }
+
+        // Restore userProviders/userCapabilities
         if (profile.settings.userProviders && Array.isArray(profile.settings.userProviders)) {
             settings.userProviders = JSON.parse(JSON.stringify(profile.settings.userProviders));
         }
@@ -159,8 +198,8 @@ export function createConfigProfileSystem(deps) {
         }
 
         saveAll();
-        log(`Config profile applied: "${profile.name}", ${changed.length} key(s) changed`);
-        return changed;
+        log(`Config profile applied: "${profile.name}", ${changed.length} key(s) changed, ${customPromptConflicts.length} custom prompt conflict(s)`);
+        return { changed, customPromptConflicts };
     }
 
     // ── Export to .zip ────────────────────────────────────────────

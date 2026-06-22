@@ -74,10 +74,39 @@ registerSection('configProfiles', function (ctx) {
             if (!confirm(isZh()
                 ? `应用配置档「${profile.name}」？当前设置将被覆盖。`
                 : `Apply config profile "${profile.name}"? Current settings will be overwritten.`)) return;
-            const changed = sys.applyProfile(id);
-            toastr.success(isZh()
-                ? `已应用「${profile.name}」，${changed.length} 项设置已更新。请刷新页面以完全生效。`
-                : `Applied "${profile.name}", ${changed.length} setting(s) updated. Refresh the page for full effect.`);
+
+            // Check for customPrompt conflicts before applying
+            const incoming = profile.settings?.customPrompts;
+            let mergeMode = 'replace';
+            if (incoming && Array.isArray(incoming) && incoming.length > 0) {
+                const existing = (settings.customPrompts || []);
+                const existingNames = new Set(existing.map(e => e.name));
+                const conflicts = incoming.filter(e => existingNames.has(e.name)).map(e => e.name);
+                if (conflicts.length > 0) {
+                    const msg = isZh()
+                        ? `检测到 ${conflicts.length} 个同名自定义 Prompt：${conflicts.join(', ')}。\n\n点"确定"保留现有（仅添加不同名的），点"取消"跳过全部自定义 Prompt 导入。`
+                        : `Found ${conflicts.length} custom prompt(s) with same name: ${conflicts.join(', ')}.\n\nOK = keep existing + add only different names. Cancel = skip all custom prompts.`;
+                    const choice = confirm(msg);
+                    if (!choice) {
+                        mergeMode = 'skip';
+                    }
+                    // 'replace' mode keeps existing same-names, adds different-names
+                }
+            }
+
+            const result = sys.applyProfile(id, mergeMode);
+            let msg = isZh()
+                ? `已应用「${profile.name}」，${result.changed.length} 项设置已更新。`
+                : `Applied "${profile.name}", ${result.changed.length} setting(s) updated.`;
+            if (result.customPromptConflicts?.length > 0) {
+                msg += isZh()
+                    ? ` ${result.customPromptConflicts.length} 个同名 Prompt 已保留现有。`
+                    : ` ${result.customPromptConflicts.length} same-name prompt(s) kept existing.`;
+            }
+            if (mergeMode === 'skip') {
+                msg += isZh() ? ' 自定义 Prompt 未导入。' : ' Custom prompts not imported.';
+            }
+            toastr.success(msg + (isZh() ? ' 请刷新页面以完全生效。' : ' Refresh the page for full effect.'));
         });
 
         // Export
