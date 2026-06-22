@@ -17,7 +17,8 @@ registerSection('quickStart', function (ctx) {
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
     const $container = $('#gd-quick-start');
-    if (!$container.length) return;
+    console.log('[QuickStart] init — container found:', $container.length > 0, 'settings:', !!settings);
+    if (!$container.length) { console.warn('[QuickStart] #gd-quick-start missing, abort'); return; }
 
     // ── Build initial HTML ───────────────────────────────────────────
 
@@ -123,8 +124,9 @@ registerSection('quickStart', function (ctx) {
     // ── World Books mini list renderer ───────────────────────────────
 
     function refreshQuickWorldBookList() {
+        console.log('[QuickStart] refreshQuickWorldBookList called');
         const $list = $('#gd-qs-worldbook-list');
-        if (!$list.length) return;
+        if (!$list.length) { console.warn('[QuickStart] #gd-qs-worldbook-list missing'); return; }
 
         const names = window.world_names || [];
         if (!names.length) {
@@ -187,7 +189,14 @@ registerSection('quickStart', function (ctx) {
     });
 
     // Register global refresh for inline onclick fallback
-    window._gdQuickRefreshWb = () => refreshQuickWorldBookList();
+    window._gdQuickRefreshWb = () => {
+        console.log('[QuickStart] _gdQuickRefreshWb called via inline onclick');
+        refreshQuickWorldBookList();
+    };
+
+    console.log('[QuickStart] button registered, checking DOM...');
+    console.log('[QuickStart] #gd-qs-wb-refresh exists:', $('#gd-qs-wb-refresh').length > 0);
+    console.log('[QuickStart] window._gdQuickRefreshWb:', typeof window._gdQuickRefreshWb);
 
     // ── Initial render ───────────────────────────────────────────────
 
