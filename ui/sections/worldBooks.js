@@ -62,4 +62,7 @@ registerSection('worldBooks', async function (ctx) {
         await refreshBookList();
         toastr.info(settings.lang === 'zh' ? '世界书列表已刷新' : 'World book list refreshed');
     });
+
+    // Expose for quick-start mirror in drawer 1
+    ctx.renderWorldBookList = refreshBookList;
 });

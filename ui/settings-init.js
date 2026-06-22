@@ -7,6 +7,7 @@ import { initAllSections } from './sections/registry.js';
 import './sections/modes.js';
 import './sections/formula.js';
 import './sections/configProfiles.js';
+import './sections/quickStart.js';
 import './sections/director.js';
 import './sections/continuity.js';
 import './sections/worldinfo.js';

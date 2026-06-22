@@ -11,7 +11,7 @@
 // ─── I18n Data ─────────────────────────────────────────────────────────
 const I18N = {
     zh: {
-        drawerModeScoring: '模式与评分',
+        drawerModeScoring: '模式与开始',
         drawerDirectorLlm: 'Director LLM',
         drawerWorldBooks: '世界书系统',
         drawerProfiles: '角色档案与数据',
@@ -47,6 +47,9 @@ const I18N = {
         configProfilesSaveBtn: '保存为配置档',
         configProfilesImportBtn: '导入 .zip',
         configPresetPlaceholder: '或加载预设...',
+
+        quickStartTitle: '快速启动',
+        quickStartHint: '常用功能入口。与对应抽屉中的控件完全同步。',
 
         formulaDrawerTitle: '公式判断配置',
         topnTitle: 'Top-N 设置',
@@ -328,7 +331,7 @@ const I18N = {
         psDecisionLimit: '显示条数',
     },
     en: {
-        drawerModeScoring: 'Mode & Scoring',
+        drawerModeScoring: 'Mode & Start',
         drawerDirectorLlm: 'Director LLM',
         drawerWorldBooks: 'World Books',
         drawerProfiles: 'Profiles & Data',
@@ -364,6 +367,9 @@ const I18N = {
         configProfilesSaveBtn: 'Save as profile',
         configProfilesImportBtn: 'Import .zip',
         configPresetPlaceholder: 'Or load preset...',
+
+        quickStartTitle: 'Quick Start',
+        quickStartHint: 'Common feature shortcuts. Fully synchronized with their source drawers.',
 
         formulaDrawerTitle: 'Formula Configuration',
         topnTitle: 'Top-N Settings',

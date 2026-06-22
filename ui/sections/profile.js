@@ -64,4 +64,7 @@ registerSection('profile', function (ctx) {
 
     refreshProfileManagementUI();
     checkProfileStartupStatus();
+
+    // Expose for quick-start mirror in drawer 1
+    ctx.renderProfileManagementList = refreshProfileManagementUI;
 });

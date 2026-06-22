@@ -3,7 +3,7 @@
     <!-- ═══ Drawer 1: 模式与评分 ═══ -->
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b data-i18n="drawerModeScoring">模式与评分</b>
+            <b data-i18n="drawerModeScoring">模式与开始</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
@@ -44,6 +44,12 @@
                 <hr>
                 <small><i data-i18n="offHint">当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言（即抢话行为不被抑制）。</i></small>
             </div>
+
+            <!-- Quick Start — mirrored from other drawers, fully synchronized -->
+            <hr>
+            <h4 data-i18n="quickStartTitle">快速启动</h4>
+            <small data-i18n="quickStartHint">常用功能入口。与对应抽屉中的控件完全同步。</small>
+            <div id="gd-quick-start" style="margin-top:4px;"></div>
 
             <!-- Formula Configuration (flat section, visibility toggled by mode) -->
             <div id="gd-formula-section" style="display:none;">
