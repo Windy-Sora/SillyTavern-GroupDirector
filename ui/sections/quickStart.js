@@ -43,7 +43,12 @@ registerSection('quickStart', function (ctx) {
 
         // ── World Books section ──
         html += `<div>
-            <div style="font-weight:bold;font-size:0.85em;margin-bottom:2px;">${isZh() ? '世界书' : 'World Books'}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                <span style="font-weight:bold;font-size:0.85em;">${isZh() ? '世界书' : 'World Books'}</span>
+                <span class="menu_button menu_button_icon" id="gd-qs-wb-refresh" style="font-size:0.7em;padding:1px 6px;" title="${isZh() ? '刷新' : 'Refresh'}">
+                    <i class="fa-solid fa-rotate"></i>
+                </span>
+            </div>
             <div id="gd-qs-worldbook-list" style="font-size:0.85em;max-height:120px;overflow-y:auto;"></div>
         </div>`;
 
@@ -175,6 +180,12 @@ registerSection('quickStart', function (ctx) {
     if (typeof ctx.renderWorldBookList === 'function') {
         ctx.renderWorldBookList = wrapRefresh(ctx.renderWorldBookList, refreshQuickWorldBookList);
     }
+
+    // World books refresh button
+    $c('qs-wb-refresh').off('click').on('click', async () => {
+        if (ctx.renderWorldBookList) await ctx.renderWorldBookList();
+        refreshQuickWorldBookList();
+    });
 
     // ── Initial render ───────────────────────────────────────────────
 
