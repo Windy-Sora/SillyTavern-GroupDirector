@@ -7,6 +7,39 @@
 
 const NAME_RE = /^\w+$/;
 
+// ST built-in macros that use {{name}} syntax — prevent name collisions.
+// These run in ST's own pipeline AFTER our Provider rendering, but naming
+// a custom prompt the same as a ST macro would cause confusing behavior.
+const ST_MACRO_NAMES = new Set([
+    // env-macros
+    'user', 'char', 'group', 'groupNotMuted', 'notChar', 'persona', 'original',
+    'model', 'charPrompt', 'charInstruction', 'charDescription', 'charPersonality',
+    'charScenario', 'charDepthPrompt', 'charCreatorNotes', 'charFirstMessage',
+    'charVersion', 'mesExamples', 'mesExamplesRaw',
+    // time-macros
+    'time', 'date', 'weekday', 'isotime', 'isodate', 'datetimeformat', 'idleDuration', 'timeDiff',
+    // core-macros
+    'random', 'roll', 'pick', 'if', 'else', 'input', 'trim', 'noop', 'space', 'newline',
+    'reverse', 'maxPrompt', 'maxContext', 'maxResponse', 'banned', 'outlet',
+    // variable-macros
+    'setvar', 'getvar', 'hasvar', 'deletevar', 'addvar', 'incvar', 'decvar',
+    'setglobalvar', 'getglobalvar', 'hasglobalvar', 'deleteglobalvar',
+    'addglobalvar', 'incglobalvar', 'decglobalvar',
+    // chat-macros
+    'lastMessage', 'lastMessageId', 'lastUserMessage', 'lastCharMessage',
+    'firstIncludedMessageId', 'firstDisplayedMessageId', 'lastSwipeId',
+    'currentSwipeId', 'allChatRange',
+    // state-macros
+    'lastGenerationType', 'hasExtension', 'isMobile',
+    // instruct-macros
+    'systemPrompt',
+    // comment
+    '//',
+    // extensions (commonly installed)
+    'summary', 'authorsNote', 'charAuthorsNote', 'defaultAuthorsNote',
+    'charPrefix', 'charNegativePrefix',
+]);
+
 export function createCustomPromptsSystem(deps) {
     const { settings, saveSettings, registerProvider, unregisterProvider, getProviders, log } = deps;
 
@@ -24,9 +57,11 @@ export function createCustomPromptsSystem(deps) {
         if (!name || !NAME_RE.test(name)) {
             return { ok: false, error: '仅限字母、数字、下划线 (a-z, 0-9, _)' };
         }
+        if (ST_MACRO_NAMES.has(name)) {
+            return { ok: false, error: `"${name}" 与 ST 内置宏冲突，请换一个名称` };
+        }
         const providers = getProviders();
         const builtins = new Set(providers.map(p => p.placeholder));
-        // Don't flag self during rename
         if (builtins.has(`{{${name}}}`)) {
             const list = getList();
             if (!list.some(e => e.name === name && e.id === skipId)) {
