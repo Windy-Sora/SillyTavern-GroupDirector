@@ -412,6 +412,7 @@ SillyTavern-GroupDirector/
 │   │   ├── manifest.js        # profilePresets[] + npcPresets[]
 │   │   ├── fantasy-rpg.json   # Profile 预设
 │   │   └── npc-fantasy-tavern.json # NPC 预设
+│   │   ├── group-director-default.json # 配置档预设
 │   ├── providers/             # 21 个内置 Provider
 │   │   ├── manifest.js        # 模块名清单
 │   │   ├── recent-messages.js # {{recentMessages}}
@@ -443,6 +444,7 @@ SillyTavern-GroupDirector/
 │   ├── npc-export-system.js   # NPC 导出/导入
 │   ├── memory-system.js       # 角色记忆全流程
 │   ├── memory-export-system.js # 记忆导出/导入
+│   ├── config-profile-system.js # 配置档导出/导入/管理
 │   ├── world-book-scanner.js  # 世界书扫描 + 重要性计算
 │   ├── chat-summary-system.js # 上下文总结
 │   ├── summary-export-system.js # 摘要导出/导入 + {{importedSummary}}
@@ -478,6 +480,8 @@ SillyTavern-GroupDirector/
         ├── npcExport.js       # NPC 导出/导入
         ├── memory.js          # 角色记忆
         ├── memoryExport.js    # 记忆导出/导入
+        ├── configProfiles.js   # 配置档管理
+        ├── quickStart.js       # 快速启动
         ├── identity.js         # 身份锚定
         ├── exportImport.js    # 群聊导出/导入
         └── agents.js          # Agent API 独立配置（动态生成）
@@ -931,6 +935,7 @@ assets/profiles/
   ├── manifest.js              # profilePresets[] + npcPresets[]
   ├── fantasy-rpg.json         # Profile 预设：3个奇幻角色
   └── npc-fantasy-tavern.json  # NPC 预设：3个酒馆NPC
+│   │   ├── group-director-default.json # 配置档预设
 ```
 
 - 预设随插件发布，UI 通过下拉框一键加载
@@ -948,6 +953,52 @@ assets/profiles/
 | 跳过选项 | 无 | 无 | 无 | 跳过压缩记忆 |
 | 特殊处理 | hash 校验 | import 追踪 | 勾选启用/禁用 | round→-1 + 超限裁剪 |
 | 新 Provider | 无 | 无 | **{{importedSummary}}** | 无 |
+
+### 13.8 全局配置导出/导入 (Config Profile System)
+
+第五个导出系统——导出的是 `extension_settings`（插件配置），而非 `chat_metadata`（聊天数据）。
+
+**设计动机**：插件有 100+ 配置项、7 个抽屉、无数按钮。新用户不可能全部掌握。配置档让用户一键保存/切换/分享整套配置。
+
+**存储**：`settings.configProfiles = [{ id, name, description, drawers, settings }]`
+
+**导出格式**：`.zip` = `manifest.json` + 可选的 `user-providers/*.js` + `user-capabilities/*.js`
+
+**抽屉→配置映射**：
+
+| 抽屉 | 导出内容 |
+|------|------|
+| Director LLM | prompt / script / wrapper / worldInfo / forceSpeak / knowledge / template 等 |
+| 世界书系统 | `worldBookMaxEntries`（不导出 worldBookSelection 文件名列表）|
+| 角色档案与数据 | profile / memory / identity / npc 全部 settings |
+| 上下文与账本 | summary / continuity 设置 |
+| 多模态 | PostSpeech 全部设置 |
+| 资产管理 | userProviders / userCapabilities 源码（打包为 .js 进 zip）|
+| Agent 与工具 | agentConfigs（apiKey 自动脱敏）+ traceMaxEntries |
+
+**UI**：在"模式与开始"抽屉底部。配置档列表 + 保存/应用/导出/删除/导入 + 预设下拉（`group-director-default` 一键加载）。
+
+文件：`systems/config-profile-system.js`、`ui/sections/configProfiles.js`、`assets/profiles/group-director-default.json`
+
+### 13.9 快速启动 (Quick Start)
+
+抽屉 1 从"模式与评分"改名为"模式与开始"，新增快速启动区，镜像了最常用的两个控件：
+
+- **角色档案**：启用开关 + 全部重新生成按钮 + 状态列表（绿色●就绪/橙色●生成中/红色●失败）
+- **世界书**：勾选列表（全选/取消全选）
+
+**同步机制**（WrapRefresh 模式）：
+
+```
+源 section (profile.js / worldBooks.js)
+  → 暴露 ctx.renderXxxList()
+    → quickStart.js 用 wrapRefresh() 包装
+      → 任何一侧操作 → refresh 同时更新两侧 DOM
+```
+
+两个位置操控同一 set 的 `settings` key，底层共享数据源。无论在哪边操作，另一边自动实时刷新。
+
+文件：`ui/sections/quickStart.js`
 
 ---
 
