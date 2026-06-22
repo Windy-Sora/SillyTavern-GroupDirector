@@ -43,15 +43,33 @@ function makeNativeCaller(stGenerateRaw) {
 function makeOpenAICaller(config) {
     const base = config.endpoint.replace(/\/+$/, '');
 
+    /** Build headers — only add CSRF token for localhost (ST native). */
+    function headers() {
+        const h = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+        };
+        // Only send CSRF to ST's own server, not to external APIs
+        if (window.csrfToken && (base.includes('localhost') || base.includes('127.0.0.1'))) {
+            h['X-CSRF-Token'] = window.csrfToken;
+        }
+        return h;
+    }
+
+    /** Extract text from a DeepSeek/OpenAI response. DeepSeek reasoning models
+     *  may return content="" when thinking consumes all allocated tokens. */
+    function extractContent(data) {
+        const msg = data?.choices?.[0]?.message;
+        if (!msg) return '';
+        // Prefer content, fallback to reasoning_content (DeepSeek R1)
+        return msg.content || msg.reasoning_content || '';
+    }
+
     return {
         async generate(prompt) {
             const resp = await fetch(`${base}/v1/chat/completions`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${config.apiKey}`,
-                    'X-CSRF-Token': window.csrfToken ?? '',
-                },
+                headers: headers(),
                 body: JSON.stringify({
                     model: config.model,
                     messages: [{ role: 'user', content: prompt }],
@@ -61,26 +79,22 @@ function makeOpenAICaller(config) {
             });
             if (!resp.ok) {
                 const err = await resp.text().catch(() => '');
-                throw new Error(`OpenAI API error ${resp.status}: ${err.substring(0, 200)}`);
+                throw new Error(`API error ${resp.status}: ${err.substring(0, 200)}`);
             }
             const data = await resp.json();
-            return data.choices?.[0]?.message?.content ?? '';
+            return extractContent(data);
         },
 
         async test() {
             try {
                 const resp = await fetch(`${base}/v1/chat/completions`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${config.apiKey}`,
-                        'X-CSRF-Token': window.csrfToken ?? '',
-                    },
+                    headers: headers(),
                     body: JSON.stringify({
                         model: config.model,
-                        messages: [{ role: 'user', content: 'Hi. Respond with just "ok".' }],
+                        messages: [{ role: 'user', content: 'Hi' }],
                         temperature: 0,
-                        max_tokens: 10,
+                        max_tokens: 50,
                     }),
                 });
                 if (!resp.ok) {
@@ -88,9 +102,8 @@ function makeOpenAICaller(config) {
                     return { ok: false, error: `HTTP ${resp.status}: ${err.substring(0, 300)}` };
                 }
                 const data = await resp.json();
-                const text = data.choices?.[0]?.message?.content ?? '';
-                if (text.trim()) return { ok: true };
-                return { ok: false, error: 'Empty response from API' };
+                const text = extractContent(data);
+                return text.trim() ? { ok: true } : { ok: false, error: 'Empty response from API — try increasing max_tokens or disabling reasoning mode' };
             } catch (e) {
                 return { ok: false, error: e.message };
             }
@@ -137,7 +150,7 @@ function makeAnthropicCaller(config) {
                     },
                     body: JSON.stringify({
                         model: config.model,
-                        max_tokens: 10,
+                        max_tokens: 50,
                         messages: [{ role: 'user', content: 'Hi' }],
                     }),
                 });
