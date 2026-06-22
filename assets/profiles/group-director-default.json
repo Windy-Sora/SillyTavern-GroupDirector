@@ -70,6 +70,7 @@
     "postSpeechDecisionLimit": 20,
     "agentConfigs": {},
     "customPrompts": [],
+    "customPromptsEnabled": true,
     "traceMaxEntries": 50
   }
 }
