@@ -13,7 +13,7 @@ import { registerSection } from './registry.js';
 
 registerSection('quickStart', function (ctx) {
     const { settings, $c, saveSettings, generateProfilesBatch, getProfiles,
-        getCurrentGroup, toastr } = ctx;
+        getCurrentGroup, toastr, world_names } = ctx;
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
     const $container = $('#gd-quick-start');
@@ -126,7 +126,7 @@ registerSection('quickStart', function (ctx) {
         const $list = $('#gd-qs-worldbook-list');
         if (!$list.length) return;
 
-        const names = window.world_names || [];
+        const names = world_names || [];
         if (!names.length) {
             $list.html(`<small style="color:var(--grey70a);">${isZh() ? '无世界书' : 'No world books'}</small>`);
             return;
