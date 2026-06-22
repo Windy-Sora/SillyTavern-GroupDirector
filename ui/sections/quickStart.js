@@ -17,8 +17,7 @@ registerSection('quickStart', function (ctx) {
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
     const $container = $('#gd-quick-start');
-    console.log('[QuickStart] init — container found:', $container.length > 0, 'settings:', !!settings);
-    if (!$container.length) { console.warn('[QuickStart] #gd-quick-start missing, abort'); return; }
+    if (!$container.length) return;
 
     // ── Build initial HTML ───────────────────────────────────────────
 
@@ -124,9 +123,8 @@ registerSection('quickStart', function (ctx) {
     // ── World Books mini list renderer ───────────────────────────────
 
     function refreshQuickWorldBookList() {
-        console.log('[QuickStart] refreshQuickWorldBookList called');
         const $list = $('#gd-qs-worldbook-list');
-        if (!$list.length) { console.warn('[QuickStart] #gd-qs-worldbook-list missing'); return; }
+        if (!$list.length) return;
 
         const names = window.world_names || [];
         if (!names.length) {
@@ -183,20 +181,14 @@ registerSection('quickStart', function (ctx) {
         ctx.renderWorldBookList = wrapRefresh(ctx.renderWorldBookList, refreshQuickWorldBookList);
     }
 
-    // World books refresh button — event delegation from container
-    $container.off('click', '#gd-qs-wb-refresh').on('click', '#gd-qs-wb-refresh', () => {
-        refreshQuickWorldBookList();
-    });
+    // World books refresh — handled via inline onclick on the span element
+    // that calls window._gdQuickRefreshWb (registered below)
 
-    // Register global refresh for inline onclick fallback
+    // Register global refresh for inline onclick
     window._gdQuickRefreshWb = () => {
-        console.log('[QuickStart] _gdQuickRefreshWb called via inline onclick');
         refreshQuickWorldBookList();
+        toastr.info(isZh() ? '世界书列表已刷新' : 'World book list refreshed');
     };
-
-    console.log('[QuickStart] button registered, checking DOM...');
-    console.log('[QuickStart] #gd-qs-wb-refresh exists:', $('#gd-qs-wb-refresh').length > 0);
-    console.log('[QuickStart] window._gdQuickRefreshWb:', typeof window._gdQuickRefreshWb);
 
     // ── Initial render ───────────────────────────────────────────────
 
