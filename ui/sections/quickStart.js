@@ -45,7 +45,7 @@ registerSection('quickStart', function (ctx) {
         html += `<div>
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
                 <span style="font-weight:bold;font-size:0.85em;">${isZh() ? '世界书' : 'World Books'}</span>
-                <span class="menu_button menu_button_icon" id="gd-qs-wb-refresh" style="font-size:0.7em;padding:1px 6px;" title="${isZh() ? '刷新' : 'Refresh'}">
+                <span class="menu_button menu_button_icon" id="gd-qs-wb-refresh" style="font-size:0.7em;padding:1px 6px;cursor:pointer;" title="${isZh() ? '刷新' : 'Refresh'}" onclick="window._gdQuickRefreshWb && window._gdQuickRefreshWb()">
                     <i class="fa-solid fa-rotate"></i>
                 </span>
             </div>
@@ -185,6 +185,9 @@ registerSection('quickStart', function (ctx) {
     $container.off('click', '#gd-qs-wb-refresh').on('click', '#gd-qs-wb-refresh', () => {
         refreshQuickWorldBookList();
     });
+
+    // Register global refresh for inline onclick fallback
+    window._gdQuickRefreshWb = () => refreshQuickWorldBookList();
 
     // ── Initial render ───────────────────────────────────────────────
 
