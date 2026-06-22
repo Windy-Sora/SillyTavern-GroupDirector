@@ -239,6 +239,7 @@ const I18N = {
         userCapabilityImport: '导入 .js 文件',
 
         customPromptsTitle: '自定义 Prompt 模板',
+        customPromptsEnabled: '启用自定义 Prompt 系统',
         customPromptsHint: '创建自定义占位符，注册为 <code>{{name}}</code> Provider。可在 Director Prompt 等任意模板中引用。启用后立即生效。',
         customPromptsAddTitle: '新建',
         customPromptsNamePlaceholder: 'name',
@@ -568,6 +569,7 @@ const I18N = {
         userCapabilityImport: 'Import .js file',
 
         customPromptsTitle: 'Custom Prompt Templates',
+        customPromptsEnabled: 'Enable custom prompt system',
         customPromptsHint: 'Create custom placeholders registered as <code>{{name}}</code> Providers. Reference them in Director Prompt or any other template. Takes effect immediately on enable.',
         customPromptsAddTitle: 'New',
         customPromptsNamePlaceholder: 'name',

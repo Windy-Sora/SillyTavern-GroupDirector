@@ -7,6 +7,17 @@ registerSection('customPrompts', function (ctx) {
 
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
+    // Master enable/disable
+    $c('cp-enabled').prop('checked', settings.customPromptsEnabled !== false);
+    $c('cp-enabled').on('change', function () {
+        const on = !!$(this).prop('checked');
+        sys.setMasterEnabled(on);
+        renderList();
+        toastr.info(on
+            ? (isZh() ? '自定义 Prompt 已激活' : 'Custom prompts activated')
+            : (isZh() ? '自定义 Prompt 已停用' : 'Custom prompts deactivated'));
+    });
+
     function renderList() {
         const $list = $('#gd-custom-prompt-list');
         if (!$list.length) return;

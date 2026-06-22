@@ -48,7 +48,8 @@ export function createCustomPromptsSystem(deps) {
 
     function syncOne(entry) {
         unregisterProvider(entry.name);
-        if (entry.enabled && entry.name && NAME_RE.test(entry.name)) {
+        const masterOn = settings.customPromptsEnabled !== false;
+        if (entry.enabled && masterOn && entry.name && NAME_RE.test(entry.name)) {
             registerProvider({
                 id: entry.name,
                 placeholder: `{{${entry.name}}}`,
@@ -59,7 +60,15 @@ export function createCustomPromptsSystem(deps) {
 
     function syncAll() {
         getList().forEach(e => unregisterProvider(e.name));
-        getList().forEach(e => syncOne(e));
+        if (settings.customPromptsEnabled !== false) {
+            getList().forEach(e => syncOne(e));
+        }
+    }
+
+    function setMasterEnabled(on) {
+        settings.customPromptsEnabled = !!on;
+        syncAll();
+        saveSettings();
     }
 
     // ── CRUD ──────────────────────────────────────────────────────
@@ -184,5 +193,5 @@ export function createCustomPromptsSystem(deps) {
         return { added, overwritten, conflicts: conflicts.map(p => p.name) };
     }
 
-    return { getList, add, update, remove, toggle, initAll, validateName, hasSelfReference, exportPrompts, parseImportFile, importPrompts };
+    return { getList, add, update, remove, toggle, initAll, validateName, hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled };
 }
