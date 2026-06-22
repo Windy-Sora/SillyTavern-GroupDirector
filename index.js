@@ -1725,6 +1725,13 @@ jQuery(async () => {
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
     userProviderLoader.restoreAll('provider', userDeps);
     userProviderLoader.restoreAll('capability', userDeps);
+
+    // Hook capability toggle to persist enabled state
+    const _origSetCapEnabled = CapabilityRegistry.setEnabled;
+    CapabilityRegistry.setEnabled = function (id, enabled) {
+        _origSetCapEnabled.call(CapabilityRegistry, id, enabled);
+        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) {}
+    };
     customPromptsSystem.initAll();
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

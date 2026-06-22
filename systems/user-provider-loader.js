@@ -12,7 +12,7 @@
  * Zero server-side dependencies. Fully self-contained.
  */
 
-export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, unregisterProvider }) {
+export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, unregisterProvider, CapabilityRegistry }) {
     const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
 
     function getStore(type) {
@@ -27,12 +27,42 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
     }
 
     /**
+     * Persist the enabled/disabled state of all user-imported capabilities.
+     * Called whenever a capability toggle changes.
+     */
+    function persistCapabilityEnabled() {
+        if (!CapabilityRegistry) return;
+        const store = getStore('capability');
+        const allCaps = CapabilityRegistry.list();
+        let changed = false;
+        for (const entry of store) {
+            for (const id of (entry.ids || [])) {
+                const cap = allCaps.find(c => c.id === id);
+                if (cap && entry.enabled !== !cap.disabled) {
+                    entry.enabled = cap.enabled !== false;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) saveStore();
+    }
+
+    /**
+     * Restore persisted enabled state for capabilities after re-import.
+     */
+    async function restoreCapabilityEnabled() {
+        if (!CapabilityRegistry) return;
+        const store = getStore('capability');
+        for (const entry of store) {
+            const enabled = entry.enabled !== false; // default true
+            for (const id of (entry.ids || [])) {
+                try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) {}
+            }
+        }
+    }
+
+    /**
      * Import a user-selected .js file as a provider or capability.
-     *
-     * @param {File} file - File object from <input type="file">
-     * @param {'provider'|'capability'} type - Asset type
-     * @param {object} deps - Dependencies passed to register(deps)
-     * @returns {Promise<{ ok: boolean, name: string, error?: string }>}
      */
     async function importAsset(file, type, deps = {}) {
         if (!file || !file.name.endsWith('.js')) {
@@ -73,8 +103,8 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 : [];
             log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
 
-            // Persist
-            store.push({ name, source, importedAt: Date.now(), ids: addedIds });
+            // Persist with enabled state
+            store.push({ name, source, importedAt: Date.now(), ids: addedIds, enabled: true });
             await saveStore();
 
             log(`User ${type} "${name}" imported and registered`);
@@ -93,7 +123,6 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         const idx = store.findIndex(p => p.name === name);
         if (idx === -1) return false;
         const entry = store[idx];
-        // Unregister from runtime
         if (type === 'provider' && unregisterProvider) {
             for (const id of (entry.ids || [])) {
                 unregisterProvider(id);
@@ -105,11 +134,8 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         return true;
     }
 
-    /**
-     * List all imported assets of a given type.
-     */
     function listAssets(type) {
-        return getStore(type).map(p => ({ name: p.name, importedAt: p.importedAt, ids: p.ids || [] }));
+        return getStore(type).map(p => ({ name: p.name, importedAt: p.importedAt, ids: p.ids || [], enabled: p.enabled !== false }));
     }
 
     /**
@@ -135,6 +161,11 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             }
         }
 
+        // Restore capability enabled states
+        if (type === 'capability') {
+            await restoreCapabilityEnabled();
+        }
+
         if (loaded.length || failed.length) {
             log(`User ${type}s: ${loaded.length} restored` +
                 (failed.length ? `, ${failed.length} failed` : ''));
@@ -151,5 +182,5 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         });
     }
 
-    return { importAsset, deleteAsset, listAssets, restoreAll };
+    return { importAsset, deleteAsset, listAssets, restoreAll, persistCapabilityEnabled, restoreCapabilityEnabled };
 }
