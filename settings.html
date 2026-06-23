@@ -220,6 +220,12 @@
                 <span data-i18n="scriptEnabled">启用导演剧本</span>
             </label>
 
+            <label for="gd-llm-script-position" data-i18n="llmScriptPosition">剧本注入位置</label>
+            <select id="gd-llm-script-position" class="text_pole" style="width:auto;">
+                <option value="0" data-i18n="llmScriptPositionTop">Prompt 开头（弱干预）</option>
+                <option value="1" data-i18n="llmScriptPositionChat">对话附近（强干预）</option>
+            </select>
+
             <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本要求提示（Script Prompt）</label>
             <small data-i18n="scriptPromptHint">告诉导演你希望什么样的剧本风格。留空则只要求基本场景描述。</small>
             <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>

@@ -914,7 +914,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverSwipeCount = 0;
     directorScripts = {};
     postSpeechRoundRan = false;
-    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
+    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
     wiState.text = '';
     wiState.entries = [];
     roundCounterReset();
@@ -1232,7 +1232,7 @@ async function runManualOrderedGeneration() {
                 speakerCount: llmPickedAvatars.length,
             });
             if (charScript) {
-                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, getScriptPosition(), 0, true);
             }
             try {
                 // Re-set character identity right before generation, in case
@@ -1262,7 +1262,7 @@ async function runManualOrderedGeneration() {
                 return;
             } finally {
                 if (charScript) {
-                    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
+                    setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
                 }
             }
         }
@@ -1366,7 +1366,7 @@ async function initForceSpeakLLM(char, avatar) {
                 speakerIndex: 1, speakerIndex0: 0, speakerCount: 1,
             });
             if (charScript) {
-                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, getScriptPosition(), 0, true);
             }
         }
 
