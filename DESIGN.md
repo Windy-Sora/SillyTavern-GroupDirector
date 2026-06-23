@@ -968,8 +968,8 @@ assets/profiles/
 
 | 抽屉 | 导出内容 |
 |------|------|
-| Director LLM | prompt / script / wrapper / worldInfo / forceSpeak / knowledge / template 等 |
-| 世界书系统 | `worldBookMaxEntries`（不导出 worldBookSelection 文件名列表）|
+| 大模型行为 | prompt / script / wrapper / worldInfo / forceSpeak / knowledge / template 等 |
+| 世界书增强 | `worldBookMaxEntries`（不导出 worldBookSelection 文件名列表）|
 | 角色档案与数据 | profile / memory / identity / npc 全部 settings |
 | 上下文与账本 | summary / continuity 设置 |
 | 多模态 | PostSpeech 全部设置 |

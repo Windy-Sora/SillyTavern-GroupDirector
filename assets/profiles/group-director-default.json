@@ -38,6 +38,7 @@
     "knowledgeText": "",
     "forceSpeakMode": "llm",
     "forceSpeakPrompt": "",
+    "llmScriptPosition": 0,
     "worldBookMaxEntries": 20,
     "profileEnabled": true,
     "profileTokenBudget": 2000,
