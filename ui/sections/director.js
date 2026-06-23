@@ -12,6 +12,7 @@ registerSection('director', function (ctx) {
     $(`input[name="gd-llm-char-desc-mode"][value="${settings.llmCharDescMode}"]`).prop('checked', true);
     $c('llm-char-desc-length').val(settings.llmCharDescLength);
     $c('llm-script-enabled').prop('checked', settings.llmScriptEnabled);
+    $c('llm-script-position').val(String(settings.llmScriptPosition ?? DEFAULT_SETTINGS.llmScriptPosition));
     $c('llm-script-prompt').val(settings.llmScriptPrompt);
     $c('llm-script-wrapper').val(settings.llmScriptWrapper);
 
@@ -28,6 +29,10 @@ registerSection('director', function (ctx) {
     });
     $c('llm-char-desc-length').on('input', () => { settings.llmCharDescLength = Math.max(1, parseInt($c('llm-char-desc-length').val()) || 200); saveSettings(); });
     $c('llm-script-enabled').on('input', () => { settings.llmScriptEnabled = !!$c('llm-script-enabled').prop('checked'); saveSettings(); });
+    $c('llm-script-position').on('change', () => {
+        settings.llmScriptPosition = Number($c('llm-script-position').val()) === 1 ? 1 : 0;
+        saveSettings();
+    });
     $c('llm-script-prompt').on('input', () => {
         settings.llmScriptPrompt = $c('llm-script-prompt').val();
         const val = $c('llm-script-prompt').val();
