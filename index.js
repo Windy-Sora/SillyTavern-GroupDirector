@@ -1743,5 +1743,10 @@ jQuery(async () => {
         try { userProviderLoader.persistCapabilityEnabled(); } catch (_) {}
     };
     customPromptsSystem.initAll();
+    // Warn about settings keys not covered by any config profile drawer
+    const uncovered = configProfileSystem.getUncoveredKeys();
+    if (uncovered.length) {
+        console.warn(`[GroupDirector] ${uncovered.length} setting(s) not in any export drawer:`, uncovered.join(', '));
+    }
     console.log(`Group Director extension loaded (mode=${settings.mode})`);
 });

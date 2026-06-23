@@ -16,6 +16,13 @@ import { DEFAULT_SETTINGS } from '../settings.js';
 const CONFIG_PROFILE_VERSION = 1;
 
 // ─── Drawer → settings key mapping ──────────────────────────────────
+//
+// When adding a NEW setting to settings.js DEFAULT_SETTINGS:
+//   1. Add the key to the appropriate drawer array below (one line)
+//   2. If unsure which drawer, put it in the closest matching one
+//   3. On startup, uncovered keys are auto-detected and warned in console
+//
+// Mode & Scoring keys are intentionally excluded (never exported).
 
 const DRAWER_KEYS = {
     directorLlm: [
@@ -350,6 +357,14 @@ export function createConfigProfileSystem(deps) {
         exportProfileAsZip,
         importProfileFromZip,
         getDrawerKeys: () => DRAWER_KEYS,
+        /** Returns DEFAULT_SETTINGS keys NOT covered by any drawer. */
+        getUncoveredKeys() {
+            const allDk = new Set();
+            for (const keys of Object.values(DRAWER_KEYS)) {
+                for (const k of keys) allDk.add(k);
+            }
+            return Object.keys(DEFAULT_SETTINGS).filter(k => !allDk.has(k));
+        },
         getPresetNames: () => [...configPresets],
         loadPreset: async (name) => {
             const resp = await fetch(`scripts/extensions/third-party/SillyTavern-GroupDirector/assets/profiles/${name}.json`);
