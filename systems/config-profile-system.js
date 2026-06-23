@@ -11,6 +11,7 @@
  */
 
 import { configPresets } from '../assets/profiles/manifest.js';
+import { DEFAULT_SETTINGS } from '../settings.js';
 
 const CONFIG_PROFILE_VERSION = 1;
 
@@ -75,13 +76,26 @@ function applySnapshot(settings, snap, options = {}) {
     for (const [k, v] of Object.entries(snap)) {
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') {
-            // Merged separately — applyProfile handles conflicts
             if (!options.customPromptsApplied) continue;
         }
-        if (JSON.stringify(settings[k]) !== JSON.stringify(v)) {
+        // Merge with DEFAULT_SETTINGS base: new keys get defaults, unknown keys preserved
+        const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS[k] || null));
+        const incoming = JSON.parse(JSON.stringify(v));
+        let merged;
+        if (base && typeof base === 'object' && !Array.isArray(base)) {
+            // Nested objects (e.g., scoreWeights): deep merge with default as base
+            merged = Object.assign({}, base, incoming);
+        } else if (Array.isArray(base) && k === 'customPrompts') {
+            // Arrays — just use incoming (merge handled by applyProfile)
+            merged = incoming;
+        } else {
+            // Scalars — use incoming
+            merged = incoming;
+        }
+        if (JSON.stringify(settings[k]) !== JSON.stringify(merged)) {
             changed.push(k);
         }
-        settings[k] = JSON.parse(JSON.stringify(v));
+        settings[k] = merged;
     }
     return changed;
 }
