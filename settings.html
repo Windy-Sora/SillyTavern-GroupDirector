@@ -100,6 +100,8 @@
             </div>
 
             <hr>
+            <details>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;">⚙ 配置档管理（点击展开）</summary>
             <h4 data-i18n="configProfilesTitle">配置档管理</h4>
             <small data-i18n="configProfilesHint">保存、导出、导入全局配置。可创建多套配置档按需切换，也可导出为 .zip 分享给他人。</small>
 
@@ -140,6 +142,7 @@
         </div>
     </div>
 
+            </details>
     <!-- ═══ Drawer 2: Director LLM ═══ -->
     <div id="gd-llm-section" style="display:none;">
     <div class="inline-drawer">
@@ -351,8 +354,9 @@
         </div>
         <div class="inline-drawer-content">
 
-            <h4 data-i18n="profileDrawerTitle">角色档案系统</h4>
-            <small data-i18n="profileHint">提前分析每个角色的特质、动机、关系，注入 Director Prompt。</small>
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;" data-i18n="profileDrawerTitle">角色档案系统</summary>
+            <small data-i18n="profileHint">提前分析每个角色，注入 Director Prompt。</small>
 
             <label class="checkbox_label" for="gd-profile-enabled">
                 <input type="checkbox" id="gd-profile-enabled">
@@ -453,10 +457,12 @@
                     </span>
                 </div>
             </div>
+            </details>
 
             <hr>
             <!-- Character Memory System -->
-            <h4 data-i18n="memoryTitle">角色记忆系统</h4>
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;" data-i18n="memoryTitle">角色记忆系统</summary>
             <small data-i18n="memoryHint">提取角色在对话中的关键经历和情感变化，生成角色记忆。</small>
 
             <label class="checkbox_label" for="gd-memory-enabled">
@@ -573,9 +579,12 @@
                 </div>
 
             </div>
+            </details>
 
             <hr>
             <h4 data-i18n="identityTitle">身份锚定 (Identity Anchor)</h4>
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;" data-i18n="identityTitle">身份锚定 (Identity Anchor)</summary>
             <small data-i18n="identityHint">用户自定义的身份锚定提示词。在此书写指令告诉 LLM 如何看待下方数据（档案、记忆、摘要等）。通过 <code>{{identity}}</code> 占位符手动注入到 Director Prompt 或任何模板中，不会自动注入。</small>
             <textarea id="gd-identity-prompt" class="text_pole textarea_compact" rows="10" style="width:100%;" data-i18n-placeholder="identityPromptPlaceholder"></textarea>
             <div class="menu_button menu_button_icon" id="gd-identity-reset" style="margin-top:4px;">
@@ -583,6 +592,10 @@
             </div>
 
             <hr>
+            </details>
+            <hr>
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;" data-i18n="npcTitle">NPC 生成系统</summary>
             <!-- NPC Generation -->
             <h4 data-i18n="npcTitle">NPC 生成系统</h4>
             <small data-i18n="npcHint">根据上下文批量生成 NPC，支持导入为角色卡。生成前会将已有 NPC 和角色名单传给 LLM 避免重复。</small>
@@ -662,6 +675,7 @@
         </div>
     </div>
 
+            </details>
     <!-- ═══ Drawer 5: 上下文与账本 ═══ -->
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">

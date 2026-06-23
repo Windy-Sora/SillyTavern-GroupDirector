@@ -90,7 +90,7 @@ const I18N = {
 
         scriptTitle: '导演剧本 (Director Script)',
         scriptDrawerTitle: '导演剧本 & 连贯性',
-        scriptHint: '让导演不仅决定谁发言，还生成一段场景剧本，注入到角色生成 prompt 中指导内容创作。',
+        scriptHint: '导演为每个发言角色输出场景剧本，注入角色 prompt 指导表演。',
         scriptEnabled: '启用导演剧本（Director 为每个发言角色输出独立剧本，注入角色 prompt 指导表演，角色不会暴露剧本存在）',
         llmScriptPosition: '剧本注入位置',
         llmScriptPositionTop: 'Prompt 开头（弱干预）',
@@ -178,7 +178,7 @@ const I18N = {
 
         promptTitle: 'Director Prompt 模板',
         promptDrawerTitle: 'Director Prompt 模板',
-        promptHint: '可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code>、<code>{{npcList}}</code>、<code>{{charMemory}}</code>、<code>{{worldInfo}}</code> 等。<br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。启用剧本后还需包含 <code>"script": "..."</code>。<code>speakers</code> 数组<b>顺序就是发言顺序</b>。',
+        promptHint: '占位符：<code>{{recentMessages}}</code> <code>{{characters}}</code> <code>{{charMemory}}</code> 等。模型需返回 JSON：<code>{"speakers":["Name1","Name2"],"reason":"..."}</code>。',
         promptReset: '恢复默认 Prompt',
         promptNote: '注意：每轮群聊生成会额外调用一次主模型来做导演决策。LLM 调用失败时插件会透明放行（不影响聊天）。',
         templateRecursiveTitle: '模板递归渲染',
@@ -193,7 +193,7 @@ const I18N = {
 
         profileTitle: '角色档案系统 (Character Profile System)',
         profileDrawerTitle: '角色档案系统',
-        profileHint: '提前分析每个角色的特质、动机、关系，作为结构化数据注入 Director Prompt。独立于导演判断逻辑。',
+        profileHint: '提前分析每个角色，注入 Director Prompt 作为身份参考。',
         profileEnabled: '启用角色档案（让 Director 了解每个角色的深层信息）',
         profileTokenBudget: '档案 Token 预算（超过时压缩非活跃角色）',
         profileConcurrency: '并发数（0=全部同时, 1=逐个, N=每批N个）',
@@ -427,7 +427,7 @@ const I18N = {
 
         scriptTitle: 'Director Script',
         scriptDrawerTitle: 'Director Script & Continuity',
-        scriptHint: 'Let the director generate per-character stage directions injected into character prompts.',
+        scriptHint: 'Director outputs per-character stage directions injected into character prompts.',
         scriptEnabled: 'Enable Director Script (Director outputs per-character stage directions, injected into character prompts; characters do not reveal script existence)',
         llmScriptPosition: 'Script injection position',
         llmScriptPositionTop: 'Top of prompt (gentle guidance)',
@@ -515,7 +515,7 @@ const I18N = {
 
         promptTitle: 'Director Prompt Template',
         promptDrawerTitle: 'Director Prompt Template',
-        promptHint: 'Placeholders: <code>{{recentMessages}}</code>, <code>{{characters}}</code>, <code>{{maxSpeakers}}</code>, <code>{{npcList}}</code>, <code>{{charMemory}}</code>, <code>{{worldInfo}}</code>, etc.<br>Model must return JSON: <code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>. With script enabled, also include <code>"script": "..."</code>. <code>speakers</code> array <b>order is speaking order</b>.',
+        promptHint: 'Placeholders: <code>{{recentMessages}}</code> <code>{{characters}}</code> <code>{{charMemory}}</code> etc. Model returns JSON: <code>{"speakers":["Name1","Name2"],"reason":"..."}</code>.',
         promptReset: 'Restore Default Prompt',
         promptNote: 'Note: Each round of group chat generation makes one extra main-model call for the director decision. LLM call failures are transparent (chat continues unaffected).',
         templateRecursiveTitle: 'Template Recursive Rendering',
@@ -530,7 +530,7 @@ const I18N = {
 
         profileTitle: 'Character Profile System',
         profileDrawerTitle: 'Character Profile System',
-        profileHint: 'Pre-analyze each character\'s traits, motivations, and relationships as structured data for the Director Prompt. Independent of director decision logic.',
+        profileHint: 'Pre-analyze characters and inject into Director Prompt as identity reference.',
         profileEnabled: 'Enable Character Profiles (let Director understand each character\'s deep traits)',
         profileTokenBudget: 'Profile Token Budget (compress inactive characters when exceeded)',
         profileConcurrency: 'Concurrency (0=all, 1=sequential, N=batch of N)',
