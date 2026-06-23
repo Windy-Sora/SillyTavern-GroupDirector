@@ -112,6 +112,13 @@ let postSpeechAbortController = null;           // AbortController for PostSpeec
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
 
+/** Get current script injection position from settings. */
+function getScriptPosition() {
+    return settings.llmScriptPosition === 1
+        ? extension_prompt_types.IN_CHAT
+        : extension_prompt_types.IN_PROMPT;
+}
+
 async function getScriptForChar(charName, extraContext) {
     const script = directorScripts[charName];
     if (!script) return '';
@@ -707,7 +714,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
                 speakerCount: llmPickedAvatars?.length || 0,
             });
             if (takeoverScript) {
-                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, extension_prompt_types.IN_PROMPT, 0, true);
+                setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, getScriptPosition(), 0, true);
             }
             console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
             return;
@@ -759,9 +766,9 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             speakerCount: llmPickedAvatars?.length || 0,
         });
         if (charScript) {
-            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, extension_prompt_types.IN_PROMPT, 0, true);
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, getScriptPosition(), 0, true);
         } else {
-            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', extension_prompt_types.IN_PROMPT, 0, true);
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
         }
         log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
         return;

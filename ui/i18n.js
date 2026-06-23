@@ -88,6 +88,9 @@ const I18N = {
         scriptDrawerTitle: '导演剧本 & 连贯性',
         scriptHint: '让导演不仅决定谁发言，还生成一段场景剧本，注入到角色生成 prompt 中指导内容创作。',
         scriptEnabled: '启用导演剧本（Director 为每个发言角色输出独立剧本，注入角色 prompt 指导表演，角色不会暴露剧本存在）',
+        llmScriptPosition: '剧本注入位置',
+        llmScriptPositionTop: 'Prompt 开头（弱干预）',
+        llmScriptPositionChat: '对话附近（强干预）',
         scriptPrompt: '剧本要求提示（Script Prompt）',
         scriptPromptHint: '告诉导演你希望什么样的剧本风格。例如："剧情要温馨治愈，突出姐妹情深"、"保持紧张悬疑的氛围"、"加入搞笑吐槽元素"等。留空则只要求基本场景描述。',
 
@@ -418,6 +421,9 @@ const I18N = {
         scriptDrawerTitle: 'Director Script & Continuity',
         scriptHint: 'Let the director generate per-character stage directions injected into character prompts.',
         scriptEnabled: 'Enable Director Script (Director outputs per-character stage directions, injected into character prompts; characters do not reveal script existence)',
+        llmScriptPosition: 'Script injection position',
+        llmScriptPositionTop: 'Top of prompt (gentle guidance)',
+        llmScriptPositionChat: 'Near dialog (strong intervention)',
         scriptPrompt: 'Script Prompt',
         scriptPromptHint: 'Tell the director what kind of script style you want. For example: "Keep a warm and healing tone", "Maintain a suspenseful atmosphere", "Add comedic elements". Leave empty for basic scene descriptions only.',
 

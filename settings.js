@@ -44,6 +44,8 @@ export const DEFAULT_SETTINGS = {
     // Force Speak
     forceSpeakMode: 'native',
     forceSpeakPrompt: '',
+    // Script injection position: 0=IN_PROMPT (top), 1=IN_CHAT (near dialog)
+    llmScriptPosition: 0,
     // Chat Summary
     knowledgeText: '',
     summaryEnabled: false,
