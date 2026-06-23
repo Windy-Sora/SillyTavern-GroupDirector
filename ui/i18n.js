@@ -50,6 +50,10 @@ const I18N = {
 
         quickStartTitle: '快速启动',
         quickStartHint: '常用功能入口。与对应抽屉中的控件完全同步。',
+        qsMemoryExtractAll: '提取全部',
+        qsMemoryRefresh: '扫描',
+        qsApplyRecommended: '应用推荐配置',
+        qsGenerateSummary: '一键总结',
 
         formulaDrawerTitle: '公式判断配置',
         topnTitle: 'Top-N 设置',
@@ -383,6 +387,10 @@ const I18N = {
 
         quickStartTitle: 'Quick Start',
         quickStartHint: 'Common feature shortcuts. Fully synchronized with their source drawers.',
+        qsMemoryExtractAll: 'Extract All',
+        qsMemoryRefresh: 'Scan',
+        qsApplyRecommended: 'Apply Recommended',
+        qsGenerateSummary: 'Summary',
 
         formulaDrawerTitle: 'Formula Configuration',
         topnTitle: 'Top-N Settings',
