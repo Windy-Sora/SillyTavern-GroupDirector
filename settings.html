@@ -153,6 +153,8 @@
         <div class="inline-drawer-content">
 
             <!-- LLM Parameters -->
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;">📊 LLM 参数与角色描述</summary>
             <h4 data-i18n="llmParamsTitle">Director LLM 参数</h4>
             <label for="gd-llm-max-speakers" data-i18n="llmMaxSpeakers">每轮最多发言人数</label>
             <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
@@ -182,6 +184,9 @@
 
             <hr>
             <!-- Director Prompt -->
+            </details>
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;">📝 Prompt 与模板设置</summary>
             <h4 data-i18n="promptTitle">Director Prompt 模板</h4>
             <small data-i18n="promptHint">可用占位符：<code>{{recentMessages}}</code>、<code>{{characters}}</code>、<code>{{maxSpeakers}}</code>、<code>{{character_profiles}}</code>、<code>{{worldInfo}}</code>、<code>{{previousPlan}}</code> 等。<br>模型必须返回 JSON：<code>{"speakers": ["Name1", "Name2"], "reason": "..."}</code>。</small>
             <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="14" style="width:100%;"></textarea>
@@ -216,6 +221,9 @@
 
             <hr>
             <!-- Script & Continuity -->
+            </details>
+            <details open>
+                <summary style="cursor:pointer;font-weight:bold;font-size:0.95em;margin-bottom:4px;">🎬 剧本、账本与强制发言</summary>
             <h4 data-i18n="scriptTitle">导演剧本 (Director Script)</h4>
             <small data-i18n="scriptHint">让导演不仅决定谁发言，还生成一段场景剧本，注入到角色生成 prompt 中指导内容创作。</small>
 
@@ -283,8 +291,7 @@
 
             <hr>
             <!-- Force Speak -->
-            <h4 data-i18n="forceSpeakDrawerTitle">强制发言 (Force Speak) 🧪</h4>
-            <small style="color:#ff9800;"><b>&#9888; <span data-i18n="forceSpeakWarning">测试功能，可能不稳定</span></b></small>
+            <h4 data-i18n="forceSpeakDrawerTitle">强制发言 (Force Speak)</h4>
             <small data-i18n="forceSpeakHint">当用户在群聊中手动强制触发某个角色发言时，Group Director 的处理方式。</small>
 
             <label class="checkbox_label" for="gd-force-speak-native">
@@ -308,6 +315,7 @@
                     <i class="fa-solid fa-rotate-left"></i> <span data-i18n="forceSpeakPromptReset">恢复默认 Prompt</span>
                 </div>
             </div>
+            </details>
 
         </div>
     </div>
