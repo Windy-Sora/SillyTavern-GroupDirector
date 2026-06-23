@@ -38,8 +38,8 @@ registerSection('quickStart', function (ctx) {
             <span class="menu_button menu_button_icon" id="gd-qs-profile-regenerate-all" style="margin-left:8px;font-size:0.8em;">
                 <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
             </span>
-            <span class="menu_button menu_button_icon" id="gd-qs-profile-refresh" style="margin-left:4px;font-size:0.7em;padding:1px 6px;cursor:pointer;" title="${isZh() ? '刷新档案列表' : 'Refresh list'}" onclick="window._gdQuickRefreshProfile && window._gdQuickRefreshProfile()">
-                <i class="fa-solid fa-rotate"></i>
+            <span class="menu_button menu_button_icon" id="gd-qs-profile-refresh" style="margin-left:4px;font-size:0.75em;cursor:pointer;" onclick="window._gdQuickRefreshProfile && window._gdQuickRefreshProfile()">
+                <i class="fa-solid fa-rotate"></i> <span data-i18n="profileScanSave">扫描存档档案</span>
             </span>
             <div id="gd-qs-profile-list" style="margin-top:4px;max-height:150px;overflow-y:auto;font-size:0.85em;"></div>
         </div>`;
