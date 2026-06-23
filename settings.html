@@ -105,6 +105,10 @@
 
             <div id="gd-config-profiles-list" style="margin-top:6px;"></div>
 
+            <select id="gd-cfg-preset" class="text_pole" style="width:auto;font-size:0.85em;margin-top:4px;">
+                <option value="" data-i18n="configPresetPlaceholder">或加载预设...</option>
+            </select>
+
             <div style="margin-top:10px;font-weight:bold;font-size:0.9em;" data-i18n="configProfilesSaveTitle">保存当前为配置档</div>
             <label for="gd-cfg-save-name" data-i18n="configProfilesSaveName">配置档名称</label>
             <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;" data-i18n-placeholder="configProfilesSaveNamePlaceholder">
@@ -130,9 +134,6 @@
                 <span class="menu_button menu_button_icon" id="gd-cfg-import-btn">
                     <i class="fa-solid fa-file-zipper"></i> <span data-i18n="configProfilesImportBtn">导入 .zip</span>
                 </span>
-                <select id="gd-cfg-preset" class="text_pole" style="width:auto;font-size:0.85em;">
-                    <option value="" data-i18n="configPresetPlaceholder">或加载预设...</option>
-                </select>
                 <input type="file" id="gd-cfg-import-file" accept=".zip" style="display:none;">
             </div>
 

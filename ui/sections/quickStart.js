@@ -67,16 +67,11 @@ registerSection('quickStart', function (ctx) {
             <div id="gd-qs-worldbook-list" style="font-size:0.85em;max-height:100px;overflow-y:auto;"></div>
         </div>`;
 
-        // ── One-click buttons ──
+        // ── One-click summary ──
         html += `<hr style="margin:4px 0;">
-        <div style="display:flex;gap:4px;flex-wrap:wrap;">
-            <span class="menu_button menu_button_icon" id="gd-qs-apply-recommended" style="font-size:0.8em;">
-                <i class="fa-solid fa-rocket"></i> <span data-i18n="qsApplyRecommended">应用推荐配置</span>
-            </span>
-            <span class="menu_button menu_button_icon" id="gd-qs-summary-generate" style="font-size:0.8em;">
-                <i class="fa-solid fa-compress"></i> <span data-i18n="qsGenerateSummary">一键总结</span>
-            </span>
-        </div>`;
+        <span class="menu_button menu_button_icon" id="gd-qs-summary-generate" style="font-size:0.8em;">
+            <i class="fa-solid fa-compress"></i> <span data-i18n="qsGenerateSummary">一键总结</span>
+        </span>`;
 
         $container.html(html);
     }
@@ -259,25 +254,7 @@ registerSection('quickStart', function (ctx) {
         ctx.renderWorldBookList = wrapRefresh(ctx.renderWorldBookList, () => { refreshQuickWorldBookList(); renderReadiness(); });
     }
 
-    // ═══ One-click buttons ══════════════════════════════════════════
-
-    $c('qs-apply-recommended').on('click', async function () {
-        const btn = $(this); btn.prop('disabled', true);
-        try {
-            const presetName = 'group-director-default';
-            let profile = configProfileSystem.getProfiles().find(p => p.name.includes('默认配置') || p.name.includes('Group Director'));
-            if (!profile) {
-                profile = await loadConfigPreset(presetName);
-            }
-            configProfileSystem.applyProfile(profile.id);
-            refreshQuickProfileList(); refreshQuickMemoryList(); refreshQuickWorldBookList(); renderReadiness();
-            // Sync checkboxes
-            $c('qs-profile-enabled').prop('checked', settings.profileEnabled ?? false);
-            $c('qs-memory-enabled').prop('checked', settings.memoryEnabled ?? false);
-            toastr.success(isZh() ? '推荐配置已应用，请刷新页面' : 'Recommended config applied. Refresh the page.');
-        } catch (e) { toastr.error((isZh() ? '失败: ' : 'Failed: ') + e.message); }
-        finally { btn.prop('disabled', false); }
-    });
+    // ═══ One-click summary ═════════════════════════════════════════
 
     $c('qs-summary-generate').on('click', async function () {
         if (!summarySystem) { toastr.warning(isZh() ? '总结系统未就绪' : 'Summary system unavailable'); return; }
