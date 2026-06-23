@@ -12,7 +12,7 @@
 const I18N = {
     zh: {
         drawerModeScoring: '模式与开始',
-        drawerDirectorLlm: '大模型导演',
+        drawerDirectorLlm: '大模型行为',
         drawerWorldBooks: '世界书增强',
         drawerProfiles: '角色档案与数据',
         drawerContextLedger: '上下文与账本',
@@ -37,7 +37,7 @@ const I18N = {
         configProfilesSaveDesc: '备注（可选）',
         configProfilesSaveDescPlaceholder: '适合长篇奇幻角色扮演的配置',
         configProfilesSaveDrawers: '导出范围（按抽屉选择）：',
-        configDrawerDirectorLlm: '大模型导演',
+        configDrawerDirectorLlm: '大模型行为',
         configDrawerWorldBooks: '世界书增强',
         configDrawerProfilesAndData: '角色档案与数据',
         configDrawerContextLedger: '上下文与账本',
@@ -349,7 +349,7 @@ const I18N = {
     },
     en: {
         drawerModeScoring: 'Mode & Start',
-        drawerDirectorLlm: 'LLM Director',
+        drawerDirectorLlm: 'LLM Behavior',
         drawerWorldBooks: 'World Book Enhance',
         drawerProfiles: 'Profiles & Data',
         drawerContextLedger: 'Context & Ledger',
@@ -374,7 +374,7 @@ const I18N = {
         configProfilesSaveDesc: 'Description (optional)',
         configProfilesSaveDescPlaceholder: 'Config for long-form fantasy roleplay',
         configProfilesSaveDrawers: 'Export scope (select drawers):',
-        configDrawerDirectorLlm: 'LLM Director',
+        configDrawerDirectorLlm: 'LLM Behavior',
         configDrawerWorldBooks: 'World Book Enhance',
         configDrawerProfilesAndData: 'Profiles & Data',
         configDrawerContextLedger: 'Context & Ledger',
