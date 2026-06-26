@@ -1239,6 +1239,10 @@ async function runManualOrderedGeneration() {
                 // something between setCharacterId and here mutated this_chid
                 setCharacterId(chId);
                 setCharacterName(characters[chId].name);
+                // Small delay for SillyDroid / WebView compatibility:
+                // ensures the JS bridge and async character context settle
+                // before ST's nested generateGroupWrapper cycles characters.
+                await new Promise(r => setTimeout(r, 150));
                 await ctx.generate('normal', { force_chid: chId });
                 // Post-generation: log full message snapshot for identity diagnostics
                 if (chat.length > 0) {

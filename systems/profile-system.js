@@ -159,10 +159,9 @@ async function generateSingleProfile(avatar) {
     try { jsonSchema = JSON.parse(schemaText); } catch (e) { /* use null */ }
 
     const ctx = getContext();
-    const response = await ctx.generateRaw({
-        prompt: filled,
-        jsonSchema: jsonSchema,
-    });
+    const opts = { prompt: filled };
+    if (jsonSchema) opts.jsonSchema = jsonSchema;
+    const response = await ctx.generateRaw(opts);
     // Clean up QUIET_PROMPT to prevent profile generator prompt
     // from leaking into subsequent Director generateRaw calls.
     setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
