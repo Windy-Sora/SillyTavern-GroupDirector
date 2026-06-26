@@ -91,6 +91,9 @@ registerSection('agents', function (ctx) {
                             <i class="fa-solid fa-list"></i>
                         </span>
                     </div>
+                    <select class="gd-agent-model-select text_pole" data-agent="${agent.id}" style="width:100%;margin-top:4px;display:none;">
+                        <option value="">${lang === 'zh' ? '— 选择一个模型，或直接输入 —' : '— Select a model, or type manually —'}</option>
+                    </select>
                     <datalist id="${modelListId}"></datalist>
                     <span class="gd-agent-model-msg" data-agent="${agent.id}" style="font-size:0.8em;"></span>
                     <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
@@ -141,10 +144,21 @@ registerSection('agents', function (ctx) {
             saveSettings();
         });
 
-        // Model
+        // Model input (manual typing)
         block.find('.gd-agent-model').on('input', function () {
             const aid = $(this).data('agent');
             ensureConfig(settings, aid).model = $(this).val();
+            saveSettings();
+        });
+
+        // Model select (dropdown pick)
+        block.find('.gd-agent-model-select').on('change', function () {
+            const aid = $(this).data('agent');
+            const val = $(this).val();
+            if (!val) return;
+            const input = block.find(`.gd-agent-model[data-agent="${aid}"]`);
+            input.val(val);
+            ensureConfig(settings, aid).model = val;
             saveSettings();
         });
 
@@ -178,16 +192,24 @@ registerSection('agents', function (ctx) {
                 return;
             }
 
-            // Populate datalist
+            // Populate datalist and select dropdown
             datalist.innerHTML = '';
+            const select = block.find(`.gd-agent-model-select[data-agent="${aid}"]`);
+            // Keep the placeholder option
+            select.empty().append(
+                $('<option>').val('').text(lang === 'zh' ? '— 选择一个模型，或直接输入 —' : '— Select a model, or type manually —')
+            );
             for (const m of result.models) {
                 const opt = document.createElement('option');
                 opt.value = m;
                 datalist.appendChild(opt);
+                // Also add to select (skip duplicates)
+                select.append($('<option>').val(m).text(m));
             }
+            select.show();
 
             msgEl.css('color', 'green').text(
-                (lang === 'zh' ? `✓ ${result.models.length} 个模型已加载，输入时自动补全` : `✓ ${result.models.length} models loaded, type to autocomplete`)
+                (lang === 'zh' ? `✓ ${result.models.length} 个模型已加载` : `✓ ${result.models.length} models loaded`)
             );
             btn.prop('disabled', false);
         });
