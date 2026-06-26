@@ -160,7 +160,13 @@ async function generateSingleProfile(avatar) {
 
     const ctx = getContext();
     const opts = { prompt: filled };
-    if (jsonSchema) opts.jsonSchema = jsonSchema;
+    if (jsonSchema) {
+        opts.jsonSchema = {
+            name: 'character_profile',
+            value: jsonSchema,
+            strict: true,
+        };
+    }
     const response = await ctx.generateRaw(opts);
     // Clean up QUIET_PROMPT to prevent profile generator prompt
     // from leaking into subsequent Director generateRaw calls.
