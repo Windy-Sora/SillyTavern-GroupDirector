@@ -1,5 +1,5 @@
 export function createProfileSystem(deps) {
-    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt } = deps;
+    const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt, createCaller } = deps;
     const cm = () => getChatMetadata();
 
     // Escape untrusted strings before embedding in HTML strings.
@@ -143,7 +143,7 @@ async function generateSingleProfile(avatar) {
     if (!char) throw new Error(`Character not found for avatar: ${avatar}`);
 
     const generatorPrompt = settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt();
-    const schemaText = settings.profileJsonSchema || getDefaultProfileSchema();
+    const schemaText = settings.profileJsonSchema || '';
 
     let filled = generatorPrompt
         .replace(/\{\{charName\}\}/g, char.name)
@@ -158,16 +158,13 @@ async function generateSingleProfile(avatar) {
     let jsonSchema = null;
     try { jsonSchema = JSON.parse(schemaText); } catch (e) { /* use null */ }
 
-    const ctx = getContext();
-    const opts = { prompt: filled };
-    if (jsonSchema) {
-        opts.jsonSchema = {
-            name: 'character_profile',
-            value: jsonSchema,
-            strict: true,
-        };
-    }
-    const response = await ctx.generateRaw(opts);
+    const agentConfig = settings.agentConfigs?.['profile'] || {};
+    const stGenerateRaw = (opts) => getContext().generateRaw({
+        ...opts,
+        ...(jsonSchema ? { jsonSchema: { name: 'character_profile', value: jsonSchema, strict: true } } : {}),
+    });
+    const caller = createCaller(agentConfig, stGenerateRaw);
+    const response = await caller.generate(filled);
     // Clean up QUIET_PROMPT to prevent profile generator prompt
     // from leaking into subsequent Director generateRaw calls.
     setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);

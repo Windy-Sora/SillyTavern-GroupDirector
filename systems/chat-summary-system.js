@@ -1,6 +1,12 @@
-export function createChatSummarySystem({ settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional, renderPrompt, generateRaw, inject_ids, extension_prompt_types, setExtensionPrompt, log }) {
+export function createChatSummarySystem({ settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional, renderPrompt, generateRaw, inject_ids, extension_prompt_types, setExtensionPrompt, log, createCaller }) {
     const cm = () => getChatMetadata();
     let summarizing = false;
+
+    function getCaller() {
+        const agentConfig = settings.agentConfigs?.['summary'] || {};
+        const stGenerateRaw = (opts) => generateRaw(opts);
+        return createCaller(agentConfig, stGenerateRaw);
+    }
 
     const DEFAULT_PROMPT = {
         zh: '请用简洁的语言总结以下内容，保留关键情节、角色互动和重要细节。输出纯文本，不超过500字。',
@@ -56,7 +62,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
         summarizing = true;
         try {
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
-            const response = await generateRaw({ prompt });
+            const response = await getCaller().generate(prompt);
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
             const entry = {
@@ -101,7 +107,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
         summarizing = true;
         try {
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
-            const response = await generateRaw({ prompt });
+            const response = await getCaller().generate(prompt);
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
             last.content = response || '';

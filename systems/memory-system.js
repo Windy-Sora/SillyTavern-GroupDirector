@@ -182,8 +182,10 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
 
         let summary;
         try {
-            const ctx = getContext();
-            const response = await ctx.generateRaw({ prompt: filled });
+            const agentConfig = settings.agentConfigs?.['memory'] || {};
+            const stGenerateRaw = (opts) => getContext().generateRaw(opts);
+            const compressCaller = createCaller(agentConfig, stGenerateRaw);
+            const response = await compressCaller.generate(filled);
             summary = (typeof response === 'string' ? response : String(response ?? '')).trim();
             if (!summary) throw new Error('Empty response');
         } catch (e) {

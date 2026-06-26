@@ -172,6 +172,7 @@ const chatSummarySystem = createChatSummarySystem({
     settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     inject_ids, extension_prompt_types, setExtensionPrompt, log,
+    createCaller,
 });
 
 const worldBookScanner = createWorldBookScanner({
@@ -191,6 +192,7 @@ const profileSystem = createProfileSystem({
     isRoundActive: () => isGroupChat,
     saveSettings,
     renderPrompt,
+    createCaller,
 });
 const { buildCharacterProfilesText, generateProfilesBatch, validateAndWarnProfilePlaceholders,
     buildProfileLoaderPanel, checkProfileStartupStatus, detectCharacterChanges,
