@@ -232,6 +232,59 @@ registerSection('dashboard', function (ctx) {
         }
     }
 
+    // ── Dashboard: world book inline list ───────────────────────
+    const $wbPanel = $('#gd-dash-worldbooks');
+    const $wbCount = $('#gd-dash-worldbooks-count');
+    const $wbList = $('#gd-dash-worldbook-list');
+
+    function refreshWorldBookStat() {
+        const sel = settings.worldBookSelection || {};
+        const names = ctx.world_names || [];
+        const checked = names.filter(n => sel[n] === true).length;
+        $('#gd-stat-worldbooks .gd-stat-value').text(names.length ? `${checked}/${names.length}` : '-');
+    }
+
+    function renderDashWorldBookList() {
+        if (!settings.worldBookSelection) settings.worldBookSelection = {};
+        const names = ctx.world_names || [];
+        const sel = settings.worldBookSelection;
+        $wbList.empty();
+        if (!names.length) {
+            $wbList.append(`<small>${lang === 'zh' ? '未找到任何世界书' : 'No world books found'}</small>`);
+            return;
+        }
+        const $toolbar = $('<div style="margin-bottom:4px;display:flex;gap:4px;"></div>');
+        const $all = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-check-double"></i> ${lang === 'zh' ? '全选' : 'All'}</span>`);
+        const $none = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-xmark"></i> ${lang === 'zh' ? '取消' : 'None'}</span>`);
+        $all.on('click', () => { for (const n of names) sel[n] = true; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); });
+        $none.on('click', () => { for (const n of names) sel[n] = false; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); });
+        $toolbar.append($all, $none);
+        $wbList.append($toolbar);
+        let totalChecked = 0;
+        for (const name of names) {
+            const checked = sel[name] === true;
+            if (checked) totalChecked++;
+            const $label = $(`<label class="checkbox_label" style="display:flex;align-items:center;gap:4px;"></label>`);
+            const $input = $(`<input type="checkbox">`);
+            $input.prop('checked', checked);
+            $input.on('change', function () { sel[name] = !!$(this).prop('checked'); saveSettings(); refreshWorldBookStat(); });
+            $label.append($input, name);
+            $wbList.append($label);
+        }
+        $wbCount.text(lang === 'zh' ? `已选 ${totalChecked}/${names.length}` : `${totalChecked}/${names.length} selected`);
+    }
+
+    // Toggle world book panel via stat click
+    $('#gd-stat-worldbooks').on('click', () => {
+        if ($wbPanel.is(':visible')) {
+            $wbPanel.slideUp(150);
+        } else {
+            renderDashWorldBookList();
+            $wbPanel.slideDown(150);
+        }
+    });
+    $('#gd-dash-worldbooks-close').on('click', () => $wbPanel.slideUp(150));
+
     // ── Dashboard: manual preset list refresh ───────────────────
     $('#gd-dash-preset-refresh').on('click', function () {
         refreshPresetSelector();
@@ -310,7 +363,6 @@ registerSection('dashboard', function (ctx) {
     $('#gd-dash-memories').on('click', async () => {
         const group = ctx.getCurrentGroup?.();
         if (!group) { toastr?.warning?.(lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Open settings from a group chat first'); return; }
-        const chars = ctx.getCharacters?.() || [];
         const members = group.members.filter(a => !group.disabled_members?.includes(a));
         if (!members.length) { toastr?.warning?.(lang === 'zh' ? '当前群聊没有可用角色' : 'No enabled members'); return; }
         toastr?.info?.(lang === 'zh' ? `正在为 ${members.length} 个角色提取记忆...` : `Extracting memories for ${members.length} characters...`);
@@ -370,6 +422,7 @@ registerSection('dashboard', function (ctx) {
         refreshCardStatuses();
         refreshQuickActions();
         refreshPresetSelector();
+        refreshWorldBookStat();
     }
 
     // Initial load
@@ -380,11 +433,23 @@ registerSection('dashboard', function (ctx) {
     refreshCardStatuses();
     refreshQuickActions();
     refreshPresetSelector();
+    refreshWorldBookStat();
 
-    // Refresh when any drawer is toggled (user may have made changes)
-    $('.inline-drawer-toggle').on('click', function () {
-        setTimeout(refreshAll, 300); // wait for drawer animation
+    // Refresh when any GD drawer is toggled
+    $('.group-director-settings .inline-drawer-toggle').on('click', function () {
+        setTimeout(refreshAll, 300);
     });
+
+    // Auto-refresh when the GD settings panel is opened (ST drawer expands)
+    const panelEl = document.getElementById('gd-settings-panel');
+    if (panelEl) {
+        const panelObserver = new MutationObserver(() => {
+            if (!panelEl.classList.contains('closedDrawer')) {
+                refreshAll();
+            }
+        });
+        panelObserver.observe(panelEl, { attributes: true, attributeFilter: ['class'] });
+    }
 
     // Expose refresh for other sections
     window.__gdRefreshDashboard = refreshAll;

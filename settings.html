@@ -45,6 +45,10 @@
                 <span class="gd-stat-value">-</span>
                 <span class="gd-stat-label" data-i18n="statLedger">账本</span>
             </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statWorldBooks">世界书 <i class="fa-solid fa-caret-down" style="font-size:0.7em;"></i></span>
+            </div>
             <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dashboard-refresh" title="刷新" onclick="window.__gdRefreshDashboard && window.__gdRefreshDashboard(); var i=this.querySelector('i'); if(i){i.classList.add('fa-spin');setTimeout(function(){i.classList.remove('fa-spin')},600)}">
                 <i class="fa-solid fa-rotate"></i>
             </span>
@@ -67,6 +71,14 @@
         </div>
     </div>
 
+    <div class="gd-dash-worldbooks" id="gd-dash-worldbooks" style="display:none;">
+        <div class="gd-dash-worldbooks-header">
+            <span data-i18n="dashWorldBooksTitle">世界书选择</span>
+            <span class="gd-dash-worldbooks-count" id="gd-dash-worldbooks-count"></span>
+            <span class="gd-dash-worldbooks-toggle menu_button menu_button_icon" id="gd-dash-worldbooks-close" style="font-size:0.7em;margin-left:auto;">收起</span>
+        </div>
+        <div id="gd-dash-worldbook-list" style="max-height:160px;overflow-y:auto;padding:4px 0;"></div>
+    </div>
     <hr class="gd-dashboard-rule">
 
     <!-- ═══ Drawer 1: 导演 ═══ -->

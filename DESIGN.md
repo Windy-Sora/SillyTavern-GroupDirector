@@ -378,7 +378,7 @@ CHAT_CHANGED → 裁剪账本 + 裁剪总结（分支/切换）
 
 ### 9.2 设计原则
 
-- **仪表盘是信息层**：模式指示灯、上次决策摘要、数据统计、快捷操作。不属于任何抽屉，永远可见。其他 section 通过 `window.__gdRefreshDashboard` 触发更新。
+- **仪表盘是信息层**：模式指示灯、上次决策摘要、数据统计（含世界书）、快捷操作。不属于任何抽屉，永远可见。打开设置面板时 MutationObserver 自动触发刷新；其他 section 通过 `window.__gdRefreshDashboard` 触发更新。
 - **卡片是内容层**：每个功能模块是一张折叠卡片。标题栏显示名称 + 状态标签（如 `3 ready`、`off`）。折叠状态通过 `settings.uiState.cardStates` 持久化。
 - **抽屉是分类层**：5 个抽屉按用户心智模型分类（导演/角色/连续性/反应/工具），替代旧版 10 个按代码模块划分的抽屉。
 
@@ -392,7 +392,15 @@ UI section 通过 `registerSection(name, initFn)` 注册，`initAllSections(ctx)
 | `window.__gdRefreshConfigList` | 触发配置档列表刷新 |
 | `ctx` 共享依赖 | settings, saveSettings, 各 system 实例 |
 
-### 9.4 仪表盘快捷按钮
+### 9.4 打开时自动刷新
+
+通过 `MutationObserver` 监听 `#gd-settings-panel` 的 `closedDrawer` class 变化——当用户点击 GD 标签页时，面板展开，observer 检测到 class 移除，立即触发 `refreshAll()`。无需手动拉动抽屉触发刷新。
+
+### 9.5 世界书选择面板
+
+仪表盘统计栏第五个方块「世界书」显示当前勾选数/总数。点击展开一个内联面板，包含全选/取消全选按钮和逐个勾选列表，与连续性抽屉中的世界书列表共享同一份 `settings.worldBookSelection`。
+
+### 9.6 仪表盘快捷按钮
 
 | 按钮 | 实现 | 显示条件 |
 |------|------|----------|
