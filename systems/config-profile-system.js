@@ -302,7 +302,7 @@ export function createConfigProfileSystem(deps) {
         const manifestFile = zip.file('manifest.json');
         if (!manifestFile) throw new Error('Invalid config profile zip: missing manifest.json');
 
-        const manifestText = await manifestFile.asText();
+        const manifestText = await manifestFile.async('text');
         let manifest;
         try { manifest = JSON.parse(manifestText); } catch (e) {
             throw new Error('Invalid manifest.json: ' + e.message);
@@ -320,7 +320,7 @@ export function createConfigProfileSystem(deps) {
                 const fileName = p.name.endsWith('.js') ? p.name : `${p.name}.js`;
                 const file = upFolder.file(fileName);
                 if (file) {
-                    p.source = await file.asText();
+                    p.source = await file.async('text');
                 }
             }
         }
@@ -329,7 +329,7 @@ export function createConfigProfileSystem(deps) {
                 const fileName = c.name.endsWith('.js') ? c.name : `${c.name}.js`;
                 const file = ucFolder.file(fileName);
                 if (file) {
-                    c.source = await file.asText();
+                    c.source = await file.async('text');
                 }
             }
         }
