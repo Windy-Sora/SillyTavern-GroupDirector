@@ -113,7 +113,9 @@ export function createDirectorAgent({
                 const maxSpeakers = ctx.runtimeContext?.maxSpeakers ?? 3;
                 const capped = orderedAvatars.slice(0, maxSpeakers);
 
+                const { speakers: _s, reason: _r, scripts: _sc, loreAssignments: _la, ...extra } = parsed;
                 return {
+                    ...extra,
                     speakers: capped,
                     names: parsed.speakers,
                     reason: parsed.reason ?? '',
