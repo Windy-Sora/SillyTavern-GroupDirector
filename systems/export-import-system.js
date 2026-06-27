@@ -18,13 +18,23 @@ export function createExportImportSystem({
     // toastr is a global jQuery plugin that may load after module init —
     // resolve lazily so it's always available when our functions run.
     const toastr = () => window.toastr;
+    const JSZIP_PATH = '../../../../../lib/jszip.min.js';
     let JSZip;
     let csrfToken = null;
 
     async function ensureJSZip() {
         if (JSZip) return;
         if (window.JSZip) { JSZip = window.JSZip; return; }
-        await import('../../../../../lib/jszip.min.js');
+        try { await import(JSZIP_PATH); } catch (_) { /* non-module, fall through */ }
+        if (window.JSZip) { JSZip = window.JSZip; return; }
+        const script = document.createElement('script');
+        script.src = JSZIP_PATH;
+        document.head.appendChild(script);
+        await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('JSZip script load failed'));
+            setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+        });
         if (window.JSZip) { JSZip = window.JSZip; return; }
         throw new Error('JSZip not available');
     }

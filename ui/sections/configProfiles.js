@@ -129,6 +129,8 @@ registerSection('configProfiles', function (ctx) {
             if (!confirm(isZh() ? `删除配置档「${profile.name}」？` : `Delete config profile "${profile.name}"?`)) return;
             sys.deleteProfile(id);
             renderList();
+            populatePresetDropdown();
+            window.__gdRefreshDashboard?.();
             toastr.info(isZh() ? '已删除' : 'Deleted');
         });
     }
@@ -151,6 +153,8 @@ registerSection('configProfiles', function (ctx) {
         $c('cfg-save-name').val('');
         $c('cfg-save-desc').val('');
         renderList();
+        populatePresetDropdown();
+        window.__gdRefreshDashboard?.();
         toastr.success(isZh() ? `配置档「${name}」已保存` : `Config profile "${name}" saved`);
     });
 
@@ -163,6 +167,8 @@ registerSection('configProfiles', function (ctx) {
         try {
             const profile = await sys.importProfileFromZip(file);
             renderList();
+            populatePresetDropdown();
+            window.__gdRefreshDashboard?.();
             toastr.success(isZh() ? `已导入配置档「${profile.name}」` : `Config profile "${profile.name}" imported`);
         } catch (e) {
             toastr.error((isZh() ? '导入失败: ' : 'Import failed: ') + e.message);
@@ -172,33 +178,62 @@ registerSection('configProfiles', function (ctx) {
     $c('cfg-import-btn').off('click').on('click', () => $('#gd-cfg-import-file').click());
 
     // ── Preset dropdown ───────────────────────────────────────────────
+    const PROF_PREFIX = '__prof__:';
 
-    const presetNames = getConfigPresetNames();
-    if (presetNames.length) {
+    function populatePresetDropdown() {
         const $sel = $c('cfg-preset');
-        presetNames.forEach(name => {
-            if ($sel.find(`option[value="${escAttr(name)}"]`).length === 0) {
-                $sel.append(`<option value="${escAttr(name)}">${escHtml(name)}</option>`);
+        if (!$sel.length) return;
+        const current = $sel.val();
+        $sel.find('option:not(:first)').remove();
+        $sel.find('optgroup').remove();
+        // System presets
+        const presets = getConfigPresetNames();
+        if (presets.length) {
+            const $grp = $('<optgroup>').attr('label', isZh() ? '内置配置档' : 'System Presets');
+            for (const name of presets) {
+                $grp.append(`<option value="${escAttr(name)}">${escHtml(name)}</option>`);
             }
-        });
+            $sel.append($grp);
+        }
+        // User profiles
+        const profiles = sys.getProfiles();
+        if (profiles.length) {
+            const $grp = $('<optgroup>').attr('label', isZh() ? '我的配置档' : 'My Profiles');
+            for (const p of profiles) {
+                $grp.append(`<option value="${PROF_PREFIX}${escAttr(p.id)}">${escHtml(p.name)}</option>`);
+            }
+            $sel.append($grp);
+        }
+        if (current) $sel.val(current);
     }
 
+    populatePresetDropdown();
+
     $c('cfg-preset').off('change').on('change', async function () {
-        const name = $(this).val();
-        if (!name) return;
+        const rawValue = $(this).val();
+        if (!rawValue) return;
         const btn = $(this); btn.prop('disabled', true);
         try {
-            const profile = await loadConfigPreset(name);
-            renderList();
-            toastr.success(isZh() ? `已加载预设「${profile.name}」` : `Preset "${profile.name}" loaded`);
+            if (rawValue.startsWith(PROF_PREFIX)) {
+                // User profile — just select it (user can then click apply on the card)
+                $(this).val(rawValue);
+            } else {
+                // System preset — load to list
+                await loadConfigPreset(rawValue);
+                renderList();
+                populatePresetDropdown();
+                window.__gdRefreshDashboard?.();
+                toastr.success(isZh() ? `已加载「${rawValue}」` : `"${rawValue}" loaded`);
+            }
         } catch (e) {
-            toastr.error((isZh() ? '加载预设失败: ' : 'Preset load failed: ') + e.message);
+            toastr.error((isZh() ? '加载失败: ' : 'Load failed: ') + e.message);
         } finally { btn.prop('disabled', false); $(this).val(''); }
     });
 
     // ── Initial ──────────────────────────────────────────────────────
 
     renderList();
+    window.__gdRefreshConfigList = renderList;
 });
 
 function escHtml(s) {

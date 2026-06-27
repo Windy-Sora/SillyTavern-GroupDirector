@@ -4,6 +4,7 @@ import { applyI18n } from './i18n.js';
 import { initAllSections } from './sections/registry.js';
 
 // Side-effect imports: each section module self-registers on load
+import './sections/dashboard.js';
 import './sections/modes.js';
 import './sections/formula.js';
 import './sections/configProfiles.js';

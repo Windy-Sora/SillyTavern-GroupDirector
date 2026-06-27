@@ -224,6 +224,30 @@ export function createConfigProfileSystem(deps) {
         return { changed, customPromptConflicts };
     }
 
+    // ── JSZip loader (script-tag fallback for non-module environments) ──
+
+    const JSZIP_PATH = '../../../../../lib/jszip.min.js';
+    let _JSZip = null;
+
+    async function ensureJSZip() {
+        if (_JSZip) return _JSZip;
+        if (window.JSZip) { _JSZip = window.JSZip; return _JSZip; }
+        // Try dynamic import first (works in module browsers)
+        try { await import(JSZIP_PATH); } catch (_) { /* non-module, fall through */ }
+        if (window.JSZip) { _JSZip = window.JSZip; return _JSZip; }
+        // Script tag fallback
+        const script = document.createElement('script');
+        script.src = JSZIP_PATH;
+        document.head.appendChild(script);
+        await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('JSZip script load failed'));
+            setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+        });
+        if (window.JSZip) { _JSZip = window.JSZip; return _JSZip; }
+        throw new Error('JSZip not available');
+    }
+
     // ── Export to .zip ────────────────────────────────────────────
 
     async function exportProfileAsZip(id) {
@@ -231,10 +255,8 @@ export function createConfigProfileSystem(deps) {
         const profile = list.find(p => p.id === id);
         if (!profile) throw new Error('Profile not found');
 
-        let JSZip;
-        if (window.JSZip) { JSZip = window.JSZip; }
-        else { await import('../../../../../lib/jszip.min.js'); JSZip = window.JSZip; }
-        if (!JSZip) throw new Error('JSZip not available');
+        await ensureJSZip();
+        const JSZip = _JSZip;
 
         const zip = new JSZip();
 
@@ -291,10 +313,8 @@ export function createConfigProfileSystem(deps) {
     // ── Import from .zip ──────────────────────────────────────────
 
     async function importProfileFromZip(file) {
-        let JSZip;
-        if (window.JSZip) { JSZip = window.JSZip; }
-        else { await import('../../../../../lib/jszip.min.js'); JSZip = window.JSZip; }
-        if (!JSZip) throw new Error('JSZip not available');
+        await ensureJSZip();
+        const JSZip = _JSZip;
 
         const data = await file.arrayBuffer();
         const zip = await JSZip.loadAsync(data);
