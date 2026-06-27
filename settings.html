@@ -29,21 +29,21 @@
         </div>
 
         <div class="gd-dashboard-stats">
-            <div class="gd-stat" id="gd-stat-profiles">
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-profiles">
                 <span class="gd-stat-value">-</span>
-                <span class="gd-stat-label" data-i18n="statProfiles">档案</span>
+                <span class="gd-stat-label" data-i18n="statProfiles">档案 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
             </div>
-            <div class="gd-stat" id="gd-stat-memories">
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-memories">
                 <span class="gd-stat-value">-</span>
-                <span class="gd-stat-label" data-i18n="statMemories">记忆</span>
+                <span class="gd-stat-label" data-i18n="statMemories">记忆 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
             </div>
-            <div class="gd-stat" id="gd-stat-npcs">
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-npcs">
                 <span class="gd-stat-value">-</span>
-                <span class="gd-stat-label" data-i18n="statNpcs">NPC</span>
+                <span class="gd-stat-label" data-i18n="statNpcs">NPC <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
             </div>
-            <div class="gd-stat" id="gd-stat-ledger">
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-ledger">
                 <span class="gd-stat-value">-</span>
-                <span class="gd-stat-label" data-i18n="statLedger">账本</span>
+                <span class="gd-stat-label" data-i18n="statLedger">账本 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
             </div>
             <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择">
                 <span class="gd-stat-value">-</span>
@@ -69,6 +69,23 @@
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-cfg" data-i18n="dashImportCfg">导入配置档</span>
             <input type="file" id="gd-dash-import-file" accept=".zip" style="display:none;">
         </div>
+    </div>
+
+    <div class="gd-dash-panel gd-dash-panel-profiles" id="gd-dash-panel-profiles" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashProfilesTitle">角色档案</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="profiles" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-profiles-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-memories" id="gd-dash-panel-memories" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashMemoriesTitle">角色记忆</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="memories" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-memories-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-npcs" id="gd-dash-panel-npcs" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashNpcsTitle">NPC 列表</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="npcs" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-npcs-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-ledger" id="gd-dash-panel-ledger" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashLedgerTitle">导演账本</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="ledger" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-ledger-list" class="gd-dash-panel-body"></div>
     </div>
 
     <div class="gd-dash-worldbooks" id="gd-dash-worldbooks" style="display:none;">

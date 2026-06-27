@@ -175,6 +175,28 @@
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
 }
 
+/* ── Dashboard expandable panels (profiles, memories, npcs, ledger) ── */
+.gd-dash-panel {
+    padding: 6px 8px; margin-bottom: 4px; border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent);
+}
+.gd-dash-panel-header {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85em; font-weight: 600; margin-bottom: 4px;
+}
+.gd-dash-panel-body { font-size: 0.82em; max-height: 200px; overflow-y: auto; }
+.gd-dash-panel-body .gd-list-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 2px 4px; border-radius: 2px;
+}
+.gd-dash-panel-body .gd-list-item:nth-child(odd) { background: color-mix(in srgb, var(--SmartThemeQuoteColor) 3%, transparent); }
+.gd-dash-panel-body .gd-list-name { font-weight: 500; }
+.gd-dash-panel-body .gd-list-meta { font-size: 0.85em; color: var(--grey70a); }
+.gd-list-expandable:hover { background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent) !important; }
+.gd-list-detail { border-left: 2px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent); margin: 2px 4px; }
+.gd-stat-caret { font-size: 0.65em; color: var(--grey70a); transition: transform 0.2s ease; }
+
 .gd-dash-worldbooks {
     padding: 6px 8px;
     margin-bottom: 0;

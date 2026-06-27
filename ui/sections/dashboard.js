@@ -232,6 +232,122 @@ registerSection('dashboard', function (ctx) {
         }
     }
 
+    // ── Dashboard: expandable stat panels ───────────────────────
+    const statPanels = {
+        profiles: { stat: 'gd-stat-profiles', panel: 'gd-dash-panel-profiles', list: 'gd-dash-panel-profiles-list' },
+        memories: { stat: 'gd-stat-memories', panel: 'gd-dash-panel-memories', list: 'gd-dash-panel-memories-list' },
+        npcs:     { stat: 'gd-stat-npcs',     panel: 'gd-dash-panel-npcs',     list: 'gd-dash-panel-npcs-list' },
+        ledger:   { stat: 'gd-stat-ledger',   panel: 'gd-dash-panel-ledger',   list: 'gd-dash-panel-ledger-list' },
+    };
+
+    function esc(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    function makeToggleRow($row, $detail) {
+        $row.css('cursor', 'pointer');
+        $row.on('click', () => { $detail.toggle(120); });
+    }
+
+    function renderPanelProfiles() {
+        const profiles = getProfiles?.() || {};
+        const chars = ctx.getCharacters?.() || [];
+        const $list = $('#gd-dash-panel-profiles-list').empty();
+        const entries = Object.entries(profiles).filter(([, p]) => p);
+        if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色档案' : 'No profiles'}</small>`); return; }
+        for (const [av, p] of entries) {
+            const c = chars.find(c => c.avatar === av);
+            const name = c?.name || p.name || av;
+            const state = p.state || 'unknown';
+            const color = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[state] || '';
+            const profile = p.profile || {};
+            const detail = [profile.summary, profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + [].concat(profile.tags).join(', '), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + profile.motivation].filter(Boolean).join('<br>');
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
+            makeToggleRow($row, $detail);
+            $list.append($row, $detail);
+        }
+    }
+
+    function renderPanelMemories() {
+        const stats = memorySystem.getStats?.() || {};
+        const $list = $('#gd-dash-panel-memories-list').empty();
+        const entries = Object.entries(stats);
+        if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色记忆' : 'No memories'}</small>`); return; }
+        for (const [av, s] of entries) {
+            const mems = memorySystem.listMemories?.(av) || [];
+            const detail = mems.length ? mems.slice(-5).reverse().map(m => `· ${esc(m.event || '')} ${m.mood ? `[${m.mood}]` : ''}`).join('<br>') : (lang === 'zh' ? '(空)' : '(empty)');
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(s.name || av)} ▸</span><span class="gd-list-meta">${s.count || 0} ${lang === 'zh' ? '条' : 'entries'}</span></div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail}</div>`);
+            makeToggleRow($row, $detail);
+            $list.append($row, $detail);
+        }
+    }
+
+    function renderPanelNpcs() {
+        const npcs = npcSystem.getNpcs?.() || [];
+        const $list = $('#gd-dash-panel-npcs-list').empty();
+        if (!npcs.length) { $list.append(`<small>${lang === 'zh' ? '暂无 NPC' : 'No NPCs'}</small>`); return; }
+        for (const n of npcs) {
+            const detail = [
+                n.description && (lang === 'zh' ? '描述：' : 'Desc: ') + n.description,
+                n.personality && (lang === 'zh' ? '性格：' : 'Personality: ') + n.personality,
+                n.scenario && (lang === 'zh' ? '背景：' : 'Scenario: ') + n.scenario,
+            ].filter(Boolean).join('<br>');
+            const desc = (n.description || '').slice(0, 40);
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(n.name || '?')} ▸</span><span class="gd-list-meta">${esc(desc)}${n.description?.length > 40 ? '...' : ''}</span></div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
+            makeToggleRow($row, $detail);
+            $list.append($row, $detail);
+        }
+    }
+
+    function renderPanelLedger() {
+        const history = getDirectorHistory();
+        const $list = $('#gd-dash-panel-ledger-list').empty();
+        if (!history.length) { $list.append(`<small>${lang === 'zh' ? '暂无账本记录' : 'No ledger entries'}</small>`); return; }
+        const recent = history.slice(-8).reverse();
+        for (let i = 0; i < recent.length; i++) {
+            const e = recent[i];
+            const speakers = Array.isArray(e.speakers) ? e.speakers.join(', ') : '';
+            const reason = e.reason || '';
+            const scripts = e.scripts && typeof e.scripts === 'object' ? Object.entries(e.scripts).map(([k, v]) => `${esc(k)}: ${esc(String(v).slice(0, 80))}`).join('<br>') : '';
+            const detail = [reason && (lang === 'zh' ? '理由：' : 'Reason: ') + reason, scripts && ((lang === 'zh' ? '剧本：' : 'Scripts: ') + '<br>' + scripts)].filter(Boolean).join('<br><br>');
+            const reasonShort = reason.slice(0, 50);
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">#${history.length - i} ${esc(speakers)} ▸</span><span class="gd-list-meta">${esc(reasonShort)}${reason.length > 50 ? '...' : ''}</span></div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(无详情)' : '(no details)')}</div>`);
+            makeToggleRow($row, $detail);
+            $list.append($row, $detail);
+        }
+    }
+
+    const panelRenderers = { profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger };
+
+    let openPanel = null;
+    function togglePanel(name) {
+        const cfg = statPanels[name];
+        if (!cfg) return;
+        const $panel = $(`#${cfg.panel}`);
+        if (openPanel === name) {
+            $panel.slideUp(150);
+            openPanel = null;
+        } else {
+            if (openPanel) { $(`#${statPanels[openPanel].panel}`).slideUp(100); }
+            panelRenderers[name]?.();
+            $panel.slideDown(150);
+            openPanel = name;
+        }
+    }
+
+    // Bind stat clicks
+    for (const [name, cfg] of Object.entries(statPanels)) {
+        $(`#${cfg.stat}`).on('click', () => togglePanel(name));
+    }
+    // Bind close buttons
+    $('.gd-dash-panel-close').on('click', function () {
+        const name = $(this).data('panel');
+        $(`#${statPanels[name]?.panel}`).slideUp(150);
+        if (openPanel === name) openPanel = null;
+    });
+
     // ── Dashboard: world book inline list ───────────────────────
     const $wbPanel = $('#gd-dash-worldbooks');
     const $wbCount = $('#gd-dash-worldbooks-count');
