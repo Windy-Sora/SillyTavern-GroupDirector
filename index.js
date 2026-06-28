@@ -958,7 +958,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             window.toastr.info(msg, '', { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false, closeButton: true });
         }
         const dismissNotify = () => {
-            try { toastr?.clear?.(); } catch (_) {}
+            try { toastr?.clear?.(); } catch (_) { }
         };
         try {
             const agent = AgentRegistry.get('post-speech');
@@ -1036,69 +1036,101 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             ? (chatSummarySystem.getLatestActive?.()?.rangeEnd ?? 0) : 0;
         const memCovered = settings.autoMemoryEnabled && settings.memoryEnabled
             ? Object.values(memorySystem.getStats?.() || {}).reduce((max, s) => Math.max(max, s.lastCoveredRound ?? s.lastCoveredAt ?? 0), 0) : 0;
-        let prevLen = chat_metadata[EXT_KEY]?._autoCheckLength;
-        // If counter doesn't exist, use max coverage as baseline
-        if (prevLen === undefined) prevLen = Math.max(summaryCovered, memCovered);
-        console.log('[GD-auto] ENTERED prevLen=', prevLen, 'curLen=', currentLen, 'sumCov=', summaryCovered, 'memCov=', memCovered);
-        async function saveAutoLen(val) {
+        chat_metadata[EXT_KEY] = chat_metadata[EXT_KEY] || {};
+        let legacyLen = chat_metadata[EXT_KEY]._autoCheckLength;
+
+        // Auto Summary
+        let sumLen = chat_metadata[EXT_KEY]._autoSumLen;
+        if (sumLen === undefined) sumLen = legacyLen !== undefined ? legacyLen : summaryCovered;
+
+        // Auto Memory
+        let memLen = chat_metadata[EXT_KEY]._autoMemLen;
+        if (memLen === undefined) memLen = legacyLen !== undefined ? legacyLen : memCovered;
+
+        console.log('[GD-auto] ENTERED sumLen=', sumLen, 'memLen=', memLen, 'curLen=', currentLen);
+
+        async function saveSumLen(val) {
             chat_metadata[EXT_KEY] = chat_metadata[EXT_KEY] || {};
-            chat_metadata[EXT_KEY]._autoCheckLength = val;
-            console.log('[GD-auto] SAVE len=', val);
+            chat_metadata[EXT_KEY]._autoSumLen = val;
             await saveChatConditional();
         }
+
+        async function saveMemLen(val) {
+            chat_metadata[EXT_KEY] = chat_metadata[EXT_KEY] || {};
+            chat_metadata[EXT_KEY]._autoMemLen = val;
+            await saveChatConditional();
+        }
+
         if (roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
-            if (prevLen === 0 && chat_metadata[EXT_KEY]?._autoCheckLength === undefined) {
-                console.log('[GD-auto] path: first-enable currentLen=', currentLen);
-                await saveAutoLen(currentLen);
-                const firstMsgs = currentLen;
-                if (settings.autoSummaryEnabled && settings.summaryEnabled && firstMsgs >= (settings.autoSummaryInterval || 10)) {
-                    try {
-                        log(`Auto-summary: first enable, ${firstMsgs} existing msgs`);
-                        toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${firstMsgs} 条现有消息）...` : `Auto-summary (${firstMsgs} existing msgs)...`, '', { timeOut: 3000 });
-                        await chatSummarySystem.generateSummary();
-                        toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
-                    } catch (e) { log('Auto-summary failed:', e.message); }
+            // Check Auto Summary
+            if (settings.autoSummaryEnabled && settings.summaryEnabled) {
+                const interval = settings.autoSummaryInterval || 10;
+                if (sumLen === 0 && chat_metadata[EXT_KEY]._autoSumLen === undefined && legacyLen === undefined) {
+                    console.log('[GD-auto-sum] path: first-enable currentLen=', currentLen);
+                    await saveSumLen(currentLen);
+                    if (currentLen >= interval) {
+                        try {
+                            log(`Auto-summary: first enable, ${currentLen} existing msgs`);
+                            toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `Auto-summary (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
+                            await chatSummarySystem.generateSummary();
+                            toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
+                        } catch (e) { log('Auto-summary failed:', e.message); }
+                    }
+                } else if (currentLen < sumLen) {
+                    console.log('[GD-auto-sum] path: deletion');
+                    await saveSumLen(currentLen);
+                    toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动总结计数器已重置。' : 'Messages deleted. Auto-summary counter reset.', '', { timeOut: 8000 });
+                } else {
+                    const newMsgs = currentLen - sumLen;
+                    console.log('[GD-auto-sum] path: normal newMsgs=', newMsgs, 'interval=', interval);
+                    if (newMsgs >= interval) {
+                        await saveSumLen(currentLen);
+                        try {
+                            log(`Auto-summary triggered (${newMsgs} msgs)`);
+                            toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
+                            await chatSummarySystem.generateSummary();
+                            toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
+                        } catch (e) { log('Auto-summary failed:', e.message); }
+                    }
                 }
-                if (settings.autoMemoryEnabled && settings.memoryEnabled && firstMsgs >= (settings.autoMemoryInterval || 10)) {
-                    try {
-                        log(`Auto-memory: first enable, ${firstMsgs} existing msgs`);
-                        toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（检测到 ${firstMsgs} 条现有消息）...` : `Auto-memory (${firstMsgs} existing msgs)...`, '', { timeOut: 3000 });
-                        const g = getCurrentGroup();
-                        if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
-                            try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
-                        }
-                        toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
-                    } catch (e) { log('Auto-memory failed:', e.message); }
-                }
-            } else if (currentLen < prevLen) {
-                console.log('[GD-auto] path: deletion');
-                await saveAutoLen(currentLen);
-                toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动计数器已重置。建议手动执行一次总结。' : 'Messages deleted. Auto counters reset. Consider a manual summary.', '', { timeOut: 8000 });
-            } else {
-                const newMsgs = currentLen - prevLen;
-                console.log('[GD-auto] path: normal newMsgs=', newMsgs, 'interval=', settings.autoSummaryInterval);
-                const willTrigger = (settings.autoSummaryEnabled && settings.summaryEnabled && newMsgs >= (settings.autoSummaryInterval || 10))
-                                 || (settings.autoMemoryEnabled && settings.memoryEnabled && newMsgs >= (settings.autoMemoryInterval || 10));
-                // Save counter BEFORE triggering to prevent nested re-entry
-                if (willTrigger) await saveAutoLen(currentLen);
-                if (settings.autoSummaryEnabled && settings.summaryEnabled && newMsgs >= (settings.autoSummaryInterval || 10)) {
-                    try {
-                        log(`Auto-summary triggered (${newMsgs} msgs)`);
-                        toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                        await chatSummarySystem.generateSummary();
-                        toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
-                    } catch (e) { log('Auto-summary failed:', e.message); }
-                }
-                if (settings.autoMemoryEnabled && settings.memoryEnabled && newMsgs >= (settings.autoMemoryInterval || 10)) {
-                    try {
-                        log(`Auto-memory triggered (${newMsgs} msgs)`);
-                        toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（${newMsgs} 条新消息）...` : `Auto-memory (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                        const g = getCurrentGroup();
-                        if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
-                            try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
-                        }
-                        toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
-                    } catch (e) { log('Auto-memory failed:', e.message); }
+            }
+
+            // Check Auto Memory
+            if (settings.autoMemoryEnabled && settings.memoryEnabled) {
+                const interval = settings.autoMemoryInterval || 10;
+                if (memLen === 0 && chat_metadata[EXT_KEY]._autoMemLen === undefined && legacyLen === undefined) {
+                    console.log('[GD-auto-mem] path: first-enable currentLen=', currentLen);
+                    await saveMemLen(currentLen);
+                    if (currentLen >= interval) {
+                        try {
+                            log(`Auto-memory: first enable, ${currentLen} existing msgs`);
+                            toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（检测到 ${currentLen} 条现有消息）...` : `Auto-memory (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
+                            const g = getCurrentGroup();
+                            if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
+                                try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
+                            }
+                            toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
+                        } catch (e) { log('Auto-memory failed:', e.message); }
+                    }
+                } else if (currentLen < memLen) {
+                    console.log('[GD-auto-mem] path: deletion');
+                    await saveMemLen(currentLen);
+                    toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动记忆计数器已重置。' : 'Messages deleted. Auto-memory counter reset.', '', { timeOut: 8000 });
+                } else {
+                    const newMsgs = currentLen - memLen;
+                    console.log('[GD-auto-mem] path: normal newMsgs=', newMsgs, 'interval=', interval);
+                    if (newMsgs >= interval) {
+                        await saveMemLen(currentLen);
+                        try {
+                            log(`Auto-memory triggered (${newMsgs} msgs)`);
+                            toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（${newMsgs} 条新消息）...` : `Auto-memory (${newMsgs} msgs)...`, '', { timeOut: 3000 });
+                            const g = getCurrentGroup();
+                            if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
+                                try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
+                            }
+                            toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
+                        } catch (e) { log('Auto-memory failed:', e.message); }
+                    }
                 }
             }
         }
@@ -1267,7 +1299,11 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     await postSpeechSystem.clearAll();
     postSpeechRoundQueue = [];
     // Reset auto-check counter on chat change
-    if (chat_metadata[EXT_KEY]) { delete chat_metadata[EXT_KEY]._autoCheckLength; }
+    if (chat_metadata[EXT_KEY]) {
+        delete chat_metadata[EXT_KEY]._autoCheckLength;
+        delete chat_metadata[EXT_KEY]._autoSumLen;
+        delete chat_metadata[EXT_KEY]._autoMemLen;
+    }
     postSpeechRoundRan = false;
 });
 
@@ -1834,7 +1870,7 @@ jQuery(async () => {
     const _origSetCapEnabled = CapabilityRegistry.setEnabled;
     CapabilityRegistry.setEnabled = function (id, enabled) {
         _origSetCapEnabled.call(CapabilityRegistry, id, enabled);
-        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) {}
+        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
     };
     customPromptsSystem.initAll();
     // Warn about settings keys not covered by any config profile drawer
