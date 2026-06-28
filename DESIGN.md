@@ -396,11 +396,15 @@ UI section 通过 `registerSection(name, initFn)` 注册，`initAllSections(ctx)
 
 通过 `MutationObserver` 监听 `#gd-settings-panel` 的 `closedDrawer` class 变化——当用户点击 GD 标签页时，面板展开，observer 检测到 class 移除，立即触发 `refreshAll()`。无需手动拉动抽屉触发刷新。
 
-### 9.5 世界书选择面板
+### 9.5 统计面板展开与行内编辑
+
+所有 5 个统计方块均可点击展开内联面板。各面板共用 `statPanels` 配置和统一的 `togglePanel()` 控制，互斥展开（打开一个会自动关闭上一个）。展开项支持行内编辑：悬停字段浮现「编辑」按钮 → textarea → 保存/Ctrl+Enter 写回底层数据 → `saveChatConditional()` 持久化。编辑按钮使用事件委托，保存后重建的按钮仍可继续编辑。
+
+### 9.6 世界书选择面板
 
 仪表盘统计栏第五个方块「世界书」显示当前勾选数/总数。点击展开一个内联面板，包含全选/取消全选按钮和逐个勾选列表，与连续性抽屉中的世界书列表共享同一份 `settings.worldBookSelection`。
 
-### 9.6 仪表盘快捷按钮
+### 9.7 仪表盘快捷按钮
 
 | 按钮 | 实现 | 显示条件 |
 |------|------|----------|
