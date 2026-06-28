@@ -45,6 +45,10 @@
                 <span class="gd-stat-value">-</span>
                 <span class="gd-stat-label" data-i18n="statLedger">账本 <i class="fa-solid fa-caret-down gd-stat-caret"></i></span>
             </div>
+            <div class="gd-stat gd-stat-clickable" id="gd-stat-summary">
+                <span class="gd-stat-value">-</span>
+                <span class="gd-stat-label" data-i18n="statSummary">总结</span>
+            </div>
             <div class="gd-stat gd-stat-clickable" id="gd-stat-worldbooks" title="点击展开世界书选择">
                 <span class="gd-stat-value">-</span>
                 <span class="gd-stat-label" data-i18n="statWorldBooks">世界书 <i class="fa-solid fa-caret-down" style="font-size:0.7em;"></i></span>
@@ -69,6 +73,11 @@
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-cfg" data-i18n="dashImportCfg">导入配置档</span>
             <input type="file" id="gd-dash-import-file" accept=".zip" style="display:none;">
         </div>
+    </div>
+
+    <div class="gd-dash-panel gd-dash-panel-summary" id="gd-dash-panel-summary" style="display:none;">
+        <div class="gd-dash-panel-header"><span data-i18n="dashSummaryTitle">上下文总结</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="summary" style="font-size:0.7em;margin-left:auto;">收起</span></div>
+        <div id="gd-dash-panel-summary-list" class="gd-dash-panel-body"></div>
     </div>
 
     <div class="gd-dash-panel gd-dash-panel-profiles" id="gd-dash-panel-profiles" style="display:none;">

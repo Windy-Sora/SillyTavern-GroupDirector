@@ -210,6 +210,7 @@ registerSection('dashboard', function (ctx) {
 
     // ── Dashboard: expandable stat panels ───────────────────────
     const statPanels = {
+        summary:  { stat: 'gd-stat-summary',  panel: 'gd-dash-panel-summary',  list: 'gd-dash-panel-summary-list' },
         profiles: { stat: 'gd-stat-profiles', panel: 'gd-dash-panel-profiles', list: 'gd-dash-panel-profiles-list' },
         memories: { stat: 'gd-stat-memories', panel: 'gd-dash-panel-memories', list: 'gd-dash-panel-memories-list' },
         npcs:     { stat: 'gd-stat-npcs',     panel: 'gd-dash-panel-npcs',     list: 'gd-dash-panel-npcs-list' },
@@ -249,6 +250,52 @@ registerSection('dashboard', function (ctx) {
                 $ta.remove(); $btns.remove(); $disp.show();
                 if (afterSave) await afterSave();
             });
+        });
+    }
+
+    function renderPanelSummary() {
+        const active = ctx.summarySystem?.getLatestActive?.();
+        const $list = $('#gd-dash-panel-summary-list').empty();
+        if (!active) {
+            $list.append(`<small>${lang === 'zh' ? '暂无上下文总结' : 'No summary yet'}</small>`);
+        } else {
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${lang === 'zh' ? '当前总结' : 'Active summary'}</span><span class="gd-list-meta">${active.rangeEnd || '?'} msgs</span></div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="summary-content">${esc(active.content || '')}</div></div>`);
+            if (active.content) {
+                makeEditable($detail, 'summary-content',
+                    () => active.content,
+                    (v) => { active.content = v; },
+                    async () => { await saveChatConditional(); refreshSummaryStat(); $('#gd-summary-result').val(active.content); window.__gdRefreshSummaryStatus?.(); }
+                );
+            }
+            makeToggleRow($row, $detail);
+            $list.append($row, $detail);
+        }
+
+        // Controls at panel bottom (always visible, sync with drawer)
+        const sOn = !!settings.summaryEnabled;
+        const asOn = !!settings.autoSummaryEnabled;
+        const asInt = settings.autoSummaryInterval ?? 10;
+        $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;flex-wrap:wrap;">` +
+            `<label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-summary-enabled" ${sOn ? 'checked' : ''}>${lang === 'zh' ? '启用总结' : 'Enable'}</label>` +
+            `<label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-auto-summary" ${asOn ? 'checked' : ''}>${lang === 'zh' ? '自动' : 'Auto'}</label>` +
+            `<span>${lang === 'zh' ? '每' : 'Every'}</span><input type="number" value="${asInt}" id="gd-dash-panel-auto-summary-int" class="text_pole" min="1" max="200" style="width:50px;margin:0;"><span>${lang === 'zh' ? '条触发' : 'msgs'}</span>` +
+            `</div>`);
+        $('#gd-dash-panel-summary-enabled').on('change', function () {
+            settings.summaryEnabled = !!$(this).prop('checked');
+            $('#gd-summary-enabled').prop('checked', settings.summaryEnabled);
+            saveSettings();
+        });
+        $('#gd-dash-panel-auto-summary').on('change', function () {
+            settings.autoSummaryEnabled = !!$(this).prop('checked');
+            $('#gd-auto-summary-enabled').prop('checked', settings.autoSummaryEnabled);
+            $('#gd-auto-summary-row').toggle(settings.autoSummaryEnabled);
+            saveSettings();
+        });
+        $('#gd-dash-panel-auto-summary-int').on('input', function () {
+            settings.autoSummaryInterval = Math.max(1, parseInt($(this).val()) || 10);
+            $('#gd-auto-summary-interval').val(settings.autoSummaryInterval);
+            saveSettings();
         });
     }
 
@@ -362,7 +409,7 @@ registerSection('dashboard', function (ctx) {
         }
     }
 
-    const panelRenderers = { profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger };
+    const panelRenderers = { summary: renderPanelSummary, profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger };
 
     let openPanel = null;
     function togglePanel(name) {
@@ -395,6 +442,18 @@ registerSection('dashboard', function (ctx) {
     const $wbPanel = $('#gd-dash-worldbooks');
     const $wbCount = $('#gd-dash-worldbooks-count');
     const $wbList = $('#gd-dash-worldbook-list');
+
+    function refreshSummaryStat() {
+        const active = ctx.summarySystem?.getLatestActive?.();
+        const $val = $('#gd-stat-summary .gd-stat-value');
+        if (active) {
+            const total = ctx.getChat?.()?.length || 0;
+            const covered = active.rangeEnd || 0;
+            $val.text(`${covered}/${total}`);
+        } else {
+            $val.text('-');
+        }
+    }
 
     function refreshWorldBookStat() {
         const sel = settings.worldBookSelection || {};
@@ -580,6 +639,7 @@ registerSection('dashboard', function (ctx) {
         refreshCardStatuses();
         refreshQuickActions();
         refreshPresetSelector();
+        refreshSummaryStat();
         refreshWorldBookStat();
     }
 
@@ -590,6 +650,7 @@ registerSection('dashboard', function (ctx) {
     refreshCardStatuses();
     refreshQuickActions();
     refreshPresetSelector();
+    refreshSummaryStat();
     refreshWorldBookStat();
 
     // Refresh when any GD drawer is toggled
@@ -610,4 +671,6 @@ registerSection('dashboard', function (ctx) {
 
     // Expose refresh for other sections
     window.__gdRefreshDashboard = refreshAll;
+    window.__gdRenderPanelSummary = renderPanelSummary;
+    window.__gdRefreshSummaryStat = refreshSummaryStat;
 });

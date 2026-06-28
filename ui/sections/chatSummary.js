@@ -183,8 +183,12 @@ registerSection('chatSummary', function (ctx) {
             $c('summary-result').val('');
             $c('summary-result-section').hide();
         }
+        // Cross-sync dashboard summary panel
+        window.__gdRenderPanelSummary?.();
+        window.__gdRefreshSummaryStat?.();
     }
     refreshStatus();
+    window.__gdRefreshSummaryStatus = refreshStatus;
 
     // Show result section if active summary exists
     if (ss.getLatestActive()) {
