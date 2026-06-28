@@ -38,6 +38,20 @@ registerSection('chatSummary', function (ctx) {
         saveSettings();
     });
 
+    // Auto summary
+    $c('auto-summary-enabled').prop('checked', !!settings.autoSummaryEnabled);
+    $c('auto-summary-interval').val(settings.autoSummaryInterval ?? 10);
+    $c('auto-summary-enabled').on('change', () => {
+        settings.autoSummaryEnabled = !!$c('auto-summary-enabled').prop('checked');
+        $('#gd-auto-summary-row').toggle(settings.autoSummaryEnabled);
+        saveSettings();
+    });
+    $c('auto-summary-interval').on('input', () => {
+        settings.autoSummaryInterval = Math.max(1, parseInt($c('auto-summary-interval').val()) || 10);
+        saveSettings();
+    });
+    $('#gd-auto-summary-row').toggle(!!settings.autoSummaryEnabled);
+
     // Reuse toggle
     $c('summary-reuse').on('change', () => {
         settings.summaryReusePrevious = !!$c('summary-reuse').prop('checked');

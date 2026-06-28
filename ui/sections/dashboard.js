@@ -299,6 +299,12 @@ registerSection('dashboard', function (ctx) {
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
         }
+        // Auto-memory controls at panel bottom
+        const amOn = !!settings.autoMemoryEnabled;
+        const amInt = settings.autoMemoryInterval ?? 10;
+        $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;"><label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-auto-memory" ${amOn ? 'checked' : ''}>${lang === 'zh' ? '自动提取' : 'Auto-extract'}</label><span>${lang === 'zh' ? '每' : 'Every'}</span><input type="number" value="${amInt}" id="gd-dash-panel-auto-memory-int" class="text_pole" min="1" max="200" style="width:50px;margin:0;"><span>${lang === 'zh' ? '条触发' : 'msgs'}</span></div>`);
+        $('#gd-dash-panel-auto-memory').on('change', function () { settings.autoMemoryEnabled = !!$(this).prop('checked'); saveSettings(); });
+        $('#gd-dash-panel-auto-memory-int').on('input', function () { settings.autoMemoryInterval = Math.max(1, parseInt($(this).val()) || 10); saveSettings(); });
     }
 
     function renderPanelNpcs() {

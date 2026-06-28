@@ -914,8 +914,10 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverFailed = false;
     takeoverCompleted = new Set();
     takeoverSwipeCount = 0;
+    manualGenInProgress = false;
     directorScripts = {};
     postSpeechRoundRan = false;
+    postSpeechLastMsgIndex = -1;
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
     wiState.text = '';
     wiState.entries = [];
@@ -937,7 +939,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
     // Only fire when takeover is fully complete (not during nested wrappers)
-    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && takeoverGenCount === 0) {
+    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && takeoverGenCount === 0 && !manualGenInProgress) {
         postSpeechRoundRan = true;
 
         generationStopped = false;
@@ -1020,6 +1022,87 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             }
         }
     }
+
+    // ─── Auto Summary & Auto Memory ────────────────────────────
+    const lang = settings.lang || 'zh';
+    const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled;
+    const _c2 = takeoverGenCount === 0;
+    const _c3 = !manualGenInProgress;
+    console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: takeoverGenCount, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
+    if (_c1 && _c2 && _c3) {
+        const currentLen = chat.length;
+        // Base prevLen on actual summary/memory coverage, not a possibly stale counter
+        const summaryCovered = settings.autoSummaryEnabled && settings.summaryEnabled
+            ? (chatSummarySystem.getLatestActive?.()?.rangeEnd ?? 0) : 0;
+        const memCovered = settings.autoMemoryEnabled && settings.memoryEnabled
+            ? Object.values(memorySystem.getStats?.() || {}).reduce((max, s) => Math.max(max, s.lastCoveredRound ?? s.lastCoveredAt ?? 0), 0) : 0;
+        let prevLen = chat_metadata[EXT_KEY]?._autoCheckLength;
+        // If counter doesn't exist, use max coverage as baseline
+        if (prevLen === undefined) prevLen = Math.max(summaryCovered, memCovered);
+        console.log('[GD-auto] ENTERED prevLen=', prevLen, 'curLen=', currentLen, 'sumCov=', summaryCovered, 'memCov=', memCovered);
+        async function saveAutoLen(val) {
+            chat_metadata[EXT_KEY] = chat_metadata[EXT_KEY] || {};
+            chat_metadata[EXT_KEY]._autoCheckLength = val;
+            console.log('[GD-auto] SAVE len=', val);
+            await saveChatConditional();
+        }
+        if (roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
+            if (prevLen === 0 && chat_metadata[EXT_KEY]?._autoCheckLength === undefined) {
+                console.log('[GD-auto] path: first-enable currentLen=', currentLen);
+                await saveAutoLen(currentLen);
+                const firstMsgs = currentLen;
+                if (settings.autoSummaryEnabled && settings.summaryEnabled && firstMsgs >= (settings.autoSummaryInterval || 10)) {
+                    try {
+                        log(`Auto-summary: first enable, ${firstMsgs} existing msgs`);
+                        toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${firstMsgs} 条现有消息）...` : `Auto-summary (${firstMsgs} existing msgs)...`, '', { timeOut: 3000 });
+                        await chatSummarySystem.generateSummary();
+                        toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
+                    } catch (e) { log('Auto-summary failed:', e.message); }
+                }
+                if (settings.autoMemoryEnabled && settings.memoryEnabled && firstMsgs >= (settings.autoMemoryInterval || 10)) {
+                    try {
+                        log(`Auto-memory: first enable, ${firstMsgs} existing msgs`);
+                        toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（检测到 ${firstMsgs} 条现有消息）...` : `Auto-memory (${firstMsgs} existing msgs)...`, '', { timeOut: 3000 });
+                        const g = getCurrentGroup();
+                        if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
+                            try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
+                        }
+                        toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
+                    } catch (e) { log('Auto-memory failed:', e.message); }
+                }
+            } else if (currentLen < prevLen) {
+                console.log('[GD-auto] path: deletion');
+                await saveAutoLen(currentLen);
+                toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动计数器已重置。建议手动执行一次总结。' : 'Messages deleted. Auto counters reset. Consider a manual summary.', '', { timeOut: 8000 });
+            } else {
+                const newMsgs = currentLen - prevLen;
+                console.log('[GD-auto] path: normal newMsgs=', newMsgs, 'interval=', settings.autoSummaryInterval);
+                const willTrigger = (settings.autoSummaryEnabled && settings.summaryEnabled && newMsgs >= (settings.autoSummaryInterval || 10))
+                                 || (settings.autoMemoryEnabled && settings.memoryEnabled && newMsgs >= (settings.autoMemoryInterval || 10));
+                // Save counter BEFORE triggering to prevent nested re-entry
+                if (willTrigger) await saveAutoLen(currentLen);
+                if (settings.autoSummaryEnabled && settings.summaryEnabled && newMsgs >= (settings.autoSummaryInterval || 10)) {
+                    try {
+                        log(`Auto-summary triggered (${newMsgs} msgs)`);
+                        toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
+                        await chatSummarySystem.generateSummary();
+                        toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
+                    } catch (e) { log('Auto-summary failed:', e.message); }
+                }
+                if (settings.autoMemoryEnabled && settings.memoryEnabled && newMsgs >= (settings.autoMemoryInterval || 10)) {
+                    try {
+                        log(`Auto-memory triggered (${newMsgs} msgs)`);
+                        toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（${newMsgs} 条新消息）...` : `Auto-memory (${newMsgs} msgs)...`, '', { timeOut: 3000 });
+                        const g = getCurrentGroup();
+                        if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
+                            try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
+                        }
+                        toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
+                    } catch (e) { log('Auto-memory failed:', e.message); }
+                }
+            }
+        }
+    }
 });
 
 // When messages are deleted, the chat timeline has rolled back.
@@ -1044,7 +1127,6 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     if (String(msg.name).startsWith('_')) return;
 
     // Dedup: same message index, don't trigger twice.
-    // For swipe/regenerate, allow re-analysis.
     const msgIndex = chat.length - 1;
     const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
     if (!isReroll && msgIndex === postSpeechLastMsgIndex) return;
@@ -1167,6 +1249,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     takeoverFailed = false;
     takeoverCompleted = new Set();
     takeoverSwipeCount = 0;
+    manualGenInProgress = false;
     directorScripts = {};
     wiState.text = '';
     wiState.entries = [];
@@ -1183,11 +1266,15 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     await chatSummarySystem.pruneSummaries();
     await postSpeechSystem.clearAll();
     postSpeechRoundQueue = [];
+    // Reset auto-check counter on chat change
+    if (chat_metadata[EXT_KEY]) { delete chat_metadata[EXT_KEY]._autoCheckLength; }
     postSpeechRoundRan = false;
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
+let manualGenInProgress = false;
 async function runManualOrderedGeneration() {
+    manualGenInProgress = true;
     takeoverPending = false;
     const orderedList = [...llmPickedAvatars];
     takeoverGenCount = orderedList.length;
@@ -1277,6 +1364,7 @@ async function runManualOrderedGeneration() {
     } finally {
         console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
         takeoverGenCount = 0;
+        manualGenInProgress = false;
         // Restore the original character context so ST doesn't stay stuck
         // on the last generated character after takeover
         if (savedChId !== undefined && savedChId !== null) {

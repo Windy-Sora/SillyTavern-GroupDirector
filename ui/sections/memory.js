@@ -22,6 +22,20 @@ registerSection('memory', function (ctx) {
     $c('memory-keep-recent').val(settings.memoryKeepRecent ?? 5);
     $c('memory-max-entries').val(settings.memoryMaxEntries ?? 200);
 
+    // Auto memory
+    $c('auto-memory-enabled').prop('checked', !!settings.autoMemoryEnabled);
+    $c('auto-memory-interval').val(settings.autoMemoryInterval ?? 10);
+    $c('auto-memory-enabled').on('change', function () {
+        settings.autoMemoryEnabled = !!$(this).prop('checked');
+        $('#gd-auto-memory-row').toggle(settings.autoMemoryEnabled);
+        saveSettings();
+    });
+    $c('auto-memory-interval').on('input', function () {
+        settings.autoMemoryInterval = Math.max(1, parseInt($(this).val()) || 10);
+        saveSettings();
+    });
+    $('#gd-auto-memory-row').toggle(!!settings.autoMemoryEnabled);
+
     // ── Events ──
     $c('memory-enabled').on('change', function () {
         settings.memoryEnabled = !!$(this).prop('checked');

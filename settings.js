@@ -51,6 +51,8 @@ export const DEFAULT_SETTINGS = {
     summaryEnabled: false,
     summaryReusePrevious: true,
     summaryPrompt: '',
+    autoSummaryEnabled: false,
+    autoSummaryInterval: 10,
     // World Book
     worldBookSelection: {},
     worldBookMaxEntries: 20,
@@ -74,6 +76,8 @@ export const DEFAULT_SETTINGS = {
     // Character Memory System
     memoryEnabled: false,
     memoryTokenBudget: 2000,
+    autoMemoryEnabled: false,
+    autoMemoryInterval: 10,
     memoryPrompt: '',
     memoryJsonSchema: '',
     memoryRenderTemplate: '',

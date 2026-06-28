@@ -396,6 +396,15 @@
                         <input type="checkbox" id="gd-memory-enabled">
                         <span data-i18n="memoryEnabled">启用角色记忆</span>
                     </label>
+                    <label class="checkbox_label" for="gd-auto-memory-enabled" style="margin-top:2px;">
+                        <input type="checkbox" id="gd-auto-memory-enabled">
+                        <span data-i18n="autoMemoryEnabled">自动提取</span>
+                    </label>
+                    <span style="display:flex;align-items:center;gap:4px;margin-top:2px;" id="gd-auto-memory-row">
+                        <span style="font-size:0.85em;" data-i18n="autoMemoryIntervalLabel">每</span>
+                        <input type="number" id="gd-auto-memory-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                        <span style="font-size:0.85em;" data-i18n="autoMemoryIntervalSuffix">条新消息触发</span>
+                    </span>
                     <div id="gd-memory-section" style="display:none;">
                         <label for="gd-memory-token-budget" data-i18n="memoryTokenBudget">Token 预算</label>
                         <input type="number" id="gd-memory-token-budget" class="text_pole" min="100" max="10000" step="100">
@@ -527,6 +536,16 @@
                         <input type="checkbox" id="gd-summary-reuse">
                         <span data-i18n="summaryReuse">复用上次</span>
                     </label>
+                    <hr>
+                    <label class="checkbox_label" for="gd-auto-summary-enabled">
+                        <input type="checkbox" id="gd-auto-summary-enabled">
+                        <span data-i18n="autoSummaryEnabled">自动总结</span>
+                    </label>
+                    <span style="display:flex;align-items:center;gap:4px;margin-top:2px;" id="gd-auto-summary-row">
+                        <span style="font-size:0.85em;" data-i18n="autoSummaryIntervalLabel">每</span>
+                        <input type="number" id="gd-auto-summary-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                        <span style="font-size:0.85em;" data-i18n="autoSummaryIntervalSuffix">条新消息触发</span>
+                    </span>
                     <label for="gd-summary-prompt" data-i18n="summaryPromptLabel">总结 Prompt</label>
                     <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-summary-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
