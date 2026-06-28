@@ -112,30 +112,6 @@ registerSection('dashboard', function (ctx) {
         } catch (_) {}
     }
 
-    // ── Dashboard: drawer badges ─────────────────────────────────
-    function refreshDrawerBadges() {
-        try {
-            const profiles = getProfiles?.() || {};
-            const ready = Object.values(profiles).filter(p => p && p.state === 'ready').length;
-            const total = Object.values(profiles).filter(p => p).length;
-            const $b = $('#gd-badge-cast');
-            if (total) { $b.text(ready + '/' + total).show(); }
-        } catch (_) {}
-
-        try {
-            const history = getDirectorHistory();
-            const $b = $('#gd-badge-continuity');
-            if (history.length) { $b.text(history.length).show(); }
-        } catch (_) {}
-
-        try {
-            const caps = ctx.CapabilityRegistry?.list?.() || [];
-            const enabled = caps.filter(c => c.enabled !== false).length;
-            const $b = $('#gd-badge-reactions');
-            if (enabled) { $b.text(enabled).show(); }
-        } catch (_) {}
-    }
-
     // ── Dashboard: card status labels ────────────────────────────
     function refreshCardStatuses() {
         try {
@@ -244,7 +220,36 @@ registerSection('dashboard', function (ctx) {
 
     function makeToggleRow($row, $detail) {
         $row.css('cursor', 'pointer');
-        $row.on('click', () => { $detail.toggle(120); });
+        $row.on('click', (e) => { if (!$(e.target).closest('.gd-edit-btn, .gd-edit-textarea, .gd-edit-save, .gd-edit-cancel').length) { $detail.toggle(120); } });
+    }
+
+    // Inline edit helper: replaces a detail text with a textarea on "edit" click
+    function makeEditable($detail, field, getValue, setValue, afterSave) {
+        const $display = $detail.find(`.gd-edit-field[data-field="${field}"]`);
+        if (!$display.length) return;
+        $display.append(` <span class="gd-edit-btn menu_button menu_button_icon" style="font-size:0.7em;cursor:pointer;margin-left:4px;">${lang === 'zh' ? '编辑' : 'Edit'}</span>`);
+        // Use event delegation on the detail container so re-created buttons work
+        $detail.off('click', '.gd-edit-btn').on('click', '.gd-edit-btn', function (e) {
+            e.stopPropagation();
+            const $btn = $(this);
+            const $disp = $btn.closest('.gd-edit-field');
+            if (!$disp.length) return;
+            const val = getValue();
+            const $ta = $(`<textarea class="gd-edit-textarea text_pole textarea_compact" style="width:100%;margin:2px 0;font-size:0.85em;" rows="3">${esc(val || '')}</textarea>`);
+            const $btns = $(`<span style="display:flex;gap:4px;margin:2px 0;"><span class="gd-edit-save menu_button menu_button_icon" style="font-size:0.75em;color:#4caf50;">${lang === 'zh' ? '保存' : 'Save'}</span><span class="gd-edit-cancel menu_button menu_button_icon" style="font-size:0.75em;">${lang === 'zh' ? '取消' : 'Cancel'}</span></span>`);
+            $disp.hide();
+            $disp.after($ta, $btns);
+            $ta.focus();
+            $ta.on('keydown', (ev) => { if (ev.ctrlKey && ev.key === 'Enter') { $btns.find('.gd-edit-save').trigger('click'); } });
+            $btns.find('.gd-edit-cancel').on('click', (ev2) => { ev2.stopPropagation(); $ta.remove(); $btns.remove(); $disp.show(); });
+            $btns.find('.gd-edit-save').on('click', async (ev2) => {
+                ev2.stopPropagation();
+                setValue($ta.val());
+                $disp.html(esc(getValue() || '') + ` <span class="gd-edit-btn menu_button menu_button_icon" style="font-size:0.7em;cursor:pointer;margin-left:4px;">${lang === 'zh' ? '编辑' : 'Edit'}</span>`);
+                $ta.remove(); $btns.remove(); $disp.show();
+                if (afterSave) await afterSave();
+            });
+        });
     }
 
     function renderPanelProfiles() {
@@ -259,9 +264,14 @@ registerSection('dashboard', function (ctx) {
             const state = p.state || 'unknown';
             const color = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[state] || '';
             const profile = p.profile || {};
-            const detail = [profile.summary, profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + [].concat(profile.tags).join(', '), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + profile.motivation].filter(Boolean).join('<br>');
+            const summarize = () => [profile.summary, profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + [].concat(profile.tags).join(', '), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + profile.motivation].filter(Boolean).join('<br>');
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
-            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="profile-summary">${summarize() || (lang === 'zh' ? '(空)' : '(empty)')}</div></div>`);
+            makeEditable($detail, 'profile-summary',
+                () => summarize(),
+                (v) => { profile.summary = v; },
+                () => saveChatConditional()
+            );
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
         }
@@ -274,9 +284,18 @@ registerSection('dashboard', function (ctx) {
         if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色记忆' : 'No memories'}</small>`); return; }
         for (const [av, s] of entries) {
             const mems = memorySystem.listMemories?.(av) || [];
-            const detail = mems.length ? mems.slice(-5).reverse().map(m => `· ${esc(m.event || '')} ${m.mood ? `[${m.mood}]` : ''}`).join('<br>') : (lang === 'zh' ? '(空)' : '(empty)');
+            const recent = mems.slice(-5).reverse();
+            const detailRows = recent.map((m, idx) => `<div class="gd-edit-field" data-field="mem-${av}-${mems.indexOf(m)}">· ${esc(m.event || '')} ${m.mood ? `[${m.mood}]` : ''}</div>`).join('');
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(s.name || av)} ▸</span><span class="gd-list-meta">${s.count || 0} ${lang === 'zh' ? '条' : 'entries'}</span></div>`);
-            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail}</div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detailRows || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
+            for (const m of recent) {
+                const mi = mems.indexOf(m);
+                makeEditable($detail, `mem-${av}-${mi}`,
+                    () => m.event,
+                    (v) => { m.event = v; },
+                    () => saveChatConditional()
+                );
+            }
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
         }
@@ -286,18 +305,25 @@ registerSection('dashboard', function (ctx) {
         const npcs = npcSystem.getNpcs?.() || [];
         const $list = $('#gd-dash-panel-npcs-list').empty();
         if (!npcs.length) { $list.append(`<small>${lang === 'zh' ? '暂无 NPC' : 'No NPCs'}</small>`); return; }
-        for (const n of npcs) {
-            const detail = [
-                n.description && (lang === 'zh' ? '描述：' : 'Desc: ') + n.description,
-                n.personality && (lang === 'zh' ? '性格：' : 'Personality: ') + n.personality,
-                n.scenario && (lang === 'zh' ? '背景：' : 'Scenario: ') + n.scenario,
-            ].filter(Boolean).join('<br>');
-            const desc = (n.description || '').slice(0, 40);
-            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(n.name || '?')} ▸</span><span class="gd-list-meta">${esc(desc)}${n.description?.length > 40 ? '...' : ''}</span></div>`);
+        npcs.forEach((n, ni) => {
+            const shortDesc = (n.description || '').slice(0, 40);
+            const fields = { desc: n.description, personality: n.personality, scenario: n.scenario };
+            const line = (label, key) => fields[key] ? `<div class="gd-edit-field" data-field="npc-${ni}-${key}">${lang === 'zh' ? label : label.replace(/描述/, 'Desc').replace(/性格/, 'Personality').replace(/背景/, 'Scenario')}: ${esc(fields[key])}</div>` : '';
+            const detail = [line('描述', 'desc'), line('性格', 'personality'), line('背景', 'scenario')].filter(Boolean).join('<br>');
+            const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(n.name || '?')} ▸</span><span class="gd-list-meta">${esc(shortDesc)}${n.description?.length > 40 ? '...' : ''}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
+            for (const key of ['desc', 'personality', 'scenario']) {
+                if (fields[key]) {
+                    makeEditable($detail, `npc-${ni}-${key}`,
+                        () => ({ desc: n.description, personality: n.personality, scenario: n.scenario }[key]),
+                        (v) => { if (key === 'desc') n.description = v; else if (key === 'personality') n.personality = v; else n.scenario = v; },
+                        () => saveChatConditional()
+                    );
+                }
+            }
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
-        }
+        });
     }
 
     function renderPanelLedger() {
@@ -310,10 +336,21 @@ registerSection('dashboard', function (ctx) {
             const speakers = Array.isArray(e.speakers) ? e.speakers.join(', ') : '';
             const reason = e.reason || '';
             const scripts = e.scripts && typeof e.scripts === 'object' ? Object.entries(e.scripts).map(([k, v]) => `${esc(k)}: ${esc(String(v).slice(0, 80))}`).join('<br>') : '';
-            const detail = [reason && (lang === 'zh' ? '理由：' : 'Reason: ') + reason, scripts && ((lang === 'zh' ? '剧本：' : 'Scripts: ') + '<br>' + scripts)].filter(Boolean).join('<br><br>');
+            const detailHtml = [
+                reason && `<div class="gd-edit-field" data-field="ledger-${history.length - 1 - i}-reason">${lang === 'zh' ? '理由：' : 'Reason: '}${esc(reason)}</div>`,
+                scripts && `<div style="margin-top:4px;color:var(--grey70a);">${lang === 'zh' ? '剧本：' : 'Scripts: '}<br>${scripts}</div>`,
+            ].filter(Boolean).join('<br>');
             const reasonShort = reason.slice(0, 50);
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">#${history.length - i} ${esc(speakers)} ▸</span><span class="gd-list-meta">${esc(reasonShort)}${reason.length > 50 ? '...' : ''}</span></div>`);
-            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detail || (lang === 'zh' ? '(无详情)' : '(no details)')}</div>`);
+            const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detailHtml || (lang === 'zh' ? '(无详情)' : '(no details)')}</div>`);
+            if (reason) {
+                const ri = history.length - 1 - i;
+                makeEditable($detail, `ledger-${ri}-reason`,
+                    () => history[ri].reason || '',
+                    (v) => { history[ri].reason = v; },
+                    () => saveChatConditional()
+                );
+            }
             makeToggleRow($row, $detail);
             $list.append($row, $detail);
         }
@@ -534,7 +571,6 @@ registerSection('dashboard', function (ctx) {
         refreshMode();
         refreshDecision();
         refreshStats();
-        refreshDrawerBadges();
         refreshCardStatuses();
         refreshQuickActions();
         refreshPresetSelector();
@@ -545,7 +581,6 @@ registerSection('dashboard', function (ctx) {
     refreshMode();
     refreshDecision();
     refreshStats();
-    refreshDrawerBadges();
     refreshCardStatuses();
     refreshQuickActions();
     refreshPresetSelector();

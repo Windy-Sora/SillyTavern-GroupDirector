@@ -195,6 +195,8 @@
 .gd-dash-panel-body .gd-list-meta { font-size: 0.85em; color: var(--grey70a); }
 .gd-list-expandable:hover { background: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent) !important; }
 .gd-list-detail { border-left: 2px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent); margin: 2px 4px; }
+.gd-edit-btn { opacity: 0; transition: opacity 0.15s ease; }
+.gd-edit-field:hover .gd-edit-btn { opacity: 1; }
 .gd-stat-caret { font-size: 0.65em; color: var(--grey70a); transition: transform 0.2s ease; }
 
 .gd-dash-worldbooks {
@@ -305,16 +307,6 @@
 .gd-mode-selector .checkbox_label:has(input:checked) {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
     border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 40%, transparent);
-}
-
-/* ── Drawer badge ── */
-.gd-drawer-badge {
-    font-size: 0.7em;
-    padding: 0 5px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
-    color: var(--grey70a);
-    margin-left: 6px;
 }
 
 /* ── Row of buttons ── */
