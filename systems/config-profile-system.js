@@ -82,9 +82,7 @@ function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
         if (k === 'userProviders' || k === 'userCapabilities') continue;
-        if (k === 'customPrompts') {
-            if (!options.customPromptsApplied) continue;
-        }
+        if (k === 'customPrompts') continue;  // handled by applyProfile merge
         // Merge with DEFAULT_SETTINGS base: new keys get defaults, unknown keys preserved
         const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS[k] || null));
         const incoming = JSON.parse(JSON.stringify(v));
@@ -92,9 +90,8 @@ function applySnapshot(settings, snap, options = {}) {
         if (base && typeof base === 'object' && !Array.isArray(base)) {
             // Nested objects (e.g., scoreWeights): deep merge with default as base
             merged = Object.assign({}, base, incoming);
-        } else if (Array.isArray(base) && k === 'customPrompts') {
-            // Arrays — just use incoming (merge handled by applyProfile)
-            merged = incoming;
+        } else if (Array.isArray(base)) {
+            // Arrays — just use incoming
         } else {
             // Scalars — use incoming
             merged = incoming;
@@ -184,8 +181,7 @@ export function createConfigProfileSystem(deps) {
         }
 
         // ── Apply snapshot ──
-        const opts = { customPromptsApplied: customPromptMerge !== 'skip' };
-        const changed = applySnapshot(settings, profile.settings, opts);
+        const changed = applySnapshot(settings, profile.settings);
 
         // ── Merge custom prompts ──
         if (incoming && Array.isArray(incoming) && incoming.length > 0) {

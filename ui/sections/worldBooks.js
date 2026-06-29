@@ -45,13 +45,13 @@ registerSection('worldBooks', async function (ctx) {
         for (const name of names) {
             const checked = settings.worldBookSelection[name] === true;
             const label = $(`<label class="checkbox_label" style="display:flex;align-items:center;gap:6px;"></label>`);
-            const input = $(`<input type="checkbox" data-book="${name}">`);
+            const input = $('<input type="checkbox">').attr('data-book', name);
             input.prop('checked', checked);
             input.on('change', function () {
                 settings.worldBookSelection[name] = !!$(this).prop('checked');
                 saveSettings();
             });
-            label.append(input, name);
+            label.append(input, document.createTextNode(name));
             list.append(label);
         }
     }

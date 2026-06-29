@@ -1053,6 +1053,19 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                         }
                     }
                 }
+
+                // Drain deferred per-message intents (round/both timing)
+                if (postSpeechRoundQueue.length > 0) {
+                    const pendingIntents = postSpeechRoundQueue.splice(0);
+                    log(`PostSpeech: executing ${pendingIntents.length} deferred per-message intents`);
+                    await postSpeechExecutor.run(
+                        { intents: pendingIntents },
+                        CapabilityRegistry.listForMode('message')
+                    );
+                    for (const intent of pendingIntents) {
+                        await postSpeechSystem.record(chat.length - 1, '_round_deferred', intent.type, intent.params, {});
+                    }
+                }
             }
         } catch (e) {
             log('PostSpeech round skipped:', e.message);

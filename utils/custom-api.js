@@ -50,9 +50,12 @@ function makeOpenAICaller(config) {
             'Authorization': `Bearer ${config.apiKey}`,
         };
         // Only send CSRF to ST's own server, not to external APIs
-        if (window.csrfToken && (base.includes('localhost') || base.includes('127.0.0.1'))) {
-            h['X-CSRF-Token'] = window.csrfToken;
-        }
+        try {
+            const parsed = new URL(base);
+            if (window.csrfToken && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+                h['X-CSRF-Token'] = window.csrfToken;
+            }
+        } catch (_) { /* invalid URL, skip CSRF */ }
         return h;
     }
 

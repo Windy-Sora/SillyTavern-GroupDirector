@@ -180,7 +180,7 @@ registerSection('dashboard', function (ctx) {
             if (presets.length) {
                 const $grp = $('<optgroup>').attr('label', lang === 'zh' ? '内置配置档' : 'System Presets');
                 for (const name of presets) {
-                    $grp.append(`<option value="${name.replace(/"/g, '&quot;')}">${name}</option>`);
+                    $grp.append(`<option value="${name.replace(/"/g, '&quot;')}">${esc(name)}</option>`);
                 }
                 $sel.append($grp);
             }
@@ -188,7 +188,7 @@ registerSection('dashboard', function (ctx) {
             if (sysProfiles.length) {
                 const $grp = $('<optgroup>').attr('label', lang === 'zh' ? '我的配置档' : 'My Profiles');
                 for (const p of sysProfiles) {
-                    $grp.append(`<option value="${PROF_PREFIX}${p.id}">${p.name.replace(/"/g, '&quot;')}</option>`);
+                    $grp.append(`<option value="${PROF_PREFIX}${p.id}">${esc(p.name)}</option>`);
                 }
                 $sel.append($grp);
             }
@@ -230,7 +230,7 @@ registerSection('dashboard', function (ctx) {
         if (!$display.length) return;
         $display.append(` <span class="gd-edit-btn menu_button menu_button_icon" style="font-size:0.7em;cursor:pointer;margin-left:4px;">${lang === 'zh' ? '编辑' : 'Edit'}</span>`);
         // Use event delegation on the detail container so re-created buttons work
-        $detail.off('click', '.gd-edit-btn').on('click', '.gd-edit-btn', function (e) {
+        $detail.off('click.gd-edit-' + field).on('click.gd-edit-' + field, '.gd-edit-btn', function (e) {
             e.stopPropagation();
             const $btn = $(this);
             const $disp = $btn.closest('.gd-edit-field');
@@ -311,7 +311,7 @@ registerSection('dashboard', function (ctx) {
             const state = p.state || 'unknown';
             const color = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[state] || '';
             const profile = p.profile || {};
-            const summarize = () => [profile.summary, profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + [].concat(profile.tags).join(', '), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + profile.motivation].filter(Boolean).join('<br>');
+            const summarize = () => [esc(profile.summary), profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + esc([].concat(profile.tags).join(', ')), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + esc(profile.motivation)].filter(Boolean).join('<br>');
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="profile-summary">${summarize() || (lang === 'zh' ? '(空)' : '(empty)')}</div></div>`);
             makeEditable($detail, 'profile-summary',
@@ -332,7 +332,7 @@ registerSection('dashboard', function (ctx) {
         for (const [av, s] of entries) {
             const mems = memorySystem.listMemories?.(av) || [];
             const recent = mems.slice(-5).reverse();
-            const detailRows = recent.map((m, idx) => `<div class="gd-edit-field" data-field="mem-${av}-${mems.indexOf(m)}">· ${esc(m.event || '')} ${m.mood ? `[${m.mood}]` : ''}</div>`).join('');
+            const detailRows = recent.map((m, idx) => `<div class="gd-edit-field" data-field="mem-${av}-${mems.indexOf(m)}">· ${esc(m.event || '')} ${m.mood ? `[${esc(m.mood)}]` : ''}</div>`).join('');
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(s.name || av)} ▸</span><span class="gd-list-meta">${s.count || 0} ${lang === 'zh' ? '条' : 'entries'}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);">${detailRows || (lang === 'zh' ? '(空)' : '(empty)')}</div>`);
             for (const m of recent) {

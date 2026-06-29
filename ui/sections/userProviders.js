@@ -133,6 +133,6 @@ registerSection('userProviders', function (ctx) {
         if (!s) return '';
         const div = document.createElement('div');
         div.textContent = String(s);
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 });
