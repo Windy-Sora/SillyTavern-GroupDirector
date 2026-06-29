@@ -38,7 +38,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         for (const entry of store) {
             for (const id of (entry.ids || [])) {
                 const cap = allCaps.find(c => c.id === id);
-                if (cap && entry.enabled !== !cap.disabled) {
+                if (cap && entry.enabled !== cap.enabled) {
                     entry.enabled = cap.enabled !== false;
                     changed = true;
                 }

@@ -120,8 +120,12 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                     parsed = JSON.parse(raw);
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
-                    if (extracted) parsed = extracted;
-                    else {
+                    if (extracted) {
+                        try { parsed = JSON.parse(extracted); } catch (_) {
+                            log('NPC generation: invalid JSON after extraction');
+                            return null;
+                        }
+                    } else {
                         log('NPC generation: invalid JSON response');
                         return null;
                     }

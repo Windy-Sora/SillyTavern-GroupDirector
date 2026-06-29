@@ -50,8 +50,11 @@ export function createProfileAgent({
                     parsed = JSON.parse(raw);
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
-                    if (extracted) parsed = extracted;
-                    else throw new Error('Profile generation: invalid JSON response');
+                    if (extracted) {
+                        try { parsed = JSON.parse(extracted); } catch (_) {
+                            throw new Error('Profile generation: invalid JSON after extraction');
+                        }
+                    } else throw new Error('Profile generation: invalid JSON response');
                 }
                 return parsed;
             },

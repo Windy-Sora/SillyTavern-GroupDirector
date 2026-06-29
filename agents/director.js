@@ -128,8 +128,13 @@ export function createDirectorAgent({
                 if (!parsed || !parsed.speakers?.length) {
                     return null;
                 }
-                // Filter out invalid avatars
-                parsed.speakers = parsed.speakers.filter(av => ctx.enabledMembers.includes(av));
+                // Filter out invalid avatars, keeping names in sync
+                const keep = [];
+                for (let i = 0; i < parsed.speakers.length; i++) {
+                    if (ctx.enabledMembers.includes(parsed.speakers[i])) keep.push(i);
+                }
+                parsed.speakers = keep.map(i => parsed.speakers[i]);
+                if (parsed.names) parsed.names = keep.map(i => parsed.names[i]);
                 if (!parsed.speakers.length) return null;
                 return parsed;
             },

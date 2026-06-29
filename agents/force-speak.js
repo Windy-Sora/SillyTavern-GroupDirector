@@ -23,11 +23,13 @@ export function createForceSpeakAgent({
             async parse(raw, ctx) {
                 const parsed = parseLlmResponse(raw, log);
                 if (!parsed || !Array.isArray(parsed.speakers)) return null;
-                // Filter to just the force-spoken character (index 0)
+                // Convert LLM-returned name to avatar (same pattern as director agent)
+                const speaker = parsed.speakers[0];
+                const match = matchCharacterByName(speaker, ctx.enabledMembers);
                 return {
                     ...parsed,
-                    speakers: parsed.speakers.slice(0, 1),
-                    names: parsed.speakers.slice(0, 1),
+                    speakers: match ? [match.avatar] : [speaker],
+                    names: [match?.name || speaker],
                 };
             },
             async context(_input, _ctx, pool, settings) {

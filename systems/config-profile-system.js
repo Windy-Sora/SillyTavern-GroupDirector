@@ -83,6 +83,7 @@ function applySnapshot(settings, snap, options = {}) {
     for (const [k, v] of Object.entries(snap)) {
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
+        if (k === 'agentConfigs') continue;   // preserved per-user, never overwritten by snapshot
         // Merge with DEFAULT_SETTINGS base: new keys get defaults, unknown keys preserved
         const base = JSON.parse(JSON.stringify(DEFAULT_SETTINGS[k] || null));
         const incoming = JSON.parse(JSON.stringify(v));
