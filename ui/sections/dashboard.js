@@ -599,6 +599,8 @@ registerSection('dashboard', function (ctx) {
     $('#gd-dash-summary').on('click', () => {
         const group = ctx.getCurrentGroup?.();
         if (!group) { toastr?.warning?.(lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Open settings from a group chat first'); return; }
+        // Prevent double-click: the drawer execute button is disabled while running
+        if ($('#gd-summary-execute').prop('disabled')) return;
         if (!settings.summaryEnabled) {
             settings.summaryEnabled = true;
             saveSettings();
@@ -606,8 +608,19 @@ registerSection('dashboard', function (ctx) {
             $('#gd-summary-execute').prop('disabled', false);
             toastr?.info?.(lang === 'zh' ? '已自动启用上下文总结' : 'Chat summary auto-enabled');
         }
+        $('#gd-dash-summary').prop('disabled', true);
+        toastr?.info?.(lang === 'zh' ? '正在执行总结，请稍候...' : 'Running summary, please wait...', '', { timeOut: 3000 });
         $('#gd-summary-execute').trigger('click');
-        setTimeout(refreshAll, 2000);
+        // Summary is an async LLM call (~5-15s). Poll for completion.
+        const poll = setInterval(() => {
+            if (!$('#gd-summary-execute').prop('disabled')) {
+                clearInterval(poll);
+                $('#gd-dash-summary').prop('disabled', false);
+                refreshAll();
+            }
+        }, 500);
+        // Safety timeout: re-enable after 60s regardless
+        setTimeout(() => { clearInterval(poll); $('#gd-dash-summary').prop('disabled', false); }, 60000);
     });
 
     function refreshQuickActions() {

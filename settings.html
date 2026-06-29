@@ -616,8 +616,6 @@
         </div>
         <div class="inline-drawer-content" style="display:none;">
 
-            <small style="color:#ff9800;display:block;margin-bottom:6px;"><b>&#9888; 注意：启用后每次发言和回合结束各增加 1 次 LLM 调用。</b></small>
-
             <div class="gd-card gd-card-collapsible" data-card="postspeech-msg">
                 <div class="gd-card-header">
                     <span class="gd-card-caret">▸</span>
@@ -629,6 +627,7 @@
                         <input type="checkbox" id="gd-ps-msg-enabled">
                         <span data-i18n="psMsgEnabled">每次发言后激活</span>
                     </label>
+                    <small style="color:#ff9800;display:block;margin-top:2px;" data-i18n="psMsgWarning">&#9888; 启用后每次角色发言增加 1 次 LLM 调用。</small>
                     <div id="gd-ps-msg-section" style="display:none;">
                         <label for="gd-ps-msg-prompt" data-i18n="psMsgPromptLabel">Prompt</label>
                         <textarea id="gd-ps-msg-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
@@ -648,6 +647,7 @@
                         <input type="checkbox" id="gd-ps-round-enabled">
                         <span data-i18n="psRoundEnabled">回合结束后激活</span>
                     </label>
+                    <small style="color:#ff9800;display:block;margin-top:2px;" data-i18n="psRoundWarning">&#9888; 启用后每回合结束增加 1 次 LLM 调用。</small>
                     <div id="gd-ps-round-section" style="display:none;">
                         <label for="gd-ps-round-prompt" data-i18n="psRoundPromptLabel">Prompt</label>
                         <textarea id="gd-ps-round-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>

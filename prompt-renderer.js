@@ -43,7 +43,7 @@ export async function renderPrompt(template, context, options = {}) {
     const cache = Object.create(null);
 
     for (const provider of providers.values()) {
-        if (provider.enabled && !provider.enabled(context)) continue;
+        if (typeof provider.enabled === 'function' ? !provider.enabled(context) : provider.enabled === false) continue;
         try {
             const raw = await provider.render(context);
             const normalized = (raw && typeof raw === 'object')

@@ -77,7 +77,7 @@ registerSection('configProfiles', function (ctx) {
 
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
-            let mergeMode = 'replace';
+            let mergeMode = 'keep';
             if (incoming && Array.isArray(incoming) && incoming.length > 0) {
                 const existing = (settings.customPrompts || []);
                 const existingNames = new Set(existing.map(e => e.name));
@@ -90,7 +90,6 @@ registerSection('configProfiles', function (ctx) {
                     if (!choice) {
                         mergeMode = 'skip';
                     }
-                    // 'replace' mode keeps existing same-names, adds different-names
                 }
             }
 

@@ -111,14 +111,18 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                 return await renderPrompt(filled, { recentMessages: ctx.recentMessages });
             },
 
-            parse(raw, ctx) {
+            parse(raw, ctx, pool) {
                 let parsed;
                 try {
                     parsed = JSON.parse(raw);
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
-                    if (extracted) parsed = extracted;
-                    else { log('Memory extract: invalid JSON'); return null; }
+                    if (extracted) {
+                        try { parsed = JSON.parse(extracted); } catch (_) {
+                            log('Memory extract: invalid JSON after extraction');
+                            return null;
+                        }
+                    } else { log('Memory extract: invalid JSON'); return null; }
                 }
 
                 const memories = parsed?.memories ?? (Array.isArray(parsed) ? parsed : []);
@@ -129,7 +133,7 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                     .map(m => ({
                         event: m.event.trim(),
                         mood: m.mood || 'neutral',
-                        round: ctx.character ? chat.length : 0,
+                        round: pool.chat()?.length ?? 0,
                         timestamp: Date.now(),
                     }));
             },

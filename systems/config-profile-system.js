@@ -194,10 +194,6 @@ export function createConfigProfileSystem(deps) {
             const existingNames = new Set(existing.map(e => e.name));
 
             if (customPromptMerge === 'replace') {
-                // 'keep': keep existing same-names, add only different ones
-                const toAdd = incoming.filter(e => !existingNames.has(e.name));
-                existing.push(...toAdd.map(e => JSON.parse(JSON.stringify(e))));
-            } else if (customPromptMerge === 'overwrite') {
                 // Overwrite same-names, add different ones
                 for (const e of incoming) {
                     const idx = existing.findIndex(x => x.name === e.name);
@@ -207,6 +203,10 @@ export function createConfigProfileSystem(deps) {
                         existing.push(JSON.parse(JSON.stringify(e)));
                     }
                 }
+            } else if (customPromptMerge === 'keep') {
+                // Keep existing same-names, add only different ones
+                const toAdd = incoming.filter(e => !existingNames.has(e.name));
+                existing.push(...toAdd.map(e => JSON.parse(JSON.stringify(e))));
             }
             // 'skip': don't touch customPrompts at all
         }

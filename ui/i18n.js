@@ -339,9 +339,11 @@ const I18N = {
         // PostSpeech (was in orphan en block)
         psDecisionsTitle: 'PostSpeech 决策记录',
         psDecisionsHint: '最近的多模态策略决策（随聊天持久化，自动去重）。',
+        psMsgWarning: '⚠ 启用后每次角色发言增加 1 次 LLM 调用。',
         psMsgEnabled: '每次发言后激活 PostSpeech',
         psMsgPromptLabel: '每次发言后 Prompt（留空使用内置默认）',
         psMsgPromptReset: '恢复默认',
+        psRoundWarning: '⚠ 启用后每回合结束增加 1 次 LLM 调用。',
         psRoundEnabled: '回合结束后激活 PostSpeech',
         psRoundPromptLabel: '回合结束后 Prompt（留空使用内置默认）',
         psRoundPromptReset: '恢复默认',
@@ -794,9 +796,11 @@ const I18N = {
         // PostSpeech
         psDecisionsTitle: 'PostSpeech Decisions',
         psDecisionsHint: 'Recent multimodal policy decisions (persisted per chat, auto-dedup).',
+        psMsgWarning: '⚠ Enabling adds 1 LLM call per character message.',
         psMsgEnabled: 'Activate PostSpeech after each message',
         psMsgPromptLabel: 'Per-message Prompt (leave empty for default)',
         psMsgPromptReset: 'Reset',
+        psRoundWarning: '⚠ Enabling adds 1 LLM call after each round.',
         psRoundEnabled: 'Activate PostSpeech after round ends',
         psRoundPromptLabel: 'Per-round Prompt (leave empty for default)',
         psRoundPromptReset: 'Reset',
