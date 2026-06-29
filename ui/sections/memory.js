@@ -167,8 +167,10 @@ registerSection('memory', function (ctx) {
             e.stopPropagation();
             const avatar = $(this).data('av');
             if (!confirm(L('回退最近一次提取？', 'Revert last extraction?'))) return;
-            await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
-            renderMemoryList();
+            try {
+                await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
+                renderMemoryList();
+            } catch (e) { toastr.error(e.message); }
         });
 
         // Edit
@@ -203,9 +205,11 @@ registerSection('memory', function (ctx) {
         const idx = parseInt($c('mem-edit-idx').val());
         const event = $c('mem-edit-event').val().trim();
         if (!event) { toastr.warning(L('内容不能为空', 'Content required')); return; }
-        await memorySystem.updateEntry(avatar, idx, { event, mood: $c('mem-edit-mood').val() });
-        $('#gd-mem-edit-panel').hide();
-        renderMemoryList();
+        try {
+            await memorySystem.updateEntry(avatar, idx, { event, mood: $c('mem-edit-mood').val() });
+            $('#gd-mem-edit-panel').hide();
+            renderMemoryList();
+        } catch (e) { toastr.error(e.message); }
     });
     $c('mem-edit-cancel').on('click', () => { $('#gd-mem-edit-panel').hide(); });
 

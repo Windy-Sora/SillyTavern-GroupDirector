@@ -252,8 +252,8 @@ registerSection('scriptExecutors', function (ctx) {
             if (!Array.isArray(data.executors)) throw new Error('No executors array');
 
             let imported = 0;
-            const existing = sys.getList();
             for (const e of data.executors) {
+                const existing = sys.getList(); // fresh each iteration
                 const conflict = existing.find(x => x.name === e.name);
                 if (conflict) {
                     if (!confirm(L(`脚本「${e.name}」已存在，是否覆盖？`, `Script "${e.name}" already exists. Overwrite?`))) continue;

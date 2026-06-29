@@ -81,13 +81,13 @@ registerSection('chatSummary', function (ctx) {
         if (blocks.length > 1) {
             const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
             let updated = 0;
-            for (let i = 0; i < allSummaries.length; i++) {
-                // blocks[0] = text before first header
-                // blocks[1] = #1, blocks[2] = content1
-                // blocks[3] = #2, blocks[4] = content2, etc.
-                const idx = 2 * i + 2;
-                if (idx < blocks.length && blocks[idx]) {
-                    allSummaries[i].content = blocks[idx].trim();
+            // blocks[0] = text before first header (ignored)
+            // blocks[1] = "1", blocks[2] = content of #1
+            // blocks[3] = "2", blocks[4] = content of #2 etc.
+            for (let j = 1; j + 1 < blocks.length; j += 2) {
+                const idx = parseInt(blocks[j], 10) - 1; // section number → 0-based index
+                if (idx >= 0 && idx < allSummaries.length && blocks[j + 1] !== undefined) {
+                    allSummaries[idx].content = blocks[j + 1].trim();
                     updated++;
                 }
             }

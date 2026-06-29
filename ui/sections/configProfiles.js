@@ -223,10 +223,11 @@ registerSection('configProfiles', function (ctx) {
                 populatePresetDropdown();
                 window.__gdRefreshDashboard?.();
                 toastr.success(isZh() ? `已加载「${rawValue}」` : `"${rawValue}" loaded`);
+                $(this).val('');
             }
         } catch (e) {
             toastr.error((isZh() ? '加载失败: ' : 'Load failed: ') + e.message);
-        } finally { btn.prop('disabled', false); $(this).val(''); }
+        } finally { btn.prop('disabled', false); }
     });
 
     // ── Initial ──────────────────────────────────────────────────────

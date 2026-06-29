@@ -32,7 +32,7 @@ registerSection('summaryExport', function (ctx) {
                         <small style="color:var(--grey70a);font-size:0.75em;flex-shrink:0;">${dateStr}</small>
                         <span class="menu_button menu_button_icon gd-summary-delete" data-id="${escAttr(s.id)}" style="font-size:0.7em;color:#ff5555;flex-shrink:0;" title="${isZh() ? '删除' : 'Delete'}"><i class="fa-solid fa-trash"></i></span>
                     </div>
-                    <div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;margin-left:22px;">${escHtml(contentPreview)}${s.content.length > 80 ? '...' : ''}</div>
+                    <div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;margin-left:22px;">${escHtml(contentPreview)}${(s.content || '').length > 80 ? '...' : ''}</div>
                 </div>`;
         });
 

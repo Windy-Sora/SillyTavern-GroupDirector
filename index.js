@@ -1071,12 +1071,20 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             log('PostSpeech round skipped:', e.message);
         } finally {
             dismissNotify();
+            const wasAborted = postSpeechAbortController?.signal.aborted ?? false;
             postSpeechAbortController = null;
             if (typeof toastr !== 'undefined') {
-                toastr.success(
-                    lang === 'zh' ? 'PostSpeech 回合分析完成' : 'PostSpeech round complete',
-                    '', { timeOut: 2000 }
-                );
+                if (wasAborted) {
+                    toastr.info(
+                        lang === 'zh' ? 'PostSpeech 回合分析已中止' : 'PostSpeech round aborted',
+                        '', { timeOut: 2000 }
+                    );
+                } else {
+                    toastr.success(
+                        lang === 'zh' ? 'PostSpeech 回合分析完成' : 'PostSpeech round complete',
+                        '', { timeOut: 2000 }
+                    );
+                }
             }
         }
     }
