@@ -139,7 +139,7 @@ registerSection('memoryExport', function (ctx) {
         const matches = pendingImportData._matches;
 
         for (const [importedAvatar] of Object.entries(matches)) {
-            const $card = $(`.gd-mem-import-card[data-import-avatar="${escAttr(importedAvatar)}"]`);
+            const $card = $(`.gd-mem-import-card`).filter(function () { return $(this).attr('data-import-avatar') === importedAvatar; });
             const enabled = $card.find('.gd-mem-import-enabled').prop('checked');
             const mode = $card.find('.gd-mem-import-mode').val() || 'append';
             const skipCompressed = $card.find('.gd-mem-import-skip-compressed').prop('checked') || false;

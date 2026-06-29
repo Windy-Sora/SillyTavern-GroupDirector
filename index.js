@@ -1564,9 +1564,14 @@ async function initForceSpeakLLM(char, avatar) {
 
         const parsed = response;
 
-        // Record to ledger with user message anchor
+        // Record to ledger with user message anchor — normalize speakers to names for ledger consistency
         if (settings.llmHistoryEnabled) {
-            await addToDirectorHistory(parsed);
+            const forceSpeakName = parsed.names?.[0] || char?.name || parsed.speakers?.[0] || '?';
+            await addToDirectorHistory({
+                ...parsed,
+                speakers: [forceSpeakName],
+                names: [forceSpeakName],
+            });
             const history = getDirectorHistory();
             if (history.length > 0) {
                 let userAnchor = null;
@@ -1893,7 +1898,7 @@ registerCharMemory({
         }
         return result;
     },
-    getMemoriesForChar: (name) => {
+    getMemoriesForChar: async (name) => {
         const char = characters.find(c => c.name === name);
         const avatar = char?.avatar;
         // 1. Exact avatar match
@@ -1915,9 +1920,13 @@ registerCharMemory({
                 if (mems.length > 0) {
                     // Auto-migrate: move memories to the current avatar key and clean old
                     if (avatar && av !== avatar) {
+                        if (typeof memorySystem._setMemories !== 'function' || typeof memorySystem._deleteKey !== 'function') {
+                            console.warn('[charMemory] _setMemories/_deleteKey not available, skipping auto-migration');
+                            return mems;
+                        }
                         const existing = memorySystem.listMemories(avatar);
-                        memorySystem._setMemories?.(avatar, [...existing, ...mems]);
-                        memorySystem._deleteKey?.(av);
+                        await memorySystem._setMemories(avatar, [...existing, ...mems]);
+                        await memorySystem._deleteKey(av);
                         log(`[charMemory] auto-migrated ${mems.length} memories: "${av}" → "${avatar}"`);
                     }
                     return avatar ? memorySystem.listMemories(avatar) : mems;

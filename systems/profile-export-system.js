@@ -221,6 +221,7 @@ export function createProfileExportSystem(deps) {
         const existingProfiles = getProfiles();
 
         for (const p of profiles) {
+            if (!p.avatar || p.avatar === '__proto__' || p.avatar === 'constructor') continue;
             const existing = existingProfiles[p.avatar];
             existingProfiles[p.avatar] = {
                 avatar: p.avatar,

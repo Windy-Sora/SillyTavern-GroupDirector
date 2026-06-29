@@ -126,7 +126,7 @@ export function createNpcExportSystem(deps) {
         const consistency = checkPromptConsistency(obj.template, settings, getDefaultNpcPrompt());
 
         const existingNpcs = getNpcs();
-        const npcs = obj.npcs.map(n => ({
+        const npcs = obj.npcs.filter(n => n && typeof n.name === 'string').map(n => ({
             ...n,
             _action: classifyImportNpc(n.name, existingNpcs),
         }));

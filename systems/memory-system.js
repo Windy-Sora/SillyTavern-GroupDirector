@@ -79,11 +79,12 @@ export function createMemorySystem({
             throw new Error(L('未提取到新记忆', 'No new memories extracted'));
         }
 
-        existing.push(...result);
-        // Trim to max entries per character
+        // Re-read current memories to avoid overwriting concurrent changes
+        const current = getMemories(avatar);
+        current.push(...result);
         const max = settings.memoryMaxEntries ?? 200;
-        while (existing.length > max) existing.shift();
-        setMemories(avatar, existing);
+        while (current.length > max) current.shift();
+        setMemories(avatar, current);
         await saveStore();
 
         return result;
@@ -268,7 +269,7 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         getStats, detectOrphans, listMemories, totalCount,
         getMemories,
         // Internal helpers for auto-migration
-        _setMemories: (avatar, mems) => { setMemories(avatar, mems); saveStore(); },
-        _deleteKey: (avatar) => { delete getStore()[avatar]; saveStore(); },
+        _setMemories: async (avatar, mems) => { setMemories(avatar, mems); await saveStore(); },
+        _deleteKey: async (avatar) => { delete getStore()[avatar]; await saveStore(); },
     };
 }

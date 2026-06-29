@@ -35,6 +35,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
     }
 
     async function generateSummary() {
+        if (summarizing) throw new Error('Summary already in progress');
         const chat = getChat();
         if (!chat.length) throw new Error('No messages to summarize');
 

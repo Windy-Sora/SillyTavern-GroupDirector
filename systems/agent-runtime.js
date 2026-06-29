@@ -44,7 +44,7 @@ export const AgentTrace = {
     /** Get current ring buffer max size. */
     getMax: () => _maxTraces,
     /** Set ring buffer max size. */
-    setMax: (n) => { _maxTraces = Math.max(1, n); if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
+    setMax: (n) => { const v = Number(n); _maxTraces = Number.isFinite(v) ? Math.max(1, Math.floor(v)) : 50; if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
 };
 
 /**
@@ -101,6 +101,11 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
             const val = _target[key];
             return typeof val === 'function' ? val.bind(_target) : val;
         },
+        set(_target, key) {
+            const msg = `[AgentAccessViolation] ${agentId} tried to set "${key}" — writes are not allowed`;
+            console.warn(msg);
+            return true; // prevent write, suppress error in non-strict mode
+        },
     });
 
     return {
@@ -138,7 +143,7 @@ export async function managedCall(caller, prompt, callConfig = {}) {
         // Check abort before each attempt
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         try {
-            const text = await withTimeout(caller.generate(prompt), timeoutMs);
+            const text = await withTimeout(caller.generate(prompt), timeoutMs, signal);
             return { text, retries: attempt };
         } catch (e) {
             lastError = e;
@@ -157,13 +162,20 @@ export async function managedCall(caller, prompt, callConfig = {}) {
     throw lastError;
 }
 
-async function withTimeout(promise, ms) {
+async function withTimeout(promise, ms, signal) {
     let timer;
     const timeout = new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
     });
+    const abort = signal
+        ? new Promise((_, reject) => {
+            if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+            signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        })
+        : null;
+    const contenders = abort ? [promise, timeout, abort] : [promise, timeout];
     try {
-        return await Promise.race([promise, timeout]);
+        return await Promise.race(contenders);
     } finally {
         clearTimeout(timer);
     }

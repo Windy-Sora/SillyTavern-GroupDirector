@@ -86,17 +86,18 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             }
 
             // Snapshot → register → diff to find added IDs
-            const before = (getRegisteredProviderIds || deps.CapabilityRegistry)
+            const registry = type === 'capability' ? CapabilityRegistry : deps.CapabilityRegistry;
+            const before = (getRegisteredProviderIds || registry)
                 ? new Set(
                     type === 'provider' ? (getRegisteredProviderIds?.() ?? [])
-                    : (deps.CapabilityRegistry?.list().map(c => c.id) ?? [])
+                    : (registry?.list().map(c => c.id) ?? [])
                 )
                 : null;
             mod.register(deps);
             const after = before
                 ? (type === 'provider'
                     ? (getRegisteredProviderIds?.() ?? [])
-                    : (deps.CapabilityRegistry?.list().map(c => c.id) ?? []))
+                    : (registry?.list().map(c => c.id) ?? []))
                 : null;
             const addedIds = before && after
                 ? after.filter(id => !before.has(id))

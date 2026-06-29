@@ -77,8 +77,8 @@ registerSection('userProviders', function (ctx) {
         $list.html(html);
 
         $list.find('.gd-user-asset-test').on('click', async function () {
-            const name = $(this).data('name');
-            const t = $(this).data('type');
+            const name = $(this).attr('data-name');
+            const t = $(this).attr('data-type');
             const btn = $(this);
             btn.prop('disabled', true);
 
@@ -119,8 +119,8 @@ registerSection('userProviders', function (ctx) {
         });
 
         $list.find('.gd-user-asset-delete').on('click', async function () {
-            const name = $(this).data('name');
-            const t = $(this).data('type');
+            const name = $(this).attr('data-name');
+            const t = $(this).attr('data-type');
             if (confirm(L(`删除 "${name}"？重启后生效。`, `Delete "${name}"? Takes effect after reload.`))) {
                 await userProviderLoader.deleteAsset(name, t);
                 renderList(t, type === 'provider' ? $pList : $cList);

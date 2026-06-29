@@ -121,6 +121,7 @@ async function applyImport(importData, decisions, options, deps) {
 
     for (const [importedAvatar, decision] of Object.entries(decisions)) {
         if (!decision.enabled) { totalSkipped++; continue; }
+        if (importedAvatar === '__proto__' || importedAvatar === 'constructor') continue;
 
         const memData = importData.memories[importedAvatar];
         if (!memData || !Array.isArray(memData.entries)) continue;
@@ -281,6 +282,7 @@ export function createMemoryExportSystem(deps) {
 
         const matchResults = {};
         for (const [avatar, data] of Object.entries(obj.memories)) {
+            if (!data || typeof data !== 'object') continue;
             const match = findMatchingCharacter(avatar, data.name, members, chars);
             matchResults[avatar] = {
                 importedName: data.name,

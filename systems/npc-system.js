@@ -101,18 +101,18 @@ export function createNpcSystem({
         return result;
     }
 
-    function updateNpc(index, updates) {
+    async function updateNpc(index, updates) {
         const npcs = getNpcs();
         if (index < 0 || index >= npcs.length) return;
         Object.assign(npcs[index], updates);
-        saveNpcs();
+        await saveNpcs();
     }
 
-    function deleteNpc(index) {
+    async function deleteNpc(index) {
         const npcs = getNpcs();
         if (index < 0 || index >= npcs.length) return;
         npcs.splice(index, 1);
-        saveNpcs();
+        await saveNpcs();
     }
 
     /**

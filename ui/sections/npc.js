@@ -108,7 +108,7 @@ registerSection('npc', function (ctx) {
         let html = `<small style="color:var(--grey70a);">${npcs.length} ${L('个 NPC', ' NPCs')}</small>`;
         npcs.forEach((npc, i) => {
             const importedBadge = npc.imported
-                ? `<span style="color:green;font-size:0.8em;">&#10003; ${L('已导入', 'Imported')} (${npc.importedAvatar || ''})</span>`
+                ? `<span style="color:green;font-size:0.8em;">&#10003; ${L('已导入', 'Imported')} (${esc(npc.importedAvatar || '')})</span>`
                 : '';
             const importBtn = `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
 
@@ -124,12 +124,12 @@ registerSection('npc', function (ctx) {
                         </div>
                     </div>
                     <div class="gd-npc-view-${i}">
-                        <div style="font-size:0.85em;color:var(--grey80a);margin-top:2px;">${trunc(esc(npc.description), 150)}</div>
+                        <div style="font-size:0.85em;color:var(--grey80a);margin-top:2px;">${esc(trunc(npc.description, 150))}</div>
                         <div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;">
-                            <b>${L('性格', 'Personality')}:</b> ${trunc(esc(npc.personality || ''), 80)}
-                            &nbsp;|&nbsp; <b>${L('场景', 'Scenario')}:</b> ${trunc(esc(npc.scenario || ''), 80)}
+                            <b>${L('性格', 'Personality')}:</b> ${esc(trunc(npc.personality || '', 80))}
+                            &nbsp;|&nbsp; <b>${L('场景', 'Scenario')}:</b> ${esc(trunc(npc.scenario || '', 80))}
                         </div>
-                        ${npc.first_mes ? `<div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;"><b>First Mes:</b> ${trunc(esc(npc.first_mes), 120)}</div>` : ''}
+                        ${npc.first_mes ? `<div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;"><b>First Mes:</b> ${esc(trunc(npc.first_mes, 120))}</div>` : ''}
                     </div>
                     <div class="gd-npc-edit-${i}" style="display:none;margin-top:4px;">
                         <label style="font-size:0.85em;">${L('名称', 'Name')}</label>

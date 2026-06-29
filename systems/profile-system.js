@@ -225,7 +225,13 @@ async function generateProfilesBatch(avatars) {
             base.state = 'failed';
         }
         base.updatedAt = Date.now();
-        await saveProfile(avatar, base);
+        // Avoid overwriting a ready profile with a failed one from a concurrent run
+        const currentProfile = getProfiles()[avatar];
+        if (base.state === 'failed' && currentProfile?.state === 'ready') {
+            console.warn(`[GroupDirector] Profile generation failed for ${char.name}, keeping existing ready profile`);
+        } else {
+            await saveProfile(avatar, base);
+        }
     };
 
     const taskFns = avatars.map(buildTask).filter(Boolean);

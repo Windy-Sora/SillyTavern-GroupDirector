@@ -331,8 +331,9 @@ export function createConfigProfileSystem(deps) {
         const upFolder = zip.folder('user-providers');
         const ucFolder = zip.folder('user-capabilities');
 
-        if (upFolder && manifest.settings.userProviders) {
+        if (upFolder && Array.isArray(manifest.settings.userProviders)) {
             for (const p of manifest.settings.userProviders) {
+                if (!p || typeof p.name !== 'string') continue;
                 const fileName = p.name.endsWith('.js') ? p.name : `${p.name}.js`;
                 const file = upFolder.file(fileName);
                 if (file) {
@@ -340,14 +341,20 @@ export function createConfigProfileSystem(deps) {
                 }
             }
         }
-        if (ucFolder && manifest.settings.userCapabilities) {
+        if (ucFolder && Array.isArray(manifest.settings.userCapabilities)) {
             for (const c of manifest.settings.userCapabilities) {
+                if (!c || typeof c.name !== 'string') continue;
                 const fileName = c.name.endsWith('.js') ? c.name : `${c.name}.js`;
                 const file = ucFolder.file(fileName);
                 if (file) {
                     c.source = await file.async('text');
                 }
             }
+        }
+
+        // Strip agentConfigs from imported zip to prevent endpoint hijacking
+        if (manifest.settings?.agentConfigs) {
+            manifest.settings = { ...manifest.settings, agentConfigs: undefined };
         }
 
         // Add to list
