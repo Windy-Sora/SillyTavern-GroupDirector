@@ -30,6 +30,7 @@ import './sections/executionTrace.js';
 import './sections/postSpeech.js';
 import './sections/userProviders.js';
 import './sections/customPrompts.js';
+import './sections/scriptExecutors.js';
 import './sections/agents.js';
 
 export async function loadSettingsUI(deps) {

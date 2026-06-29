@@ -671,6 +671,23 @@
                 </div>
             </div>
 
+            <div class="gd-card gd-card-collapsible" data-card="script-executors">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="seCard">脚本执行器</span>
+                </div>
+                <div class="gd-card-body">
+                    <small style="color:var(--grey70a);display:block;margin-bottom:4px;" data-i18n="seHint">用户自定义脚本，在消息/回合末尾执行。ctx 提供 params / shared / message / character / chat 等上下文。</small>
+                    <div id="gd-se-list"></div>
+                    <div style="margin-top:8px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-se-add-btn"><i class="fa-solid fa-plus"></i> <span data-i18n="seAddBtn">新增</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-se-export-btn"><span data-i18n="seExportBtn">导出全部</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-se-import-btn"><span data-i18n="seImportBtn">导入</span></span>
+                        <input type="file" id="gd-se-import-file" style="display:none;" accept=".json">
+                    </div>
+                </div>
+            </div>
+
             <div class="gd-card gd-card-collapsible" data-card="postspeech-log">
                 <div class="gd-card-header">
                     <span class="gd-card-caret">▸</span>

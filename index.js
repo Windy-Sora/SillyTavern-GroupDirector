@@ -46,6 +46,7 @@ import { createSummaryExportSystem } from './systems/summary-export-system.js';
 import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
+import { createScriptExecutorSystem } from './systems/script-executor-system.js';
 import { loadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
@@ -100,12 +101,14 @@ let takeoverFailed = false;          // set when manual generation fails mid-rou
 let takeoverCompleted = new Set();    // avatars already generated (for resume after failure)
 let takeoverSwipeCount = 0;          // auto-swipe counter per character (cap at 5)
 let directorScripts = {};           // { characterName: scriptText } from LLM
+let directorLastReason = '';         // reason from last director decision, exposed to script executors
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
+let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
 let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
 
@@ -262,6 +265,11 @@ const customPromptsSystem = createCustomPromptsSystem({
     unregisterProvider: (id) => unregisterProvider(id),
     getProviders: () => getProviders(),
     log,
+});
+
+const scriptExecutorSystem = createScriptExecutorSystem({
+    settings, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(),
+    renderPrompt, AgentTrace, log,
 });
 
 // ─── Agent Runtime — Context Pool Builder ─────────────────────────────
@@ -677,6 +685,39 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         } else {
             initFormulaRound();
         }
+
+        // ─── Script Executor: decision trigger (blocking, runs once per round) ──
+        const decAvatars = llmPickedAvatars || [];
+        const decisionObj = {
+            speakers: [...decAvatars],
+            names: decAvatars.map(a => characters.find(c => c.avatar === a)?.name || '?'),
+            reason: directorLastReason || '',
+            scripts: { ...(directorScripts || {}) },
+        };
+        try {
+            await scriptExecutorSystem.executeAllDecision({
+                decision: decisionObj,
+                chat, characters,
+                group: getCurrentGroup(),
+                settings,
+                getContext,
+            });
+        } catch (e) {
+            log('Script executor (decision): unexpected error', e);
+        }
+        // Sync mutations back — decisionObj was mutated by reference
+        if (decisionObj.speakers.length > 0) {
+            const newAvatars = decisionObj.speakers.filter(a => characters.some(c => c.avatar === a));
+            if (newAvatars.length > 0) {
+                llmPickedAvatars = newAvatars;
+                llmPickedSet = new Set(newAvatars);
+                llmCursor = 0;
+            }
+        }
+        if (decisionObj.scripts) {
+            directorScripts = decisionObj.scripts;
+        }
+        directorLastReason = decisionObj.reason || directorLastReason;
     } else if (initPromise) {
         await initPromise;
     }
@@ -833,6 +874,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         // Allow PostSpeech to re-analyze the swiped messages
         postSpeechLastMsgIndex = -1;
         postSpeechRoundRan = false;
+        scriptExecutorRoundRan = false;
         if (!llmPickedSet) {
             const history = getDirectorHistory();
             const lastPlan = history[history.length - 1];
@@ -916,7 +958,10 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     takeoverSwipeCount = 0;
     manualGenInProgress = false;
     directorScripts = {};
+    directorLastReason = '';
+    scriptExecutorSystem.resetTurnShared();
     postSpeechRoundRan = false;
+    scriptExecutorRoundRan = false;
     postSpeechLastMsgIndex = -1;
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
     wiState.text = '';
@@ -1021,6 +1066,21 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                 );
             }
         }
+    }
+
+    // ─── Script Executor: round trigger (before auto summary, deduped) ──
+    // Only fire when takeover is fully complete (same guard as PostSpeech round)
+    if (!scriptExecutorRoundRan && takeoverGenCount === 0 && !manualGenInProgress) {
+        scriptExecutorRoundRan = true;
+        try {
+            scriptExecutorSystem.executeAll('round', {
+                chat,
+                characters,
+                group: getCurrentGroup(),
+                settings,
+                getContext,
+            }).catch(err => log('Script executor (round):', err.message));
+        } catch (e) { /* isolated */ }
     }
 
     // ─── Auto Summary & Auto Memory ────────────────────────────
@@ -1147,6 +1207,27 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
         postSpeechAbortController.abort();
         log('PostSpeech round aborted by user');
     }
+});
+
+// ─── Script Executor: message trigger (independent of PostSpeech) ─────
+eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType) => {
+    try {
+        if (msgType && msgType !== 'normal' && msgType !== 'swipe' && msgType !== 'regenerate') return;
+        const msg = chat[chat.length - 1];
+        if (!msg || msg.is_user || msg.is_system || !msg.name || !msg.mes) return;
+        if (String(msg.name).startsWith('_')) return;
+        const char = characters?.find(c => c.name === msg.name);
+        const group = getCurrentGroup();
+        if (!group) return;
+        scriptExecutorSystem.executeAll('message', {
+            message: msg,
+            character: char || null,
+            chat, characters,
+            group,
+            settings,
+            getContext,
+        }).catch(err => log('[GD] Script executor (message): unexpected error', err));
+    } catch (e) { /* isolated */ }
 });
 
 // ─── PostSpeech: multimodal policy after each character message ─────
@@ -1305,6 +1386,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
         delete chat_metadata[EXT_KEY]._autoMemLen;
     }
     postSpeechRoundRan = false;
+    scriptExecutorRoundRan = false;
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
@@ -1555,6 +1637,7 @@ async function initRoundWithLLM() {
         llmPickedAvatars = capped;
         llmPickedSet = new Set(capped);
         llmCursor = 0;
+        directorLastReason = parsed.reason ?? '';
 
         // Save to history — always use names for speakers field (recovery logic expects names)
         if (settings.llmHistoryEnabled) {
@@ -1859,6 +1942,7 @@ jQuery(async () => {
         configProfileSystem,
         getConfigPresetNames, loadConfigPreset,
         customPromptsSystem,
+        scriptExecutorSystem,
     });
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.

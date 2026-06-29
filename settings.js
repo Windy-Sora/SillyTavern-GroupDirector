@@ -96,4 +96,5 @@ export const DEFAULT_SETTINGS = {
     agentConfigs: {}, // { [agentId]: { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '', model: '', call: { retries: 2, timeout: 30000 }, strictMode: false } }
     customPrompts: [], // [{ id, name, content, enabled }]
     customPromptsEnabled: true,
+    scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
 };

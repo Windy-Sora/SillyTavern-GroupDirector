@@ -483,7 +483,8 @@ SillyTavern-GroupDirector/
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
 │   ├── summary-export-system.js
-│   └── export-import-system.js # 群聊导出/导入（JSZip fallback）
+│   ├── export-import-system.js # 群聊导出/导入（JSZip fallback）
+│   └── script-executor-system.js # 脚本执行器引擎
 │
 ├── utils/                     # 纯函数工具
 │   ├── custom-api.js          # createCaller (ST/OpenAI/Anthropic)
@@ -524,7 +525,8 @@ SillyTavern-GroupDirector/
         ├── executionTrace.js  # 执行追踪
         ├── userProviders.js   # 用户扩展管理
         ├── customPrompts.js   # 自定义 Prompt
-        └── agents.js          # Agent API 独立配置（动态生成）
+        ├── agents.js          # Agent API 独立配置（动态生成）
+        └── scriptExecutors.js # 脚本执行器 UI
 ```
 
 ---
@@ -563,12 +565,113 @@ SillyTavern-GroupDirector/
 | `uiState` | `{ cardStates: {} }` | UI 持久化状态（卡片折叠） |
 | `customPrompts` | `[]` | 自定义 Prompt 列表 |
 | `customPromptsEnabled` | `true` | 自定义 Prompt 总开关 |
+| `scriptExecutors` | `[]` | 脚本执行器列表 |
 
 ---
 
-## 12. PostSpeech 多模态策略
+## 12. 脚本执行器 (Script Executor)
 
-### 12.1 架构
+用户编写的 JS 脚本，在导演生命周期的三个触发点执行。不是 Agent，不调用 LLM，纯本地 JS 运行时。
+
+### 12.1 触发点生命周期
+
+```
+GROUP_WRAPPER_STARTED  → turnShared = {}，重置去重标志
+  ↓
+Director 决策 (LLM/Formula)
+  ↓
+┌─ decision 钩子 (阻塞，await 全部，10s 超时) ──────────┐
+│  ctx.decision.speakers / .names / .reason / .scripts  │
+│  脚本可直接修改 ctx.decision (live reference)          │
+│  修改后 snapshot 供 message/round 阶段只读             │
+└───────────────────────────────────────────────────────┘
+  ↓
+角色逐个生成 → message 钩子 (fire-and-forget, 5s 超时)
+  ↓
+GROUP_WRAPPER_FINISHED → round 钩子 (fire-and-forget, 去重)
+  ↓
+下一轮 GROUP_WRAPPER_STARTED → turnShared 重置
+```
+
+### 12.2 触发模式
+
+| 模式 | 触发点 | 执行方式 | ctx 独有字段 |
+|------|--------|----------|-------------|
+| `message` | CHARACTER_MESSAGE_RENDERED | fire-and-forget, 5s 超时 | `ctx.message`, `ctx.character`, `ctx.decisionSnapshot` |
+| `round` | GROUP_WRAPPER_FINISHED | fire-and-forget, 去重, 5s 超时 | `ctx.decisionSnapshot` |
+| `decision` | Director 决策后 | 阻塞 await 全部, 10s 超时 | `ctx.decision` (live, 可修改) |
+| `both` | message + round | 同各自模式 | 对应阶段字段 |
+| `all` | 全部三个 | 同各自模式 | 对应阶段字段 |
+
+### 12.3 ctx 分形
+
+三个阶段的 `ctx` 形状不同，按阶段提供对应字段：
+
+| 字段 | decision | message | round |
+|------|:---:|:---:|:---:|
+| `ctx.params` | ✓ | ✓ | ✓ |
+| `ctx.shared` (turnShared) | ✓ | ✓ | ✓ |
+| `ctx.decision` (live) | ✓ | - | - |
+| `ctx.decisionSnapshot` (read-only) | - | ✓ | ✓ |
+| `ctx.message` | - | ✓ | - |
+| `ctx.character` | - | ✓ | - |
+| `ctx.chat` | ✓ | ✓ | ✓ |
+| `ctx.characters` | ✓ | ✓ | ✓ |
+| `ctx.group` | ✓ | ✓ | ✓ |
+| `ctx.settings` | ✓ | ✓ | ✓ |
+| `ctx.getContext` | ✓ | ✓ | ✓ |
+
+### 12.4 共享状态 (turnShared)
+
+模块闭包变量，不持久化到 settings：
+
+- **创建**：`GROUP_WRAPPER_STARTED` 时 `resetTurnShared()` 重置为 `{}`
+- **写入**：脚本设置 `returnMode: 'shared'` 且返回 object → `Object.assign(turnShared, result)`
+- **读取**：所有脚本通过 `ctx.shared` 读取当前快照
+- **生命周期**：decision → message → round 贯穿，下轮重置
+
+decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {...turnShared} }` 供 message/round 脚本只读。
+
+### 12.5 数据结构
+
+```js
+{
+  id: 'se_xxx',
+  name: 'My Script',
+  triggerOn: 'decision',     // 'message' | 'round' | 'decision' | 'both' | 'all'
+  priority: 0,               // 升序执行
+  code: '...',               // JS 代码体，通过 new Function('ctx', code) 执行
+  enabled: true,
+  params: [{ key, label, type, default }],  // 类型化参数
+  renderParams: false,       // 是否渲染字符串参数（单次，仅字符串字段）
+  returnMode: 'ignore',      // 'ignore' | 'shared'
+}
+```
+
+### 12.6 执行模型
+
+```
+筛选 enabled && triggerOn 匹配 → 按 priority 升序 →
+  逐个 new Function('ctx', code) → Promise.race(script, timeout) →
+    成功 + returnMode='shared' → Object.assign(turnShared, result)
+    超时/异常 → trace 记录 → 继续下一个
+```
+
+- **decision**：阻塞，await 全部完成后返回 snapshot
+- **message/round**：fire-and-forget，不阻塞角色生成
+- 执行追踪通过 `AgentTrace` 记录每阶段耗时和状态
+
+### 12.7 导入/导出
+
+导出格式：`{ version: 1, type: 'script-executor-export', exportedAt, executors: [...], migrations: [] }`
+
+导入时同名弹窗确认是否覆盖。配置档管理 (Config Profile) 同步包含 scriptExecutors。
+
+---
+
+## 13. PostSpeech 多模态策略
+
+### 13.1 架构
 
 ```
 角色发言 → CHARACTER_MESSAGE_RENDERED → PostSpeech Agent (per-message)
@@ -581,7 +684,7 @@ SillyTavern-GroupDirector/
                                     Capability.executor() → TTS / Image / ...
 ```
 
-### 12.2 Capability 系统
+### 13.2 Capability 系统
 
 **CapabilityRegistry** — 独立于 AgentRegistry：
 
@@ -593,7 +696,7 @@ SillyTavern-GroupDirector/
 
 ---
 
-## 13. 导出/导入系统
+## 14. 导出/导入系统
 
 Group Director 为五种数据类型提供完整的导出/导入能力：
 
@@ -617,7 +720,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 14. 自定义 Prompt 模板
+## 15. 自定义 Prompt 模板
 
 用户创建自定义占位符，自动注册为 `{{name}}` Provider。
 
@@ -629,7 +732,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 15. 资产管理 & 用户导入
+## 16. 资产管理 & 用户导入
 
 ### AssetLoader
 
@@ -641,7 +744,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 16. 失败回退
+## 17. 失败回退
 
 - Agent 调用失败 → managedCall 重试 `retries` 次 → 复用历史 → 阻塞轮次
 - 用户主动暂停 → `generationStopped` 标记 → 静默切断
@@ -652,7 +755,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 17. 开发速查
+## 18. 开发速查
 
 | 任务 | 改哪些文件 |
 |------|-----------|
@@ -667,13 +770,15 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | 改仪表盘 | `ui/sections/dashboard.js` |
 | 改渲染引擎 | `prompt-renderer.js` |
 | 改 LLM 响应解析 | `utils/json-utils.js` |
+| 加脚本执行器触发点 | `systems/script-executor-system.js` + hook 注册点 in `index.js` |
+| 改脚本执行器 UI | `ui/sections/scriptExecutors.js` |
 | 加新 Capability | `assets/capabilities/xxx.js` + manifest 加一行 |
 | 用户导入扩展 | 工具 → 用户扩展 → 选 `.js` 文件 |
 | 改拦截器行为 | `index.js` → `groupDirector_Interceptor` |
 
 ---
 
-## 18. 开发规范
+## 19. 开发规范
 
 ### Agent 规范
 
@@ -704,7 +809,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 19. 踩坑记录
+## 20. 踩坑记录
 
 | 坑 | 原因 | 教训 |
 |----|------|------|
