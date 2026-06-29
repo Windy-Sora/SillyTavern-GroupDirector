@@ -1639,9 +1639,10 @@ async function initRoundWithLLM() {
         llmCursor = 0;
         directorLastReason = parsed.reason ?? '';
 
-        // Save to history — always use names for speakers field (recovery logic expects names)
+        // Save to history — preserve all LLM fields, with safe defaults for core fields
         if (settings.llmHistoryEnabled) {
             await addToDirectorHistory({
+                ...parsed,
                 speakers: parsed.names || capped.map(a => characters.find(c => c.avatar === a)?.name || '?'),
                 reason: parsed.reason ?? '',
                 scripts: parsed.scripts ?? {},

@@ -23,13 +23,11 @@ export function createForceSpeakAgent({
             async parse(raw, ctx) {
                 const parsed = parseLlmResponse(raw, log);
                 if (!parsed || !Array.isArray(parsed.speakers)) return null;
-                // Filter to just the force-spoken character (index 0) — ignore any extras
-                const char = ctx?.character;
+                // Filter to just the force-spoken character (index 0)
                 return {
+                    ...parsed,
                     speakers: parsed.speakers.slice(0, 1),
                     names: parsed.speakers.slice(0, 1),
-                    reason: parsed.reason ?? '',
-                    scripts: parsed.scripts ?? null,
                 };
             },
             async context(_input, _ctx, pool, settings) {
