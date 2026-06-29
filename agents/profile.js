@@ -4,6 +4,8 @@
  * Extracted from profile-system.js generateSingleProfile().
  * Pipeline: context → prompt → call → parse → validate
  */
+import { sanitizeJson } from '../utils/json-utils.js';
+
 export function createProfileAgent({
     renderPrompt,
     extractJsonObject,
@@ -51,7 +53,7 @@ export function createProfileAgent({
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
                     if (extracted) {
-                        try { parsed = JSON.parse(extracted); } catch (_) {
+                        try { parsed = JSON.parse(sanitizeJson(extracted)); } catch (_) {
                             throw new Error('Profile generation: invalid JSON after extraction');
                         }
                     } else throw new Error('Profile generation: invalid JSON response');

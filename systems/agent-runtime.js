@@ -39,6 +39,8 @@ let _maxTraces = 50;
 export const AgentTrace = {
     /** Returns a shallow copy of recent traces (newest last). */
     recent: () => [...traceBuffer],
+    /** Add a trace entry directly to the buffer. */
+    push: (entry) => { traceBuffer.push(entry); while (traceBuffer.length > _maxTraces) traceBuffer.shift(); },
     /** Clear all traces. */
     clear: () => { traceBuffer.length = 0; },
     /** Get current ring buffer max size. */

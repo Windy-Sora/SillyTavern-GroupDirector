@@ -6,6 +6,8 @@
  * Memory record: { event, mood, round, timestamp }
  * Schema and render are user-customizable via settings.
  */
+import { sanitizeJson } from '../utils/json-utils.js';
+
 export const DEFAULT_MEMORY_PROMPT = `You are a character memory extractor. Based on the conversation below, extract key memories for the specified character.
 
 ━━━ Context ━━━
@@ -118,7 +120,7 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
                     if (extracted) {
-                        try { parsed = JSON.parse(extracted); } catch (_) {
+                        try { parsed = JSON.parse(sanitizeJson(extracted)); } catch (_) {
                             log('Memory extract: invalid JSON after extraction');
                             return null;
                         }

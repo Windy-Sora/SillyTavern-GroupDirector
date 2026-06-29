@@ -4,6 +4,8 @@
  * Pipeline: context → prompt → call → parse
  * Dedup: parse stage strips results with names that match existing NPCs or group members.
  */
+import { sanitizeJson } from '../utils/json-utils.js';
+
 export const DEFAULT_NPC_PROMPT = `You are an NPC generator for a roleplay scenario. Create new NPCs that fit naturally into the current story and setting based on the context below.
 
 ━━━ Context ━━━
@@ -121,7 +123,7 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
                     if (extracted) {
-                        try { parsed = JSON.parse(extracted); } catch (_) {
+                        try { parsed = JSON.parse(sanitizeJson(extracted)); } catch (_) {
                             log('NPC generation: invalid JSON after extraction');
                             return null;
                         }

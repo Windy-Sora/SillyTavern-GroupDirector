@@ -89,13 +89,8 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     }
 
     function pushTrace(traceEntry) {
-        if (AgentTrace && typeof AgentTrace.recent === 'function') {
-            try {
-                const traces = AgentTrace.recent();
-                traces.push(traceEntry);
-                const max = AgentTrace.getMax ? AgentTrace.getMax() : 50;
-                while (traces.length > max) traces.shift();
-            } catch (_) { /* best-effort */ }
+        if (AgentTrace && typeof AgentTrace.push === 'function') {
+            try { AgentTrace.push(traceEntry); } catch (_) { /* best-effort */ }
         }
     }
 
