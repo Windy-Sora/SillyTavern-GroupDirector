@@ -64,11 +64,11 @@ function findMatchingCharacter(importedAvatar, importedName, groupMembers, chara
     if (byName) {
         return { avatar: byName.avatar, name: byName.name, matchType: 'name' };
     }
-    // 3. Substring fuzzy match (name contains importedName or vice versa)
+    // 3. Substring fuzzy match (name contains importedName or vice versa, min 3 chars)
     const fuzzy = characters.find(c =>
         groupMembers.includes(c.avatar) && (
-            c.name.toLowerCase().includes(importedName.toLowerCase()) ||
-            importedName.toLowerCase().includes(c.name.toLowerCase())
+            (importedName.length >= 3 && c.name.toLowerCase().includes(importedName.toLowerCase())) ||
+            (c.name.length >= 3 && importedName.toLowerCase().includes(c.name.toLowerCase()))
         )
     );
     if (fuzzy) {

@@ -89,7 +89,7 @@ export function createNpcAgent({ renderPrompt, extractJsonObject, log }) {
                     groupChars,
                     groupCharNames,           // plain names for dedup
                     enabledMembers: members,     // avatar list — used by {{characters}} Provider
-                    batchSize: Math.min(batchSize, (settings.npcMaxCount ?? 10) - existingNpcs.length),
+                    batchSize: Math.max(0, Math.min(batchSize, (settings.npcMaxCount ?? 10) - existingNpcs.length)),
                     generateFirstMes,
                 };
             },

@@ -517,7 +517,7 @@ function scoreCharacter(chId, recentMessages) {
     score -= consecutiveCount * settings.consecutivePenalty;
 
     // 5. Talkativeness
-    const talkativeness = isNaN(char.talkativeness) ? 0.5 : Number(char.talkativeness);
+    const talkativeness = (char.talkativeness === '' || isNaN(char.talkativeness)) ? 0.5 : Number(char.talkativeness);
     score += talkativeness * weights.talkativeness;
 
     // 6. Initiative roll
@@ -1981,12 +1981,15 @@ jQuery(async () => {
     userProviderLoader.restoreAll('provider', userDeps);
     userProviderLoader.restoreAll('capability', userDeps);
 
-    // Hook capability toggle to persist enabled state
-    const _origSetCapEnabled = CapabilityRegistry.setEnabled;
-    CapabilityRegistry.setEnabled = function (id, enabled) {
-        _origSetCapEnabled.call(CapabilityRegistry, id, enabled);
-        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
-    };
+    // Hook capability toggle to persist enabled state (guard against hot-reload stacking)
+    if (!CapabilityRegistry._gdPatched) {
+        CapabilityRegistry._gdPatched = true;
+        const _origSetCapEnabled = CapabilityRegistry.setEnabled.bind(CapabilityRegistry);
+        CapabilityRegistry.setEnabled = function (id, enabled) {
+            _origSetCapEnabled(id, enabled);
+            try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
+        };
+    }
     customPromptsSystem.initAll();
     // Warn about settings keys not covered by any config profile drawer
     const uncovered = configProfileSystem.getUncoveredKeys();

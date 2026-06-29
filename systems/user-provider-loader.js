@@ -104,6 +104,9 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 : [];
             log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
 
+            // Revoke Blob URL — module is cached by import(), URL resource can be freed
+            URL.revokeObjectURL(blobUrl);
+
             // Persist with enabled state
             store.push({ name, source, importedAt: Date.now(), ids: addedIds, enabled: true });
             await saveStore();

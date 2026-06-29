@@ -261,7 +261,9 @@ function expandVariables(path, context) {
 
 function resolveInnerPlaceholders(pathStr, cache, context) {
     let prev;
+    let guard = 0;
     do {
+        if (++guard > 16) { console.warn('[GroupDirector] resolveInnerPlaceholders exceeded max iterations (16) — possible circular reference'); break; }
         prev = pathStr;
         pathStr = pathStr.replace(/\{\{([^{}]+)\}\}/g, (_match, inner) => {
             if (/^\w+$/.test(inner)) {
