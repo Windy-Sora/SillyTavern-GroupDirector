@@ -81,13 +81,17 @@ export function createExecutor(options = {}) {
                 if (isNaN(sanitized[key])) return { ok: false, error: `${key} must be a number` };
             }
             if (def.min !== undefined && sanitized[key] < def.min) {
+                log(`[Executor] param "${key}" value ${sanitized[key]} below min=${def.min}, clamped`);
                 sanitized[key] = def.min;
             }
             if (def.max !== undefined && sanitized[key] > def.max) {
+                log(`[Executor] param "${key}" value ${sanitized[key]} above max=${def.max}, clamped`);
                 sanitized[key] = def.max;
             }
             if (def.values && !def.values.includes(sanitized[key])) {
-                sanitized[key] = def.default ?? def.values[0];
+                const fallback = def.default ?? def.values[0];
+                log(`[Executor] param "${key}" value "${sanitized[key]}" not in allowed [${def.values}], fallback to "${fallback}"`);
+                sanitized[key] = fallback;
             }
         }
         return { ok: true, sanitized };
