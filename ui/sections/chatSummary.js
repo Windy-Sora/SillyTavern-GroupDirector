@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 function getDefaultPrompt(lang) {
     return lang === 'zh'
@@ -140,7 +141,7 @@ registerSection('chatSummary', function (ctx) {
     // Revert
     $c('summary-revert').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
-        if (!confirm(settings.lang === 'zh' ? '回退最新总结，恢复原文片段？' : 'Revert latest summary, restore original text?')) return;
+        if (!await callGenericPopup(settings.lang === 'zh' ? '回退最新总结，恢复原文片段？' : 'Revert latest summary, restore original text?', POPUP_TYPE.CONFIRM)) return;
         await ss.revertLastSummary();
         refreshStatus();
         toastr.info(settings.lang === 'zh' ? '已回退总结' : 'Summary reverted');
@@ -149,7 +150,7 @@ registerSection('chatSummary', function (ctx) {
     // Reset
     $c('summary-reset').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
-        if (!confirm(settings.lang === 'zh' ? '关闭所有总结，恢复全部原文？' : 'Deactivate all summaries, restore full original text?')) return;
+        if (!await callGenericPopup(settings.lang === 'zh' ? '关闭所有总结，恢复全部原文？' : 'Deactivate all summaries, restore full original text?', POPUP_TYPE.CONFIRM)) return;
         await ss.resetAll();
         refreshStatus();
         toastr.info(settings.lang === 'zh' ? '已重置全部总结' : 'All summaries reset');
@@ -252,9 +253,9 @@ registerSection('chatSummary', function (ctx) {
             toastr.info(settings.lang === 'zh' ? '没有可清除的已禁用条目' : 'No disabled entries to prune');
             return;
         }
-        if (!confirm(settings.lang === 'zh'
+        if (!await callGenericPopup(settings.lang === 'zh'
             ? `将删除 ${allSummaries.length - activeOnly.length} 条已禁用总结，保留 ${activeOnly.length} 条活跃。确认？`
-            : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`)) return;
+            : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`, POPUP_TYPE.CONFIRM)) return;
         allSummaries.length = 0;
         allSummaries.push(...activeOnly);
         const { saveChatConditional } = ctx;
@@ -283,9 +284,9 @@ registerSection('chatSummary', function (ctx) {
     });
 
     $c('summary-scan-clear').on('click', async () => {
-        if (!confirm(settings.lang === 'zh'
+        if (!await callGenericPopup(settings.lang === 'zh'
             ? '清除全部存档总结？此操作不可撤销。'
-            : 'Clear all archived summaries? This cannot be undone.')) return;
+            : 'Clear all archived summaries? This cannot be undone.', POPUP_TYPE.CONFIRM)) return;
         await ss.resetAll();
         const summaries = ss.getSummaries ? ss.getSummaries() : [];
         summaries.length = 0;

@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('summaryExport', function (ctx) {
     const { settings, $c, getCurrentGroup, summaryExportSystem, renderPrompt } = ctx;
@@ -51,10 +52,10 @@ registerSection('summaryExport', function (ctx) {
         });
 
         // Delete
-        $container.find('.gd-summary-delete').off('click').on('click', function () {
+        $container.find('.gd-summary-delete').off('click').on('click', async function () {
             const id = $(this).data('id');
             const entry = list.find(s => s.id === id);
-            if (confirm(isZh() ? `确定删除摘要「${entry?.name || ''}」？` : `Delete summary "${entry?.name || ''}"?`)) {
+            if (await callGenericPopup(isZh() ? `确定删除摘要「${entry?.name || ''}」？` : `Delete summary "${entry?.name || ''}"?`, POPUP_TYPE.CONFIRM)) {
                 sys.deleteImportedSummary(id);
                 renderPanel();
             }

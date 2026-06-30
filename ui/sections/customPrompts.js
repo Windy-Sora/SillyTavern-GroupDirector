@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('customPrompts', function (ctx) {
     const { settings, $c, saveSettings, toastr } = ctx;
@@ -92,13 +93,13 @@ registerSection('customPrompts', function (ctx) {
         });
 
         // Delete
-        $list.find('.gd-cp-del-btn').off('click').on('click', function () {
+        $list.find('.gd-cp-del-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             const entry = sys.getList().find(e => e.id === id);
             if (!entry) return;
-            if (!confirm(isZh()
+            if (!await callGenericPopup(isZh()
                 ? `删除 {{${entry.name}}}？已引用此占位符的位置将变为空。`
-                : `Delete {{${entry.name}}}? References to it will become empty.`)) return;
+                : `Delete {{${entry.name}}}? References to it will become empty.`, POPUP_TYPE.CONFIRM)) return;
             sys.remove(id);
             renderList();
             toastr.info(isZh() ? '已删除' : 'Deleted');
@@ -139,7 +140,7 @@ registerSection('customPrompts', function (ctx) {
         const file = this.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = function () {
+        reader.onload = async function () {
             const result = sys.parseImportFile(reader.result);
             if (!result.ok) { toastr.error((isZh() ? '导入失败: ' : 'Import failed: ') + result.error); return; }
             const conflicts = result.data.prompts.filter(p => {
@@ -148,9 +149,9 @@ registerSection('customPrompts', function (ctx) {
             });
             let overwrite = false;
             if (conflicts.length > 0) {
-                overwrite = confirm(isZh()
+                overwrite = await callGenericPopup(isZh()
                     ? `检测到 ${conflicts.length} 个同名 Prompt：${conflicts.map(p => p.name).join(', ')}。\n确定=覆盖同名，取消=仅添加不同名的`
-                    : `Found ${conflicts.length} same-name prompt(s): ${conflicts.map(p => p.name).join(', ')}.\nOK=overwrite conflicts, Cancel=add only new ones`);
+                    : `Found ${conflicts.length} same-name prompt(s): ${conflicts.map(p => p.name).join(', ')}.\nOK=overwrite conflicts, Cancel=add only new ones`, POPUP_TYPE.CONFIRM);
             }
             const result2 = sys.importPrompts(result.data, overwrite);
             renderList();

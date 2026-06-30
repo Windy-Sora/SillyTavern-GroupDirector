@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('userProviders', function (ctx) {
     const { settings, toastr, userProviderLoader, CapabilityRegistry, renderPrompt, getProviders } = ctx;
@@ -18,15 +19,13 @@ registerSection('userProviders', function (ctx) {
         CapabilityRegistry: window.GroupDirector?.CapabilityRegistry,
     };
 
-    // Security warning — both provider and capability import
-    const $securityWarning = $(`<div class="gd-security-warning" style="margin:6px 0;padding:6px 8px;background:rgba(255,100,100,0.08);border-left:3px solid #d44;font-size:0.85em;color:#d44;">
-        &#9888;
+    const $pWarn = $(`<div class="neutral_warning" style="margin:6px 0;">
         ${L(
-            '安全警告：导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
-            'Security: importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
+            '⚠ 安全警告：导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
+            '⚠ Security: importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
         )}
     </div>`);
-    $('#gd-user-provider-import').before($securityWarning);
+    $('#gd-user-provider-import').closest('.gd-row-buttons').before($pWarn);
 
     $('#gd-user-provider-import').on('click', () => { $pFile.trigger('click'); });
     $pFile.on('change', handleImport('provider', $pFile, '#gd-user-provider-import', $pList, deps));
@@ -37,14 +36,13 @@ registerSection('userProviders', function (ctx) {
 
     renderList('capability', $cList);
 
-    const $capSecurityWarning = $(`<div class="gd-security-warning" style="margin:6px 0;padding:6px 8px;background:rgba(255,100,100,0.08);border-left:3px solid #d44;font-size:0.85em;color:#d44;">
-        &#9888;
+    const $cWarn = $(`<div class="neutral_warning" style="margin:6px 0;">
         ${L(
-            '安全警告：导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
-            'Security: importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
+            '⚠ 安全警告：导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
+            '⚠ Security: importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
         )}
     </div>`);
-    $('#gd-user-capability-import').before($capSecurityWarning);
+    $('#gd-user-capability-import').closest('.gd-row-buttons').before($cWarn);
 
     $('#gd-user-capability-import').on('click', () => { $cFile.trigger('click'); });
     $cFile.on('change', handleImport('capability', $cFile, '#gd-user-capability-import', $cList, deps));
@@ -140,7 +138,7 @@ registerSection('userProviders', function (ctx) {
         $list.find('.gd-user-asset-delete').on('click', async function () {
             const name = $(this).attr('data-name');
             const t = $(this).attr('data-type');
-            if (confirm(L(`删除 "${name}"？重启后生效。`, `Delete "${name}"? Takes effect after reload.`))) {
+            if (await callGenericPopup(L(`删除 "${name}"？重启后生效。`, `Delete "${name}"? Takes effect after reload.`), POPUP_TYPE.CONFIRM)) {
                 await userProviderLoader.deleteAsset(name, t);
                 renderList(t, type === 'provider' ? $pList : $cList);
                 toastr.info(L(`已删除 "${name}"`, `Deleted "${name}"`));

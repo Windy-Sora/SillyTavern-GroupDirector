@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('configProfiles', function (ctx) {
     const { settings, $c, saveSettings, toastr, configProfileSystem, getConfigPresetNames, loadConfigPreset } = ctx;
@@ -67,13 +68,13 @@ registerSection('configProfiles', function (ctx) {
         $list.html(html);
 
         // Apply
-        $list.find('.gd-cfg-apply-btn').off('click').on('click', function () {
+        $list.find('.gd-cfg-apply-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             const profile = sys.getProfiles().find(p => p.id === id);
             if (!profile) return;
-            if (!confirm(isZh()
+            if (!await callGenericPopup(isZh()
                 ? `应用配置档「${profile.name}」？当前设置将被覆盖。`
-                : `Apply config profile "${profile.name}"? Current settings will be overwritten.`)) return;
+                : `Apply config profile "${profile.name}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
 
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
@@ -86,7 +87,7 @@ registerSection('configProfiles', function (ctx) {
                     const msg = isZh()
                         ? `检测到 ${conflicts.length} 个同名自定义 Prompt：${conflicts.join(', ')}。\n\n点"确定"保留现有（仅添加不同名的），点"取消"跳过全部自定义 Prompt 导入。`
                         : `Found ${conflicts.length} custom prompt(s) with same name: ${conflicts.join(', ')}.\n\nOK = keep existing + add only different names. Cancel = skip all custom prompts.`;
-                    const choice = confirm(msg);
+                    const choice = await callGenericPopup(msg, POPUP_TYPE.CONFIRM);
                     if (!choice) {
                         mergeMode = 'skip';
                     }
@@ -121,11 +122,11 @@ registerSection('configProfiles', function (ctx) {
         });
 
         // Delete
-        $list.find('.gd-cfg-delete-btn').off('click').on('click', function () {
+        $list.find('.gd-cfg-delete-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             const profile = sys.getProfiles().find(p => p.id === id);
             if (!profile) return;
-            if (!confirm(isZh() ? `删除配置档「${profile.name}」？` : `Delete config profile "${profile.name}"?`)) return;
+            if (!await callGenericPopup(isZh() ? `删除配置档「${profile.name}」？` : `Delete config profile "${profile.name}"?`, POPUP_TYPE.CONFIRM)) return;
             sys.deleteProfile(id);
             renderList();
             populatePresetDropdown();
@@ -174,7 +175,16 @@ registerSection('configProfiles', function (ctx) {
         } finally { btn.prop('disabled', false); this.value = ''; }
     });
 
-    $c('cfg-import-btn').off('click').on('click', () => $('#gd-cfg-import-file').click());
+    $c('cfg-import-btn').off('click').on('click', async () => {
+        const ok = await callGenericPopup(
+            isZh()
+                ? '<b>安全警告</b><br>配置档可能包含可执行脚本（脚本执行器、Provider）。恶意代码可窃取聊天记录、API 密钥。请仅导入你完全信任的来源。'
+                : '<b>Security Warning</b><br>Config profiles may contain executable scripts (executors, providers). Malicious code can steal chat logs and API keys. Only import from trusted sources.',
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!ok) return;
+        $('#gd-cfg-import-file').click();
+    });
 
     // ── Preset dropdown ───────────────────────────────────────────────
     const PROF_PREFIX = '__prof__:';

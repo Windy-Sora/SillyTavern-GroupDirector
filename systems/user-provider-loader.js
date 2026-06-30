@@ -12,6 +12,8 @@
  * Zero server-side dependencies. Fully self-contained.
  */
 
+import { callGenericPopup, POPUP_TYPE } from '../../../../popup.js';
+
 const DANGEROUS_PATTERNS = [
     { pattern: /\bfetch\s*\(/g,               label: 'fetch() — network exfiltration' },
     { pattern: /\bXMLHttpRequest\b/g,         label: 'XMLHttpRequest — network exfiltration' },
@@ -104,10 +106,11 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             const findings = scanSource(source);
             if (findings.length > 0) {
                 const lines = findings.map(f => `  - ${f.label} (${f.count}x)`).join('\n');
-                const userConfirmed = confirm(
-                    `Security warning — dangerous APIs detected:\n\n${lines}\n\n` +
-                    `This code could: steal chat logs, exfiltrate API keys, or hijack the page.\n` +
-                    `Only import from trusted sources.\n\nContinue?`
+                const userConfirmed = await callGenericPopup(
+                    `<b>Security warning</b><br>Dangerous APIs detected:<br><br>${lines.replace(/\n/g, '<br>')}<br><br>` +
+                    `This code could: steal chat logs, exfiltrate API keys, or hijack the page.<br>` +
+                    `Only import from trusted sources.`,
+                    POPUP_TYPE.CONFIRM
                 );
                 if (!userConfirmed) {
                     return { ok: false, name, error: 'Import cancelled by user (security warning)' };

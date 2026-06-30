@@ -1,6 +1,7 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
 import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, selected_world_info, world_info } from '../../../world-info.js';
@@ -651,7 +652,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         const msg = settings.lang === 'zh'
             ? '强制发言会绕过导演决策，可能破坏故事连续性。是否继续？'
             : 'Force-speak bypasses the director and may break story continuity. Continue?';
-        if (confirm(msg)) return;
+        if (await callGenericPopup(msg, POPUP_TYPE.CONFIRM)) return;
         abort(false);
         return;
     }

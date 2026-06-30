@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 import { DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER, DEFAULT_MEMORY_COMPRESS_PROMPT } from '../../agents/memory.js';
 
 registerSection('memory', function (ctx) {
@@ -64,7 +65,7 @@ registerSection('memory', function (ctx) {
         toastr.warning(orphans.map(o => `${o.name}: ${o.staleCount}`).join(', ') + L(' 条失联', ' orphaned'));
     });
     $c('memory-reset').on('click', async () => {
-        if (!confirm(L('重置所有角色的全部记忆？', 'Reset ALL memories?'))) return;
+        if (!await callGenericPopup(L('重置所有角色的全部记忆？', 'Reset ALL memories?'), POPUP_TYPE.CONFIRM)) return;
         await memorySystem.resetAll();
         renderMemoryList();
     });
@@ -136,7 +137,7 @@ registerSection('memory', function (ctx) {
         $list.find('.gd-mem-gen-btn').off('click').on('click', async function (e) {
             e.stopPropagation();
             const avatar = $(this).data('av');
-            if (!confirm(L('为此角色提取新记忆？将调用 LLM。', 'Extract new memories? Will call LLM.'))) return;
+            if (!await callGenericPopup(L('为此角色提取新记忆？将调用 LLM。', 'Extract new memories? Will call LLM.'), POPUP_TYPE.CONFIRM)) return;
             const btn = $(this); btn.prop('disabled', true);
             try {
                 const result = await memorySystem.generateForCharacter(avatar);
@@ -150,7 +151,7 @@ registerSection('memory', function (ctx) {
         $list.find('.gd-mem-compress-btn').off('click').on('click', async function (e) {
             e.stopPropagation();
             const avatar = $(this).data('av');
-            if (!confirm(L('压缩该角色旧记忆？', 'Compress old memories?'))) return;
+            if (!await callGenericPopup(L('压缩该角色旧记忆？', 'Compress old memories?'), POPUP_TYPE.CONFIRM)) return;
             const btn = $(this); btn.prop('disabled', true);
             try {
                 const result = await memorySystem.compressOldMemories(avatar, settings.memoryKeepRecent ?? 5);
@@ -166,7 +167,7 @@ registerSection('memory', function (ctx) {
         $list.find('.gd-mem-revert-btn').off('click').on('click', async function (e) {
             e.stopPropagation();
             const avatar = $(this).data('av');
-            if (!confirm(L('回退最近一次提取？', 'Revert last extraction?'))) return;
+            if (!await callGenericPopup(L('回退最近一次提取？', 'Revert last extraction?'), POPUP_TYPE.CONFIRM)) return;
             try {
                 await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
                 renderMemoryList();
@@ -193,7 +194,7 @@ registerSection('memory', function (ctx) {
             const avatar = $(this).attr('data-av');
             const idx = parseInt($(this).attr('data-ix'));
             if (isNaN(idx)) return;
-            if (!confirm(L('删除这条记忆？', 'Delete this memory?'))) return;
+            if (!await callGenericPopup(L('删除这条记忆？', 'Delete this memory?'), POPUP_TYPE.CONFIRM)) return;
             await memorySystem.deleteEntry(avatar, idx);
             renderMemoryList();
         });

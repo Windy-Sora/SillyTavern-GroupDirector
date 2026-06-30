@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('dashboard', function (ctx) {
     const {
@@ -541,7 +542,16 @@ registerSection('dashboard', function (ctx) {
     });
 
     // ── Dashboard: import config profile ────────────────────────
-    $('#gd-dash-import-cfg').on('click', () => $('#gd-dash-import-file').click());
+    $('#gd-dash-import-cfg').on('click', async () => {
+        const ok = await callGenericPopup(
+            lang === 'zh'
+                ? '<b>安全警告</b><br>配置档可能包含可执行脚本（脚本执行器、Provider）。恶意代码可窃取聊天记录、API 密钥。请仅导入你完全信任的来源。'
+                : '<b>Security Warning</b><br>Config profiles may contain executable scripts (executors, providers). Malicious code can steal chat logs and API keys. Only import from trusted sources.',
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!ok) return;
+        $('#gd-dash-import-file').click();
+    });
     $('#gd-dash-import-file').on('change', async function () {
         const file = this.files[0];
         if (!file) return;

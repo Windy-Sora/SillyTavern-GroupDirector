@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('scriptExecutors', function (ctx) {
     const { settings, $c, saveSettings, toastr } = ctx;
@@ -171,9 +172,9 @@ registerSection('scriptExecutors', function (ctx) {
         });
 
         // Delete
-        $list.find('.gd-se-del-btn').off('click').on('click', function () {
+        $list.find('.gd-se-del-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            if (!confirm(L('确定删除此脚本执行器？', 'Delete this script executor?'))) return;
+            if (!await callGenericPopup(L('确定删除此脚本执行器？', 'Delete this script executor?'), POPUP_TYPE.CONFIRM)) return;
             sys.remove(id);
             renderList();
         });
@@ -241,7 +242,17 @@ registerSection('scriptExecutors', function (ctx) {
     });
 
     // ── Import ──
-    $c('se-import-btn').on('click', () => $('#gd-se-import-file').click());
+    $c('se-import-btn').on('click', async () => {
+        const ok = await callGenericPopup(
+            L(
+                '<b>安全警告</b><br>导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
+                '<b>Security Warning</b><br>Importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
+            ),
+            POPUP_TYPE.CONFIRM,
+        );
+        if (!ok) return;
+        $('#gd-se-import-file').click();
+    });
     $('#gd-se-import-file').on('change', async function () {
         const file = this.files[0];
         if (!file) return;
@@ -256,7 +267,7 @@ registerSection('scriptExecutors', function (ctx) {
                 const existing = sys.getList(); // fresh each iteration
                 const conflict = existing.find(x => x.name === e.name);
                 if (conflict) {
-                    if (!confirm(L(`脚本「${e.name}」已存在，是否覆盖？`, `Script "${e.name}" already exists. Overwrite?`))) continue;
+                    if (!await callGenericPopup(L(`脚本「${e.name}」已存在，是否覆盖？`, `Script "${e.name}" already exists. Overwrite?`), POPUP_TYPE.CONFIRM)) continue;
                     sys.remove(conflict.id);
                 }
                 sys.add(e);

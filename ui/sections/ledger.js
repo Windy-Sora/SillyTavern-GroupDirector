@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { eventSource, event_types } from '../../../../../events.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('ledger', function (ctx) {
     const { settings, getDirectorHistory, updateEntry, clearEntry, isRoundActive, saveChatConditional, toastr, onLatestEntryEdited } = ctx;
@@ -60,7 +61,7 @@ registerSection('ledger', function (ctx) {
             btnClear.on('click', async (e) => {
                 e.stopPropagation();
                 if (isLocked()) return;
-                if (!confirm(settings.lang === 'zh' ? `清空第 ${realIndex + 1} 轮账本？` : `Clear round ${realIndex + 1} ledger entry?`)) return;
+                if (!await callGenericPopup(settings.lang === 'zh' ? `清空第 ${realIndex + 1} 轮账本？` : `Clear round ${realIndex + 1} ledger entry?`, POPUP_TYPE.CONFIRM)) return;
                 await clearEntry(realIndex);
                 expandedIndex = -1;
                 buildCards();

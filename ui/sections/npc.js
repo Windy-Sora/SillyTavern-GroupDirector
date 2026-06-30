@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { DEFAULT_NPC_PROMPT } from '../../agents/npc.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('npc', function (ctx) {
     const { settings, $c, saveSettings, getCurrentGroup, toastr } = ctx;
@@ -153,9 +154,9 @@ registerSection('npc', function (ctx) {
         $list.html(html);
 
         // Delete
-        $list.find('.gd-npc-delete').on('click', function () {
+        $list.find('.gd-npc-delete').on('click', async function () {
             const idx = parseInt($(this).data('idx'));
-            if (confirm(L(`确定删除 NPC「${npcs[idx].name}」？`, `Delete NPC "${npcs[idx].name}"?`))) {
+            if (await callGenericPopup(L(`确定删除 NPC「${npcs[idx].name}」？`, `Delete NPC "${npcs[idx].name}"?`), POPUP_TYPE.CONFIRM)) {
                 npcSystem.deleteNpc(idx);
                 renderNpcList();
             }
