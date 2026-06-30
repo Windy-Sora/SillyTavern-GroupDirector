@@ -97,7 +97,7 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
                 const msg = `[AgentAccessViolation] ${agentId} tried to access "${key}" — not in contextAccess. ` +
                     `Declared: [${access.join(', ')}]`;
                 if (strictMode) throw new Error(msg);
-                console.warn(msg);
+                console.log(msg);
                 return undefined;
             }
             const val = _target[key];
@@ -105,7 +105,7 @@ export function createScopedPool(pool, access, agent = {}, config = {}) {
         },
         set(_target, key) {
             const msg = `[AgentAccessViolation] ${agentId} tried to set "${key}" — writes are not allowed`;
-            console.warn(msg);
+            console.log(msg);
             return true; // prevent write, suppress error in non-strict mode
         },
     });
