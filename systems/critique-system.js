@@ -120,8 +120,8 @@ Output ONLY a JSON object, no other text:
         for (const [k, v] of Object.entries(dc)) {
             if (Array.isArray(v)) {
                 if (v.length) lines.push('[' + k + '] ' + v.join('; '));
-            } else if (typeof v === 'string' && v) {
-                lines.push('[' + k + '] ' + v);
+            } else if (v !== null && v !== undefined && v !== '') {
+                lines.push('[' + k + '] ' + (typeof v === 'object' ? JSON.stringify(v) : String(v)));
             }
         }
         return lines.join('\n');
@@ -299,6 +299,7 @@ Output ONLY a JSON object, no other text:
 
     // ── JSON Extraction ──
     function extractJson(text) {
+        if (typeof text !== 'string') return null;
         const firstBrace = text.indexOf('{');
         if (firstBrace === -1) return null;
 

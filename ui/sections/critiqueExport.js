@@ -46,9 +46,9 @@ registerSection('critiqueExport', function (ctx) {
         $container.html(html);
 
         // Enable/disable toggle
-        $container.find('.gd-critique-enabled').off('change').on('change', function () {
+        $container.find('.gd-critique-enabled').off('change').on('change', async function () {
             const id = $(this).data('id');
-            sys.setEnabled(id, $(this).prop('checked'));
+            await sys.setEnabled(id, $(this).prop('checked'));
         });
 
         // Delete
@@ -56,7 +56,7 @@ registerSection('critiqueExport', function (ctx) {
             const id = $(this).data('id');
             const entry = list.find(s => s.id === id);
             if (await callGenericPopup(isZh() ? `确定删除批判「${entry?.name || ''}」？` : `Delete critique "${entry?.name || ''}"?`, POPUP_TYPE.CONFIRM)) {
-                sys.deleteImportedCritique(id);
+                await sys.deleteImportedCritique(id);
                 renderPanel();
             }
         });
@@ -109,7 +109,7 @@ registerSection('critiqueExport', function (ctx) {
         const file = this.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = function () {
+        reader.onload = async function () {
             const result = sys.parseImportFile(reader.result);
             if (!result.ok) {
                 toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + result.error);
@@ -122,10 +122,9 @@ registerSection('critiqueExport', function (ctx) {
                 defaultName
             );
             if (!name || !name.trim()) return;
-            sys.addImportedCritique(data, name.trim()).then(() => {
-                renderPanel();
-                toastr.success(isZh() ? `已导入批判「${name.trim()}」` : `Critique "${name.trim()}" imported`);
-            });
+            await sys.addImportedCritique(data, name.trim());
+            renderPanel();
+            toastr.success(isZh() ? `已导入批判「${name.trim()}」` : `Critique "${name.trim()}" imported`);
         };
         reader.readAsText(file);
         this.value = '';

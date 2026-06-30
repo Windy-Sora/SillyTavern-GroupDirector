@@ -189,6 +189,14 @@ const I18N = {
         critiqueResultSave: '保存编辑',
         critiqueLocked: '生成中，面板已锁定',
 
+        // Provider Reference
+        providerRefCard: '接口参考',
+        providerRefSearchPlaceholder: '搜索接口名称、占位符或描述...',
+        providerRefAdd: '添加',
+        providerRefExport: '导出',
+        providerRefImport: '导入',
+        providerRefReset: '恢复默认',
+
         historyMeta: '当前账本风格：',
 
         continuity: '<b>使用导演历史</b> — 将记录的导演账本注入当前 prompt',
@@ -679,6 +687,14 @@ const I18N = {
         critiqueResultLabel: 'Critique result (JSON, editable)',
         critiqueResultSave: 'Save edits',
         critiqueLocked: 'Generation in progress — panel locked',
+
+        // Provider Reference
+        providerRefCard: 'Provider Reference',
+        providerRefSearchPlaceholder: 'Search name, placeholder or description...',
+        providerRefAdd: 'Add',
+        providerRefExport: 'Export',
+        providerRefImport: 'Import',
+        providerRefReset: 'Reset to defaults',
 
         historyMeta: 'Current ledger style: ',
 

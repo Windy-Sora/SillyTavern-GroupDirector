@@ -968,6 +968,24 @@
                 </div>
             </div>
 
+            <div class="gd-card gd-card-collapsible" data-card="providerReference">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="providerRefCard">接口参考</span>
+                </div>
+                <div class="gd-card-body">
+                    <input type="text" id="gd-provider-ref-search" class="text_pole" style="width:100%;" data-i18n-placeholder="providerRefSearchPlaceholder" placeholder="搜索接口名称、占位符或描述...">
+                    <div class="gd-row-buttons" style="margin-top:4px;">
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-add"><i class="fa-solid fa-plus"></i> <span data-i18n="providerRefAdd">添加</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-export"><i class="fa-solid fa-file-export"></i> <span data-i18n="providerRefExport">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-import"><i class="fa-solid fa-file-import"></i> <span data-i18n="providerRefImport">导入</span></span>
+                        <input type="file" id="gd-provider-ref-import-file" accept=".json" style="display:none;">
+                        <span class="menu_button menu_button_icon" id="gd-provider-ref-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="providerRefReset">恢复默认</span></span>
+                    </div>
+                    <div id="gd-provider-ref-list" style="margin-top:6px;"></div>
+                </div>
+            </div>
+
             <div class="gd-card gd-card-collapsible" data-card="debug">
                 <div class="gd-card-header">
                     <span class="gd-card-caret">▸</span>

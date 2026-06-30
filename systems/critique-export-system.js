@@ -118,11 +118,15 @@ export function createCritiqueExportSystem(deps) {
     }
 
     async function addImportedCritique(data, name) {
+        const rawData = data.critique?.data;
+        const safeData = (rawData && typeof rawData === 'object' && !Array.isArray(rawData))
+            ? rawData
+            : { directorCritique: {}, characterCritiques: {} };
         const entry = {
             id: generateId(),
             name: name || data.source?.groupNote || data.source?.groupName || `Import ${new Date().toLocaleString()}`,
             content: data.critique?.content || '',
-            data: data.critique?.data || { directorCritique: {}, characterCritiques: {} },
+            data: safeData,
             enabled: true,
             sourcePrompt: data.template?.critiquePrompt || '',
             createdAt: Date.now(),
@@ -165,8 +169,8 @@ export function createCritiqueExportSystem(deps) {
                     lines.push(`  [${k}]`);
                     v.forEach(item => lines.push(`    - ${String(item)}`));
                 }
-            } else if (typeof v === 'string' && v) {
-                lines.push(`  [${k}] ${v}`);
+            } else if (v !== null && v !== undefined && v !== '') {
+                lines.push(`  [${k}] ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
             }
         }
         return lines;
@@ -196,8 +200,8 @@ export function createCritiqueExportSystem(deps) {
                             lines.push(`  [${k}]`);
                             v.forEach(item => lines.push(`    - ${String(item)}`));
                         }
-                    } else if (typeof v === 'string' && v) {
-                        lines.push(`  [${k}] ${v}`);
+                    } else if (v !== null && v !== undefined && v !== '') {
+                        lines.push(`  [${k}] ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
                     }
                 }
             }

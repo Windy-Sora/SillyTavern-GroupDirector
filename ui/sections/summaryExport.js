@@ -46,9 +46,9 @@ registerSection('summaryExport', function (ctx) {
         $container.html(html);
 
         // Enable/disable toggle
-        $container.find('.gd-summary-enabled').off('change').on('change', function () {
+        $container.find('.gd-summary-enabled').off('change').on('change', async function () {
             const id = $(this).data('id');
-            sys.setEnabled(id, $(this).prop('checked'));
+            await sys.setEnabled(id, $(this).prop('checked'));
         });
 
         // Delete
@@ -56,7 +56,7 @@ registerSection('summaryExport', function (ctx) {
             const id = $(this).data('id');
             const entry = list.find(s => s.id === id);
             if (await callGenericPopup(isZh() ? `确定删除摘要「${entry?.name || ''}」？` : `Delete summary "${entry?.name || ''}"?`, POPUP_TYPE.CONFIRM)) {
-                sys.deleteImportedSummary(id);
+                await sys.deleteImportedSummary(id);
                 renderPanel();
             }
         });
@@ -109,7 +109,7 @@ registerSection('summaryExport', function (ctx) {
         const file = this.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = function () {
+        reader.onload = async function () {
             const result = sys.parseImportFile(reader.result);
             if (!result.ok) {
                 toastr.error((isZh() ? '导入失败：' : 'Import failed: ') + result.error);
@@ -122,10 +122,9 @@ registerSection('summaryExport', function (ctx) {
                 defaultName
             );
             if (!name || !name.trim()) return;
-            sys.addImportedSummary(data, name.trim()).then(() => {
-                renderPanel();
-                toastr.success(isZh() ? `已导入摘要「${name.trim()}」` : `Summary "${name.trim()}" imported`);
-            });
+            await sys.addImportedSummary(data, name.trim());
+            renderPanel();
+            toastr.success(isZh() ? `已导入摘要「${name.trim()}」` : `Summary "${name.trim()}" imported`);
         };
         reader.readAsText(file);
         this.value = '';

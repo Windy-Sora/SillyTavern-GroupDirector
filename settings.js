@@ -105,4 +105,5 @@ export const DEFAULT_SETTINGS = {
     customPrompts: [], // [{ id, name, content, enabled }]
     customPromptsEnabled: true,
     scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
+    providerReferenceList: [], // user-editable provider reference list
 };

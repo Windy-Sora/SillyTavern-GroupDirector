@@ -35,8 +35,8 @@ export function register(getActiveCharacterCritiqueData) {
                         lines.push('[' + k + ']');
                         v.forEach(item => lines.push('  - ' + String(item)));
                     }
-                } else if (typeof v === 'string' && v) {
-                    lines.push('[' + k + '] ' + v);
+                } else if (v !== null && v !== undefined && v !== '') {
+                    lines.push('[' + k + '] ' + (typeof v === 'object' ? JSON.stringify(v) : String(v)));
                 }
             }
 
