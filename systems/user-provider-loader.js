@@ -12,6 +12,29 @@
  * Zero server-side dependencies. Fully self-contained.
  */
 
+const DANGEROUS_PATTERNS = [
+    { pattern: /\bfetch\s*\(/g,               label: 'fetch() — network exfiltration' },
+    { pattern: /\bXMLHttpRequest\b/g,         label: 'XMLHttpRequest — network exfiltration' },
+    { pattern: /\bnavigator\.sendBeacon\b/g, label: 'navigator.sendBeacon() — unmonitored POST' },
+    { pattern: /document\.cookie\b/g,        label: 'document.cookie — credential theft' },
+    { pattern: /\blocalStorage\b\.\s*getItem|\blocalStorage\b\[/g, label: 'localStorage read — data theft' },
+    { pattern: /\bsessionStorage\b/g,         label: 'sessionStorage — data theft' },
+    { pattern: /\beval\s*\(/g,               label: 'eval() — arbitrary code execution' },
+    { pattern: /\bnew\s+Function\s*\(/g,     label: 'new Function() — arbitrary code execution' },
+    { pattern: /document\.write\s*\(/g,     label: 'document.write() — DOM injection' },
+    { pattern: /\bwindow\.top\b|\bwindow\.parent\b/g, label: 'window.top/parent — frame manipulation' },
+];
+
+function scanSource(source) {
+    const found = [];
+    for (const { pattern, label } of DANGEROUS_PATTERNS) {
+        pattern.lastIndex = 0;
+        const matches = source.match(pattern);
+        if (matches) found.push({ label, count: matches.length });
+    }
+    return found;
+}
+
 export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, unregisterProvider, CapabilityRegistry }) {
     const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
 
@@ -77,6 +100,21 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
 
         try {
             const source = await readFileAsText(file);
+
+            const findings = scanSource(source);
+            if (findings.length > 0) {
+                const lines = findings.map(f => `  - ${f.label} (${f.count}x)`).join('\n');
+                const userConfirmed = confirm(
+                    `Security warning — dangerous APIs detected:\n\n${lines}\n\n` +
+                    `This code could: steal chat logs, exfiltrate API keys, or hijack the page.\n` +
+                    `Only import from trusted sources.\n\nContinue?`
+                );
+                if (!userConfirmed) {
+                    return { ok: false, name, error: 'Import cancelled by user (security warning)' };
+                }
+                log(`User ${type} "${name}": user confirmed import despite security warning: ${findings.map(f => f.label).join(', ')}`);
+            }
+
             const blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
             const mod = await import(blobUrl);
 
@@ -151,6 +189,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
 
         for (const p of store) {
             try {
+                const findings = scanSource(p.source);
+                if (findings.length > 0) {
+                    log(`Security: persisted ${type} "${p.name}" contains: ${findings.map(f => f.label).join(', ')}`);
+                }
                 const blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
                 const mod = await import(blobUrl);
                 if (typeof mod.register === 'function') {
