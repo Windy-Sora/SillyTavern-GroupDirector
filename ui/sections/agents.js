@@ -5,6 +5,7 @@ const AGENT_DISPLAY = {
     'force-speak': { zh: '强制发言 (Force Speak)', en: 'Force Speak' },
     profile:     { zh: '角色档案 (Profile)',       en: 'Profile' },
     summary:     { zh: '上下文总结 (Summary)',     en: 'Summary' },
+    critique:    { zh: '批判 (Critique)',         en: 'Critique' },
 };
 
 const DEFAULT_AGENT_CONFIG = {

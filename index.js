@@ -31,6 +31,7 @@ import { register as registerTimeOfDay } from './assets/providers/time-of-day.js
 import { register as registerKnowledge } from './assets/providers/knowledge.js';
 import { register as registerChatSummary } from './assets/providers/chat-summary.js';
 import { register as registerImportedSummary } from './assets/providers/imported-summary.js';
+import { register as registerImportedCritique } from './assets/providers/imported-critique.js';
 import { register as registerDirectorCritique } from './assets/providers/director-critique.js';
 import { register as registerCharacterCritique } from './assets/providers/character-critique.js';
 import { register as registerCharCritique } from './assets/providers/char-critique.js';
@@ -48,6 +49,7 @@ import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
 import { createNpcExportSystem } from './systems/npc-export-system.js';
 import { createSummaryExportSystem } from './systems/summary-export-system.js';
+import { createCritiqueExportSystem } from './systems/critique-export-system.js';
 import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
@@ -252,6 +254,15 @@ const summaryExportSystem = createSummaryExportSystem({
     chatSummarySystem: chatSummarySystem,
     getCurrentGroup,
     defaultSummaryPrompt: '',
+    log,
+});
+
+// ─── Critique Export System ─────────────────────────────────────────
+const critiqueExportSystem = createCritiqueExportSystem({
+    settings, EXT_KEY, getChatMetadata, saveChatConditional,
+    critiqueSystem: critiqueSystem,
+    getCurrentGroup,
+    defaultCritiquePrompt: '',
     log,
 });
 
@@ -1975,6 +1986,7 @@ registerTimeOfDay(settings);
 registerKnowledge(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
 registerImportedSummary(() => summaryExportSystem.renderEnabledSummaries());
+registerImportedCritique(() => critiqueExportSystem.renderEnabledCritiques());
 registerDirectorCritique(() => critiqueSystem.getActiveDirectorCritiqueText());
 registerCharacterCritique(() => critiqueSystem.getActiveCharacterCritiqueData());
 registerCharCritique(() => critiqueSystem.getActiveCharacterCritiqueData());
@@ -2061,6 +2073,7 @@ jQuery(async () => {
         exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames,
         exportNpcs, parseNpcImportFile, applyNpcImport, loadNpcPreset, getNpcPresetNames,
         summaryExportSystem,
+        critiqueExportSystem,
         memoryExportSystem,
         configProfileSystem,
         getConfigPresetNames, loadConfigPreset,

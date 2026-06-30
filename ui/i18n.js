@@ -160,6 +160,16 @@ const I18N = {
         summaryPrune: '清除已禁用',
         summaryHideDisabled: '隐藏已禁用',
 
+        // Critique Export/Import
+        critiqueExportTitle: '批判导出 / 导入',
+        critiqueExportHint: '导出当前激活批判为 JSON，或导入外部批判。',
+        critiqueExportSection: '导出激活批判',
+        critiqueExportNote: '导出备注（可选）',
+        critiqueExportNotePlaceholder: '例如：主线第三章后的批判评估',
+        critiqueExportBtn: '导出当前批判',
+        critiqueImportSection: '导入的批判（勾选启用）',
+        critiqueImportBtn: '导入批判文件',
+
         // Critique
         critiqueEnabled: 'AI 批判',
         critiqueReuse: '复用上次批判',
@@ -416,10 +426,12 @@ const I18N = {
         exportImportMemory: '记忆',
         exportImportNpc: 'NPC',
         exportImportSummary: '摘要',
+        exportImportCritique: '批判',
         profileExportNoteShort: '备注',
         memoryExportNoteShort: '备注',
         npcExportNoteShort: '备注',
         summaryExportNoteShort: '备注',
+        critiqueExportNoteShort: '备注',
         profileImportTemplateShort: '含模板',
         memoryImportTemplateShort: '含模板',
         npcImportTemplateShort: '含Prompt',
@@ -638,6 +650,16 @@ const I18N = {
         summaryScan: 'Scan for summaries',
         summaryPrune: 'Clear disabled',
         summaryHideDisabled: 'Hide disabled',
+
+        // Critique Export/Import
+        critiqueExportTitle: 'Critique Export / Import',
+        critiqueExportHint: 'Export the active critique as JSON, or import external critiques.',
+        critiqueExportSection: 'Export Active Critique',
+        critiqueExportNote: 'Export note (optional)',
+        critiqueExportNotePlaceholder: 'e.g. Critique assessment after chapter 3',
+        critiqueExportBtn: 'Export Active Critique',
+        critiqueImportSection: 'Imported Critiques (check to enable)',
+        critiqueImportBtn: 'Import Critique File',
 
         // Critique
         critiqueEnabled: 'AI Critique',
@@ -895,10 +917,12 @@ const I18N = {
         exportImportMemory: 'Memory',
         exportImportNpc: 'NPCs',
         exportImportSummary: 'Summary',
+        exportImportCritique: 'Critique',
         profileExportNoteShort: 'Note',
         memoryExportNoteShort: 'Note',
         npcExportNoteShort: 'Note',
         summaryExportNoteShort: 'Note',
+        critiqueExportNoteShort: 'Note',
         profileImportTemplateShort: 'Inc. templates',
         memoryImportTemplateShort: 'Inc. templates',
         npcImportTemplateShort: 'Inc. prompt',

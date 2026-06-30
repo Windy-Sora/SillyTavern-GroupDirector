@@ -17,6 +17,7 @@ import './sections/forceSpeak.js';
 import './sections/chatSummary.js';
 import './sections/critique.js';
 import './sections/summaryExport.js';
+import './sections/critiqueExport.js';
 import './sections/templateTester.js';
 import './sections/profile.js';
 import './sections/profileExport.js';
