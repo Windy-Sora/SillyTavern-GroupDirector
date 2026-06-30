@@ -19,8 +19,8 @@ registerSection('userProviders', function (ctx) {
     };
 
     // Security warning — both provider and capability import
-    const $securityWarning = $(`<div class="gd-security-warning" style="margin:6px 0;padding:6px 8px;background:rgba(255,100,100,0.12);border-left:3px solid #d44;font-size:0.85em;color:var(--grey70a);">
-        <i class="fa-solid fa-triangle-exclamation" style="color:#d44;"></i>
+    const $securityWarning = $(`<div class="gd-security-warning" style="margin:6px 0;padding:6px 8px;background:rgba(255,100,100,0.08);border-left:3px solid #d44;font-size:0.85em;color:#d44;">
+        &#9888;
         ${L(
             '安全警告：导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
             'Security: importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
@@ -37,8 +37,8 @@ registerSection('userProviders', function (ctx) {
 
     renderList('capability', $cList);
 
-    const $capSecurityWarning = $(`<div class="gd-security-warning" style="margin:6px 0;padding:6px 8px;background:rgba(255,100,100,0.12);border-left:3px solid #d44;font-size:0.85em;color:var(--grey70a);">
-        <i class="fa-solid fa-triangle-exclamation" style="color:#d44;"></i>
+    const $capSecurityWarning = $(`<div class="gd-security-warning" style="margin:6px 0;padding:6px 8px;background:rgba(255,100,100,0.08);border-left:3px solid #d44;font-size:0.85em;color:#d44;">
+        &#9888;
         ${L(
             '安全警告：导入即赋予完全权限。恶意代码可窃取聊天记录、API 密钥、接管页面。请仅导入你完全信任的代码。',
             'Security: importing grants full access. Malicious code can steal chat logs, API keys, and hijack the page. Only import code you fully trust.'
