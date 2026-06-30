@@ -4,7 +4,7 @@
 
 Group Director 是一个 **群聊上下文管线**：收集数据 → Agent 决策 → 注入角色 prompt。
 
-默认搭载 7 个 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）。每个 Agent 拥有独立的 API 配置，支持 ST 原生、OpenAI 或 Anthropic 协议。
+默认搭载 8 个 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）。每个 Agent 拥有独立的 API 配置，支持 ST 原生、OpenAI 或 Anthropic 协议。
 
 框架不绑定任何特定用例——可替换 prompt 模板实现地牢主宰、辩论裁判、战斗系统、社会模拟等场景。
 
@@ -167,6 +167,7 @@ AgentRegistry.register(createDirectorAgent({ renderPrompt, ... }));
 AgentRegistry.register(createForceSpeakAgent({ renderPrompt, ... }));
 AgentRegistry.register(createProfileAgent({ renderPrompt, ... }));
 AgentRegistry.register(createSummaryAgent({ log }));
+AgentRegistry.register(createCritiqueAgent({ log }));
 AgentRegistry.register(createNpcAgent({ renderPrompt, ... }));
 AgentRegistry.register(createMemoryAgent({ renderPrompt, ... }));
 AgentRegistry.register(createPostSpeechAgent({ renderPrompt, log }));
@@ -224,6 +225,9 @@ registerProvider({
 | `worldBookImportance` | `{{worldBookImportance}}` | 条目重要性排名 |
 | `characterLore` | `{{characterLore}}` | 角色世界书触发词 |
 | `chatSummary` | `{{chatSummary}}` | 上下文总结 |
+| `directorCritique` | `{{directorCritique}}` | 导演批判（可读文本） |
+| `characterCritique` | `{{characterCritique}}` | 全量角色批判（JSON + DSL） |
+| `charCritique` | `{{charCritique}}` | 当前角色批判（可读，自动解析角色名） |
 | `npcList` | `{{npcList}}` | NPC 列表 + 路径查询 |
 | `charMemory` | `{{charMemory}}` | 全部角色记忆 |
 | `charMemoryCurrent` | `{{charMemoryCurrent}}` | 当前发言角色记忆 |
@@ -445,8 +449,12 @@ SillyTavern-GroupDirector/
 │   │   ├── fantasy-rpg.json
 │   │   ├── npc-fantasy-tavern.json
 │   │   └── group-director-default.json
-│   ├── providers/             # 26 个内置 Provider
+│   ├── providers/             # 29 个内置 Provider
 │   │   ├── manifest.js
+│   │   ├── chatSummary.js
+│   │   ├── director-critique.js
+│   │   ├── character-critique.js
+│   │   ├── char-critique.js
 │   │   └── ...
 │   └── capabilities/          # 3 个内置 Capability
 │       ├── manifest.js
@@ -459,6 +467,7 @@ SillyTavern-GroupDirector/
 │   ├── force-speak.js
 │   ├── profile.js
 │   ├── summary.js
+│   ├── critique.js
 │   ├── npc.js
 │   ├── memory.js
 │   └── post-speech.js
@@ -482,6 +491,7 @@ SillyTavern-GroupDirector/
 │   ├── custom-prompts-system.js # 自定义 Prompt 模板
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
+│   ├── critique-system.js     # AI 批判
 │   ├── summary-export-system.js
 │   ├── export-import-system.js # 群聊导出/导入（JSZip fallback）
 │   └── script-executor-system.js # 脚本执行器引擎
@@ -509,6 +519,7 @@ SillyTavern-GroupDirector/
         ├── ledger.js          # 账本浏览器
         ├── forceSpeak.js      # 强制发言
         ├── chatSummary.js     # 上下文总结
+        ├── critique.js        # AI 批判
         ├── summaryExport.js   # 摘要导出/导入
         ├── templateTester.js  # 模板测试器
         ├── profile.js         # 角色档案
@@ -567,6 +578,12 @@ SillyTavern-GroupDirector/
 | `customPromptsEnabled` | `true` | 自定义 Prompt 总开关 |
 | `scriptExecutors` | `[]` | 脚本执行器列表 |
 | `autoMemorySpeakers` | `false` | 自动记忆仅提取发言角色 |
+| `critiqueEnabled` | `false` | 启用 AI 批判 |
+| `critiqueReuse` | `false` | 复用上次批判 |
+| `critiqueAuto` | `false` | 自动批判 |
+| `critiqueAutoInterval` | `5` | 每 N 条消息触发自动批判 |
+| `critiquePrompt` | `''` | 批判系统提示词（自定义） |
+| `critiqueSchema` | `''` | 批判输出 JSON Schema（自定义） |
 
 ---
 
