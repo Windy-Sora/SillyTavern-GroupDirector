@@ -207,7 +207,7 @@ registerProvider({
 });
 ```
 
-### 3.2 已注册 Provider（26 个）
+### 3.2 已注册 Provider（29 个）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -239,6 +239,7 @@ registerProvider({
 | `moonPhase` | `{{moonPhase}}` | 月相 |
 | `timeOfDay` | `{{timeOfDay}}` | 时段 + 季节 |
 | `knowledge` | `{{knowledge}}` | 知识库原文 |
+| `importedCritique` | `{{importedCritique}}` | 导入的批判（独立存储） |
 | `test` | `{{test}}` | 模板语法测试 |
 
 ### 3.3 编码规则
@@ -376,7 +377,7 @@ CHAT_CHANGED → 裁剪账本 + 裁剪总结（分支/切换）
 │  ▼ 连续性 — 总结卡片 / 账本卡片 / 世界书卡片                        │
 │  ▼ 反应 — PostSpeech消息卡片 / PostSpeech回合卡片 / 能力卡片        │
 │  ▼ 工具 — 配置档卡片 / 导出导入卡片 / Agent卡片 / 自定义Prompt卡片   │
-│          / 用户扩展卡片 / 调试卡片                                  │
+│          / 用户扩展卡片 / 接口参考卡片 / 脚本执行器卡片 / 调试卡片      │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -535,6 +536,7 @@ SillyTavern-GroupDirector/
         ├── postSpeech.js      # PostSpeech 配置
         ├── executionTrace.js  # 执行追踪
         ├── userProviders.js   # 用户扩展管理
+        ├── providerReference.js # 接口参考
         ├── customPrompts.js   # 自定义 Prompt
         ├── agents.js          # Agent API 独立配置（动态生成）
         └── scriptExecutors.js # 脚本执行器 UI
