@@ -17,7 +17,7 @@ import { unescapeKnowledge } from './assets/providers/knowledge.js';
  *
  * Special placeholder: {{counter}} increments per occurrence across
  * all renderPrompt() calls. Each occurrence gets a unique monotonic
- * value (1, 2, 3...). Resets on GROUP_WRAPPER_STARTED.
+ * value (0, 1, 2...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
     const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough } = options;

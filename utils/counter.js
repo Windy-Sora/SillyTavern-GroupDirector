@@ -1,7 +1,7 @@
 let roundCounter = 0;
 
 export function roundCounterNext() {
-    return ++roundCounter;
+    return roundCounter++;
 }
 
 export function roundCounterReset() {
@@ -19,7 +19,7 @@ export function roundCounterSet(n) {
 let promptCounter = 0;
 
 export function promptCounterNext() {
-    return ++promptCounter;
+    return promptCounter++;
 }
 
 export function promptCounterReset() {

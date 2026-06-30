@@ -120,8 +120,8 @@ export function createMemoryAgent({ renderPrompt, extractJsonObject, log }) {
                 } catch (e) {
                     const extracted = extractJsonObject(raw);
                     if (extracted) {
-                        try { parsed = JSON.parse(sanitizeJson(extracted)); } catch (_) {
-                            log('Memory extract: invalid JSON after extraction');
+                        try { parsed = JSON.parse(sanitizeJson(extracted)); } catch (e2) {
+                            log('Memory extract: invalid JSON after extraction:', e2.message);
                             return null;
                         }
                     } else { log('Memory extract: invalid JSON'); return null; }

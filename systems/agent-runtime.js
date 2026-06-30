@@ -253,8 +253,7 @@ export async function execute(agent, { pool, caller, config = {} }) {
         const contextUsed = [...used];
         trace.push({ stage: '_done', result: summarizeResult(result), contextUsed });
         const snapshot = trace.snapshot();
-        traceBuffer.push(snapshot);
-        while (traceBuffer.length > _maxTraces) traceBuffer.shift();
+        AgentTrace.push(snapshot);
         console.log('[AgentTrace]', agent.id, snapshot.stages.map(s => s.stage).join(' → '));
     }
 
