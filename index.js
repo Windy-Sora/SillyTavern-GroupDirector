@@ -31,6 +31,9 @@ import { register as registerTimeOfDay } from './assets/providers/time-of-day.js
 import { register as registerKnowledge } from './assets/providers/knowledge.js';
 import { register as registerChatSummary } from './assets/providers/chat-summary.js';
 import { register as registerImportedSummary } from './assets/providers/imported-summary.js';
+import { register as registerDirectorCritique } from './assets/providers/director-critique.js';
+import { register as registerCharacterCritique } from './assets/providers/character-critique.js';
+import { register as registerCharCritique } from './assets/providers/char-critique.js';
 import { register as registerIdentity } from './assets/providers/identity.js';
 import { register as registerNpcList } from './assets/providers/npc-list.js';
 import { register as registerNewRecentMessages } from './assets/providers/new-recent-messages.js';
@@ -40,6 +43,7 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
+import { createCritiqueSystem } from './systems/critique-system.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
 import { createNpcExportSystem } from './systems/npc-export-system.js';
@@ -59,6 +63,7 @@ import { createDirectorAgent } from './agents/director.js';
 import { createForceSpeakAgent } from './agents/force-speak.js';
 import { createProfileAgent } from './agents/profile.js';
 import { createSummaryAgent } from './agents/summary.js';
+import { createCritiqueAgent } from './agents/critique.js';
 import { createNpcAgent, DEFAULT_NPC_PROMPT } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
 import { createMemoryAgent, DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER, DEFAULT_MEMORY_COMPRESS_PROMPT } from './agents/memory.js';
@@ -173,6 +178,13 @@ const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
 
 const chatSummarySystem = createChatSummarySystem({
+    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
+    inject_ids, extension_prompt_types, setExtensionPrompt, log,
+    createCaller,
+});
+
+const critiqueSystem = createCritiqueSystem({
     settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     inject_ids, extension_prompt_types, setExtensionPrompt, log,
@@ -306,6 +318,7 @@ function buildContextPool(overrides = {}) {
         forceSpeakPrompt: () => settings.forceSpeakPrompt || null,
         // Summary specific
         summaryLatest: () => chatSummarySystem.getLatestActive?.() ?? null,
+        critiqueLatest: () => critiqueSystem.getLatestActive?.() ?? null,
         // NPC specific (passed via overrides from npcSystem)
         npcExistingList: () => overrides.npcExistingList?.() ?? [],
         npcBatchSize: () => overrides.npcBatchSize?.() ?? settings.npcBatchSize ?? 3,
@@ -366,6 +379,7 @@ AgentRegistry.register(createProfileAgent({
 
 // Summary
 AgentRegistry.register(createSummaryAgent({ log }));
+AgentRegistry.register(createCritiqueAgent({ log }));
 
 // NPC
 AgentRegistry.register(createNpcAgent({ renderPrompt, extractJsonObject, log }));
@@ -1107,7 +1121,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // ─── Auto Summary & Auto Memory ────────────────────────────
     const lang = settings.lang || 'zh';
-    const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled;
+    const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled || settings.autoCritiqueEnabled;
     const _c2 = takeoverGenCount === 0;
     const _c3 = !manualGenInProgress;
     console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: takeoverGenCount, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
@@ -1244,6 +1258,45 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             }
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
+                    }
+                }
+            }
+
+            // Check Auto Critique
+            if (settings.autoCritiqueEnabled && settings.critiqueEnabled) {
+                const interval = settings.autoCritiqueInterval || 10;
+                let criLen = chat_metadata[EXT_KEY]._autoCritiqueLen;
+                if (criLen === undefined) criLen = critiqueSystem.getLatestActive?.()?.rangeEnd ?? 0;
+
+                if (criLen === 0 && chat_metadata[EXT_KEY]._autoCritiqueLen === undefined && legacyLen === undefined) {
+                    console.log('[GD-auto-cri] path: first-enable currentLen=', currentLen);
+                    chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                    await saveChatConditional();
+                    if (currentLen >= interval) {
+                        try {
+                            log(`Auto-critique: first enable, ${currentLen} existing msgs`);
+                            toastr?.info?.(lang === 'zh' ? `自动批判触发（检测到 ${currentLen} 条现有消息）...` : `Auto-critique (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
+                            await critiqueSystem.generateCritique();
+                            toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
+                        } catch (e) { log('Auto-critique failed:', e.message); }
+                    }
+                } else if (currentLen < criLen) {
+                    console.log('[GD-auto-cri] path: deletion');
+                    chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                    await saveChatConditional();
+                    toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动批判计数器已重置。' : 'Messages deleted. Auto-critique counter reset.', '', { timeOut: 8000 });
+                } else {
+                    const newMsgs = currentLen - criLen;
+                    console.log('[GD-auto-cri] path: normal newMsgs=', newMsgs, 'interval=', interval);
+                    if (newMsgs >= interval) {
+                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                        await saveChatConditional();
+                        try {
+                            log(`Auto-critique triggered (${newMsgs} msgs)`);
+                            toastr?.info?.(lang === 'zh' ? `自动批判触发（${newMsgs} 条新消息）...` : `Auto-critique (${newMsgs} msgs)...`, '', { timeOut: 3000 });
+                            await critiqueSystem.generateCritique();
+                            toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
+                        } catch (e) { log('Auto-critique failed:', e.message); }
                     }
                 }
             }
@@ -1431,6 +1484,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
+    await critiqueSystem.pruneCritiques();
     await postSpeechSystem.clearAll();
     postSpeechRoundQueue = [];
     // Reset auto-check counter on chat change
@@ -1438,6 +1492,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
         delete chat_metadata[EXT_KEY]._autoCheckLength;
         delete chat_metadata[EXT_KEY]._autoSumLen;
         delete chat_metadata[EXT_KEY]._autoMemLen;
+        delete chat_metadata[EXT_KEY]._autoCritiqueLen;
     }
     postSpeechRoundRan = false;
     scriptExecutorRoundRan = false;
@@ -1920,6 +1975,9 @@ registerTimeOfDay(settings);
 registerKnowledge(settings);
 registerChatSummary(() => chatSummarySystem.getActiveSummaryText());
 registerImportedSummary(() => summaryExportSystem.renderEnabledSummaries());
+registerDirectorCritique(() => critiqueSystem.getActiveDirectorCritiqueText());
+registerCharacterCritique(() => critiqueSystem.getActiveCharacterCritiqueData());
+registerCharCritique(() => critiqueSystem.getActiveCharacterCritiqueData());
 registerIdentity(settings);
 registerCharMemory({
     getMemoriesForAll: () => {
@@ -1986,6 +2044,7 @@ jQuery(async () => {
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
+        critiqueSystem,
         getChat: () => chat,
         getCharacters: () => characters,
         exportGroup,

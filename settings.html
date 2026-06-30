@@ -258,6 +258,7 @@
                             <label for="gd-llm-script-continuity-history-wrapper" data-i18n="continuityHistoryWrapper">包装模板（完整历史）</label>
                             <textarea id="gd-llm-script-continuity-history-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
                         </div>
+
                     </div>
                 </div>
 
@@ -573,6 +574,56 @@
                     <label for="gd-summary-result" data-i18n="summaryResultLabel">总结结果</label>
                     <textarea id="gd-summary-result" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-summary-result-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="critique">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="critiqueCard">AI 批判</span>
+                    <span class="gd-card-status" id="gd-card-status-critique"></span>
+                </div>
+                <div class="gd-card-body">
+                    <div id="gd-critique-lock-warn" style="display:none;color:#ff9800;">
+                        <b>&#9888; 生成中，面板已锁定</b>
+                    </div>
+                    <label class="checkbox_label" for="gd-critique-enabled" style="margin-top:6px;">
+                        <input type="checkbox" id="gd-critique-enabled">
+                        <span data-i18n="critiqueEnabled">AI 批判</span>
+                    </label>
+                    <label class="checkbox_label" for="gd-critique-reuse">
+                        <input type="checkbox" id="gd-critique-reuse">
+                        <span data-i18n="critiqueReuse">复用</span>
+                    </label>
+                    <hr>
+                    <label class="checkbox_label" for="gd-auto-critique-enabled">
+                        <input type="checkbox" id="gd-auto-critique-enabled">
+                        <span data-i18n="autoCritiqueEnabled">自动批判</span>
+                    </label>
+                    <span style="display:flex;align-items:center;gap:4px;margin-top:2px;" id="gd-auto-critique-row">
+                        <span style="font-size:0.85em;" data-i18n="autoCritiqueIntervalLabel">每</span>
+                        <input type="number" id="gd-auto-critique-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
+                        <span style="font-size:0.85em;" data-i18n="autoCritiqueIntervalSuffix">条新消息触发</span>
+                    </span>
+                    <label for="gd-critique-prompt" data-i18n="critiquePromptLabel">批判 Prompt</label>
+                    <textarea id="gd-critique-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-critique-prompt-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <label for="gd-critique-schema" data-i18n="critiqueSchemaLabel">JSON Schema（自定义输出格式）</label>
+                    <textarea id="gd-critique-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
+                    <span class="menu_button menu_button_icon" id="gd-critique-schema-reset"><i class="fa-solid fa-rotate-left"></i> 默认</span>
+                    <div class="gd-row-buttons">
+                        <span class="menu_button menu_button_icon" id="gd-critique-execute"><i class="fa-solid fa-play"></i> 执行</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-regenerate"><i class="fa-solid fa-rotate"></i> 重新</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-revert"><i class="fa-solid fa-undo"></i> 回退</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-reset"><i class="fa-solid fa-trash"></i> 重置</span>
+                        <span class="menu_button menu_button_icon" id="gd-critique-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                    </div>
+                    <span id="gd-critique-status" style="font-size:0.85em;color:var(--grey70a);"></span>
+                    <div id="gd-critique-result-section" style="display:none;">
+                        <label for="gd-critique-result" data-i18n="critiqueResultLabel">批判结果（JSON）</label>
+                        <textarea id="gd-critique-result" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
+                        <span class="menu_button menu_button_icon" id="gd-critique-result-save"><i class="fa-solid fa-floppy-disk"></i> 保存</span>
+                    </div>
                 </div>
             </div>
 

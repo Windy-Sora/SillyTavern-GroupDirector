@@ -53,6 +53,9 @@ const DRAWER_KEYS = {
     contextLedger: [
         'summaryEnabled', 'summaryReusePrevious', 'summaryPrompt',
         'autoSummaryEnabled', 'autoSummaryInterval',
+        'critiqueEnabled', 'critiqueReusePrevious', 'critiquePrompt',
+        'critiqueSchema',
+        'autoCritiqueEnabled', 'autoCritiqueInterval',
     ],
     multimodal: [
         'postSpeechMessageEnabled', 'postSpeechMessagePrompt',

@@ -53,6 +53,13 @@ export const DEFAULT_SETTINGS = {
     summaryPrompt: '',
     autoSummaryEnabled: false,
     autoSummaryInterval: 10,
+    // Chat Critique
+    critiqueEnabled: false,
+    critiqueReusePrevious: true,
+    critiquePrompt: '',
+    critiqueSchema: '',
+    autoCritiqueEnabled: false,
+    autoCritiqueInterval: 10,
     // World Book
     worldBookSelection: {},
     worldBookMaxEntries: 20,
