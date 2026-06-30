@@ -26,11 +26,13 @@ registerSection('memory', function (ctx) {
     // Auto memory
     $c('auto-memory-enabled').prop('checked', !!settings.autoMemoryEnabled);
     $c('auto-memory-interval').val(settings.autoMemoryInterval ?? 10);
+    $c('auto-memory-speakers').prop('checked', settings.autoMemorySpeakers === true);
     $c('auto-memory-enabled').on('change', function () {
         settings.autoMemoryEnabled = !!$(this).prop('checked');
         $('#gd-auto-memory-row').toggle(settings.autoMemoryEnabled);
         saveSettings();
     });
+    $c('auto-memory-speakers').on('change', function () { settings.autoMemorySpeakers = !!$(this).prop('checked'); saveSettings(); });
     $c('auto-memory-interval').on('input', function () {
         settings.autoMemoryInterval = Math.max(1, parseInt($(this).val()) || 10);
         saveSettings();

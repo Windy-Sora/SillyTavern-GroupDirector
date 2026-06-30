@@ -45,12 +45,14 @@ const DRAWER_KEYS = {
         'memoryEnabled', 'memoryTokenBudget', 'memoryPrompt',
         'memoryJsonSchema', 'memoryRenderTemplate', 'memoryKeepRecent',
         'memoryMaxEntries', 'memoryCompressPrompt',
+        'autoMemoryEnabled', 'autoMemoryInterval', 'autoMemorySpeakers',
         'identityPrompt',
         'npcEnabled', 'npcMaxCount', 'npcBatchSize',
         'npcGenerateFirstMes', 'npcPrompt',
     ],
     contextLedger: [
         'summaryEnabled', 'summaryReusePrevious', 'summaryPrompt',
+        'autoSummaryEnabled', 'autoSummaryInterval',
     ],
     multimodal: [
         'postSpeechMessageEnabled', 'postSpeechMessagePrompt',

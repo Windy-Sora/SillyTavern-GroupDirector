@@ -78,6 +78,7 @@ export const DEFAULT_SETTINGS = {
     memoryTokenBudget: 2000,
     autoMemoryEnabled: false,
     autoMemoryInterval: 10,
+    autoMemorySpeakers: false,
     memoryPrompt: '',
     memoryJsonSchema: '',
     memoryRenderTemplate: '',

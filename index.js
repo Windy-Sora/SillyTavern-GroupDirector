@@ -1143,6 +1143,28 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             await saveChatConditional();
         }
 
+        function resolveMemoryTargets(members, interval) {
+            if (!settings.autoMemorySpeakers) return members;
+            const history = getDirectorHistory();
+            if (!history || !history.length) return members;
+            const seen = new Set();
+            const lookback = Math.min(interval, history.length);
+            // speakers in ledger are names — resolve to avatars via enabled members
+            const enabled = members;
+            for (let i = history.length - lookback; i < history.length; i++) {
+                const entry = history[i];
+                const names = entry?.speakers || [];
+                for (const n of names) {
+                    if (!n) continue;
+                    const c = matchCharacterByName(n, enabled);
+                    if (c) seen.add(c.avatar);
+                }
+            }
+            if (!seen.size) return members;
+            const filtered = members.filter(a => seen.has(a));
+            return filtered.length > 0 ? filtered : members;
+        }
+
         if (roundGenerateType !== 'swipe' && roundGenerateType !== 'regenerate') {
             // Check Auto Summary
             if (settings.autoSummaryEnabled && settings.summaryEnabled) {
@@ -1188,7 +1210,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             log(`Auto-memory: first enable, ${currentLen} existing msgs`);
                             toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（检测到 ${currentLen} 条现有消息）...` : `Auto-memory (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
                             const g = getCurrentGroup();
-                            if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
+                            const members = g ? g.members.filter(a => !g.disabled_members?.includes(a)) : [];
+                            const targets = resolveMemoryTargets(members, interval);
+                            if (targets.length < members.length) {
+                                log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
+                            }
+                            for (const av of targets) {
                                 try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
                             }
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
@@ -1207,7 +1234,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             log(`Auto-memory triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（${newMsgs} 条新消息）...` : `Auto-memory (${newMsgs} msgs)...`, '', { timeOut: 3000 });
                             const g = getCurrentGroup();
-                            if (g) for (const av of g.members.filter(a => !g.disabled_members?.includes(a))) {
+                            const members = g ? g.members.filter(a => !g.disabled_members?.includes(a)) : [];
+                            const targets = resolveMemoryTargets(members, interval);
+                            if (targets.length < members.length) {
+                                log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
+                            }
+                            for (const av of targets) {
                                 try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
                             }
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });

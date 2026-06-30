@@ -566,6 +566,7 @@ SillyTavern-GroupDirector/
 | `customPrompts` | `[]` | 自定义 Prompt 列表 |
 | `customPromptsEnabled` | `true` | 自定义 Prompt 总开关 |
 | `scriptExecutors` | `[]` | 脚本执行器列表 |
+| `autoMemorySpeakers` | `false` | 自动记忆仅提取发言角色 |
 
 ---
 
@@ -820,3 +821,62 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | `cp` 不覆盖已有文件 | 部分环境 `cp` 静默跳过同内容文件 | `rm -f` 后 `cp` |
 | JSZip `import()` 失败 | 非模块 JS 文件无法通过 `import()` 加载 | script 标签注入 fallback |
 | 配置档下拉不同步 | 仪表盘和卡片共用同一个 ID，两套代码互相覆盖 | 分用两个 ID，`refreshPresetSelector()` 同时更新 |
+
+---
+
+## 21. 安全说明
+
+### 21.1 用户代码信任模型
+
+Group Director 允许用户导入和编写自定义代码（用户 Provider、用户 Capability、脚本执行器）。这些代码运行在 SillyTavern 的页面上下文中，拥有与 SillyTavern 本身相同的权限——包括访问 localStorage、发送 HTTP 请求、操作 DOM。
+
+**设计决策**：系统信任用户自己编写的代码，但对外部导入（他人分享的配置档、脚本执行器包）采取防御性措施。
+
+### 21.2 防御措施
+
+| 层面 | 措施 | 说明 |
+|------|------|------|
+| 用户 Provider/Capability 导入 | 静态扫描 `DANGEROUS_PATTERNS` | 检测 `eval`、`Function`、`fetch`、`XMLHttpRequest`、`WebSocket`、`import(` 等危险 API，匹配后展示红色安全警告 |
+| 用户 Provider/Capability 导入 | GUI 安全警告条 | 导入时在文件列表上方的醒目位置展示检测到的危险 API |
+| 脚本执行器导入 | GUI 安全警告条 | 同样展示检测到的危险 API |
+| 配置档导入 | 确认弹窗 | 导入配置档会同时导入 userProviders、userCapabilities，点击导入按钮时弹出 ST 原生确认框提醒用户检查 |
+| 配置档导出 | API Key 剥离 | `agentConfigs` 中的 `apiKey` 在导出时自动清空 |
+| 配置档导入 | API Key 剥离 | `agentConfigs` 在导入时被丢弃，防止端点劫持 |
+| 脚本执行器 | 执行超时 | 每个脚本 10 秒超时，超时后跳过继续执行 |
+| 脚本执行器 | 异常隔离 | 单个脚本异常不影响其他脚本和导演流程 |
+
+### 21.3 破坏性操作确认
+
+所有破坏性操作均使用 ST 原生 `callGenericPopup` + `POPUP_TYPE.CONFIRM` 弹窗确认，不再使用浏览器原生 `confirm()`：
+
+- 上下文总结：重置、导入、手动生成
+- 角色记忆：重置、提取、压缩、删除、回退
+- 配置档：导入
+- 脚本执行器：导入
+- 自定义 Prompt：导入
+- 仪表盘：重置
+- 用户 Provider：删除
+- 导演账本：清除
+- NPC：重置、删除
+- 档案：全部重新生成
+
+### 21.4 静态代码扫描规则
+
+`systems/user-provider-loader.js` 中定义的 `DANGEROUS_PATTERNS` 正则数组：
+
+```js
+const DANGEROUS_PATTERNS = [
+    /\beval\s*\(/,
+    /\bnew\s+Function\s*\(/,
+    /\bfetch\s*\(/,
+    /\bXMLHttpRequest\b/,
+    /\bWebSocket\b/,
+    /\bimport\s*\(/,
+    /\bdocument\.cookie\b/,
+    /\blocalStorage\b/,
+    /\bsessionStorage\b/,
+    /\bindexedDB\b/,
+];
+```
+
+注意：`fetch` 被标记为危险并非完全禁止使用，而是提醒用户该代码会发起外部网络请求。脚本执行器中同样使用此规则扫描。`localStorage` / `sessionStorage` / `indexedDB` 也被标记以提醒用户代码可能读写持久化数据。
