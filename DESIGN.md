@@ -4,7 +4,7 @@
 
 Group Director 是一个 **群聊上下文管线**：收集数据 → Agent 决策 → 注入角色 prompt。
 
-默认搭载 8 个 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）。每个 Agent 拥有独立的 API 配置，支持 ST 原生、OpenAI 或 Anthropic 协议。
+默认搭载 9 组 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）、Custom Agent（用户自定义 —— 不注册为 Agent，直接通过 system 调用 LLM）。前 8 个 Agent 拥有独立的 API 配置，Custom Agent 共用 `custom-agent` API 配置。
 
 框架不绑定任何特定用例——可替换 prompt 模板实现地牢主宰、辩论裁判、战斗系统、社会模拟等场景。
 
@@ -185,6 +185,7 @@ settings.agentConfigs = {
   'npc':         { ... },
   'memory':      { ... },
   'post-speech': { ... },
+  'custom-agent': { ... },  // 所有自定义 Agent 实例共存
 };
 ```
 
@@ -207,7 +208,7 @@ registerProvider({
 });
 ```
 
-### 3.2 已注册 Provider（29 个）
+### 3.2 已注册 Provider（29 个内置 + N 个自定义 Agent 动态注册）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -716,7 +717,66 @@ decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {.
 
 ---
 
-## 14. 导出/导入系统
+---
+
+## 14. Custom Agent — 用户自定义 LLM Agent
+
+用户自定义的轻量 LLM Agent，每 N 轮自动触发或手动执行。用户写 prompt + 可选 JSON schema，结果通过 `{{providerName}}` Provider 暴露给 DSL 消费。
+
+### 14.1 设计要点
+
+- **不自创编排** — 每个实例跑在 GROUP_WRAPPER_FINISHED，不依赖其他系统
+- **共用一个 API 配置** — `agentConfigs['custom-agent']`，不按实例拆分
+- **每个实例独立计数器** — `_autoCAG_{id}` 在 chat_metadata，互不影响
+- **排序** — 用户填 order 数字，按升序串行执行
+- **Provider 动态注册** — `providerName` 字段 → `{{providerName}}` → DSL 查询
+- **禁用 = Provider 停用** — enabled=false 时 render() 返回 ''
+- **数据不主动清理** — 删实例时 Provider 反注册，数据静默留在 chat_metadata
+
+### 14.2 数据模型
+
+settings:
+```js
+customAgents: [
+  {
+    id: 'ca_xxx',
+    name: '派系追踪',
+    providerName: 'factionTracker',
+    prompt: '分析最近消息...',
+    schema: '',     // 可选 JSON schema，留空不解析
+    enabled: false,
+    autoEnabled: false,
+    autoInterval: 10,
+    order: 1,
+  }
+]
+```
+
+chat_metadata 存储：
+```js
+chat_metadata[EXT_KEY]._caData = {
+  'ca_xxx': {
+    rangeEnd: 42,
+    content: 'raw LLM output',
+    data: { ... },  // 解析后的 JSON（如果有 schema）
+    timestamp: ...,
+  }
+}
+```
+
+### 14.3 自动触发
+
+在 GROUP_WRAPPER_FINISHED 中，Critique 之后执行。按 order 排序，逐实例检查 `chat.length - checkpoint >= interval`，满足则调用 `customAgentSystem.execute()`。
+
+每个实例独立的 checkpoint 存为 `chat_metadata[EXT_KEY]._autoCAG_{id}`，三路分支（first-enable / deletion / normal）复用 Summary/Critique 同一模式。
+
+### 14.4 Provider 渲染
+
+Provider render 闭包捕获 `instance.id`，每次调用检查 `settings.customAgents.find(a => a.id === capturedId && a.enabled)` 确认实例还存在且已启用。不存在或禁用时返回 `''`。
+
+---
+
+## 15. 导出/导入系统
 
 Group Director 为五种数据类型提供完整的导出/导入能力：
 
@@ -740,7 +800,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 15. 自定义 Prompt 模板
+## 16. 自定义 Prompt 模板
 
 用户创建自定义占位符，自动注册为 `{{name}}` Provider。
 
@@ -752,7 +812,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 16. 资产管理 & 用户导入
+## 17. 资产管理 & 用户导入
 
 ### AssetLoader
 
@@ -764,7 +824,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 17. 失败回退
+## 18. 失败回退
 
 - Agent 调用失败 → managedCall 重试 `retries` 次 → 复用历史 → 阻塞轮次
 - 用户主动暂停 → `generationStopped` 标记 → 静默切断
@@ -775,7 +835,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 18. 开发速查
+## 19. 开发速查
 
 | 任务 | 改哪些文件 |
 |------|-----------|
@@ -798,7 +858,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 19. 开发规范
+## 20. 开发规范
 
 ### Agent 规范
 
@@ -829,7 +889,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 20. 踩坑记录
+## 21. 踩坑记录
 
 | 坑 | 原因 | 教训 |
 |----|------|------|
@@ -843,7 +903,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ---
 
-## 21. 安全说明
+## 22. 安全说明
 
 ### 21.1 用户代码信任模型
 

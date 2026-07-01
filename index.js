@@ -45,6 +45,7 @@ import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
+import { createCustomAgentSystem } from './systems/custom-agent-system.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
 import { createNpcExportSystem } from './systems/npc-export-system.js';
@@ -191,6 +192,13 @@ const critiqueSystem = createCritiqueSystem({
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     inject_ids, extension_prompt_types, setExtensionPrompt, log,
     createCaller,
+});
+
+const customAgentSystem = createCustomAgentSystem({
+    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
+    createCaller,
+    log,
 });
 
 const worldBookScanner = createWorldBookScanner({
@@ -1132,7 +1140,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // ─── Auto Summary & Auto Memory ────────────────────────────
     const lang = settings.lang || 'zh';
-    const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled || settings.autoCritiqueEnabled;
+    const hasAutoCA = (settings.customAgents || []).some(a => a.enabled && a.autoEnabled);
+    const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled || settings.autoCritiqueEnabled || hasAutoCA;
     const _c2 = takeoverGenCount === 0;
     const _c3 = !manualGenInProgress;
     console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: takeoverGenCount, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
@@ -1311,6 +1320,52 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     }
                 }
             }
+
+            // ─── Auto Custom Agents ────────────────────────
+            const caInstances = (settings.customAgents || []).filter(a => a.enabled && a.autoEnabled);
+            console.log('[GD-auto-ca] instances found:', caInstances.length, 'total in settings:', (settings.customAgents || []).length);
+            if (caInstances.length) {
+                const sorted = [...caInstances].sort((a, b) => (a.order || 0) - (b.order || 0));
+                for (const inst of sorted) {
+                    const caKey = `_autoCAG_${inst.id}`;
+                    let caLen = chat_metadata[EXT_KEY][caKey];
+                    if (caLen === undefined) {
+                        const store = customAgentSystem.getData(inst.id);
+                        caLen = store?.rangeEnd ?? 0;
+                    }
+                    const interval = inst.autoInterval || 10;
+
+                    if (caLen === 0 && chat_metadata[EXT_KEY][caKey] === undefined && legacyLen === undefined) {
+                        chat_metadata[EXT_KEY][caKey] = currentLen;
+                        await saveChatConditional();
+                        if (currentLen >= interval) {
+                            try {
+                                log(`[GD-auto-ca] "${inst.name}": first-enable, ${currentLen} msgs`);
+                                toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${currentLen} 条现有消息）...` : `"${inst.name}" auto (${currentLen} msgs)...`, '', { timeOut: 3000 });
+                                await customAgentSystem.execute(inst);
+                                toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
+                            } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
+                        }
+                    } else if (currentLen < caLen) {
+                        chat_metadata[EXT_KEY][caKey] = currentLen;
+                        await saveChatConditional();
+                        toastr?.warning?.(lang === 'zh' ? `检测到消息被删除，"${inst.name}" 计数器已重置。` : `Msgs deleted. "${inst.name}" counter reset.`, '', { timeOut: 8000 });
+                    } else {
+                        const newMsgs = currentLen - caLen;
+                        if (newMsgs >= interval) {
+                            chat_metadata[EXT_KEY][caKey] = currentLen;
+                            await saveChatConditional();
+                            try {
+                                log(`[GD-auto-ca] "${inst.name}" triggered (${newMsgs} msgs)`);
+                                toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${newMsgs} 条新消息）...` : `"${inst.name}" auto (${newMsgs} msgs)...`, '', { timeOut: 3000 });
+                                await customAgentSystem.execute(inst);
+                                toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
+                            } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
+                        }
+                    }
+                }
+            }
+
         }
     }
 });
@@ -1504,6 +1559,10 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
         delete chat_metadata[EXT_KEY]._autoSumLen;
         delete chat_metadata[EXT_KEY]._autoMemLen;
         delete chat_metadata[EXT_KEY]._autoCritiqueLen;
+        // Clean up custom agent auto counters
+        for (const key of Object.keys(chat_metadata[EXT_KEY])) {
+            if (key.startsWith('_autoCAG_')) delete chat_metadata[EXT_KEY][key];
+        }
     }
     postSpeechRoundRan = false;
     scriptExecutorRoundRan = false;
@@ -2042,6 +2101,7 @@ registerCharMemory({
 });
 registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
 registerNpcList(() => npcSystem.getNpcs());
+customAgentSystem.refreshProviders();
 
 // ─── Init ─────────────────────────────────────────────────────────────
 jQuery(async () => {
@@ -2057,6 +2117,7 @@ jQuery(async () => {
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
         critiqueSystem,
+        customAgentSystem,
         getChat: () => chat,
         getCharacters: () => characters,
         exportGroup,

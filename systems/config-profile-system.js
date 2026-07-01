@@ -63,7 +63,7 @@ const DRAWER_KEYS = {
         'postSpeechBlocking', 'postSpeechDecisionLimit',
     ],
     assetManager: ['userProviders', 'userCapabilities', 'customPrompts', 'customPromptsEnabled', 'scriptExecutors'],
-    agentsTools: ['agentConfigs', 'traceMaxEntries'],
+    agentsTools: ['agentConfigs', 'traceMaxEntries', 'customAgents'],
 };
 
 /** Build a settings snapshot for the checked drawers. */

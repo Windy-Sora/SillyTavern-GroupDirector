@@ -507,6 +507,12 @@ const I18N = {
         seImportConflict: '脚本「{name}」已存在，是否覆盖？',
         seImportSuccess: '已导入 {count} 个脚本执行器',
         seExportNone: '无脚本执行器可导出',
+        // Custom Agents
+        caCard: '自定义 Agent',
+        caHint: '用户自定义 LLM Agent，每 N 轮自动执行 prompt，结果通过 <code>{{providerName}}</code> 注入。',
+        caAddBtn: '新增',
+        caExportBtn: '导出',
+        caImportBtn: '导入',
     },
 
     en: {
@@ -1006,6 +1012,12 @@ const I18N = {
         seImportConflict: 'Script "{name}" already exists. Overwrite?',
         seImportSuccess: 'Imported {count} script executors',
         seExportNone: 'No script executors to export',
+        // Custom Agents
+        caCard: 'Custom Agent',
+        caHint: 'User-defined LLM agents. Runs every N messages, results via <code>{{providerName}}</code>.',
+        caAddBtn: 'Add',
+        caExportBtn: 'Export',
+        caImportBtn: 'Import',
     },
 };
 

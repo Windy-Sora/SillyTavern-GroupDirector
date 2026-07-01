@@ -726,6 +726,23 @@
                 </div>
             </div>
 
+            <div class="gd-card gd-card-collapsible" data-card="custom-agents">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span data-i18n="caCard">自定义 Agent</span>
+                </div>
+                <div class="gd-card-body">
+                    <small style="color:var(--grey70a);display:block;margin-bottom:4px;" data-i18n="caHint">用户自定义 LLM Agent。每 N 轮自动执行 prompt，结果通过 <code>{{providerName}}</code> Provider 注入到 Prompt。共用 custom-agent API 配置。</small>
+                    <div id="gd-ca-list"></div>
+                    <div style="margin-top:8px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:6px;display:flex;gap:4px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-ca-add-btn"><i class="fa-solid fa-plus"></i> <span data-i18n="caAddBtn">新增</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-ca-export-btn"><i class="fa-solid fa-file-export"></i> <span data-i18n="caExportBtn">导出</span></span>
+                        <span class="menu_button menu_button_icon" id="gd-ca-import-btn"><i class="fa-solid fa-file-import"></i> <span data-i18n="caImportBtn">导入</span></span>
+                        <input type="file" id="gd-ca-import-file" style="display:none;" accept=".json">
+                    </div>
+                </div>
+            </div>
+
             <div class="gd-card gd-card-collapsible" data-card="script-executors">
                 <div class="gd-card-header">
                     <span class="gd-card-caret">▸</span>

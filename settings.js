@@ -106,4 +106,6 @@ export const DEFAULT_SETTINGS = {
     customPromptsEnabled: true,
     scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
     providerReferenceList: [], // user-editable provider reference list
+    // Custom Agents — user-defined LLM agents
+    customAgents: [], // [{ id, name, providerName, prompt, schema, enabled, autoEnabled, autoInterval, order }]
 };
