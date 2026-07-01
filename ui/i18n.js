@@ -472,6 +472,8 @@ const I18N = {
         dashProfiles: '生成档案',
         dashMemories: '提取记忆',
         dashSummary: '执行总结',
+        dashGetAssistant: '召唤暮羽',
+        dashGetAssistantHint: '一键导入暮羽的角色卡与助手世界书，直接和她对话即可提问',
         npcPromptShort: '生成 Prompt',
 
         // Script Executor
@@ -977,6 +979,8 @@ const I18N = {
         dashProfiles: 'Gen Profiles',
         dashMemories: 'Extract Mem',
         dashSummary: 'Summarize',
+        dashGetAssistant: 'Summon Mu',
+        dashGetAssistantHint: 'Import Mu\'s character card & world book — chat with her directly',
         npcPromptShort: 'Gen Prompt',
 
         // Script Executor

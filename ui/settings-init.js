@@ -36,6 +36,7 @@ import './sections/customPrompts.js';
 import './sections/scriptExecutors.js';
 import './sections/customAgents.js';
 import './sections/agents.js';
+import './sections/gdAssistant.js';
 
 export async function loadSettingsUI(deps) {
     const { settings, EXT_KEY, chat_metadata, saveSettings } = deps;
