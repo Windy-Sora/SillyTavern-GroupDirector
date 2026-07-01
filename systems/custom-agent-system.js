@@ -62,6 +62,7 @@ export function createCustomAgentSystem({
     async function execute(instance) {
         if (!instance || !instance.id || !instance.prompt) return null;
         if (running) throw new Error('CustomAgent: already executing');
+        running = true;
 
         // User's prompt + optional schema constraint
         const rawPrompt = instance.prompt + (instance.schema
@@ -75,8 +76,6 @@ export function createCustomAgentSystem({
         } catch (_) {
             log(`[CustomAgent] "${instance.name}" prompt render failed, using raw`);
         }
-
-        running = true;
         try {
             const chat = getChat();
             const response = await getCaller().generate(promptText);
@@ -132,10 +131,12 @@ export function createCustomAgentSystem({
 
     // ─── Provider Management ──────────────────────────────────────────
 
+    /** Track previously registered provider names for cleanup. */
+    let _prevProviderNames = new Set();
+
     /**
      * Register or re-register providers for all enabled instances.
-     * Each instance gets a Provider with id = its providerName.
-     * Disabled instances' providers return ''.
+     * Stale providers from deleted/renamed instances are unregistered.
      */
     function refreshProviders() {
         const instances = settings.customAgents || [];
@@ -167,6 +168,15 @@ export function createCustomAgentSystem({
                 },
             });
         }
+
+        // Unregister stale providers (deleted/renamed instances)
+        for (const oldName of _prevProviderNames) {
+            if (!currentIds.has(oldName)) {
+                unregisterProvider(oldName);
+                log(`[CustomAgent] unregistered stale provider "${oldName}"`);
+            }
+        }
+        _prevProviderNames = new Set(currentIds);
 
         log(`[CustomAgent] refreshProviders: ${currentIds.size} providers registered`);
         return currentIds;

@@ -106,7 +106,10 @@ registerSection('customAgents', function (ctx) {
                         L('配置已更改，是否保存？', 'Changes made. Save?'),
                         POPUP_TYPE.CONFIRM,
                     );
-                    if (ok) saveFromEditPanel(id, true);
+                    if (ok) {
+                        const saved = saveFromEditPanel(id, true);
+                        if (!saved) toastr.warning(L('保存失败，请检查配置', 'Save failed, check config'));
+                    }
                 }
                 $edit.hide();
             } else {
@@ -135,15 +138,6 @@ registerSection('customAgents', function (ctx) {
             save();
             customAgentSystem.refreshProviders();
             renderList();
-        });
-
-        // Edit toggle
-        $list.find('.gd-ca-edit-toggle').off('click').on('click', function () {
-            const id = $(this).data('id');
-            const $edit = $(`.gd-ca-edit[data-id="${id}"]`);
-            const isOpen = $edit.is(':visible');
-            $('.gd-ca-edit').hide();
-            if (!isOpen) $edit.show();
         });
 
         // ─── Unsaved changes tracking ─────────────────────
@@ -230,7 +224,10 @@ registerSection('customAgents', function (ctx) {
         // Save button
         $list.find('.gd-ca-save-btn').off('click').on('click', function () {
             const id = $(this).data('id');
-            saveFromEditPanel(id, true);
+            const ok = saveFromEditPanel(id, true);
+            if (!ok) {
+                toastr.warning(L('保存失败：名称或 providerName 无效或已被占用', 'Save failed: name or providerName invalid or taken'));
+            }
             $(`.gd-ca-edit[data-id="${id}"]`).show();
         });
 
@@ -241,13 +238,18 @@ registerSection('customAgents', function (ctx) {
         });
 
         // Delete
-        $list.find('.gd-ca-del-btn').off('click').on('click', async function () {
+        $list.find('.gd-ca-del-btn').off('click').on('click', async function (e) {
+            e.stopPropagation();
             const id = $(this).data('id');
             const list = getList();
             const inst = list.find(a => a.id === id);
             const name = inst?.name || id;
 
-            // Data stays in chat_metadata, just remove from settings
+            if (!await callGenericPopup(
+                L(`确定删除「${name}」？`, `Delete "${name}"?`),
+                POPUP_TYPE.CONFIRM,
+            )) return;
+
             const idx = list.findIndex(a => a.id === id);
             if (idx === -1) return;
             list.splice(idx, 1);

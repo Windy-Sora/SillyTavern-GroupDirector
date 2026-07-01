@@ -97,7 +97,7 @@ function applySnapshot(settings, snap, options = {}) {
             // Nested objects (e.g., scoreWeights): deep merge with default as base
             merged = Object.assign({}, base, incoming);
         } else if (Array.isArray(base)) {
-            // Arrays — just use incoming
+            merged = incoming;
         } else {
             // Scalars — use incoming
             merged = incoming;
