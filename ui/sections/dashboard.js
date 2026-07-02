@@ -5,7 +5,7 @@ registerSection('dashboard', function (ctx) {
     const {
         settings, $c, saveSettings, getDirectorHistory, getProfiles,
         memorySystem, npcSystem, loadConfigPreset, getConfigPresetNames,
-        isRoundActive, saveChatConditional, getChat, toastr,
+        isRoundActive, saveChatConditional, getChat, toastr, exportGroup, importGroup,
     } = ctx;
 
     // ── Card collapse state persistence ──────────────────────────
@@ -566,6 +566,19 @@ registerSection('dashboard', function (ctx) {
         } catch (e) {
             toastr?.error?.(lang === 'zh' ? `导入失败: ${e.message}` : `Import failed: ${e.message}`);
         } finally { btn.prop('disabled', false); this.value = ''; }
+    });
+
+    // ── Dashboard: export/import group ──────────────────────────
+    $('#gd-dash-export-group').on('click', async () => {
+        const btn = $('#gd-dash-export-group'); btn.prop('disabled', true);
+        try { await exportGroup(); } finally { btn.prop('disabled', false); }
+    });
+    $('#gd-dash-import-group').on('click', () => $('#gd-dash-import-group-file').click());
+    $('#gd-dash-import-group-file').on('change', async function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        const btn = $('#gd-dash-import-group'); btn.prop('disabled', true);
+        try { await importGroup(file); } finally { btn.prop('disabled', false); this.value = ''; }
     });
 
     // ── Dashboard: quick action buttons ─────────────────────────
