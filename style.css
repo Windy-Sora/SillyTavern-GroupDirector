@@ -67,11 +67,18 @@
     gap: 6px;
     flex-shrink: 0;
 }
-.gd-dashboard-assistant {
+.gd-dashboard-assistant-row {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    flex-shrink: 0;
+    margin-top: 8px;
+}
+.gd-dashboard-divider {
+    height: 1px;
+    margin: 8px 0 4px;
+    background: var(--SmartThemeBorderColor);
+    opacity: 0.5;
 }
 .gd-assistant-hint {
     color: var(--grey70a);
