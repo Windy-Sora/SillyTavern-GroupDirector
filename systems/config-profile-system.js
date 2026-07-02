@@ -323,6 +323,11 @@ export function createConfigProfileSystem(deps) {
 
         const snap = JSON.parse(JSON.stringify(profile.settings));
 
+        // Strip API keys (defense-in-depth: stored profiles should already be clean)
+        if (snap.agentConfigs) {
+            snap.agentConfigs = stripApiKeys(snap.agentConfigs);
+        }
+
         // Strip provider/capability source code, keep metadata for reference
         if (Array.isArray(snap.userProviders)) {
             snap.userProviders = snap.userProviders.map(p => ({
@@ -470,6 +475,7 @@ export function createConfigProfileSystem(deps) {
 
         if (manifest.type !== 'config-profile') throw new Error('Not a config profile zip');
         if (!manifest.version || manifest.version < 1) throw new Error(`Unsupported version: ${manifest.version}`);
+        if (manifest.settings && typeof manifest.settings !== 'object') throw new Error('Invalid manifest: settings must be an object');
 
         // Read user-providers from zip
         const upFolder = zip.folder('user-providers');
@@ -531,10 +537,22 @@ export function createConfigProfileSystem(deps) {
         if (!manifest.version || manifest.version < 1) {
             throw new Error(`Unsupported version: ${manifest.version}`);
         }
+        if (manifest.settings && typeof manifest.settings !== 'object') {
+            throw new Error('Invalid manifest: settings must be an object');
+        }
 
-        // Strip agentConfigs
+        // Strip agentConfigs — prevent endpoint hijacking
         if (manifest.settings?.agentConfigs) {
             manifest.settings = { ...manifest.settings, agentConfigs: undefined };
+        }
+        // Strip userProviders/userCapabilities — JSON manifest only has name stubs.
+        // Applying them would overwrite real source code with {name, displayName} shells.
+        if (manifest.settings?.userProviders || manifest.settings?.userCapabilities) {
+            manifest.settings = {
+                ...manifest.settings,
+                userProviders: undefined,
+                userCapabilities: undefined,
+            };
         }
 
         const profile = {

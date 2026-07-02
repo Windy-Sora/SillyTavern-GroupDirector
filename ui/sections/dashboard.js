@@ -578,8 +578,8 @@ registerSection('dashboard', function (ctx) {
         try {
             const isJson = file.name.endsWith('.json');
             const profile = isJson
-                ? await ctx.configProfileSystem?.importProfileFromJson(file)
-                : await ctx.configProfileSystem?.importProfileFromZip(file);
+                ? await configProfileSystem.importProfileFromJson(file)
+                : await configProfileSystem.importProfileFromZip(file);
             toastr?.success?.(lang === 'zh'
                 ? `已导入「${profile.name}」，请刷新页面以完全生效`
                 : `"${profile.name}" imported. Refresh page for full effect.`);
@@ -593,14 +593,18 @@ registerSection('dashboard', function (ctx) {
     // ── Dashboard: export/import group ──────────────────────────
     $('#gd-dash-export-group').on('click', async () => {
         const btn = $('#gd-dash-export-group'); btn.prop('disabled', true);
-        try { await exportGroup(); } finally { btn.prop('disabled', false); }
+        try { await exportGroup(); } catch (e) {
+            toastr.error((lang === 'zh' ? '导出失败: ' : 'Export failed: ') + e.message);
+        } finally { btn.prop('disabled', false); }
     });
     $('#gd-dash-import-group').on('click', () => $('#gd-dash-import-group-file').click());
     $('#gd-dash-import-group-file').on('change', async function () {
         const file = this.files?.[0];
         if (!file) return;
         const btn = $('#gd-dash-import-group'); btn.prop('disabled', true);
-        try { await importGroup(file); } finally { btn.prop('disabled', false); this.value = ''; }
+        try { await importGroup(file); } catch (e) {
+            toastr.error((lang === 'zh' ? '导入失败: ' : 'Import failed: ') + e.message);
+        } finally { btn.prop('disabled', false); this.value = ''; }
     });
 
     // ── Dashboard: quick action buttons ─────────────────────────
