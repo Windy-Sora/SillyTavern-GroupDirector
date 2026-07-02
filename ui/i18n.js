@@ -545,7 +545,7 @@ const I18N = {
         modeOff: '<b>Off</b> — Do not intervene; SillyTavern default behavior',
         modeFormula: '<b>Formula</b> — Local scoring via keywords, mentions, recency, talkativeness (no API call)',
         modeLlm: '<b>LLM Director</b> — Ask the main model to decide who speaks and in what order (consumes tokens)',
-        debug: 'Debug logging (browser console)',
+        debug: 'Debug logging',
         offHint: 'Current mode: Off. All characters follow SillyTavern default logic.',
 
         configProfilesTitle: 'Config Profiles',
