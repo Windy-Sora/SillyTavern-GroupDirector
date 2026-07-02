@@ -423,6 +423,7 @@ registerSection('dashboard', function (ctx) {
             openPanel = null;
         } else {
             if (openPanel) { $(`#${statPanels[openPanel].panel}`).slideUp(100); }
+            if ($wbPanel.is(':visible')) { $wbPanel.slideUp(100); }
             panelRenderers[name]?.();
             $panel.slideDown(150);
             openPanel = name;
@@ -499,6 +500,7 @@ registerSection('dashboard', function (ctx) {
         if ($wbPanel.is(':visible')) {
             $wbPanel.slideUp(150);
         } else {
+            if (openPanel) { $(`#${statPanels[openPanel].panel}`).slideUp(100); openPanel = null; }
             renderDashWorldBookList();
             $wbPanel.slideDown(150);
         }
