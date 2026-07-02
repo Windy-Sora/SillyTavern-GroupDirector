@@ -165,7 +165,10 @@ registerSection('configProfiles', function (ctx) {
         if (!file) return;
         const btn = $c('cfg-import-btn'); btn.prop('disabled', true);
         try {
-            const profile = await sys.importProfileFromZip(file);
+            const isJson = file.name.endsWith('.json');
+            const profile = isJson
+                ? await sys.importProfileFromJson(file)
+                : await sys.importProfileFromZip(file);
             renderList();
             populatePresetDropdown();
             window.__gdRefreshDashboard?.();

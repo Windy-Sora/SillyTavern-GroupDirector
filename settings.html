@@ -70,8 +70,13 @@
             </select>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dashboard-preset-apply" data-i18n="applyPreset">应用</span>
             <span class="gd-dashboard-refresh menu_button menu_button_icon" id="gd-dash-preset-refresh" title="刷新列表"><i class="fa-solid fa-rotate"></i></span>
+            <select id="gd-dash-export-format" class="text_pole" style="width:auto;font-size:0.8em;margin-right:2px;">
+                <option value="zip" data-i18n="dashExportFormatZip">完整 ZIP</option>
+                <option value="json" data-i18n="dashExportFormatJson">JSON 清单</option>
+            </select>
+            <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-export-cfg" data-i18n="dashExportCfg">导出配置档</span>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-cfg" data-i18n="dashImportCfg">导入配置档</span>
-            <input type="file" id="gd-dash-import-file" accept=".zip" style="display:none;">
+            <input type="file" id="gd-dash-import-file" accept=".zip,.json" style="display:none;">
             <span style="color:var(--SmartThemeBorderColor);margin:0 4px;">|</span>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-export-group" data-i18n="dashExportGroup">导出群聊</span>
             <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-import-group" data-i18n="dashImportGroup">导入群聊</span>
@@ -811,7 +816,7 @@
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-cfg-save-btn"><i class="fa-solid fa-floppy-disk"></i> 保存为配置档</span>
                         <span class="menu_button menu_button_icon" id="gd-cfg-import-btn"><i class="fa-solid fa-file-zipper"></i> 导入 .zip</span>
-                        <input type="file" id="gd-cfg-import-file" accept=".zip" style="display:none;">
+                        <input type="file" id="gd-cfg-import-file" accept=".zip,.json" style="display:none;">
                     </div>
                     <input type="text" id="gd-cfg-save-name" class="text_pole" style="width:100%;margin-top:4px;" placeholder="配置档名称">
                     <input type="text" id="gd-cfg-save-desc" class="text_pole" style="width:100%;margin-top:2px;" placeholder="备注（可选）">

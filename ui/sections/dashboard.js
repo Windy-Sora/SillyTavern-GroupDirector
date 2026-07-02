@@ -6,6 +6,7 @@ registerSection('dashboard', function (ctx) {
         settings, $c, saveSettings, getDirectorHistory, getProfiles,
         memorySystem, npcSystem, loadConfigPreset, getConfigPresetNames,
         isRoundActive, saveChatConditional, getChat, toastr, exportGroup, importGroup,
+        configProfileSystem,
     } = ctx;
 
     // ── Card collapse state persistence ──────────────────────────
@@ -541,6 +542,24 @@ registerSection('dashboard', function (ctx) {
         } finally { btn.prop('disabled', false); }
     });
 
+    // ── Dashboard: export config profile ────────────────────────
+    $('#gd-dash-export-cfg').on('click', async () => {
+        const allDrawers = {
+            directorLlm: true, worldBooks: true, profilesAndData: true,
+            contextLedger: true, multimodal: true, assetManager: true, agentsTools: true,
+        };
+        const format = $('#gd-dash-export-format').val();
+        const btn = $('#gd-dash-export-cfg'); btn.prop('disabled', true);
+        try {
+            await configProfileSystem.exportCurrentSettings(allDrawers, format);
+            toastr.success(format === 'json'
+                ? (lang === 'zh' ? '配置清单已导出' : 'Config manifest exported')
+                : (lang === 'zh' ? '配置档已导出' : 'Config profile exported'));
+        } catch (e) {
+            toastr.error((lang === 'zh' ? '导出失败: ' : 'Export failed: ') + e.message);
+        } finally { btn.prop('disabled', false); }
+    });
+
     // ── Dashboard: import config profile ────────────────────────
     $('#gd-dash-import-cfg').on('click', async () => {
         const ok = await callGenericPopup(
@@ -557,7 +576,10 @@ registerSection('dashboard', function (ctx) {
         if (!file) return;
         const btn = $('#gd-dash-import-cfg'); btn.prop('disabled', true);
         try {
-            const profile = await ctx.configProfileSystem?.importProfileFromZip(file);
+            const isJson = file.name.endsWith('.json');
+            const profile = isJson
+                ? await ctx.configProfileSystem?.importProfileFromJson(file)
+                : await ctx.configProfileSystem?.importProfileFromZip(file);
             toastr?.success?.(lang === 'zh'
                 ? `已导入「${profile.name}」，请刷新页面以完全生效`
                 : `"${profile.name}" imported. Refresh page for full effect.`);

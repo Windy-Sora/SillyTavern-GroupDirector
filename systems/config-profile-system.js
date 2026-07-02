@@ -312,6 +312,144 @@ export function createConfigProfileSystem(deps) {
         return manifest;
     }
 
+    // ── Export manifest-only .json (no JS source code) ────────────
+    // Strips userProviders/userCapabilities to name-only stubs,
+    // keeping the rest intact. Lightweight enough to share with 暮羽.
+
+    function exportProfileAsJson(id) {
+        const list = getProfiles();
+        const profile = list.find(p => p.id === id);
+        if (!profile) throw new Error('Profile not found');
+
+        const snap = JSON.parse(JSON.stringify(profile.settings));
+
+        // Strip provider/capability source code, keep metadata for reference
+        if (Array.isArray(snap.userProviders)) {
+            snap.userProviders = snap.userProviders.map(p => ({
+                name: p.name || '',
+                displayName: p.displayName || '',
+            }));
+        }
+        if (Array.isArray(snap.userCapabilities)) {
+            snap.userCapabilities = snap.userCapabilities.map(c => ({
+                name: c.name || '',
+                displayName: c.displayName || '',
+            }));
+        }
+
+        const manifest = {
+            version: CONFIG_PROFILE_VERSION,
+            type: 'config-profile-manifest',
+            exportedAt: new Date().toISOString(),
+            name: profile.name,
+            description: profile.description || '',
+            createdAt: profile.createdAt,
+            drawers: profile.drawers,
+            settings: snap,
+        };
+
+        const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeName = (profile.name || 'config').replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
+        a.download = `group-director-manifest-${safeName}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        return manifest;
+    }
+
+    // ── Export current settings (dashboard quick export) ──────────
+    // format: 'json' → manifest-only (no JS source), 'zip' → full with .js files
+
+    async function exportCurrentSettings(drawers, format) {
+        const snap = snapshotSettings(settings, drawers);
+
+        // Strip API keys
+        if (snap.agentConfigs) {
+            snap.agentConfigs = stripApiKeys(snap.agentConfigs);
+        }
+
+        const manifest = {
+            version: CONFIG_PROFILE_VERSION,
+            type: format === 'json' ? 'config-profile-manifest' : 'config-profile',
+            exportedAt: new Date().toISOString(),
+            name: 'Current Settings',
+            description: '',
+            createdAt: Date.now(),
+            drawers: { ...drawers },
+            settings: snap,
+        };
+
+        if (format === 'json') {
+            // Strip provider/capability source code, keep metadata
+            if (Array.isArray(manifest.settings.userProviders)) {
+                manifest.settings.userProviders = manifest.settings.userProviders.map(p => ({
+                    name: p.name || '',
+                    displayName: p.displayName || '',
+                }));
+            }
+            if (Array.isArray(manifest.settings.userCapabilities)) {
+                manifest.settings.userCapabilities = manifest.settings.userCapabilities.map(c => ({
+                    name: c.name || '',
+                    displayName: c.displayName || '',
+                }));
+            }
+
+            const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'group-director-config.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } else {
+            // ZIP with JS files
+            await ensureJSZip();
+            const JSZip = _JSZip;
+            const zip = new JSZip();
+            zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+            if (drawers.assetManager) {
+                const upFolder = zip.folder('user-providers');
+                const ucFolder = zip.folder('user-capabilities');
+                if (Array.isArray(manifest.settings.userProviders)) {
+                    for (const p of manifest.settings.userProviders) {
+                        if (p.name && p.source) {
+                            const fileName = p.name.endsWith('.js') ? p.name : `${p.name}.js`;
+                            upFolder.file(fileName, p.source);
+                        }
+                    }
+                }
+                if (Array.isArray(manifest.settings.userCapabilities)) {
+                    for (const c of manifest.settings.userCapabilities) {
+                        if (c.name && c.source) {
+                            const fileName = c.name.endsWith('.js') ? c.name : `${c.name}.js`;
+                            ucFolder.file(fileName, c.source);
+                        }
+                    }
+                }
+            }
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'group-director-config.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        return manifest;
+    }
+
     // ── Import from .zip ──────────────────────────────────────────
 
     async function importProfileFromZip(file) {
@@ -378,13 +516,51 @@ export function createConfigProfileSystem(deps) {
         return profile;
     }
 
+    // ── Import from .json manifest ───────────────────────────────
+
+    async function importProfileFromJson(file) {
+        const text = await file.text();
+        let manifest;
+        try { manifest = JSON.parse(text); } catch (e) {
+            throw new Error('Invalid JSON: ' + e.message);
+        }
+
+        if (manifest.type !== 'config-profile-manifest' && manifest.type !== 'config-profile') {
+            throw new Error('Not a valid config profile manifest');
+        }
+        if (!manifest.version || manifest.version < 1) {
+            throw new Error(`Unsupported version: ${manifest.version}`);
+        }
+
+        // Strip agentConfigs
+        if (manifest.settings?.agentConfigs) {
+            manifest.settings = { ...manifest.settings, agentConfigs: undefined };
+        }
+
+        const profile = {
+            id: genId(),
+            name: manifest.name || 'Imported Config',
+            description: manifest.description || '',
+            createdAt: Date.now(),
+            drawers: manifest.drawers || {},
+            settings: manifest.settings || {},
+        };
+        getProfiles().push(profile);
+        saveAll();
+
+        return profile;
+    }
+
     return {
         getProfiles,
         saveCurrentAsProfile,
         deleteProfile,
         applyProfile,
         exportProfileAsZip,
+        exportProfileAsJson,
+        exportCurrentSettings,
         importProfileFromZip,
+        importProfileFromJson,
         getDrawerKeys: () => DRAWER_KEYS,
         /** Returns DEFAULT_SETTINGS keys NOT covered by any drawer. */
         getUncoveredKeys() {
