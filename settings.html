@@ -5,18 +5,20 @@
     <!-- ═══════════════════════════════════════════════════════════════ -->
     <div class="gd-dashboard">
         <div class="gd-dashboard-top">
-            <div class="gd-dashboard-assistant">
-                <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-get-assistant" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border:none;font-weight:bold;">
-                    <i class="fa-solid fa-feather"></i> <span data-i18n="dashGetAssistant">召唤暮羽</span>
-                </span>
-                <small class="gd-assistant-hint" data-i18n="dashGetAssistantHint">紫色台灯下，一只懂 GD 的猫头鹰娘在等你~ 快带她回家吧。</small>
-            </div>
-            <div class="gd-dashboard-quick">
+            <div style="display:flex;flex-direction:column;gap:4px;">
                 <div class="gd-dashboard-mode">
                     <span class="gd-status-dot" id="gd-status-dot"></span>
                     <span class="gd-mode-label" id="gd-mode-label">Director</span>
                     <span class="gd-mode-badge" id="gd-mode-badge"></span>
                 </div>
+                <div class="gd-dashboard-assistant">
+                    <span class="gd-dashboard-btn menu_button menu_button_icon" id="gd-dash-get-assistant" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border:none;font-weight:bold;">
+                        <i class="fa-solid fa-feather"></i> <span data-i18n="dashGetAssistant">召唤暮羽</span>
+                    </span>
+                    <small class="gd-assistant-hint" data-i18n="dashGetAssistantHint">紫色台灯下，一只懂 GD 的猫头鹰娘在等你~ 快带她回家吧。</small>
+                </div>
+            </div>
+            <div class="gd-dashboard-quick">
                 <select id="gd-lang" class="text_pole gd-lang-select">
                     <option value="zh">中文</option>
                     <option value="en">English</option>
