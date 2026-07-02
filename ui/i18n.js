@@ -472,7 +472,7 @@ const I18N = {
         dashProfiles: '生成档案',
         dashMemories: '提取记忆',
         dashSummary: '执行总结',
-        dashGetAssistant: '🦉 领养暮羽',
+        dashGetAssistant: '领养暮羽',
         dashGetAssistantHint: '紫色台灯下，一只懂 GD 的猫头鹰娘在等你~ 快带她回家吧。',
         npcPromptShort: '生成 Prompt',
 
@@ -979,7 +979,7 @@ const I18N = {
         dashProfiles: 'Gen Profiles',
         dashMemories: 'Extract Mem',
         dashSummary: 'Summarize',
-        dashGetAssistant: '🦉 Adopt Mu',
+        dashGetAssistant: 'Adopt Mu',
         dashGetAssistantHint: 'A code-savvy owl girl under her purple lamp, waiting for you~ Go on, take her home.',
         npcPromptShort: 'Gen Prompt',
 
