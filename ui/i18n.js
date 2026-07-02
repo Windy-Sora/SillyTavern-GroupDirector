@@ -33,7 +33,7 @@ const I18N = {
         modeOff: '<b>关闭</b> — 不干预 SillyTavern 默认行为',
         modeFormula: '<b>公式判断</b> — 使用关键词、提名、近期发言、主动性等本地评分（无 API 调用）',
         modeLlm: '<b>大模型判断</b> — 调用当前主模型，结合上下文决定谁发言、按什么顺序（消耗 token）',
-        debug: '调试日志（浏览器控制台）',
+        debug: '调试日志',
         offHint: '当前模式：关闭。所有角色将按 SillyTavern 默认逻辑发言（即抢话行为不被抑制）。',
 
         configProfilesTitle: '配置档管理',
