@@ -30,8 +30,8 @@ registerSection('gdAssistant', function (ctx) {
     $c('dash-get-assistant').on('click', async function () {
         const ok = await callGenericPopup(
             L(
-                '<b>召唤暮羽</b><br>将一键导入角色卡「暮羽」+ 配套助手世界书。<br>导入后直接打开与暮羽的对话，即可获得 GD 插件开发指导。<br><br>如果已存在同名角色或世界书，将覆盖更新。',
-                '<b>Summon Mu</b><br>This will import "Mu" character card + companion world book.<br>Open a chat with her directly after importing to get GD development help.<br><br>Existing character/world book with the same name will be overwritten.'
+                '<b>🦉 领养暮羽</b><br>一只住在 GD 插件里的猫头鹰娘——会写代码、懂架构、不甩术语。<br>领回家就能直接问，紫色台灯下随时待命。<br><br>将导入角色卡「暮羽」+ 配套助手世界书，同名角色/世界书将覆盖更新。',
+                '<b>🦉 Adopt Mu</b><br>An owl girl living inside GD — writes code, knows architecture, skips the jargon.<br>Take her home and ask away, she\'s always there under her purple lamp.<br><br>Imports "Mu" character card + companion world book. Same name will be overwritten.'
             ),
             POPUP_TYPE.CONFIRM,
         );
@@ -119,8 +119,8 @@ registerSection('gdAssistant', function (ctx) {
             // ── Done ──
             toastr.success(
                 L(
-                    '暮羽已就绪！刷新页面后，在角色列表中找到「暮羽」并打开对话即可提问 🦉',
-                    'Mu is ready! Refresh the page, then open a chat with "Mu" to get started 🦉'
+                    '暮羽领养成功！刷新页面后，在角色列表中找到「暮羽」并打开对话——她已经在紫色台灯下等着了 🦉',
+                    'Mu adopted! Refresh the page, find "Mu" in your character list — she\'s waiting under her purple lamp 🦉'
                 ),
                 '',
                 { timeOut: 8000 }

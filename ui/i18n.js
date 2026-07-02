@@ -472,8 +472,8 @@ const I18N = {
         dashProfiles: '生成档案',
         dashMemories: '提取记忆',
         dashSummary: '执行总结',
-        dashGetAssistant: '召唤暮羽',
-        dashGetAssistantHint: '一键导入暮羽的角色卡与助手世界书，直接和她对话即可提问',
+        dashGetAssistant: '🦉 领养暮羽',
+        dashGetAssistantHint: '紫色台灯下，一只懂 GD 的猫头鹰娘在等你~ 快带她回家吧。',
         npcPromptShort: '生成 Prompt',
 
         // Script Executor
@@ -979,8 +979,8 @@ const I18N = {
         dashProfiles: 'Gen Profiles',
         dashMemories: 'Extract Mem',
         dashSummary: 'Summarize',
-        dashGetAssistant: 'Summon Mu',
-        dashGetAssistantHint: 'Import Mu\'s character card & world book — chat with her directly',
+        dashGetAssistant: '🦉 Adopt Mu',
+        dashGetAssistantHint: 'A code-savvy owl girl under her purple lamp, waiting for you~ Go on, take her home.',
         npcPromptShort: 'Gen Prompt',
 
         // Script Executor
