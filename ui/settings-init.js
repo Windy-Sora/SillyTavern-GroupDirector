@@ -95,6 +95,7 @@ export async function loadSettingsUI(deps) {
         settings.lang = $(this).val();
         applyI18n(settings.lang, EXT_KEY, chat_metadata);
         saveSettings();
+        window.__gdRefreshDashboard?.();
     });
 
     // Delegate to registered sections

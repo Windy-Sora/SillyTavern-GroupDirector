@@ -50,20 +50,21 @@ registerSection('dashboard', function (ctx) {
     const lang = settings.lang || 'zh';
 
     function refreshMode() {
+        const l = settings.lang || 'zh';
         const mode = settings.mode;
         $dot.removeClass('is-live is-formula is-off');
         if (mode === 'llm') {
             $dot.addClass('is-live');
-            $badge.text(lang === 'zh' ? 'LLM' : 'LLM').show();
-            $label.text(lang === 'zh' ? '导演 · LLM 模式' : 'Director · LLM');
+            $badge.text(l === 'zh' ? 'LLM' : 'LLM').show();
+            $label.text(l === 'zh' ? '导演 · LLM 模式' : 'Director · LLM');
         } else if (mode === 'formula') {
             $dot.addClass('is-formula');
-            $badge.text(lang === 'zh' ? '公式' : 'Formula').show();
-            $label.text(lang === 'zh' ? '导演 · 公式模式' : 'Director · Formula');
+            $badge.text(l === 'zh' ? '公式' : 'Formula').show();
+            $label.text(l === 'zh' ? '导演 · 公式模式' : 'Director · Formula');
         } else {
             $dot.addClass('is-off');
             $badge.hide();
-            $label.text(lang === 'zh' ? '导演 · 已关闭' : 'Director · Off');
+            $label.text(l === 'zh' ? '导演 · 已关闭' : 'Director · Off');
         }
     }
 
