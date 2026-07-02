@@ -67,8 +67,22 @@
     gap: 6px;
     flex-shrink: 0;
 }
+.gd-dashboard-assistant {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.gd-assistant-hint {
+    color: var(--grey70a);
+    font-size: 0.75em;
+}
 .gd-lang-select { width: auto !important; font-size: 0.8em !important; margin: 0 !important; }
 .gd-debug-label { margin: 0 !important; font-size: 0.8em !important; }
+
+@media (max-width: 600px) {
+    .gd-assistant-hint { display: none; }
+}
 
 .gd-dashboard-decision {
     margin-top: 8px;
