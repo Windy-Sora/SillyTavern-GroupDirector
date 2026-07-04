@@ -102,6 +102,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         try {
             return structuredClone(obj);
         } catch (_) {
+            console.warn('[GD] safeClone: structuredClone failed (object may contain functions), falling back', _.message);
             try {
                 return JSON.parse(JSON.stringify(obj));
             } catch (_2) {
@@ -172,10 +173,15 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 }
 
                 // Apply mutations back to working copy (only if turn hasn't changed).
-                // Detect if the script replaced ctx.decision entirely — previous mutations are discarded.
+                // Detect if the script replaced ctx.decision entirely, losing old keys.
                 if (turnId === myTurnId) {
                     if (ctx.decision !== decisionForScript) {
-                        log?.(`[GD] Script executor (decision) "${entry.name}" replaced ctx.decision entirely; mutations on the previous object are discarded`);
+                        const oldKeys = Object.keys(decisionForScript || {});
+                        const newKeys = Object.keys(ctx.decision || {});
+                        const lostKeys = oldKeys.filter(k => !newKeys.includes(k));
+                        if (lostKeys.length > 0) {
+                            log?.(`[GD] Script executor (decision) "${entry.name}" replaced ctx.decision; lost keys: ${lostKeys.join(', ')}`);
+                        }
                     }
                     workingDecision = ctx.decision;
                 }
@@ -201,11 +207,11 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             Object.assign(event.decision, workingDecision);
         }
 
-        // Snapshot decision state for message/round phases
-        decisionSnapshot = {
+        // Snapshot decision state for message/round phases (frozen for read-only enforcement)
+        decisionSnapshot = Object.freeze({
             decision: safeClone(workingDecision),
             shared: safeClone(turnShared),
-        };
+        });
 
         pushTrace(traceEntry);
         return decisionSnapshot;

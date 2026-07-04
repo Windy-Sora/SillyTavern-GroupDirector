@@ -150,18 +150,26 @@ export function createMemorySystem({
         await saveStore();
     }
 
+    let _pruning = false;
+
     /** Trim all characters' memories to current max (call on settings change). */
     async function pruneAfter() {
-        const max = settings.memoryMaxEntries ?? 200;
-        const store = getStore();
-        let changed = false;
-        for (const [avatar, memories] of Object.entries(store)) {
-            if (memories.length > max) {
-                while (memories.length > max) memories.shift();
-                changed = true;
+        if (_pruning) return;
+        _pruning = true;
+        try {
+            const max = settings.memoryMaxEntries ?? 200;
+            const store = getStore();
+            let changed = false;
+            for (const [avatar, memories] of Object.entries(store)) {
+                if (memories.length > max) {
+                    while (memories.length > max) memories.shift();
+                    changed = true;
+                }
             }
+            if (changed) await saveStore();
+        } finally {
+            _pruning = false;
         }
-        if (changed) await saveStore();
     }
 
     const DEFAULT_COMPRESS_PROMPT = `Given the following character memories, produce a concise one-paragraph summary that captures the key events, emotional arcs, and character development. Preserve important names, places, and turning points.

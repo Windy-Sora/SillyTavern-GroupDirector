@@ -457,7 +457,7 @@ window.GroupDirector = {
 
 // ─── Register built-in capabilities via AssetLoader ─────────────────
 import { capabilityModules } from './assets/capabilities/manifest.js';
-AssetLoader.capabilities({ basePath: '../assets/capabilities', modules: capabilityModules }, { log });
+await AssetLoader.capabilities({ basePath: '../assets/capabilities', modules: capabilityModules }, { log });
 // Register capability-list providers for both PostSpeech modes
 registerCapabilityProviders({ registerProvider });
 log('CapabilityRegistry:', CapabilityRegistry.list().map(c => c.id).join(', '));
@@ -908,6 +908,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         // Allow PostSpeech to re-analyze the swiped messages
         postSpeechLastMsgIndex = -1;
         postSpeechRoundRan = false;
+        postSpeechRoundQueue = [];
         scriptExecutorRoundRan = false;
         if (!llmPickedSet) {
             const history = getDirectorHistory();
@@ -995,6 +996,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     directorLastReason = '';
     scriptExecutorSystem.resetTurnShared();
     postSpeechRoundRan = false;
+    postSpeechRoundQueue = [];
     scriptExecutorRoundRan = false;
     postSpeechLastMsgIndex = -1;
     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);

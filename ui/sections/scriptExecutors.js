@@ -162,7 +162,7 @@ registerSection('scriptExecutors', function (ctx) {
             const updates = {
                 name,
                 triggerOn: $(`.gd-se-edit-trigger[data-id="${id}"]`).val(),
-                priority: parseInt($(`.gd-se-edit-priority[data-id="${id}"]`).val()) || 0,
+                priority: parseInt($(`.gd-se-edit-priority[data-id="${id}"]`).val(), 10) || 0,
                 code: $(`.gd-se-edit-code[data-id="${id}"]`).val() || '',
                 renderParams: $(`.gd-se-edit-render-params[data-id="${id}"]`).prop('checked'),
                 returnMode: $(`.gd-se-edit-return[data-id="${id}"]`).val(),
@@ -239,6 +239,7 @@ registerSection('scriptExecutors', function (ctx) {
 
     // ── Add new ──
     $c('se-add-btn').on('click', function () {
+        flushEditToModel();
         // Close all edit panels first
         $('.gd-se-edit').hide();
         const name = L('新脚本', 'New Script');
@@ -303,6 +304,7 @@ registerSection('scriptExecutors', function (ctx) {
                 imported++;
             }
             toastr.success(L(`已导入 ${imported} 个脚本执行器`, `Imported ${imported} script executors`));
+            flushEditToModel();
             renderList();
         } catch (e) {
             toastr.error(L(`导入失败: ${e.message}`, `Import failed: ${e.message}`));
