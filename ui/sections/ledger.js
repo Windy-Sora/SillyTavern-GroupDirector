@@ -139,6 +139,7 @@ registerSection('ledger', function (ctx) {
         const list = $('#gd-ledger-list');
         list.empty();
         const entries = getEntries(); // newest-first from getEntries()
+        const snapshotLen = entries.length; // freeze at build time for consistent validation + indexing
         const safeEntries = entries.map(e => {
             const copy = Object.assign({}, e);
             delete copy._anchorDate;
@@ -158,14 +159,22 @@ registerSection('ledger', function (ctx) {
             try {
                 const parsed = JSON.parse(textarea.val());
                 if (!Array.isArray(parsed)) throw new Error(settings.lang === 'zh' ? '必须是数组' : 'Must be an array');
-                if (parsed.length !== entries.length) {
+                if (parsed.length !== snapshotLen) {
                     throw new Error(settings.lang === 'zh'
-                        ? `条目数量不符（原${entries.length}条，现${parsed.length}条）。Raw 模式不支持增删，请回到卡片模式逐条操作。`
-                        : `Entry count mismatch (was ${entries.length}, now ${parsed.length}). Raw mode does not support add/remove. Use card mode.`);
+                        ? `条目数量不符（原${snapshotLen}条，现${parsed.length}条）。Raw 模式不支持增删，请回到卡片模式逐条操作。`
+                        : `Entry count mismatch (was ${snapshotLen}, now ${parsed.length}). Raw mode does not support add/remove. Use card mode.`);
                 }
                 const history = getDirectorHistory();
+                // Use snapshot length for indexing — protects against ledger growth during edit
+                const historyLen = history.length;
+                const offset = historyLen - snapshotLen;
+                if (offset < 0) {
+                    throw new Error(settings.lang === 'zh'
+                        ? `条目数量异常：当前 ${historyLen} 条，快照 ${snapshotLen} 条。请刷新重试。`
+                        : `Entry count anomaly: current ${historyLen}, snapshot ${snapshotLen}. Refresh and retry.`);
+                }
                 for (let i = 0; i < parsed.length; i++) {
-                    const realIndex = history.length - 1 - i; // newest-first → chronological
+                    const realIndex = offset + (snapshotLen - 1 - i); // newest-first → chronological, anchored to snapshotted range
                     parsed[i]._anchorDate = null;
                     parsed[i]._chatLength = 0;
                     await updateEntry(realIndex, parsed[i]);

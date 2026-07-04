@@ -94,6 +94,18 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         }
     }
 
+    function safeClone(obj) {
+        if (obj === null || obj === undefined) return obj;
+        try {
+            return JSON.parse(JSON.stringify(obj));
+        } catch (_) {
+            // Circular reference or unserializable — shallow copy as fallback
+            if (Array.isArray(obj)) return [...obj];
+            if (typeof obj === 'object') return { ...obj };
+            return obj;
+        }
+    }
+
     // ── Decision phase: blocking, await all, 10s timeout ──
     async function executeAllDecision(rawEvent) {
         const event = rawEvent ? { ...rawEvent } : {};
@@ -111,6 +123,9 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             stages: [],
         };
 
+        // Clone decision so timed-out scripts can't keep mutating the live reference
+        let workingDecision = safeClone(event.decision || null);
+
         for (const entry of sorted) {
             const stage = { id: entry.id, name: entry.name, trigger: 'decision', priority: entry.priority, startTime: Date.now() };
             try {
@@ -119,7 +134,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 const ctx = {
                     params,
                     shared: { ...turnShared },
-                    decision: event.decision || null,      // LIVE reference — scripts mutate directly
+                    decision: workingDecision,             // cloned — mutation-safe per executor
                     chat: event.chat || null,
                     characters: event.characters || null,
                     group: event.group || null,
@@ -136,25 +151,33 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     ),
                 ]);
 
-                if (entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object') {
+                if (entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
                     Object.assign(turnShared, result);
                 }
+
+                // Apply mutations back to working copy
+                workingDecision = ctx.decision;
 
                 stage.ok = true;
             } catch (e) {
                 stage.ok = false;
                 stage.error = e.message || String(e);
                 log?.(`[GD] Script executor (decision) "${entry.name}": ${stage.error}`);
-                // Keep original decision, continue to next executor
+                // Keep previous workingDecision, continue to next executor
             }
             stage.elapsed = Date.now() - stage.startTime;
             traceEntry.stages.push(stage);
         }
 
+        // Write back to live event for downstream consumers
+        if (event.decision && workingDecision) {
+            Object.assign(event.decision, workingDecision);
+        }
+
         // Snapshot decision state for message/round phases
         decisionSnapshot = {
-            decision: event.decision ? JSON.parse(JSON.stringify(event.decision)) : null,
-            shared: JSON.parse(JSON.stringify(turnShared)),
+            decision: safeClone(workingDecision),
+            shared: safeClone(turnShared),
         };
 
         pushTrace(traceEntry);
@@ -205,7 +228,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     ),
                 ]);
 
-                if (entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object') {
+                if (entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
                     Object.assign(turnShared, result);
                 }
 

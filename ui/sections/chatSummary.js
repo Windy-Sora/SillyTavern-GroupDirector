@@ -230,11 +230,12 @@ registerSection('chatSummary', function (ctx) {
             return;
         }
 
-        // Show summaries for review
-        const scanText = visible.map((s, i) => {
+        // Show summaries for review — use actual allSummaries index so save maps correctly
+        const scanText = visible.map((s) => {
+            const actualIdx = allSummaries.indexOf(s) + 1;
             const status = s.active ? (settings.lang === 'zh' ? '活跃' : 'Active') : (settings.lang === 'zh' ? '已禁用' : 'Disabled');
             const range = settings.lang === 'zh' ? `覆盖前${s.rangeEnd}条` : `covers first ${s.rangeEnd}`;
-            return `--- #${i + 1} [${status}] ${range} ---\n${s.content}`;
+            return `--- #${actualIdx} [${status}] ${range} ---\n${s.content}`;
         }).join('\n\n');
         $c('summary-result').val(scanText);
         $c('summary-result-section').show();
