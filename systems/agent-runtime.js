@@ -166,13 +166,15 @@ export async function managedCall(caller, prompt, callConfig = {}) {
 
 async function withTimeout(promise, ms, signal) {
     let timer;
+    let onAbort = null;
     const timeout = new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
     });
     const abort = signal
         ? new Promise((_, reject) => {
             if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
-            signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+            onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+            signal.addEventListener('abort', onAbort, { once: true });
         })
         : null;
     const contenders = abort ? [promise, timeout, abort] : [promise, timeout];
@@ -180,6 +182,7 @@ async function withTimeout(promise, ms, signal) {
         return await Promise.race(contenders);
     } finally {
         clearTimeout(timer);
+        if (onAbort) signal.removeEventListener('abort', onAbort);
     }
 }
 
@@ -189,13 +192,19 @@ function sleep(ms) {
 
 function abortableSleep(ms, signal) {
     if (!signal) return sleep(ms);
-    return Promise.race([
+    let onAbort = null;
+    const promise = Promise.race([
         sleep(ms),
         new Promise((_, reject) => {
-            if (signal.aborted) reject(new DOMException('Aborted', 'AbortError'));
-            else signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+            if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+            onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+            signal.addEventListener('abort', onAbort, { once: true });
         }),
     ]);
+    promise.finally(() => {
+        if (onAbort) signal.removeEventListener('abort', onAbort);
+    });
+    return promise;
 }
 
 // ─── Execute Agent ───────────────────────────────────────────────────

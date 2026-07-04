@@ -51,7 +51,7 @@ registerSection('memory', function (ctx) {
     $c('memory-json-schema').on('input', function () { settings.memoryJsonSchema = $(this).val(); saveSettings(); });
     $c('memory-render-template').on('input', function () { settings.memoryRenderTemplate = $(this).val(); saveSettings(); });
     $c('memory-keep-recent').on('input', function () { settings.memoryKeepRecent = Math.max(1, parseInt($(this).val()) || 5); saveSettings(); });
-    $c('memory-max-entries').on('input', function () { settings.memoryMaxEntries = Math.max(10, parseInt($(this).val()) || 200); saveSettings(); });
+    $c('memory-max-entries').on('input', function () { settings.memoryMaxEntries = Math.max(10, parseInt($(this).val()) || 200); saveSettings(); memorySystem.pruneAfter().catch(() => {}); });
 
     $c('memory-prompt-reset').on('click', () => { settings.memoryPrompt = ''; $c('memory-prompt').val(DEFAULT_MEMORY_PROMPT); saveSettings(); });
     $c('memory-schema-reset').on('click', () => { settings.memoryJsonSchema = ''; $c('memory-json-schema').val(DEFAULT_MEMORY_SCHEMA); saveSettings(); });

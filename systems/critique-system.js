@@ -149,7 +149,7 @@ Output ONLY a JSON object, no other text:
 
         const critiques = getCritiques();
         const reusePrev = settings.critiqueReusePrevious;
-        const prevCritique = getLatestActive();
+        const prevCritique = latestActive;
 
         let inputText = '';
         let startFrom = 0;

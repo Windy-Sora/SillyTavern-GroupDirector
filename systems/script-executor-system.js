@@ -100,12 +100,16 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     function safeClone(obj) {
         if (obj === null || obj === undefined) return obj;
         try {
-            return JSON.parse(JSON.stringify(obj));
+            return structuredClone(obj);
         } catch (_) {
-            // Circular reference or unserializable — shallow copy as fallback
-            if (Array.isArray(obj)) return [...obj];
-            if (typeof obj === 'object') return { ...obj };
-            return obj;
+            try {
+                return JSON.parse(JSON.stringify(obj));
+            } catch (_2) {
+                // Last resort: shallow copy for objects with functions/DOM nodes
+                if (Array.isArray(obj)) return [...obj];
+                if (typeof obj === 'object') return { ...obj };
+                return obj;
+            }
         }
     }
 
@@ -127,7 +131,8 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             stages: [],
         };
 
-        // Clone decision so timed-out scripts can't keep mutating the live reference
+        // Clone decision so timed-out scripts can't keep mutating the live reference.
+        // A fresh per-script clone is given inside the loop for the same reason.
         let workingDecision = safeClone(event.decision || null);
 
         for (const entry of sorted) {
@@ -135,10 +140,13 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             try {
                 const params = await buildParams(entry);
 
+                // Per-script clone prevents timed-out scripts from mutating workingDecision
+                const decisionForScript = safeClone(workingDecision);
+
                 const ctx = {
                     params,
                     shared: { ...turnShared },
-                    decision: workingDecision,             // cloned — mutation-safe per executor
+                    decision: decisionForScript,             // per-script clone — mutation-safe
                     chat: event.chat || null,
                     characters: event.characters || null,
                     group: event.group || null,
@@ -155,16 +163,25 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     ),
                 ]);
 
-                if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
-                    Object.assign(turnShared, result);
+                if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object') {
+                    if (Array.isArray(result)) {
+                        log?.(`[GD] Script executor (decision) "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
+                    } else {
+                        Object.assign(turnShared, result);
+                    }
                 }
 
-                // Apply mutations back to working copy (only if turn hasn't changed)
+                // Apply mutations back to working copy (only if turn hasn't changed).
+                // Detect if the script replaced ctx.decision entirely — previous mutations are discarded.
                 if (turnId === myTurnId) {
+                    if (ctx.decision !== decisionForScript) {
+                        log?.(`[GD] Script executor (decision) "${entry.name}" replaced ctx.decision entirely; mutations on the previous object are discarded`);
+                    }
                     workingDecision = ctx.decision;
                 }
 
                 stage.ok = true;
+                stage.mutationsApplied = turnId === myTurnId;
             } catch (e) {
                 stage.ok = false;
                 stage.error = e.message || String(e);
@@ -239,11 +256,16 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     ),
                 ]);
 
-                if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
-                    Object.assign(turnShared, result);
+                if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object') {
+                    if (Array.isArray(result)) {
+                        log?.(`[GD] Script executor "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
+                    } else {
+                        Object.assign(turnShared, result);
+                    }
                 }
 
                 stage.ok = true;
+                stage.mutationsApplied = turnId === myTurnId;
             } catch (e) {
                 stage.ok = false;
                 stage.error = e.message || String(e);
@@ -259,6 +281,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     return {
         getList, add, update, remove, toggle,
         executeAll, executeAllDecision,
-        resetTurnShared, getTurnShared, getDecisionSnapshot,
+        resetTurnShared, getTurnShared, getTurnId, getDecisionSnapshot,
+        safeClone,
     };
 }

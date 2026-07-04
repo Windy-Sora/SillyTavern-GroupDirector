@@ -152,6 +152,7 @@ export function createNpcSystem({
             });
 
             if (!resp.ok) {
+                if (resp.status === 403) { _csrfToken = null; _csrfTokenTime = 0; }
                 const err = await resp.text().catch(() => '');
                 throw new Error(`Character create failed: ${resp.status} ${err.substring(0, 200)}`);
             }

@@ -113,20 +113,26 @@ registerSection('scriptExecutors', function (ctx) {
                     key,
                     label: $(`.gd-se-param-label[data-id="${id}"][data-pi="${pi}"]`).val()?.trim() || key,
                     type: $(`.gd-se-param-type[data-id="${id}"][data-pi="${pi}"]`).val() || 'string',
-                    default: parseDefault($(`.gd-se-param-default[data-id="${id}"][data-pi="${pi}"]`).val()),
+                    default: parseDefault($(`.gd-se-param-default[data-id="${id}"][data-pi="${pi}"]`).val(), $(`.gd-se-param-type[data-id="${id}"][data-pi="${pi}"]`).val()),
                 });
             }
         });
         return params;
     }
 
-    function parseDefault(raw) {
+    function parseDefault(raw, type) {
         if (raw === undefined || raw === null || raw === '') return '';
-        if (raw === 'true') return true;
-        if (raw === 'false') return false;
-        const n = Number(raw);
-        if (!isNaN(n) && raw.trim() !== '') return n;
-        return raw;
+        if (type === 'boolean') {
+            if (raw === 'true' || raw === true) return true;
+            if (raw === 'false' || raw === false) return false;
+            return raw;
+        }
+        if (type === 'number') {
+            const n = Number(raw);
+            if (!isNaN(n) && String(raw).trim() !== '') return n;
+            return raw;
+        }
+        return String(raw);
     }
 
     function bindEvents() {
@@ -221,7 +227,8 @@ registerSection('scriptExecutors', function (ctx) {
             const eName = $(`.gd-se-edit-name[data-id="${eid}"]`).val()?.trim();
             if (eName) entry.name = eName;
             entry.triggerOn = $(`.gd-se-edit-trigger[data-id="${eid}"]`).val() || entry.triggerOn;
-            entry.priority = parseInt($(`.gd-se-edit-priority[data-id="${eid}"]`).val()) || entry.priority;
+            const pv = parseInt($(`.gd-se-edit-priority[data-id="${eid}"]`).val(), 10);
+            entry.priority = Number.isFinite(pv) ? pv : entry.priority;
             entry.code = $(`.gd-se-edit-code[data-id="${eid}"]`).val() || entry.code;
             entry.renderParams = $(`.gd-se-edit-render-params[data-id="${eid}"]`).prop('checked');
             entry.returnMode = $(`.gd-se-edit-return[data-id="${eid}"]`).val() || entry.returnMode;

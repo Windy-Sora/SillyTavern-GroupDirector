@@ -200,25 +200,25 @@ registerSection('ledger', function (ctx) {
 
     function rebuild() {
         if (isLocked()) { updateLockState(); return; }
-        // Preserve any in-progress card edit before re-rendering
+        // Preserve in-progress textarea content across re-renders without committing to live data
+        let pendingEditText = null;
         if (expandedIndex >= 0 && !rawMode) {
             const $ta = $(`.gd-ledger-edit-area`);
             if ($ta.length) {
-                try {
-                    const parsed = JSON.parse($ta.val());
-                    const history = getDirectorHistory();
-                    if (expandedIndex < history.length) {
-                        parsed._anchorDate = null;
-                        parsed._chatLength = 0;
-                        Object.assign(history[expandedIndex], parsed);
-                    }
-                } catch (_) { /* keep original if parse fails */ }
+                pendingEditText = $ta.val();
             }
         }
         snapshotHistory = getEntries();
         snapshotLength = snapshotHistory.length;
         updateLockState();
         if (rawMode) { buildRaw(); } else { buildCards(); }
+        // Restore in-progress edit text after re-render
+        if (pendingEditText !== null && expandedIndex >= 0) {
+            const $ta = $(`.gd-ledger-edit-area`);
+            if ($ta.length) {
+                $ta.val(pendingEditText);
+            }
+        }
     }
 
     // ── Toolbar ────────────────────────────────────────────────

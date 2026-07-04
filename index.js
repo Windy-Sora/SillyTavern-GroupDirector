@@ -1374,13 +1374,13 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // All in-memory runtime state based on the old timeline is now invalid.
 // Clear it BEFORE pruning history so no stale pointers linger.
 eventSource.on(event_types.GENERATION_STOPPED, () => {
-    if (settings.mode === MODE_OFF) return;
     generationStopped = true;
-    // If PostSpeech round LLM is running, abort it too
+    // Always abort PostSpeech if running, even in MODE_OFF (cleanup must run regardless)
     if (postSpeechAbortController) {
         postSpeechAbortController.abort();
         log('PostSpeech round aborted by user');
     }
+    if (settings.mode === MODE_OFF) return;
 });
 
 // ─── Script Executor: message trigger (independent of PostSpeech) ─────
@@ -2157,24 +2157,24 @@ jQuery(async () => {
     userProviderLoader.restoreAll('provider', userDeps);
     userProviderLoader.restoreAll('capability', userDeps);
 
-    // Hook capability toggle to persist enabled state (guard against hot-reload stacking)
-    if (!CapabilityRegistry._gdPatched) {
-        CapabilityRegistry._gdPatched = true;
-        const _origSetCapEnabled = CapabilityRegistry.setEnabled.bind(CapabilityRegistry);
-        CapabilityRegistry.setEnabled = function (id, enabled) {
-            _origSetCapEnabled(id, enabled);
-            try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
-            try {
-                if (!settings._builtinCapEnabled) settings._builtinCapEnabled = {};
-                settings._builtinCapEnabled[id] = enabled;
-                saveSettingsDebounced();
-            } catch (_) { }
-        };
-        // Restore built-in capability enabled states from previous session
-        const builtinCaps = settings._builtinCapEnabled || {};
-        for (const [id, enabled] of Object.entries(builtinCaps)) {
-            try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) { }
-        }
+    // Hook capability toggle to persist enabled state.
+    // Always replace the monkey-patch so closure captures current settings/saveSettingsDebounced on hot reload.
+    if (!CapabilityRegistry._gdOrigSetEnabled) {
+        CapabilityRegistry._gdOrigSetEnabled = CapabilityRegistry.setEnabled.bind(CapabilityRegistry);
+    }
+    CapabilityRegistry.setEnabled = function (id, enabled) {
+        CapabilityRegistry._gdOrigSetEnabled(id, enabled);
+        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
+        try {
+            if (!settings._builtinCapEnabled) settings._builtinCapEnabled = {};
+            settings._builtinCapEnabled[id] = enabled;
+            saveSettingsDebounced();
+        } catch (_) { }
+    };
+    // Restore built-in capability enabled states from previous session
+    const builtinCaps = settings._builtinCapEnabled || {};
+    for (const [id, enabled] of Object.entries(builtinCaps)) {
+        try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) { }
     }
     customPromptsSystem.initAll();
     // Warn about settings keys not covered by any config profile drawer

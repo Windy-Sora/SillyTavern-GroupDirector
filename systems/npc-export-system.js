@@ -183,7 +183,7 @@ export function createNpcExportSystem(deps) {
         }
 
         await saveNpcs();
-        const skipped = importData.npcs.length - applied; // includes NPCs excluded by selectedNames filter
+        const skipped = selectedSet.size - applied; // count selections not found in file
         log(`Imported ${applied} NPC(s), ${skipped} skipped${templateImported ? ' + prompt' : ''}`);
         return { applied, skipped, templateImported };
     }

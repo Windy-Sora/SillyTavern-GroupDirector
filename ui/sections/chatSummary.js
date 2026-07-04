@@ -231,8 +231,10 @@ registerSection('chatSummary', function (ctx) {
         }
 
         // Show summaries for review — use actual allSummaries index so save maps correctly
+        const idxMap = new Map();
+        allSummaries.forEach((s, i) => idxMap.set(s, i));
         const scanText = visible.map((s) => {
-            const actualIdx = allSummaries.indexOf(s) + 1;
+            const actualIdx = (idxMap.get(s) ?? -1) + 1;
             const status = s.active ? (settings.lang === 'zh' ? '活跃' : 'Active') : (settings.lang === 'zh' ? '已禁用' : 'Disabled');
             const range = settings.lang === 'zh' ? `覆盖前${s.rangeEnd}条` : `covers first ${s.rangeEnd}`;
             return `--- #${actualIdx} [${status}] ${range} ---\n${s.content}`;
