@@ -384,6 +384,7 @@ AgentRegistry.register(createDirectorAgent({
 AgentRegistry.register(createForceSpeakAgent({
     renderPrompt,
     getDefaultLlmPrompt,
+    buildJsonSchema,
     parseLlmResponse,
     matchCharacterByName,
     buildCharacterProfilesText,
@@ -1810,7 +1811,6 @@ async function initRoundWithLLM() {
     }
 
     try {
-        generationStopped = false;
         directorAbortController = new AbortController();
 
         const agentConfig = settings.agentConfigs?.['director'] || {};
@@ -2024,8 +2024,10 @@ function buildJsonSchema() {
     const scriptField = settings.llmScriptEnabled
         ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
         : '';
-    return (settings.llmJsonSchema || DEFAULT_SETTINGS.llmJsonSchema)
-        .replace(/\{\{scriptField\}\}/g, scriptField);
+    const schema = settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema;
+    return schema
+        .replace(/\{\{scriptField\}\}/g, scriptField)
+        .replace(/\{\{llmJsonSchema\}\}/g, '');
 }
 
 

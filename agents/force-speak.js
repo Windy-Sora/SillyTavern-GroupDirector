@@ -8,6 +8,7 @@
 export function createForceSpeakAgent({
     renderPrompt,
     getDefaultLlmPrompt,
+    buildJsonSchema,
     parseLlmResponse,
     matchCharacterByName,
     buildCharacterProfilesText,
@@ -73,6 +74,11 @@ export function createForceSpeakAgent({
                 if (profEnabled && !promptTemplate.includes('{{character_profiles}}')) {
                     const profilesText = pool.profilesText?.() ?? buildCharacterProfilesText();
                     if (profilesText) filled = profilesText + '\n\n' + filled;
+                }
+
+                // JSON schema auto-inject (same fallback as director agent)
+                if (!promptTemplate.includes('{{llmJsonSchema}}')) {
+                    filled += '\n\n' + buildJsonSchema();
                 }
 
                 // Force-speak instruction
