@@ -203,7 +203,7 @@ function abortableSleep(ms, signal) {
     ]);
     promise.finally(() => {
         if (onAbort) signal.removeEventListener('abort', onAbort);
-    });
+    }).catch(() => {});
     return promise;
 }
 

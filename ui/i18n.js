@@ -218,7 +218,7 @@ const I18N = {
         worldInfoEnabled: '启用世界书注入',
         worldInfoWrapper: '世界书包装模板',
 
-        scriptWrapper: '剧本注入包装模板（Script Wrapper）',
+        scriptWrapper: '角色 Prompt 注入模版',
         scriptWrapperHint: '<code>{{script}}</code> 占位符会被替换为实际剧本内容。',
 
         promptTitle: 'Director Prompt 模板',
@@ -730,7 +730,7 @@ const I18N = {
         worldInfoEnabled: 'Enable World Info injection',
         worldInfoWrapper: 'World Info Wrapper',
 
-        scriptWrapper: 'Script Injection Wrapper',
+        scriptWrapper: 'Character Prompt Injection Template',
         scriptWrapperHint: '<code>{{script}}</code> is replaced with the actual script content.',
 
         promptTitle: 'Director Prompt Template',

@@ -34,7 +34,7 @@ registerSection('memory', function (ctx) {
     });
     $c('auto-memory-speakers').on('change', function () { settings.autoMemorySpeakers = !!$(this).prop('checked'); saveSettings(); });
     $c('auto-memory-interval').on('input', function () {
-        settings.autoMemoryInterval = Math.max(1, parseInt($(this).val()) || 10);
+        settings.autoMemoryInterval = Math.max(1, parseInt($(this).val(), 10) || 10);
         saveSettings();
     });
     $('#gd-auto-memory-row').toggle(!!settings.autoMemoryEnabled);
@@ -46,12 +46,12 @@ registerSection('memory', function (ctx) {
         if (settings.memoryEnabled) renderMemoryList();
         saveSettings();
     });
-    $c('memory-token-budget').on('input', function () { settings.memoryTokenBudget = Math.max(100, parseInt($(this).val()) || 2000); saveSettings(); });
+    $c('memory-token-budget').on('input', function () { settings.memoryTokenBudget = Math.max(100, parseInt($(this).val(), 10) || 2000); saveSettings(); });
     $c('memory-prompt').on('input', function () { settings.memoryPrompt = $(this).val(); saveSettings(); });
     $c('memory-json-schema').on('input', function () { settings.memoryJsonSchema = $(this).val(); saveSettings(); });
     $c('memory-render-template').on('input', function () { settings.memoryRenderTemplate = $(this).val(); saveSettings(); });
-    $c('memory-keep-recent').on('input', function () { settings.memoryKeepRecent = Math.max(1, parseInt($(this).val()) || 5); saveSettings(); });
-    $c('memory-max-entries').on('input', function () { settings.memoryMaxEntries = Math.max(10, parseInt($(this).val()) || 200); saveSettings(); memorySystem.pruneAfter().catch(e => console.warn('[GD] pruneAfter failed:', e)); });
+    $c('memory-keep-recent').on('input', function () { settings.memoryKeepRecent = Math.max(1, parseInt($(this).val(), 10) || 5); saveSettings(); });
+    $c('memory-max-entries').on('input', function () { settings.memoryMaxEntries = Math.max(10, parseInt($(this).val(), 10) || 200); saveSettings(); memorySystem.pruneAfter().catch(e => console.warn('[GD] pruneAfter failed:', e)); });
 
     $c('memory-prompt-reset').on('click', () => { settings.memoryPrompt = ''; $c('memory-prompt').val(DEFAULT_MEMORY_PROMPT); saveSettings(); });
     $c('memory-schema-reset').on('click', () => { settings.memoryJsonSchema = ''; $c('memory-json-schema').val(DEFAULT_MEMORY_SCHEMA); saveSettings(); });

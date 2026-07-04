@@ -270,14 +270,15 @@ Output ONLY a JSON object, no other text:
 
         // Find the most recently active critique, not just the last in array
         let target = null;
+        let foundIndex = -1;
         for (let i = critiques.length - 1; i >= 0; i--) {
-            if (critiques[i].active) { target = critiques[i]; break; }
+            if (critiques[i].active) { target = critiques[i]; foundIndex = i; break; }
         }
         if (!target) return false;
 
         target.active = false;
 
-        if (target.basedOn !== null && target.basedOn >= 0 && critiques[target.basedOn]) {
+        if (target.basedOn !== null && target.basedOn >= 0 && target.basedOn < foundIndex && critiques[target.basedOn]) {
             critiques[target.basedOn].active = true;
         }
 

@@ -8,7 +8,7 @@ registerSection('director', function (ctx) {
     $c('llm-prompt').val(settings.llmPrompt || getDefaultLlmPrompt());
     $c('llm-max-speakers').val(settings.llmMaxSpeakers);
     $c('llm-context-depth').val(settings.llmContextDepth);
-    $c('llm-respect-order').prop('checked', settings.llmRespectOrder);
+
     $(`input[name="gd-llm-char-desc-mode"][value="${settings.llmCharDescMode}"]`).prop('checked', true);
     $c('llm-char-desc-length').val(settings.llmCharDescLength);
     $c('llm-script-enabled').prop('checked', settings.llmScriptEnabled);
@@ -21,7 +21,7 @@ registerSection('director', function (ctx) {
     $c('llm-prompt').on('input', () => { settings.llmPrompt = $c('llm-prompt').val(); saveSettings(); });
     $c('llm-max-speakers').on('input', () => { settings.llmMaxSpeakers = Math.max(1, parseInt($c('llm-max-speakers').val()) || 3); saveSettings(); });
     $c('llm-context-depth').on('input', () => { settings.llmContextDepth = Math.max(1, parseInt($c('llm-context-depth').val()) || 10); saveSettings(); });
-    $c('llm-respect-order').on('input', () => { settings.llmRespectOrder = !!$c('llm-respect-order').prop('checked'); saveSettings(); });
+
     $('input[name="gd-llm-char-desc-mode"]').on('change', function () {
         settings.llmCharDescMode = $(this).val();
         toggleCharDescLength(settings.llmCharDescMode);

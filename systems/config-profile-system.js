@@ -26,7 +26,7 @@ const CONFIG_PROFILE_VERSION = 1;
 
 const DRAWER_KEYS = {
     directorLlm: [
-        'llmPrompt', 'llmMaxSpeakers', 'llmRespectOrder',
+        'llmPrompt', 'llmMaxSpeakers',
         'llmContextDepth', 'llmCharDescMode', 'llmCharDescLength',
         'llmScriptEnabled', 'llmScriptPrompt', 'llmScriptWrapper',
         'llmScriptPosition',

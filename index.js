@@ -132,8 +132,7 @@ function getScriptPosition() {
 }
 
 async function getScriptForChar(charName, extraContext) {
-    const script = directorScripts[charName];
-    if (!script) return '';
+    const script = directorScripts[charName] || '';
     // On swipe/regenerate, restore the counter to what it was when this
     // character's script was first rendered this round. On first render,
     // snapshot the current counter for future restores.

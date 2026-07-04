@@ -125,12 +125,19 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
         const summaries = getSummaries();
         if (!summaries.length) return false;
 
-        const last = summaries[summaries.length - 1];
-        last.active = false;
+        // Find the most recently active summary, not just the last in array
+        let target = null;
+        let foundIndex = -1;
+        for (let i = summaries.length - 1; i >= 0; i--) {
+            if (summaries[i].active) { target = summaries[i]; foundIndex = i; break; }
+        }
+        if (!target) return false;
 
-        // Activate previous summary if exists
-        if (last.basedOn !== null && last.basedOn >= 0 && summaries[last.basedOn]) {
-            summaries[last.basedOn].active = true;
+        target.active = false;
+
+        // Activate previous summary if exists (must precede this entry)
+        if (target.basedOn !== null && target.basedOn >= 0 && target.basedOn < foundIndex && summaries[target.basedOn]) {
+            summaries[target.basedOn].active = true;
         }
 
         await saveChatConditional();

@@ -374,7 +374,9 @@ export function createExportImportSystem({
         if (groupCreated) parts.push(L('群组已创建', 'group created'));
         if (charFail + worldFail > 0) parts.push(L(`${charFail + worldFail} 跳过`, `${charFail + worldFail} skipped`));
 
-        if (charOk === 0 && charFail > 0) {
+        if (charOk === 0 && charFail === 0) {
+            toastr().info(L('导入完成 — 无有效条目', 'Import complete — no valid entries'));
+        } else if (charOk === 0 && charFail > 0) {
             toastr().warning(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
         } else {
             toastr().success(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));

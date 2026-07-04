@@ -166,10 +166,10 @@ registerSection('ledger', function (ctx) {
                 }
                 const history = getDirectorHistory();
                 const historyLen = history.length;
-                if (historyLen < snapshotLen) {
+                if (historyLen !== snapshotLen) {
                     throw new Error(settings.lang === 'zh'
-                        ? `条目数量异常：当前 ${historyLen} 条，快照 ${snapshotLen} 条。请刷新重试。`
-                        : `Entry count anomaly: current ${historyLen}, snapshot ${snapshotLen}. Refresh and retry.`);
+                        ? `条目数量变化（原${snapshotLen}条，现${historyLen}条）。请刷新后重试。`
+                        : `Entry count changed (was ${snapshotLen}, now ${historyLen}). Refresh and retry.`);
                 }
                 for (let i = 0; i < parsed.length; i++) {
                     const realIndex = snapshotLen - 1 - i; // newest-first → chronological (push() appends, indices stable)

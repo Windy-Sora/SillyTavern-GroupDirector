@@ -106,7 +106,9 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             try {
                 return JSON.parse(JSON.stringify(obj));
             } catch (_2) {
-                // Last resort: shallow copy for objects with functions/DOM nodes
+                // Last resort: shallow copy for objects with functions/DOM nodes.
+                // Nested references are shared — warn if the copy would alias deeply.
+                console.warn('[GD] safeClone: both structuredClone and JSON failed. Using shallow copy — nested objects will share references with the original.');
                 if (Array.isArray(obj)) return [...obj];
                 if (typeof obj === 'object') return { ...obj };
                 return obj;
