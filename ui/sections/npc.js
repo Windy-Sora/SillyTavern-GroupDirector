@@ -32,7 +32,7 @@ registerSection('npc', function (ctx) {
     });
 
     $c('npc-max-count').on('input', function () {
-        settings.npcMaxCount = Math.max(1, parseInt($(this).val()) || 10);
+        settings.npcMaxCount = Math.max(0, parseInt($(this).val()) || 10);
         saveSettings();
     });
 
@@ -180,8 +180,16 @@ registerSection('npc', function (ctx) {
         // Edit toggle
         $list.find('.gd-npc-edit').on('click', function () {
             const idx = parseInt($(this).data('idx'));
-            $(`.gd-npc-view-${idx}`).toggle(false);
-            $(`.gd-npc-edit-${idx}`).toggle(true);
+            // Close all other edit panels to prevent data loss from multi-edit
+            const npcs = npcSystem.getNpcs();
+            npcs.forEach((_, i) => {
+                if (i !== idx) {
+                    $(`.gd-npc-edit-${i}`).hide();
+                    $(`.gd-npc-view-${i}`).show();
+                }
+            });
+            $(`.gd-npc-view-${idx}`).hide();
+            $(`.gd-npc-edit-${idx}`).show();
         });
 
         // Cancel edit

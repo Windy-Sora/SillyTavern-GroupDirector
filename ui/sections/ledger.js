@@ -202,6 +202,21 @@ registerSection('ledger', function (ctx) {
 
     function rebuild() {
         if (isLocked()) { updateLockState(); return; }
+        // Preserve any in-progress card edit before re-rendering
+        if (expandedIndex >= 0 && !rawMode) {
+            const $ta = $(`.gd-ledger-edit-area`);
+            if ($ta.length) {
+                try {
+                    const parsed = JSON.parse($ta.val());
+                    const history = getDirectorHistory();
+                    if (expandedIndex < history.length) {
+                        parsed._anchorDate = null;
+                        parsed._chatLength = 0;
+                        Object.assign(history[expandedIndex], parsed);
+                    }
+                } catch (_) { /* keep original if parse fails */ }
+            }
+        }
         snapshotHistory = getEntries();
         snapshotLength = snapshotHistory.length;
         updateLockState();

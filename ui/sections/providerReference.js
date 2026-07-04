@@ -108,6 +108,10 @@ registerSection('providerReference', function (ctx) {
         if (name === null) return;
         const placeholder = prompt(isZh() ? '占位符（如 {{myProvider}}）：' : 'Placeholder (e.g. {{myProvider}}):', entry.placeholder || '');
         if (placeholder === null) return;
+        if (!placeholder.trim()) {
+            toastr.warning(isZh() ? '占位符不能为空' : 'Placeholder cannot be empty');
+            return;
+        }
         const desc = prompt(isZh() ? '描述：' : 'Description:', isZh() ? (entry.descZh || '') : (entry.descEn || ''));
         if (desc === null) return;
 
@@ -129,7 +133,6 @@ registerSection('providerReference', function (ctx) {
         if (!name || !name.trim()) return;
         const placeholder = prompt(isZh() ? '占位符（如 {{myProvider}}）：' : 'Placeholder (e.g. {{myProvider}}):');
         if (!placeholder || !placeholder.trim()) return;
-        const desc = prompt(isZh() ? '描述：' : 'Description:');
         if (desc === null) return;
 
         list.push({

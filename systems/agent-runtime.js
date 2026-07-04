@@ -157,7 +157,7 @@ export async function managedCall(caller, prompt, callConfig = {}) {
                 if (onRetry) {
                     try { onRetry({ attempt: attemptCount, maxRetries: retries, error: e.message }); } catch (_) {}
                 }
-                await sleep(2000);
+                await abortableSleep(2000, signal);
             }
         }
     }
@@ -185,6 +185,17 @@ async function withTimeout(promise, ms, signal) {
 
 function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
+}
+
+function abortableSleep(ms, signal) {
+    if (!signal) return sleep(ms);
+    return Promise.race([
+        sleep(ms),
+        new Promise((_, reject) => {
+            if (signal.aborted) reject(new DOMException('Aborted', 'AbortError'));
+            else signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        }),
+    ]);
 }
 
 // ─── Execute Agent ───────────────────────────────────────────────────

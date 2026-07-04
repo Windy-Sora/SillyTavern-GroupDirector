@@ -156,7 +156,7 @@ registerSection('profileExport', function (ctx) {
     $c('profile-export-btn').off('click').on('click', () => {
         const selected = [];
         $('.gd-export-check:checked').each(function () {
-            selected.push($(this).data('avatar'));
+            selected.push($(this).attr('data-avatar'));
         });
         if (!selected.length) {
             toastr.warning(isZh() ? '请至少选择一个角色' : 'Select at least one character');
@@ -207,7 +207,7 @@ registerSection('profileExport', function (ctx) {
         }
         const selected = [];
         $('.gd-import-check:checked').each(function () {
-            selected.push($(this).data('avatar'));
+            selected.push($(this).attr('data-avatar'));
         });
         if (!selected.length && !$c('profile-import-template').prop('checked')) {
             toastr.warning(isZh() ? '请至少选择一个角色，或勾选导入模板' : 'Select at least one character, or check "import templates"');

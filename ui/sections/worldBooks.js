@@ -32,11 +32,13 @@ registerSection('worldBooks', async function (ctx) {
             for (const name of names) settings.worldBookSelection[name] = true;
             refreshBookList();
             saveSettings();
+            window.__gdRefreshDashboard?.();
         });
         deselectAll.on('click', () => {
             settings.worldBookSelection = {};
             refreshBookList();
             saveSettings();
+            window.__gdRefreshDashboard?.();
         });
 
         toolbar.append(selectAll, deselectAll);
@@ -50,6 +52,7 @@ registerSection('worldBooks', async function (ctx) {
             input.on('change', function () {
                 settings.worldBookSelection[name] = !!$(this).prop('checked');
                 saveSettings();
+                window.__gdRefreshDashboard?.();
             });
             label.append(input, document.createTextNode(name));
             list.append(label);
@@ -65,4 +68,5 @@ registerSection('worldBooks', async function (ctx) {
 
     // Expose for quick-start mirror in drawer 1
     ctx.renderWorldBookList = refreshBookList;
+    window.__gdRefreshWorldBookList = refreshBookList;
 });

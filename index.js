@@ -1374,6 +1374,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // All in-memory runtime state based on the old timeline is now invalid.
 // Clear it BEFORE pruning history so no stale pointers linger.
 eventSource.on(event_types.GENERATION_STOPPED, () => {
+    if (settings.mode === MODE_OFF) return;
     generationStopped = true;
     // If PostSpeech round LLM is running, abort it too
     if (postSpeechAbortController) {
@@ -1681,6 +1682,15 @@ async function initForceSpeakLLM(char, avatar) {
 
     const enabledMembers = group.members.filter(a => !group.disabled_members?.includes(a));
     if (!enabledMembers.includes(avatar)) return;
+
+    // Build world info for force-speak context so character names are injected
+    if (settings.llmWorldInfoEnabled) {
+        try {
+            const wi = await buildDirectorWorldInfo(enabledMembers);
+            wiState.text = wi.text;
+            wiState.entries = wi.entries;
+        } catch (e) { /* non-critical */ }
+    }
 
     const agent = AgentRegistry.get('force-speak');
     if (!agent) {

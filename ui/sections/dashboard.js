@@ -478,8 +478,8 @@ registerSection('dashboard', function (ctx) {
         const $toolbar = $('<div style="margin-bottom:4px;display:flex;gap:4px;"></div>');
         const $all = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-check-double"></i> ${lang === 'zh' ? '全选' : 'All'}</span>`);
         const $none = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-xmark"></i> ${lang === 'zh' ? '取消' : 'None'}</span>`);
-        $all.on('click', () => { for (const n of names) sel[n] = true; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); });
-        $none.on('click', () => { for (const n of names) sel[n] = false; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); });
+        $all.on('click', () => { for (const n of names) sel[n] = true; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
+        $none.on('click', () => { for (const n of names) sel[n] = false; saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
         $toolbar.append($all, $none);
         $wbList.append($toolbar);
         let totalChecked = 0;
@@ -489,7 +489,7 @@ registerSection('dashboard', function (ctx) {
             const $label = $(`<label class="checkbox_label" style="display:flex;align-items:center;gap:4px;"></label>`);
             const $input = $(`<input type="checkbox">`);
             $input.prop('checked', checked);
-            $input.on('change', function () { sel[name] = !!$(this).prop('checked'); saveSettings(); refreshWorldBookStat(); });
+            $input.on('change', function () { sel[name] = !!$(this).prop('checked'); saveSettings(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
             $label.append($input, name);
             $wbList.append($label);
         }

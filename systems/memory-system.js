@@ -150,6 +150,20 @@ export function createMemorySystem({
         await saveStore();
     }
 
+    /** Trim all characters' memories to current max (call on settings change). */
+    async function pruneAfter() {
+        const max = settings.memoryMaxEntries ?? 200;
+        const store = getStore();
+        let changed = false;
+        for (const [avatar, memories] of Object.entries(store)) {
+            if (memories.length > max) {
+                while (memories.length > max) memories.shift();
+                changed = true;
+            }
+        }
+        if (changed) await saveStore();
+    }
+
     const DEFAULT_COMPRESS_PROMPT = `Given the following character memories, produce a concise one-paragraph summary that captures the key events, emotional arcs, and character development. Preserve important names, places, and turning points.
 
 Character: {{charName}}
@@ -269,7 +283,7 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         updateEntry, deleteEntry, deleteCharacterMemories,
         revertLast, resetAll, compressOldMemories,
         getStats, detectOrphans, listMemories, totalCount,
-        getMemories,
+        getMemories, pruneAfter,
         // Internal helpers for auto-migration
         _setMemories: async (avatar, mems) => { setMemories(avatar, mems); await saveStore(); },
         _deleteKey: async (avatar) => { delete getStore()[avatar]; await saveStore(); },

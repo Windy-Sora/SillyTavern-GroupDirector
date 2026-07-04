@@ -46,7 +46,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
         let inputText = '';
         let startFrom = 0;
 
-        if (reusePrev && prevSummary) {
+        if (reusePrev && prevSummary && prevSummary.rangeEnd <= chat.length) {
             // Previous summary + new messages since last range end
             startFrom = prevSummary.rangeEnd;
             const newMessages = chat.slice(startFrom);

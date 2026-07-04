@@ -141,6 +141,12 @@ Output ONLY a JSON object, no other text:
         const chat = getChat();
         if (!chat.length) throw new Error('No messages to critique');
 
+        // Skip if latest active critique already covers the full chat
+        const latestActive = getLatestActive();
+        if (latestActive && latestActive.rangeEnd === chat.length) {
+            throw new Error('Latest critique already covers current chat — no new messages');
+        }
+
         const critiques = getCritiques();
         const reusePrev = settings.critiqueReusePrevious;
         const prevCritique = getLatestActive();
