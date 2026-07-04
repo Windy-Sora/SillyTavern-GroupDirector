@@ -120,6 +120,7 @@ let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
 let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
+let directorAbortController = null;             // AbortController for Director + ForceSpeak LLM calls
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
@@ -371,6 +372,7 @@ function buildContextPool(overrides = {}) {
 AgentRegistry.register(createDirectorAgent({
     renderPrompt,
     getDefaultLlmPrompt,
+    buildJsonSchema,
     parseLlmResponse,
     matchCharacterByName,
     buildCharacterProfilesText,
@@ -1381,6 +1383,10 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
         postSpeechAbortController.abort();
         log('PostSpeech round aborted by user');
     }
+    if (directorAbortController) {
+        directorAbortController.abort();
+        log('Director LLM aborted by user');
+    }
     if (settings.mode === MODE_OFF) return;
 });
 
@@ -1700,6 +1706,8 @@ async function initForceSpeakLLM(char, avatar) {
     }
 
     try {
+        directorAbortController = new AbortController();
+
         const agentConfig = settings.agentConfigs?.['force-speak'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
         const caller = createCaller(agentConfig, stGenerateRaw);
@@ -1713,6 +1721,7 @@ async function initForceSpeakLLM(char, avatar) {
 
         const callCfg = {
             ...agentConfig.call,
+            signal: directorAbortController.signal,
             onRetry: ({ attempt, maxRetries }) => {
                 toastr.warning(`ForceSpeak 重试中 (${attempt}/${maxRetries})...`);
             },
@@ -1722,6 +1731,7 @@ async function initForceSpeakLLM(char, avatar) {
             caller,
             config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
         });
+        directorAbortController = null;
 
         // Clear QUIET_PROMPT
         setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
@@ -1779,6 +1789,7 @@ async function initForceSpeakLLM(char, avatar) {
 
         log(`Force-speak LLM: generated script for ${char.name}`);
     } catch (e) {
+        directorAbortController = null;
         if (generationStopped || e?.name === 'AbortError') {
             console.warn('[GroupDirector] Force-speak LLM aborted');
             return;
@@ -1800,6 +1811,7 @@ async function initRoundWithLLM() {
 
     try {
         generationStopped = false;
+        directorAbortController = new AbortController();
 
         const agentConfig = settings.agentConfigs?.['director'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
@@ -1809,6 +1821,7 @@ async function initRoundWithLLM() {
 
         const callCfg = {
             ...agentConfig.call,
+            signal: directorAbortController.signal,
             onRetry: ({ attempt, maxRetries }) => {
                 toastr.warning(`Director 重试中 (${attempt}/${maxRetries})...`);
             },
@@ -1818,6 +1831,7 @@ async function initRoundWithLLM() {
             caller,
             config: { ...settings, call: callCfg, enableTrace: settings.debugLogging },
         });
+        directorAbortController = null;
 
         // Clean up QUIET_PROMPT
         setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
@@ -1867,6 +1881,7 @@ async function initRoundWithLLM() {
             parsed.reason ? `(${parsed.reason})` : '');
 
     } catch (e) {
+        directorAbortController = null;
         if (generationStopped || e?.name === 'AbortError') {
             console.warn('[GroupDirector] Director LLM aborted by user');
             llmPickedSet = new Set();
@@ -2001,28 +2016,16 @@ by their exact displayed names. Use the "loreAssignments" field.
 Only assign entries that are actually relevant to that character's current situation.
 It is OK to assign none (empty array) or different entries to different characters.`;
 
-    base += `
-
-Reply with ONLY a JSON object, no prose, no code fences:
-{
-  "speakers": ["NameOfFirstSpeaker", "NameOfSecondSpeaker"],
-  "reason": "short justification"`;
-
-    if (settings.llmScriptEnabled) {
-        base += `,
-  "scripts": {
-    "NameOfFirstSpeaker": "short imperative stage direction",
-    "NameOfSecondSpeaker": "short imperative stage direction"
-  }`;
-    }
-
-    base += `,
-  "loreAssignments": {
-    "NameOfFirstSpeaker": ["exact entry name", "another entry"],
-    "NameOfSecondSpeaker": []
-  }
-}`;
+    base += '\n\n{{llmJsonSchema}}';
     return base;
+}
+
+function buildJsonSchema() {
+    const scriptField = settings.llmScriptEnabled
+        ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
+        : '';
+    return (settings.llmJsonSchema || DEFAULT_SETTINGS.llmJsonSchema)
+        .replace(/\{\{scriptField\}\}/g, scriptField);
 }
 
 
@@ -2039,6 +2042,28 @@ registerProvider({
     id: 'maxSpeakers',
     placeholder: '{{maxSpeakers}}',
     render: (ctx) => ({ content: String(ctx.maxSpeakers || 1) }),
+});
+
+// ScriptField — expands to scripts JSON fragment or empty based on llmScriptEnabled
+registerProvider({
+    id: 'scriptField',
+    placeholder: '{{scriptField}}',
+    render: () => {
+        const enabled = settings.llmScriptEnabled;
+        return {
+            content: enabled
+                ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
+                : '',
+            data: { enabled },
+        };
+    },
+});
+
+// LlmJsonSchema — user-customizable JSON output format template
+registerProvider({
+    id: 'llmJsonSchema',
+    placeholder: '{{llmJsonSchema}}',
+    render: () => ({ content: buildJsonSchema() }),
 });
 
 registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);

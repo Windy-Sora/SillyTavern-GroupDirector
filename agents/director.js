@@ -7,6 +7,7 @@
 export function createDirectorAgent({
     renderPrompt,
     getDefaultLlmPrompt,
+    buildJsonSchema,
     parseLlmResponse,
     matchCharacterByName,
     buildCharacterProfilesText,
@@ -86,6 +87,11 @@ export function createDirectorAgent({
                 if (profEnabled && !promptTemplate.includes('{{character_profiles}}')) {
                     const profilesText = pool.profilesText?.() ?? buildCharacterProfilesText();
                     if (profilesText) filled = profilesText + '\n\n' + filled;
+                }
+
+                // Auto-inject JSON schema (always needed for parse to work)
+                if (!promptTemplate.includes('{{llmJsonSchema}}')) {
+                    filled += '\n\n' + buildJsonSchema();
                 }
 
                 return filled;

@@ -417,6 +417,10 @@ const I18N = {
         dashMemories: '提取记忆',
         dashSummary: '执行总结',
         npcPromptShort: '生成 Prompt',
+
+        jsonSchemaCard: '高级：JSON 输出格式',
+        jsonSchemaHint: '<code>{{scriptField}}</code> 在启用剧本时替换为 scripts 字段，禁用时清空。',
+        jsonSchemaWarning: '⚠ 如果你在 Director Prompt 中指示 LLM 返回额外字段，请务必在此 Schema 模板中添加对应字段，否则 LLM 返回的字段将被忽略。',
     },
 
     en: {
@@ -826,6 +830,10 @@ const I18N = {
         dashMemories: 'Extract Mem',
         dashSummary: 'Summarize',
         npcPromptShort: 'Gen Prompt',
+
+        jsonSchemaCard: 'Advanced: JSON Output Format',
+        jsonSchemaHint: '<code>{{scriptField}}</code> is replaced with the scripts field when enabled, cleared when disabled.',
+        jsonSchemaWarning: '⚠ If you instruct the LLM to return extra fields in the Director Prompt, you must add them to this schema template, otherwise the fields will be silently dropped.',
     },
 };
 

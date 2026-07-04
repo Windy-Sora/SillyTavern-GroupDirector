@@ -29,6 +29,7 @@ const DRAWER_KEYS = {
         'llmPrompt', 'llmMaxSpeakers',
         'llmContextDepth', 'llmCharDescMode', 'llmCharDescLength',
         'llmScriptEnabled', 'llmScriptPrompt', 'llmScriptWrapper',
+        'llmJsonSchema',
         'llmScriptPosition',
         'llmHistoryEnabled', 'llmScriptContinuity', 'llmScriptContinuityMode',
         'llmScriptContinuityCount', 'llmScriptContinuityWrapper',

@@ -210,7 +210,7 @@ Group Director 内置统一的 Prompt Runtime。
 所有 Prompt：
 
 * Director Prompt
-* Script Wrapper
+* 角色 Prompt 注入模版
 * History Wrapper
 * WorldInfo Wrapper
 * Profile Generator
@@ -282,7 +282,7 @@ registerProvider({
 Provider 会自动接入：
 ```text
 Director Prompt
-Script Wrapper
+角色 Prompt 注入模版
 Profile Generator
 Prompt DSL
 路径查询

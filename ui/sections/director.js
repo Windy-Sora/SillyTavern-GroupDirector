@@ -46,6 +46,15 @@ registerSection('director', function (ctx) {
         saveSettings();
     });
 
+    // JSON Schema
+    $c('llm-json-schema').val(settings.llmJsonSchema || DEFAULT_SETTINGS.llmJsonSchema);
+    $c('llm-json-schema').on('input', () => { settings.llmJsonSchema = $c('llm-json-schema').val(); saveSettings(); });
+    $c('llm-json-schema-reset').on('click', () => {
+        settings.llmJsonSchema = DEFAULT_SETTINGS.llmJsonSchema;
+        $c('llm-json-schema').val(DEFAULT_SETTINGS.llmJsonSchema);
+        saveSettings();
+    });
+
     $c('llm-history-enabled').prop('checked', settings.llmHistoryEnabled);
     $c('llm-history-enabled').on('input', () => { settings.llmHistoryEnabled = !!$c('llm-history-enabled').prop('checked'); saveSettings(); });
 

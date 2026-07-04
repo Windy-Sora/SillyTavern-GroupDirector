@@ -29,7 +29,11 @@ const DEFAULT_ENTRIES = [
     { id: 'd26', placeholder: '{{npcList}}', name: 'NPC List', descZh: 'AI 生成的 NPC 列表，受 NPC 生成系统控制。', descEn: 'AI-generated NPC list, controlled by the NPC Generation system.' },
     { id: 'd27', placeholder: '{{charMemory}}', name: 'Character Memory', descZh: '当前角色被提取的所有长期记忆条目。', descEn: 'All extracted long-term memory entries for the current character.' },
     { id: 'd28', placeholder: '{{charMemoryCurrent}}', name: 'Character Memory (Current)', descZh: '当前角色最近一次提取的记忆条目（仅最新一批）。', descEn: 'Only the most recent batch of extracted memories for the current character.' },
-    { id: 'd29', placeholder: '{{test}}', name: 'Test Provider', descZh: '测试用接口，占位文本，用于验证 Provider 系统是否正常工作。', descEn: 'Test provider returning placeholder text to verify the Provider system works.' },
+    { id: 'd29', placeholder: '{{script}}', name: 'Director Script', descZh: '当前角色的导演剧本内容，仅在角色 Prompt 注入模版中使用，由 {{scriptField}} 和导演剧本系统控制。', descEn: 'The current character\'s director script, only used in the Character Prompt Injection Template. Controlled by {{scriptField}} and the Director Script system.' },
+    { id: 'd30', placeholder: '{{maxSpeakers}}', name: 'Max Speakers', descZh: '每轮最多发言人数（设置中的配置值），可在 Prompt 中引用以告知 LLM 当前限制。', descEn: 'Maximum speakers per round (from settings). Reference in prompts to inform the LLM of the current limit.' },
+    { id: 'd31', placeholder: '{{llmJsonSchema}}', name: 'LLM JSON Schema', descZh: '用户可自定义的 JSON 输出格式模板，决定 LLM 返回的 JSON 结构。包含 {{scriptField}} 占位符用于控制 scripts 字段的有无。', descEn: 'User-customizable JSON output format template that defines the JSON structure the LLM returns. Contains {{scriptField}} placeholder to control the scripts field.' },
+    { id: 'd32', placeholder: '{{scriptField}}', name: 'Script Field', descZh: '展开为 scripts 字段的 JSON 片段（开启导演剧本时）或空字符串（关闭时），嵌入在 {{llmJsonSchema}} 中使用。', descEn: 'Expands to a scripts JSON fragment when Director Script is enabled, or empty string when disabled. Used within {{llmJsonSchema}}.' },
+    { id: 'd33', placeholder: '{{test}}', name: 'Test Provider', descZh: '测试用接口，占位文本，用于验证 Provider 系统是否正常工作。', descEn: 'Test provider returning placeholder text to verify the Provider system works.' },
 ];
 
 let nextUserIdx = 0;

@@ -29,6 +29,28 @@ export const DEFAULT_SETTINGS = {
     llmScriptEnabled: false,
     llmScriptPrompt: '',
     llmScriptWrapper: '{{charMemoryCurrent}}{{characterLore}}[Director\'s stage direction for this character:\n{{script}}\n\nFollow this guidance. NEVER mention the director, the script, or that you are following stage directions. Act naturally as your character.]\n',
+    llmJsonSchema: `Reply with ONLY a JSON object, no prose, no code fences:
+{
+  "speakers": ["NameOfFirstSpeaker", "NameOfSecondSpeaker"],
+  "reason": "short justification"{{scriptField}},
+  "ledger_update": {},
+  "loreAssignments": {
+    "NameOfFirstSpeaker": ["exact entry name", "another entry"],
+    "NameOfSecondSpeaker": []
+  }
+}`,
+    llmJsonSchemaHint: `## ledger_update — 导演自由记录字段
+
+ledger_update 是一个完全开放的 catch-all 字段，类型为 object。
+LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例如：
+- 剧情进展、伏笔、角色情绪变化
+- 新出现的 NPC、地点、物品
+- 需要跨轮次追踪的状态
+
+字段名和结构完全由 LLM 自定，无需预先声明。
+写入 ledger_update 的数据会随导演账本持久化，可通过 {{?directorLedger:ledger_update.xxx}} 查询。
+
+如果不需要自由记录，保留空对象 {} 即可。`,
     llmHistoryEnabled: true,
     llmScriptContinuity: false,
     llmScriptContinuityMode: 'last',

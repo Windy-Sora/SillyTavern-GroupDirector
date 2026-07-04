@@ -218,6 +218,28 @@
                 </div>
 
                 <hr>
+                <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">角色 Prompt 注入模版</label>
+                <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                <span class="menu_button menu_button_icon" id="gd-llm-script-wrapper-reset" style="margin-top:4px;">
+                    <i class="fa-solid fa-rotate-left"></i> 默认
+                </span>
+
+                <div class="gd-card gd-card-collapsible" data-card="jsonSchema" style="margin-top:8px;">
+                    <div class="gd-card-header">
+                        <span class="gd-card-caret">▸</span>
+                        <span data-i18n="jsonSchemaCard">高级：JSON 输出格式</span>
+                    </div>
+                    <div class="gd-card-body">
+                        <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="jsonSchemaHint"><code>{{scriptField}}</code> 在启用剧本时替换为 scripts 字段，禁用时清空。</small>
+                        <textarea id="gd-llm-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
+                        <small style="color:#ff9800;display:block;margin-top:4px;" data-i18n="jsonSchemaWarning">⚠ 如果你在 Director Prompt 中指示 LLM 返回额外字段，请务必在此 Schema 模板中添加对应字段，否则 LLM 返回的字段将被忽略。</small>
+                        <span class="menu_button menu_button_icon" id="gd-llm-json-schema-reset" style="margin-top:4px;">
+                            <i class="fa-solid fa-rotate-left"></i> 默认
+                        </span>
+                    </div>
+                </div>
+
+                <hr>
                 <label class="checkbox_label" for="gd-llm-script-enabled">
                     <input type="checkbox" id="gd-llm-script-enabled">
                     <span data-i18n="scriptEnabled">导演剧本 (Director Script)</span>
@@ -230,11 +252,6 @@
                     </select>
                     <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本风格要求</label>
                     <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
-                    <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">注入包装模板</label>
-                    <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-llm-script-wrapper-reset" style="margin-top:4px;">
-                        <i class="fa-solid fa-rotate-left"></i> 默认
-                    </span>
                 </div>
 
                 <hr>
