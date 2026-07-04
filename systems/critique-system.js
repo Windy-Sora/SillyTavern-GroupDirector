@@ -262,11 +262,17 @@ Output ONLY a JSON object, no other text:
         const critiques = getCritiques();
         if (!critiques.length) return false;
 
-        const last = critiques[critiques.length - 1];
-        last.active = false;
+        // Find the most recently active critique, not just the last in array
+        let target = null;
+        for (let i = critiques.length - 1; i >= 0; i--) {
+            if (critiques[i].active) { target = critiques[i]; break; }
+        }
+        if (!target) return false;
 
-        if (last.basedOn !== null && last.basedOn >= 0 && critiques[last.basedOn]) {
-            critiques[last.basedOn].active = true;
+        target.active = false;
+
+        if (target.basedOn !== null && target.basedOn >= 0 && critiques[target.basedOn]) {
+            critiques[target.basedOn].active = true;
         }
 
         await saveChatConditional();
@@ -285,11 +291,14 @@ Output ONLY a JSON object, no other text:
         if (!critiques.length) return;
 
         let changed = false;
-        for (const s of critiques) {
+        // Iterate in reverse so reactivated basedOn entries are themselves validated
+        for (let i = critiques.length - 1; i >= 0; i--) {
+            const s = critiques[i];
             if (s.active && s.rangeEnd > chat.length) {
                 s.active = false;
                 changed = true;
-                if (s.basedOn !== null && s.basedOn >= 0 && critiques[s.basedOn]) {
+                if (s.basedOn !== null && s.basedOn >= 0 && s.basedOn < i && critiques[s.basedOn]) {
+                    // Only reactivate if basedOn precedes this entry (chronological order)
                     critiques[s.basedOn].active = true;
                 }
             }

@@ -105,7 +105,8 @@ export function createMemorySystem({
             try {
                 results[avatar] = await generateForCharacter(avatar);
             } catch (e) {
-                results[avatar] = { error: e.message };
+                log(`[GD] Memory generation failed for ${avatar}: ${e.message}`);
+                results[avatar] = []; // consistent shape: always an array
             }
         }
         return results;
@@ -162,6 +163,7 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
 
     /** Compress old memories into an LLM-generated summary, keeping recent ones. */
     async function compressOldMemories(avatar, keepRecent = 5) {
+        if (keepRecent <= 0) return null; // slice(0, -0) === slice(0, 0) === []
         const memories = getMemories(avatar);
         if (memories.length <= keepRecent) return null;
 

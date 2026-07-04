@@ -1,4 +1,5 @@
 let turnShared = {};
+let turnId = 0;    // incremented per turn to guard against cross-turn async contamination
 let decisionSnapshot = null; // snapshot after decision hook completes, read-only for message/round
 
 export function createScriptExecutorSystem({ settings, saveSettings, renderPrompt, AgentTrace, log }) {
@@ -61,10 +62,12 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
 
     function resetTurnShared() {
         turnShared = {};
+        turnId++;
         decisionSnapshot = null;
     }
 
     function getTurnShared() { return turnShared; }
+    function getTurnId() { return turnId; }
     function getDecisionSnapshot() { return decisionSnapshot; }
 
     async function buildParams(entry) {
@@ -109,6 +112,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     // ── Decision phase: blocking, await all, 10s timeout ──
     async function executeAllDecision(rawEvent) {
         const event = rawEvent ? { ...rawEvent } : {};
+        const myTurnId = turnId; // guard against cross-turn async contamination
 
         const list = getList().filter(e =>
             e.enabled && (e.triggerOn === 'decision' || e.triggerOn === 'all')
@@ -151,12 +155,14 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     ),
                 ]);
 
-                if (entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
+                if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
                     Object.assign(turnShared, result);
                 }
 
-                // Apply mutations back to working copy
-                workingDecision = ctx.decision;
+                // Apply mutations back to working copy (only if turn hasn't changed)
+                if (turnId === myTurnId) {
+                    workingDecision = ctx.decision;
+                }
 
                 stage.ok = true;
             } catch (e) {
@@ -187,6 +193,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     // ── Message / Round phase: fire-and-forget, 5s timeout ──
     async function executeAll(mode, rawEvent) {
         const event = rawEvent ? { ...rawEvent } : {};
+        const myTurnId = turnId; // guard against cross-turn async contamination
 
         const list = getList().filter(e =>
             e.enabled && (e.triggerOn === mode || e.triggerOn === 'both' || e.triggerOn === 'all')
@@ -228,7 +235,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     ),
                 ]);
 
-                if (entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
+                if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object' && !Array.isArray(result)) {
                     Object.assign(turnShared, result);
                 }
 

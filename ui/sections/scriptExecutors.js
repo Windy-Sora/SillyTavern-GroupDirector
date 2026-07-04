@@ -179,6 +179,24 @@ registerSection('scriptExecutors', function (ctx) {
             renderList();
         });
 
+        function flushEditToModel() {
+            // Commit all open edit panel values to model before re-render
+            $('.gd-se-edit:visible').each(function () {
+                const eid = $(this).data('id');
+                const entry = sys.getList().find(e => e.id === eid);
+                if (!entry) return;
+                const eName = $(`.gd-se-edit-name[data-id="${eid}"]`).val()?.trim();
+                if (eName) entry.name = eName;
+                entry.triggerOn = $(`.gd-se-edit-trigger[data-id="${eid}"]`).val() || entry.triggerOn;
+                entry.priority = parseInt($(`.gd-se-edit-priority[data-id="${eid}"]`).val()) || entry.priority;
+                entry.code = $(`.gd-se-edit-code[data-id="${eid}"]`).val() || entry.code;
+                entry.renderParams = $(`.gd-se-edit-render-params[data-id="${eid}"]`).prop('checked');
+                entry.returnMode = $(`.gd-se-edit-return[data-id="${eid}"]`).val() || entry.returnMode;
+                entry.params = collectParams(eid);
+            });
+            saveSettings();
+        }
+
         // Param add
         $list.find('.gd-se-param-add').off('click').on('click', function (e) {
             e.stopPropagation();
@@ -186,6 +204,7 @@ registerSection('scriptExecutors', function (ctx) {
             const list = sys.getList();
             const se = list.find(e => e.id === id);
             if (!se) return;
+            flushEditToModel();
             if (!se.params) se.params = [];
             se.params.push({ key: '', label: '', type: 'string', default: '' });
             saveSettings();
@@ -201,6 +220,7 @@ registerSection('scriptExecutors', function (ctx) {
             const list = sys.getList();
             const se = list.find(e => e.id === id);
             if (!se || !se.params) return;
+            flushEditToModel();
             se.params.splice(pi, 1);
             saveSettings();
             renderList();

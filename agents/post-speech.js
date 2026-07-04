@@ -9,7 +9,7 @@
  * Only outputs abstract intents for the Execution Engine to resolve.
  */
 import { CapabilityRegistry } from '../systems/capability-registry.js';
-import { extractJsonObject } from '../utils/json-utils.js';
+import { extractJsonObject, sanitizeJson } from '../utils/json-utils.js';
 
 // ST-native Handlebars template placeholders — preserved as-is during
 // renderPrompt so ST can substitute them later in its own pipeline.
@@ -148,7 +148,7 @@ export function createPostSpeechAgent({ renderPrompt, log }) {
             } catch (e) {
                 const extracted = extractJsonObject(raw);
                 if (extracted) {
-                    try { return JSON.parse(extracted); } catch (_) {}
+                    try { return JSON.parse(sanitizeJson(extracted)); } catch (_) {}
                 }
                 return null;
             }

@@ -170,7 +170,7 @@ registerSection('npcExport', function (ctx) {
         }
         const selected = [];
         $('.gd-npc-import-check:checked').each(function () {
-            selected.push($(this).data('name'));
+            selected.push($(this).attr('data-name'));
         });
         if (!selected.length && !$c('npc-import-template').prop('checked')) {
             toastr.warning(isZh() ? '请至少选择一个 NPC，或勾选导入 Prompt' : 'Select at least one NPC, or check "import prompt"');

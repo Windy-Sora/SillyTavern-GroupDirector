@@ -892,7 +892,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         llmSpokenSet = new Set();
         llmCursor = 0;
         roundSpeakerCount = 0;
-        roundInitialized = false; // allow fresh director eval on retry
+        roundInitialized = true; // reuse existing director decision as documented
         roundGenerateType = data?.type || 'normal';
         console.warn('[GroupDirector] Retry after takeover failure — reusing existing director plan');
         return;
@@ -2154,7 +2154,17 @@ jQuery(async () => {
         CapabilityRegistry.setEnabled = function (id, enabled) {
             _origSetCapEnabled(id, enabled);
             try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
+            try {
+                if (!settings._builtinCapEnabled) settings._builtinCapEnabled = {};
+                settings._builtinCapEnabled[id] = enabled;
+                saveSettingsDebounced();
+            } catch (_) { }
         };
+        // Restore built-in capability enabled states from previous session
+        const builtinCaps = settings._builtinCapEnabled || {};
+        for (const [id, enabled] of Object.entries(builtinCaps)) {
+            try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) { }
+        }
     }
     customPromptsSystem.initAll();
     // Warn about settings keys not covered by any config profile drawer

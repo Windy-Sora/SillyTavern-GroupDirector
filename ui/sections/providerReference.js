@@ -56,7 +56,7 @@ registerSection('providerReference', function (ctx) {
     function render() {
         const query = ($c('provider-ref-search').val() || '').toLowerCase().trim();
         const filtered = query
-            ? list.filter(e => e.placeholder.toLowerCase().includes(query) || e.name.toLowerCase().includes(query) || (isZh() ? e.descZh : e.descEn).toLowerCase().includes(query))
+            ? list.filter(e => e.placeholder.toLowerCase().includes(query) || e.name.toLowerCase().includes(query) || ((isZh() ? e.descZh : e.descEn) || '').toLowerCase().includes(query))
             : list;
 
         const $container = $('#gd-provider-ref-list');

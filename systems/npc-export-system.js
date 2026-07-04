@@ -183,8 +183,9 @@ export function createNpcExportSystem(deps) {
         }
 
         await saveNpcs();
-        log(`Imported ${applied} NPC(s)${templateImported ? ' + prompt' : ''}`);
-        return { applied, skipped: importNpcs.length - applied, templateImported };
+        const skipped = importData.npcs.length - applied; // includes NPCs excluded by selectedNames filter
+        log(`Imported ${applied} NPC(s), ${skipped} skipped${templateImported ? ' + prompt' : ''}`);
+        return { applied, skipped, templateImported };
     }
 
     async function loadPreset(name) {

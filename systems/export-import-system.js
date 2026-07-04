@@ -374,7 +374,11 @@ export function createExportImportSystem({
         if (groupCreated) parts.push(L('群组已创建', 'group created'));
         if (charFail + worldFail > 0) parts.push(L(`${charFail + worldFail} 跳过`, `${charFail + worldFail} skipped`));
 
-        toastr().success(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
+        if (charOk === 0 && charFail > 0) {
+            toastr().warning(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
+        } else {
+            toastr().success(L('导入完成', 'Import complete') + ' — ' + parts.join(', '));
+        }
         toastr().info(L('请刷新页面以查看导入的角色和群组', 'Please refresh the page to see imported characters and group'));
 
         log(`Import done: ${charOk} chars, ${worldOk} worlds, group=${groupCreated}` + (charFail + worldFail > 0 ? `, ${charFail + worldFail} skipped` : ''));

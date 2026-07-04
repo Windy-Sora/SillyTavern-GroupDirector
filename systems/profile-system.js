@@ -214,8 +214,8 @@ async function generateProfilesBatch(avatars) {
                 base.state = 'ready';
                 base.hash = currentHash;
             } else {
-                // Null means skipped (e.g. round active) — keep previous state, don't mark failed
-                if (base.state === 'pending' && existing && existing.state === 'ready') {
+                // Null means skipped (e.g. round active) — restore previous ready state
+                if (existing && existing.state === 'ready') {
                     base.state = 'ready';
                     base.profile = existing.profile;
                 }

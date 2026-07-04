@@ -169,13 +169,16 @@ export function createNpcSystem({
         }
     }
 
-    // Cache CSRF token
+    // Cache CSRF token with TTL
     let _csrfToken = null;
+    let _csrfTokenTime = 0;
+    const CSRF_TTL = 30 * 60 * 1000; // 30 minutes
     async function getCsrfToken() {
-        if (_csrfToken) return _csrfToken;
+        if (_csrfToken && (Date.now() - _csrfTokenTime) < CSRF_TTL) return _csrfToken;
         const resp = await fetch('/csrf-token');
         const data = await resp.json();
         _csrfToken = data.token;
+        _csrfTokenTime = Date.now();
         return _csrfToken;
     }
 

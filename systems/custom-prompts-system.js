@@ -201,9 +201,7 @@ export function createCustomPromptsSystem(deps) {
         const existingNames = new Set(list.map(e => e.name));
         let added = 0;
         let overwritten = 0;
-
-        // Detect conflicts
-        const conflicts = data.prompts.filter(p => existingNames.has(p.name));
+        const actualConflicts = [];
 
         for (const p of data.prompts) {
             if (!p.name || !NAME_RE.test(p.name)) continue;
@@ -219,8 +217,9 @@ export function createCustomPromptsSystem(deps) {
                     existing.enabled = p.enabled !== false;
                     syncOne(existing);
                     overwritten++;
+                } else {
+                    actualConflicts.push(p.name);
                 }
-                // else: skip conflicting ones
             } else {
                 const entry = { id: genId(), name: p.name, content: p.content || '', enabled: p.enabled !== false };
                 list.push(entry);
@@ -230,7 +229,7 @@ export function createCustomPromptsSystem(deps) {
         }
         saveSettings();
         log(`Imported custom prompts: ${added} added, ${overwritten} overwritten`);
-        return { added, overwritten, conflicts: conflicts.map(p => p.name) };
+        return { added, overwritten, conflicts: actualConflicts };
     }
 
     return { getList, add, update, remove, toggle, initAll, validateName, hasSelfReference, exportPrompts, parseImportFile, importPrompts, setMasterEnabled };

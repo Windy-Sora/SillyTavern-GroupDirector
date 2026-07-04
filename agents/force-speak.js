@@ -22,7 +22,7 @@ export function createForceSpeakAgent({
         pipeline: {
             async parse(raw, ctx) {
                 const parsed = parseLlmResponse(raw, log);
-                if (!parsed || !Array.isArray(parsed.speakers)) return null;
+                if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) return null;
                 // Convert LLM-returned name to avatar (same pattern as director agent)
                 const speaker = parsed.speakers[0];
                 const match = matchCharacterByName(speaker, ctx.enabledMembers);
