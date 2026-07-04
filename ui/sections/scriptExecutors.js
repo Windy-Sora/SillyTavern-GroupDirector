@@ -12,7 +12,6 @@ registerSection('scriptExecutors', function (ctx) {
     const $list = $('#gd-se-list');
 
     function renderList() {
-        flushEditToModel();
         const list = sys.getList();
         if (!list.length) {
             $list.html(`<small style="color:var(--grey70a);">${L('暂无脚本执行器', 'No script executors')}</small>`);
@@ -134,6 +133,7 @@ registerSection('scriptExecutors', function (ctx) {
         // Toggle
         $list.find('.gd-se-toggle-btn').off('click').on('click', function () {
             const id = $(this).data('id');
+            flushEditToModel();
             sys.toggle(id);
             renderList();
         });
@@ -176,6 +176,7 @@ registerSection('scriptExecutors', function (ctx) {
         $list.find('.gd-se-del-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             if (!await callGenericPopup(L('确定删除此脚本执行器？', 'Delete this script executor?'), POPUP_TYPE.CONFIRM)) return;
+            flushEditToModel();
             sys.remove(id);
             renderList();
         });

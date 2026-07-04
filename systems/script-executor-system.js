@@ -175,8 +175,12 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             traceEntry.stages.push(stage);
         }
 
-        // Write back to live event for downstream consumers
+        // Write back to live event for downstream consumers.
+        // Clear-then-assign so delete operations in workingDecision propagate.
         if (event.decision && workingDecision) {
+            for (const key of Object.keys(event.decision)) {
+                delete event.decision[key];
+            }
             Object.assign(event.decision, workingDecision);
         }
 

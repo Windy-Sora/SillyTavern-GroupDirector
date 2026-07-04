@@ -133,6 +133,7 @@ registerSection('providerReference', function (ctx) {
         if (!name || !name.trim()) return;
         const placeholder = prompt(isZh() ? '占位符（如 {{myProvider}}）：' : 'Placeholder (e.g. {{myProvider}}):');
         if (!placeholder || !placeholder.trim()) return;
+        const desc = prompt(isZh() ? '描述：' : 'Description:');
         if (desc === null) return;
 
         list.push({

@@ -165,16 +165,14 @@ registerSection('ledger', function (ctx) {
                         : `Entry count mismatch (was ${snapshotLen}, now ${parsed.length}). Raw mode does not support add/remove. Use card mode.`);
                 }
                 const history = getDirectorHistory();
-                // Use snapshot length for indexing — protects against ledger growth during edit
                 const historyLen = history.length;
-                const offset = historyLen - snapshotLen;
-                if (offset < 0) {
+                if (historyLen < snapshotLen) {
                     throw new Error(settings.lang === 'zh'
                         ? `条目数量异常：当前 ${historyLen} 条，快照 ${snapshotLen} 条。请刷新重试。`
                         : `Entry count anomaly: current ${historyLen}, snapshot ${snapshotLen}. Refresh and retry.`);
                 }
                 for (let i = 0; i < parsed.length; i++) {
-                    const realIndex = offset + (snapshotLen - 1 - i); // newest-first → chronological, anchored to snapshotted range
+                    const realIndex = snapshotLen - 1 - i; // newest-first → chronological (push() appends, indices stable)
                     parsed[i]._anchorDate = null;
                     parsed[i]._chatLength = 0;
                     await updateEntry(realIndex, parsed[i]);
