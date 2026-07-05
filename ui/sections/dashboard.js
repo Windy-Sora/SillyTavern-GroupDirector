@@ -196,6 +196,7 @@ registerSection('dashboard', function (ctx) {
                 $sel.append($grp);
             }
             if (current) $sel.val(current);
+            if (selId === 'gd-dash-cfg-preset') $sel.trigger('change');
         }
     }
 
@@ -528,7 +529,7 @@ registerSection('dashboard', function (ctx) {
         const rawValue = $sel.val();
         if (!rawValue || !rawValue.startsWith(PROF_PREFIX)) return;
         const id = rawValue.slice(PROF_PREFIX.length);
-        const profile = ctx.configProfileSystem?.getProfiles?.().find(p => p.id === id);
+        const profile = (configProfileSystem.getProfiles() || []).find(p => p.id === id);
         const name = profile?.name || id;
         const ok = await callGenericPopup(
             (lang === 'zh' ? `确定删除配置档「${name}」？此操作不可撤销。` : `Delete config profile "${name}"? This cannot be undone.`),
@@ -536,7 +537,7 @@ registerSection('dashboard', function (ctx) {
         );
         if (!ok) return;
         try {
-            ctx.configProfileSystem?.deleteProfile(id);
+            configProfileSystem.deleteProfile(id);
             $sel.val('');
             $('#gd-dash-preset-delete').hide();
             refreshPresetSelector();
@@ -595,15 +596,17 @@ registerSection('dashboard', function (ctx) {
     });
 
     // ── Dashboard: save config profile ────────────────────────
-    $('#gd-dash-save-cfg').on('click', async () => {
+    $('#gd-dash-save-cfg').on('click', async function () {
+        const btn = $(this); if (btn.prop('disabled')) return;
         const lang = settings.lang || 'zh';
+        btn.prop('disabled', true);
         const name = await callGenericPopup(
             lang === 'zh' ? '<b>保存配置档</b><br>请输入配置档名称：' : '<b>Save Config Profile</b><br>Enter profile name:',
             POPUP_TYPE.INPUT,
             '',
             { placeholder: lang === 'zh' ? '例如：我的RP配置' : 'e.g. My RP Config' },
         );
-        if (!name || !name.trim()) return;
+        if (!name || !name.trim()) { btn.prop('disabled', false); return; }
         const desc = '';
         const allDrawers = {
             directorLlm: true, worldBooks: true, profilesAndData: true,
@@ -616,7 +619,7 @@ registerSection('dashboard', function (ctx) {
             toastr.success(lang === 'zh' ? `配置档「${name.trim()}」已保存` : `Config profile "${name.trim()}" saved`);
         } catch (e) {
             toastr.error((lang === 'zh' ? '保存失败: ' : 'Save failed: ') + e.message);
-        }
+        } finally { btn.prop('disabled', false); }
     });
 
     // ── Dashboard: import config profile ────────────────────────
