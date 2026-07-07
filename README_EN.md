@@ -5,6 +5,8 @@
 - English: [README_EN.md](README_EN.md)
 - 中文: [README.md](README.md)
 
+> ⚠️ **This is a development version and may be unstable. For the stable version, please visit: [SillyTavern-GroupWorld](https://github.com/Windy-Sora/SillyTavern-GroupWorld)**
+
 ---
 
 > A programmable runtime for SillyTavern group chat scenarios

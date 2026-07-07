@@ -5,6 +5,8 @@
 - English: [README_EN.md](README_EN.md)
 - 中文：当前页面
 
+> ⚠️ **此版本为开发版，可能存在不稳定问题。如需稳定版，请访问：[SillyTavern-GroupWorld](https://github.com/Windy-Sora/SillyTavern-GroupWorld)**
+
 ---
 
 > 一个面向开放式叙事的可编程运行时（Programmable Narrative Runtime）
