@@ -31,9 +31,9 @@ export function createExportImportSystem({
         script.src = JSZIP_PATH;
         document.head.appendChild(script);
         await new Promise((resolve, reject) => {
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('JSZip script load failed'));
-            setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+            const tid = setTimeout(() => reject(new Error('JSZip script load timeout')), 10000);
+            script.onload = () => { clearTimeout(tid); resolve(); };
+            script.onerror = () => { clearTimeout(tid); reject(new Error('JSZip script load failed')); };
         });
         if (window.JSZip) { JSZip = window.JSZip; return; }
         throw new Error('JSZip not available');
