@@ -8,7 +8,7 @@ import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, s
 import { power_user } from '../../../power-user.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, unregisterProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
-import { renderPrompt } from './prompt-renderer.js';
+import { renderPrompt, setProviderTimeoutDefault } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
@@ -91,6 +91,8 @@ delete loaded.directorLlmPrompt;
 let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 settings.scoreWeights = Object.assign({}, DEFAULT_SETTINGS.scoreWeights, loaded.scoreWeights || {});
 extension_settings[EXT_KEY] = settings;
+// Wire the live provider timeout default into the renderer (kept in sync in saveSettings).
+setProviderTimeoutDefault(settings.providerTimeoutMs);
 
 // ─── Runtime State ────────────────────────────────────────────────────
 let roundScores = {};               // { avatar: score }
@@ -164,6 +166,8 @@ async function getScriptForChar(charName, extraContext) {
 
 function saveSettings() {
     extension_settings[EXT_KEY] = settings;
+    // Keep the renderer's provider timeout default in sync with GUI changes.
+    setProviderTimeoutDefault(settings.providerTimeoutMs);
     saveSettingsDebounced();
 }
 

@@ -45,6 +45,7 @@ export function createDirectorAgent({
                     maxPasses: settings.templateMaxPasses ?? 5,
                     recursive: settings.templateRecursive ?? true,
                     debugPlaceholders: settings.templateDebugPlaceholders ?? false,
+                    signal: settings.call?.signal,
                     passthrough: ['User','user','char','original','anchorBefore','anchorAfter','system','persona','wiBefore','loreBefore','wiAfter','loreAfter','mesExamples','mesExamplesRaw','trim','description','personality','scenario'],
                 });
 

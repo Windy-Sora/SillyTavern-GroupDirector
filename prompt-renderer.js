@@ -3,6 +3,15 @@ import { parsePath, resolvePath, formatValue } from './utils/path-resolver.js';
 import { roundCounterNext, promptCounterNext, promptCounterReset } from './utils/counter.js';
 import { unescapeKnowledge } from './assets/providers/knowledge.js';
 
+// Default per-provider render timeout (ms). Overridden by provider.timeoutMs or
+// the providerTimeoutMs render option. 0 disables the timeout for a provider.
+// index.js wires this to settings.providerTimeoutMs via setProviderTimeoutDefault().
+let providerTimeoutDefault = 10000;
+export function setProviderTimeoutDefault(ms) {
+    const n = Number(ms);
+    if (Number.isFinite(n) && n >= 0) providerTimeoutDefault = n;
+}
+
 /**
  * Render a template by executing all registered providers once,
  * caching their results, then replacing all placeholders in passes:
@@ -20,7 +29,7 @@ import { unescapeKnowledge } from './assets/providers/knowledge.js';
  * value (0, 1, 2...). Resets on GROUP_WRAPPER_STARTED.
  */
 export async function renderPrompt(template, context, options = {}) {
-    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough } = options;
+    const { maxPasses: maxPassesOption, recursive, debugPlaceholders, locals, onCache, passthrough, signal, providerTimeoutMs } = options;
     const maxPasses = recursive === false
         ? 1
         : Math.max(1, Math.min(maxPassesOption ?? 5, 1000));
@@ -39,20 +48,72 @@ export async function renderPrompt(template, context, options = {}) {
         return `${RAW_MARKER}${idx}\x00`;
     });
 
-    // ── Phase 1: execute every provider, cache normalized results ──
+    // ── Phase 1: execute providers in parallel, each with its own timeout + abort,
+    //    cache normalized results. Per-provider errors/timeouts degrade to empty
+    //    (siblings survive); a user abort (signal) propagates to cancel the render.
     const cache = Object.create(null);
+    const callTimeout = providerTimeoutMs ?? providerTimeoutDefault;
 
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const enabledProviders = [];
     for (const provider of providers.values()) {
         if (typeof provider.enabled === 'function' ? !provider.enabled(context) : provider.enabled === false) continue;
+        enabledProviders.push(provider);
+    }
+
+    const results = await Promise.allSettled(enabledProviders.map(async (provider) => {
+        // Per-provider timeout: provider.timeoutMs (declared) > call option > global default.
+        const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
+        // One AbortController per provider: fires on timeout OR user-stop (linked to `signal`).
+        const ac = new AbortController();
+        let onUserAbort = null;
+        if (signal) {
+            if (signal.aborted) ac.abort();
+            else { onUserAbort = () => ac.abort(); signal.addEventListener('abort', onUserAbort, { once: true }); }
+        }
+        let timeoutId = null;
+        if (timeoutMs > 0) {
+            timeoutId = setTimeout(() => ac.abort(new DOMException(`Provider "${provider.id}" timeout (${timeoutMs}ms)`, 'TimeoutError')), timeoutMs);
+        }
+        // Forced-abort promise: rejects when ac fires, so a provider that ignores its
+        // signal is still cut. Listener is removed in finally to allow GC.
+        let onAbort = null;
+        const abortP = new Promise((_, reject) => {
+            if (ac.signal.aborted) reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+            else {
+                onAbort = () => reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                ac.signal.addEventListener('abort', onAbort, { once: true });
+            }
+        });
         try {
-            const raw = await provider.render(context);
+            // Cooperative: ac.signal passed to render; a provider may honor it (e.g. fetch).
+            const raw = await Promise.race([provider.render(context, ac.signal), abortP]);
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
                 : { content: raw ?? '', data: null };
-            cache[provider.id] = normalized;
+            return { id: provider.id, normalized };
         } catch (e) {
-            console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
-            cache[provider.id] = { content: '', data: null };
+            // User-stop: propagate so the whole renderPrompt aborts.
+            if (signal?.aborted || e?.name === 'AbortError') throw e;
+            // Timeout or provider error: degrade to empty, keep siblings alive.
+            const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
+            console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
+            return { id: provider.id, normalized: { content: '', data: null } };
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (onUserAbort) signal.removeEventListener('abort', onUserAbort);
+            if (onAbort) ac.signal.removeEventListener('abort', onAbort);
+        }
+    }));
+
+    for (const r of results) {
+        if (r.status === 'fulfilled') {
+            cache[r.value.id] = r.value.normalized;
+        } else {
+            // Rejection only happens on user-stop (everything else is caught above).
+            if (signal?.aborted || r.reason?.name === 'AbortError') throw r.reason;
+            console.warn('[GroupDirector] Provider unexpected rejection:', r.reason);
         }
     }
 
