@@ -74,7 +74,7 @@ export async function renderPrompt(template, context, options = {}) {
                 if (signal) racers.push(new Promise((_, reject) => {
                     if (signal.aborted) { reject(mkAbortErr()); return; }
                     onAbort = () => reject(mkAbortErr());
-                    signal.addEventListener('abort', onAbort, { once: true });
+                    signal.addEventListener('abort', onAbort);
                 }));
                 if (timeoutMs > 0) racers.push(new Promise((_, reject) => { timeoutId = setTimeout(() => { timeoutId = null; reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)); }, timeoutMs); }));
                 raw = await Promise.race(racers);

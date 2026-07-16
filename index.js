@@ -291,7 +291,7 @@ const memoryExportSystem = createMemoryExportSystem({
 
 // ─── Config Profile System ──────────────────────────────────────────
 const configProfileSystem = createConfigProfileSystem({
-    settings, EXT_KEY, extension_settings, saveSettingsDebounced, log,
+    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, log,
 });
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 

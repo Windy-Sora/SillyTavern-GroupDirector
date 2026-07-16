@@ -125,7 +125,7 @@ function stripApiKeys(configs) {
 // ─── Factory ─────────────────────────────────────────────────────────
 
 export function createConfigProfileSystem(deps) {
-    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, log } = deps;
+    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, log } = deps;
 
     function getProfiles() {
         if (!settings.configProfiles) settings.configProfiles = [];
@@ -134,6 +134,7 @@ export function createConfigProfileSystem(deps) {
 
     function saveAll() {
         extension_settings[EXT_KEY] = settings;
+        if (setProviderTimeoutDefault) setProviderTimeoutDefault(settings.providerTimeoutMs);
         saveSettingsDebounced();
     }
 
