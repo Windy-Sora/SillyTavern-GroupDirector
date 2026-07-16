@@ -168,7 +168,7 @@ export async function withTimeout(promise, ms, signal) {
     let timer;
     let onAbort = null;
     const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
+        timer = setTimeout(() => { const e = new Error(`Request timed out after ${ms}ms`); e.name = 'TimeoutError'; reject(e); }, ms);
     });
     const abort = signal
         ? new Promise((_, reject) => {
