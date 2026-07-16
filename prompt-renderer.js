@@ -65,16 +65,18 @@ export async function renderPrompt(template, context, options = {}) {
     }
 
     const results = await Promise.allSettled(enabledProviders.map(provider => (async () => {
+        let timeoutId, onAbort;
         try {
             const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
             let raw;
             if (timeoutMs > 0 || signal) {
                 const racers = [provider.render(context)];
                 if (signal) racers.push(new Promise((_, reject) => {
-                    if (signal.aborted) reject(mkAbortErr());
-                    else signal.addEventListener('abort', () => reject(mkAbortErr()), { once: true });
+                    if (signal.aborted) { reject(mkAbortErr()); return; }
+                    onAbort = () => reject(mkAbortErr());
+                    signal.addEventListener('abort', onAbort, { once: true });
                 }));
-                if (timeoutMs > 0) racers.push(new Promise((_, reject) => setTimeout(() => reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs)));
+                if (timeoutMs > 0) racers.push(new Promise((_, reject) => { timeoutId = setTimeout(() => { timeoutId = null; reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)); }, timeoutMs); }));
                 raw = await Promise.race(racers);
             } else {
                 raw = await provider.render(context);
@@ -88,6 +90,9 @@ export async function renderPrompt(template, context, options = {}) {
             const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
             console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
             return { id: provider.id, normalized: { content: '', data: null } };
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (onAbort) { signal.removeEventListener('abort', onAbort); onAbort = null; }
         }
     })()));
 
