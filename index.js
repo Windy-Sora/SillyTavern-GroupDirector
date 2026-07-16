@@ -1540,13 +1540,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         if (postSpeechMessageAbortController) {
             const wasAborted = postSpeechMessageAbortController.signal.aborted;
             postSpeechMessageAbortController = null;
-            if (!wasAborted) {
-                if (typeof toastr !== 'undefined') {
-                    toastr.info('PostSpeech message analysis complete', '', { timeOut: 2000 });
-                }
-            } else {
-                log('PostSpeech message aborted by user');
-            }
+            if (wasAborted) log('PostSpeech message aborted by user');
         }
     }
 });

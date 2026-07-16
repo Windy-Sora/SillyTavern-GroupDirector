@@ -62,6 +62,13 @@ export async function renderPrompt(template, context, options = {}) {
         enabledProviders.push(provider);
     }
 
+    // Shared base context so that inter-provider caches (e.g. characters provider
+    // writing _profilesText → character-profiles provider reading it by reference)
+    // survive the per-provider __signal override. Without signal the original
+    // `context` object is shared; with signal each provider gets a copy that shares
+    // `ctxBase`'s prototype chain for non-signal writes.
+    const ctxBase = signal ? { ...context, __signal: null } : context;
+
     const results = await Promise.allSettled(enabledProviders.map(async (provider) => {
         try {
             // Per-provider timeout: provider.timeoutMs (declared) > call option > global default.
@@ -87,9 +94,10 @@ export async function renderPrompt(template, context, options = {}) {
                     ac.signal.addEventListener('abort', onAbort, { once: true });
                 }
             });
-            // Cooperative signal via ctx.__signal (backward-compatible — 2nd arg kept as
-            // before: undefined for legacy providers that used `render: (ctx, opts) => {}`).
-            const ctxWithSignal = { ...context, __signal: ac.signal };
+            // Per-provider __signal for cooperative abort (e.g. fetch). ctxBase is
+            // shared across providers so cross-provider reference-caches like
+            // _profilesText still work for the common no-signal case.
+            const ctxWithSignal = signal ? { ...ctxBase, __signal: ac.signal } : ctxBase;
             const raw = await Promise.race([provider.render(ctxWithSignal, undefined), abortP]);
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
