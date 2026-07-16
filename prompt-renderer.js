@@ -12,6 +12,10 @@ export function setProviderTimeoutDefault(ms) {
     if (Number.isFinite(n) && n >= 0) providerTimeoutDefault = n;
 }
 
+// Lightweight typed errors (avoid DOMException dependency).
+function mkAbortErr()  { const e = new Error('Aborted'); e.name = 'AbortError';  return e; }
+function mkTimeoutErr(msg) { const e = new Error(msg); e.name = 'TimeoutError'; return e; }
+
 /**
  * Render a template by executing all registered providers once,
  * caching their results, then replacing all placeholders in passes:
@@ -54,7 +58,7 @@ export async function renderPrompt(template, context, options = {}) {
     const cache = Object.create(null);
     const callTimeout = providerTimeoutMs ?? providerTimeoutDefault;
 
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    if (signal?.aborted) throw mkAbortErr();
 
     const enabledProviders = [];
     for (const provider of providers.values()) {
@@ -75,15 +79,16 @@ export async function renderPrompt(template, context, options = {}) {
             }
             let timeoutId = null;
             if (timeoutMs > 0) {
-                timeoutId = setTimeout(() => ac.abort(new DOMException(`Provider "${provider.id}" timeout (${timeoutMs}ms)`, 'TimeoutError')), timeoutMs);
+                timeoutId = setTimeout(() => ac.abort(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs);
             }
             // Forced-abort promise: rejects when ac fires, so a provider that ignores its
             // signal is still cut. Listener is removed in finally to allow GC.
             let onAbort = null;
             const abortP = new Promise((_, reject) => {
-                if (ac.signal.aborted) reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                const err = ac.signal.aborted ? (ac.signal.reason || mkAbortErr()) : null;
+                if (err) reject(err);
                 else {
-                    onAbort = () => reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                    onAbort = () => reject(ac.signal.reason || mkAbortErr());
                     ac.signal.addEventListener('abort', onAbort, { once: true });
                 }
             });
