@@ -36,6 +36,7 @@ const DRAWER_KEYS = {
         'llmScriptContinuityHistoryWrapper',
         'llmWorldInfoEnabled', 'llmWorldInfoWrapper',
         'templateMaxPasses', 'templateRecursive', 'templateDebugPlaceholders',
+        'providerTimeoutMs',
         'knowledgeText',
         'forceSpeakMode', 'forceSpeakPrompt',
     ],
