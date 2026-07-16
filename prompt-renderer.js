@@ -76,7 +76,7 @@ export async function renderPrompt(template, context, options = {}) {
                     onAbort = () => reject(mkAbortErr());
                     signal.addEventListener('abort', onAbort);
                 }));
-                if (timeoutMs > 0) racers.push(new Promise((_, reject) => { timeoutId = setTimeout(() => { timeoutId = null; reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)); }, timeoutMs); }));
+                if (timeoutMs > 0) racers.push(new Promise((_, reject) => { timeoutId = setTimeout(() => reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs); }));
                 raw = await Promise.race(racers);
             } else {
                 raw = await provider.render(context);
@@ -91,7 +91,7 @@ export async function renderPrompt(template, context, options = {}) {
             console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
             return { id: provider.id, normalized: { content: '', data: null } };
         } finally {
-            if (timeoutId) clearTimeout(timeoutId);
+            clearTimeout(timeoutId);
             if (onAbort) { signal.removeEventListener('abort', onAbort); onAbort = null; }
         }
     })()));

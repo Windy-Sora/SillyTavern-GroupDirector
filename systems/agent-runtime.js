@@ -164,7 +164,7 @@ export async function managedCall(caller, prompt, callConfig = {}) {
     throw lastError;
 }
 
-async function withTimeout(promise, ms, signal) {
+export async function withTimeout(promise, ms, signal) {
     let timer;
     let onAbort = null;
     const timeout = new Promise((_, reject) => {
