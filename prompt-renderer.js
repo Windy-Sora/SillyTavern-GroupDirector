@@ -52,9 +52,11 @@ export async function renderPrompt(template, context, options = {}) {
         return `${RAW_MARKER}${idx}\x00`;
     });
 
-    // ── Phase 1: execute providers in parallel, each with optional timeout ──
+    // ── Phase 1: execute providers in parallel, each with optional timeout + abort ──
     const cache = Object.create(null);
     const callTimeout = providerTimeoutMs ?? providerTimeoutDefault;
+
+    if (signal?.aborted) throw mkAbortErr();
 
     const enabledProviders = [];
     for (const provider of providers.values()) {
@@ -66,11 +68,14 @@ export async function renderPrompt(template, context, options = {}) {
         try {
             const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
             let raw;
-            if (timeoutMs > 0) {
-                raw = await Promise.race([
-                    provider.render(context),
-                    new Promise((_, reject) => setTimeout(() => reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs))
-                ]);
+            if (timeoutMs > 0 || signal) {
+                const racers = [provider.render(context)];
+                if (signal) racers.push(new Promise((_, reject) => {
+                    if (signal.aborted) reject(mkAbortErr());
+                    else signal.addEventListener('abort', () => reject(mkAbortErr()), { once: true });
+                }));
+                if (timeoutMs > 0) racers.push(new Promise((_, reject) => setTimeout(() => reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs)));
+                raw = await Promise.race(racers);
             } else {
                 raw = await provider.render(context);
             }
@@ -79,6 +84,7 @@ export async function renderPrompt(template, context, options = {}) {
                 : { content: raw ?? '', data: null };
             return { id: provider.id, normalized };
         } catch (e) {
+            if (signal?.aborted || e?.name === 'AbortError') throw e;
             const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
             console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
             return { id: provider.id, normalized: { content: '', data: null } };
@@ -87,6 +93,7 @@ export async function renderPrompt(template, context, options = {}) {
 
     for (const r of results) {
         if (r.status === 'fulfilled') cache[r.value.id] = r.value.normalized;
+        else { if (signal?.aborted || r.reason?.name === 'AbortError') throw r.reason; }
     }
 
     // Inject local resolvers — per-call placeholder overrides that don't
