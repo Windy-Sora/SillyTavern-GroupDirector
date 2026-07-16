@@ -63,32 +63,34 @@ export async function renderPrompt(template, context, options = {}) {
     }
 
     const results = await Promise.allSettled(enabledProviders.map(async (provider) => {
-        // Per-provider timeout: provider.timeoutMs (declared) > call option > global default.
-        const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
-        // One AbortController per provider: fires on timeout OR user-stop (linked to `signal`).
-        const ac = new AbortController();
-        let onUserAbort = null;
-        if (signal) {
-            if (signal.aborted) ac.abort();
-            else { onUserAbort = () => ac.abort(); signal.addEventListener('abort', onUserAbort, { once: true }); }
-        }
-        let timeoutId = null;
-        if (timeoutMs > 0) {
-            timeoutId = setTimeout(() => ac.abort(new DOMException(`Provider "${provider.id}" timeout (${timeoutMs}ms)`, 'TimeoutError')), timeoutMs);
-        }
-        // Forced-abort promise: rejects when ac fires, so a provider that ignores its
-        // signal is still cut. Listener is removed in finally to allow GC.
-        let onAbort = null;
-        const abortP = new Promise((_, reject) => {
-            if (ac.signal.aborted) reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
-            else {
-                onAbort = () => reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
-                ac.signal.addEventListener('abort', onAbort, { once: true });
-            }
-        });
         try {
-            // Cooperative: ac.signal passed to render; a provider may honor it (e.g. fetch).
-            const raw = await Promise.race([provider.render(context, ac.signal), abortP]);
+            // Per-provider timeout: provider.timeoutMs (declared) > call option > global default.
+            const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
+            // One AbortController per provider: fires on timeout OR user-stop (linked to `signal`).
+            const ac = new AbortController();
+            let onUserAbort = null;
+            if (signal) {
+                if (signal.aborted) ac.abort();
+                else { onUserAbort = () => ac.abort(); signal.addEventListener('abort', onUserAbort, { once: true }); }
+            }
+            let timeoutId = null;
+            if (timeoutMs > 0) {
+                timeoutId = setTimeout(() => ac.abort(new DOMException(`Provider "${provider.id}" timeout (${timeoutMs}ms)`, 'TimeoutError')), timeoutMs);
+            }
+            // Forced-abort promise: rejects when ac fires, so a provider that ignores its
+            // signal is still cut. Listener is removed in finally to allow GC.
+            let onAbort = null;
+            const abortP = new Promise((_, reject) => {
+                if (ac.signal.aborted) reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                else {
+                    onAbort = () => reject(ac.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                    ac.signal.addEventListener('abort', onAbort, { once: true });
+                }
+            });
+            // Cooperative signal via ctx.__signal (backward-compatible — 2nd arg kept as
+            // before: undefined for legacy providers that used `render: (ctx, opts) => {}`).
+            const ctxWithSignal = { ...context, __signal: ac.signal };
+            const raw = await Promise.race([provider.render(ctxWithSignal, undefined), abortP]);
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
                 : { content: raw ?? '', data: null };

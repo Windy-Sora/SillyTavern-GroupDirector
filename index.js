@@ -122,6 +122,7 @@ let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
 let postSpeechAbortController = null;           // AbortController for PostSpeech round LLM call
+let postSpeechMessageAbortController = null;    // AbortController for PostSpeech per-message LLM call
 let directorAbortController = null;             // AbortController for Director + ForceSpeak LLM calls
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
@@ -1388,6 +1389,10 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
         postSpeechAbortController.abort();
         log('PostSpeech round aborted by user');
     }
+    if (postSpeechMessageAbortController) {
+        postSpeechMessageAbortController.abort();
+        log('PostSpeech message aborted by user');
+    }
     if (directorAbortController) {
         directorAbortController.abort();
         log('Director LLM aborted by user');
@@ -1442,6 +1447,10 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         toastr.info('PostSpeech analyzing...', '', { timeOut: 10000 });
     }
 
+    // Per-message PostSpeech uses its own AbortController so user-Stop can cut
+    // the render prompt (including slow providers) mid-flight.
+    postSpeechMessageAbortController = new AbortController();
+
     try {
         const charName = msg.name || '';
         const char = characters.find(c => c.name === charName);
@@ -1461,6 +1470,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         const callCfg = {
             ...agentConfig.call,
+            signal: postSpeechMessageAbortController.signal,
             onRetry: ({ attempt, maxRetries }) => {
                 log(`PostSpeech retry ${attempt}/${maxRetries}`);
             },
@@ -1526,6 +1536,18 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
     } catch (e) {
         // PostSpeech failure never interrupts the conversation
         log('PostSpeech skipped:', e.message);
+    } finally {
+        if (postSpeechMessageAbortController) {
+            const wasAborted = postSpeechMessageAbortController.signal.aborted;
+            postSpeechMessageAbortController = null;
+            if (!wasAborted) {
+                if (typeof toastr !== 'undefined') {
+                    toastr.info('PostSpeech message analysis complete', '', { timeOut: 2000 });
+                }
+            } else {
+                log('PostSpeech message aborted by user');
+            }
+        }
     }
 });
 
@@ -2220,6 +2242,8 @@ eventSource.on(event_types.APP_READY, async () => {
     // 暴露重载入口：应用配置档后无需刷新页面即可生效（重渲染设置面板 + 重注册 user providers）
     window.__gdReloadExtension = async () => {
         await reloadSettingsUI(deps);
+        // Keep the renderer's provider timeout default in sync after hot-reload.
+        setProviderTimeoutDefault(extension_settings[EXT_KEY]?.providerTimeoutMs ?? 10000);
         customPromptsSystem.initAll();
         const ud = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
         userProviderLoader.restoreAll('provider', ud);
