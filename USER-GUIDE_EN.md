@@ -219,6 +219,7 @@ ST's native force-speak feature requires plugin adaptation to avoid timeline cor
 | Recursive rendering | Continue parsing `{{...}}` inside placeholder outputs |
 | Max recursive passes | Prevent infinite loops. Recommended: 5 |
 | Debug placeholders | Preserve unrecognized placeholders for troubleshooting |
+| Provider render timeout (ms) | Per-provider render time ceiling. Default: 10000 (10s), 0 = unlimited. Timed-out providers degrade to empty content |
 | Character description control | Full inclusion / sliced truncation (recommended: 200 chars) |
 
 #### Director Script

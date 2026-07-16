@@ -209,7 +209,15 @@ registerProvider({
 });
 ```
 
-### 3.2 Registered Providers (33 built-in + N Custom Agent dynamic registrations)
+### 3.2 Render Behavior (v0.6.1+)
+
+- **Parallel execution** — Phase 1 runs all providers via `Promise.allSettled` concurrently. One provider's timeout/error does not affect siblings.
+- **Per-provider timeout** — Default 10s (`settings.providerTimeoutMs`, GUI-adjustable). Providers may declare `timeoutMs` to override (priority: `provider.timeoutMs` > call option > global default). Set to 0 to disable. Timeouts log `[GroupDirector] Provider "xxx" timed out` in Console.
+- **Signal/abort** — `renderPrompt` accepts a `signal` option (wired from Director/ForceSpeak/PostSpeech agents). User-Stop aborts in-flight providers with AbortError.
+- **Error isolation** — Timed-out or throwing providers degrade to empty `{content:'', data:null}`. Sibling providers are unaffected.
+- **World-book scanner dedup** — `{{worldBooks}}` and `{{worldBookImportance}}` share an in-flight promise dedup so parallel Phase 1 does not duplicate `loadWorldInfo` calls.
+
+### 3.3 Registered Providers (33 built-in + N Custom Agent dynamic registrations)
 
 | Provider | Placeholder | Description |
 |----------|--------|------|
@@ -247,7 +255,7 @@ registerProvider({
 | `importedCritique` | `{{importedCritique}}` | Imported critiques (independent storage) |
 | `test` | `{{test}}` | Template syntax test |
 
-### 3.3 Coding Rules
+### 3.4 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters
@@ -261,7 +269,7 @@ registerProvider({
 
 ```
 Phase 0   — {[{...}]} passthrough slots → sentinel replacement
-Phase 1   — Execute all Providers, cache to cache[id] = { content, data }
+Phase 1   — Execute all Providers in parallel (Promise.allSettled + per-provider timeout + signal abort), cache to cache[id] = { content, data }
 Phase 1.5 — Block loops {{#provider:path}}...{{/provider}}
 Phase 2   — Simple placeholders {{name}} → cache[id].content
 Phase 3   — Path queries {{?name:path|fallback}}

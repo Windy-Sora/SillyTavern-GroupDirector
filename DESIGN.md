@@ -208,7 +208,15 @@ registerProvider({
 });
 ```
 
-### 3.2 已注册 Provider（33 个内置 + N 个自定义 Agent 动态注册）
+### 3.2 渲染行为 (v0.6.1+)
+
+- **并行执行** — Phase 1 中所有 Provider 的 `render()` 通过 `Promise.allSettled` 同时运行，非顺序。单个 Provider 的超时/报错不影响其他 Provider。
+- **每 Provider 超时** — 默认 10s（`settings.providerTimeoutMs`，GUI 可调）。Provider 可在注册时声明 `timeoutMs` 覆盖（优先级：`provider.timeoutMs` > 调用 option > 全局默认）。设为 0 禁用超时。超时后在 Console 输出 `[GroupDirector] Provider "xxx" timed out`。
+- **信号中断** — `renderPrompt` 接受 `signal` option（Director/ForceSpeak/PostSpeech agent 已接入）。用户按 Stop 时中断正在渲染的 Provider 并传播 AbortError。
+- **错误隔离** — 超时或 `render()` 抛错的 Provider 降级为空内容 `{content:'', data:null}`，同批次其他 Provider 不受影响。
+- **世界书 Provider 并发安全** — `{{worldBooks}}` 和 `{{worldBookImportance}}` 共享 in-flight promise dedup，并行时不会重复调用 `loadWorldInfo`。
+
+### 3.3 已注册 Provider（33 个内置 + N 个自定义 Agent 动态注册）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -260,7 +268,7 @@ registerProvider({
 
 ```
 Phase 0   — {[{...}]} 直通槽位 → 哨兵替换
-Phase 1   — 执行所有 Provider，缓存到 cache[id] = { content, data }
+Phase 1   — 并行执行所有 Provider（Promise.allSettled + per-provider 超时 + signal 中断），缓存到 cache[id] = { content, data }
 Phase 1.5 — 块循环 {{#provider:path}}...{{/provider}}
 Phase 2   — 简单占位符 {{name}} → cache[id].content
 Phase 3   — 路径查询 {{?name:path|fallback}}
