@@ -282,7 +282,7 @@ const critiqueExportSystem = createCritiqueExportSystem({
 // ─── Memory Export System ───────────────────────────────────────────
 const memoryExportSystem = createMemoryExportSystem({
     settings, EXT_KEY, getChatMetadata, getCharacters, getCurrentGroup,
-    saveChatConditional, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
+    saveChatConditional, saveSettings, log,
     defaultMemoryPrompt: DEFAULT_MEMORY_PROMPT,
     defaultMemorySchema: DEFAULT_MEMORY_SCHEMA,
     defaultMemoryRender: DEFAULT_MEMORY_RENDER,
@@ -297,7 +297,7 @@ const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = c
 
 // ─── Custom Prompts System ──────────────────────────────────────────
 const customPromptsSystem = createCustomPromptsSystem({
-    settings, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(),
+    settings, saveSettings,
     registerProvider: (p) => registerProvider(p),
     unregisterProvider: (id) => unregisterProvider(id),
     getProviders: () => getProviders(),
@@ -305,7 +305,7 @@ const customPromptsSystem = createCustomPromptsSystem({
 });
 
 const scriptExecutorSystem = createScriptExecutorSystem({
-    settings, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(),
+    settings, saveSettings,
     renderPrompt, AgentTrace, log,
 });
 

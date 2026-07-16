@@ -1,3 +1,5 @@
+import { withTimeout } from './agent-runtime.js';
+
 let turnShared = {};
 let turnId = 0;    // incremented per turn to guard against cross-turn async contamination
 let decisionSnapshot = null; // snapshot after decision hook completes, read-only for message/round
@@ -159,12 +161,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 };
 
                 const fn = new Function('ctx', entry.code);
-                let _tid;
-                const result = await Promise.race([
-                    Promise.resolve(fn(ctx)),
-                    new Promise((_, reject) => { _tid = setTimeout(() => reject(new Error(`Script "${entry.name}" timed out after 10s`)), 10000); }),
-                ]);
-                clearTimeout(_tid);
+                const result = await withTimeout(Promise.resolve(fn(ctx)), 10000);
 
                 if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object') {
                     if (Array.isArray(result)) {
@@ -257,12 +254,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 };
 
                 const fn = new Function('ctx', entry.code);
-                let _tid;
-                const result = await Promise.race([
-                    Promise.resolve(fn(ctx)),
-                    new Promise((_, reject) => { _tid = setTimeout(() => reject(new Error(`Script "${entry.name}" timed out after 5s`)), 5000); }),
-                ]);
-                clearTimeout(_tid);
+                const result = await withTimeout(Promise.resolve(fn(ctx)), 5000);
 
                 if (turnId === myTurnId && entry.returnMode === 'shared' && result !== undefined && result !== null && typeof result === 'object') {
                     if (Array.isArray(result)) {

@@ -8,6 +8,7 @@ import { unescapeKnowledge } from './assets/providers/knowledge.js';
 // index.js wires this to settings.providerTimeoutMs via setProviderTimeoutDefault().
 let providerTimeoutDefault = 10000;
 export function setProviderTimeoutDefault(ms) {
+    if (ms == null) return;  // reject null/undefined - Number(null)=0 would silently disable all timeouts
     const n = Number(ms);
     if (Number.isFinite(n) && n >= 0) providerTimeoutDefault = n;
 }
