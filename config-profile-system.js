@@ -12,7 +12,6 @@
 
 import { configPresets } from '../assets/profiles/manifest.js';
 import { DEFAULT_SETTINGS } from '../settings.js';
-import { setProviderTimeoutDefault } from '../prompt-renderer.js';
 
 const CONFIG_PROFILE_VERSION = 1;
 
@@ -130,9 +129,6 @@ export function createConfigProfileSystem(deps) {
 
     function saveAll() {
         extension_settings[EXT_KEY] = settings;
-        // Keep the renderer's provider timeout default in sync when saving via
-        // config-profile (bypasses index.js saveSettings which also does this).
-        setProviderTimeoutDefault(settings.providerTimeoutMs);
         saveSettingsDebounced();
     }
 
