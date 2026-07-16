@@ -52,12 +52,17 @@ export async function renderPrompt(template, context, options = {}) {
         return `${RAW_MARKER}${idx}\x00`;
     });
 
-    // ── Phase 1: execute every provider (sequential), each with optional timeout ──
+    // ── Phase 1: execute providers in parallel, each with optional timeout ──
     const cache = Object.create(null);
     const callTimeout = providerTimeoutMs ?? providerTimeoutDefault;
 
+    const enabledProviders = [];
     for (const provider of providers.values()) {
         if (typeof provider.enabled === 'function' ? !provider.enabled(context) : provider.enabled === false) continue;
+        enabledProviders.push(provider);
+    }
+
+    const results = await Promise.allSettled(enabledProviders.map(provider => (async () => {
         try {
             const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
             let raw;
@@ -72,12 +77,16 @@ export async function renderPrompt(template, context, options = {}) {
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
                 : { content: raw ?? '', data: null };
-            cache[provider.id] = normalized;
+            return { id: provider.id, normalized };
         } catch (e) {
             const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
             console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
-            cache[provider.id] = { content: '', data: null };
+            return { id: provider.id, normalized: { content: '', data: null } };
         }
+    })()));
+
+    for (const r of results) {
+        if (r.status === 'fulfilled') cache[r.value.id] = r.value.normalized;
     }
 
     // Inject local resolvers — per-call placeholder overrides that don't
