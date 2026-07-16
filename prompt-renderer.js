@@ -52,19 +52,30 @@ export async function renderPrompt(template, context, options = {}) {
         return `${RAW_MARKER}${idx}\x00`;
     });
 
-    // ── Phase 1: execute every provider, cache normalized results ──
+    // ── Phase 1: execute every provider (sequential), each with optional timeout ──
     const cache = Object.create(null);
+    const callTimeout = providerTimeoutMs ?? providerTimeoutDefault;
 
     for (const provider of providers.values()) {
         if (typeof provider.enabled === 'function' ? !provider.enabled(context) : provider.enabled === false) continue;
         try {
-            const raw = await provider.render(context);
+            const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
+            let raw;
+            if (timeoutMs > 0) {
+                raw = await Promise.race([
+                    provider.render(context),
+                    new Promise((_, reject) => setTimeout(() => reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs))
+                ]);
+            } else {
+                raw = await provider.render(context);
+            }
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
                 : { content: raw ?? '', data: null };
             cache[provider.id] = normalized;
         } catch (e) {
-            console.warn(`[GroupDirector] Provider "${provider.id}" render failed:`, e.message);
+            const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
+            console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
             cache[provider.id] = { content: '', data: null };
         }
     }
