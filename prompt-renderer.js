@@ -66,40 +66,54 @@ export async function renderPrompt(template, context, options = {}) {
     }
 
     const results = await Promise.allSettled(enabledProviders.map(provider => (async () => {
-        let timeoutId, onAbort;
+        let timeoutId, onUserAbort;
+        const providerAbort = new AbortController();
         try {
             const timeoutMs = Number(provider.timeoutMs ?? callTimeout);
             let raw;
             if (timeoutMs > 0 || signal) {
-                const racers = [provider.render(context)];
+                const racers = [provider.render(context, providerAbort.signal)];
                 if (signal) racers.push(new Promise((_, reject) => {
-                    if (signal.aborted) { reject(mkAbortErr()); return; }
-                    onAbort = () => reject(mkAbortErr());
-                    signal.addEventListener('abort', onAbort);
+                    if (signal.aborted) {
+                        providerAbort.abort(mkAbortErr());
+                        reject(mkAbortErr());
+                        return;
+                    }
+                    onUserAbort = () => {
+                        providerAbort.abort(mkAbortErr());
+                        reject(mkAbortErr());
+                    };
+                    signal.addEventListener('abort', onUserAbort, { once: true });
                 }));
-                if (timeoutMs > 0) racers.push(new Promise((_, reject) => { timeoutId = setTimeout(() => reject(mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`)), timeoutMs); }));
+                if (timeoutMs > 0) racers.push(new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        const err = mkTimeoutErr(`Provider "${provider.id}" timeout (${timeoutMs}ms)`);
+                        providerAbort.abort(err);
+                        reject(err);
+                    }, timeoutMs);
+                }));
                 raw = await Promise.race(racers);
             } else {
-                raw = await provider.render(context);
+                raw = await provider.render(context, providerAbort.signal);
             }
             const normalized = (raw && typeof raw === 'object')
                 ? { content: raw.content ?? '', data: raw.data ?? null }
                 : { content: raw ?? '', data: null };
             return { id: provider.id, normalized };
         } catch (e) {
-            if (signal?.aborted || e?.name === 'AbortError') throw e;
+            if (signal?.aborted) throw e?.name === 'AbortError' ? e : mkAbortErr();
             const kind = e?.name === 'TimeoutError' ? 'timed out' : 'render failed';
             console.warn(`[GroupDirector] Provider "${provider.id}" ${kind}:`, e.message);
             return { id: provider.id, normalized: { content: '', data: null } };
         } finally {
             clearTimeout(timeoutId);
-            if (onAbort) { signal.removeEventListener('abort', onAbort); onAbort = null; }
+            if (onUserAbort) { signal.removeEventListener('abort', onUserAbort); onUserAbort = null; }
         }
     })()));
 
     for (const r of results) {
         if (r.status === 'fulfilled') cache[r.value.id] = r.value.normalized;
-        else { if (signal?.aborted || r.reason?.name === 'AbortError') throw r.reason; }
+        else { if (signal?.aborted) throw r.reason?.name === 'AbortError' ? r.reason : mkAbortErr(); }
     }
 
     // Inject local resolvers — per-call placeholder overrides that don't
