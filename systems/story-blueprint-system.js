@@ -670,7 +670,8 @@ export function createStoryBlueprintSystem({
 
     function appendBlankChapter() {
         const zh = lang() === 'zh';
-        const blueprint = getBlueprint() || createBlankBlueprint();
+        const blueprint = getBlueprint();
+        if (!blueprint) return createBlankBlueprint();
         const nextNumber = ensureArray(blueprint.nodes).length + 1;
         const usedIds = collectNodeIds(blueprint.nodes);
         const node = uniquifyNodeIds(normalizeNode({
@@ -686,6 +687,14 @@ export function createStoryBlueprintSystem({
         }, [nextNumber - 1]), usedIds, `manual${nextNumber}`);
         blueprint.nodes = ensureArray(blueprint.nodes).concat(node);
         return setBlueprint(blueprint, { resetProgress: false });
+    }
+
+    function buildGenerationLocals() {
+        const data = getProviderData();
+        return {
+            storyBlueprintFullJson: data.blueprint ? JSON.stringify(data.blueprint, null, 2) : '',
+            storyBlueprintProgress: renderProgress(),
+        };
     }
 
     function buildGenerationPrompt(mode = 'new') {
@@ -725,6 +734,7 @@ ${schema}`;
                 maxPasses: settings.templateMaxPasses,
                 recursive: settings.templateRecursive,
                 debugPlaceholders: settings.templateDebugPlaceholders,
+                locals: buildGenerationLocals(),
             });
             const raw = await caller.generate(prompt);
             const parsed = parseJson(raw);
@@ -769,6 +779,7 @@ ${schema}`;
             maxPasses: settings.templateMaxPasses,
             recursive: settings.templateRecursive,
             debugPlaceholders: settings.templateDebugPlaceholders,
+            locals: buildGenerationLocals(),
         });
     }
 
