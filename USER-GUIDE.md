@@ -360,7 +360,7 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 
 ### 3.5 工具
 
-**配置档、导出导入、Agent、自定义 Agent、自定义 Prompt、接口参考、脚本执行器、调试。** 默认抽屉折叠。九个折叠卡片。
+**配置档、导出导入、Agent、自定义 Agent、自定义 Prompt、变量、接口参考、脚本执行器、调试。** 默认抽屉折叠。十个折叠卡片。
 
 #### 配置档管理（卡片）
 
@@ -399,7 +399,22 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 
 #### 接口参考（卡片）
 
-纯参考文档，列出系统中所有 31 个已注册的 Provider 占位符及其说明（中英双语）。支持搜索过滤、添加/编辑/删除自定义条目、导出导入 JSON 文件、一键恢复默认。无功能副作用——仅帮助用户快速了解可在 Prompt 中使用的 `{{placeholder}}`。
+纯参考文档，列出系统中所有 36 个已注册的 Provider 占位符及其说明（中英双语）。支持搜索过滤、添加/编辑/删除自定义条目、导出导入 JSON 文件、一键恢复默认。无功能副作用——仅帮助用户快速了解可在 Prompt 中使用的 `{{placeholder}}`。
+
+#### 变量（卡片）
+
+管理 Group Director 的变量追踪系统。22 个内置模板（story_phase、party_funds、trust_user、health 等），支持全局和角色两种作用域。LLM 每轮自动维护变量值，仪表盘变量面板可实时查看/编辑/回滚/锁定。支持导入/导出变量定义与数据。
+
+| 控件 | 作用 |
+|------|------|
+| 新建变量 | 创建自定义变量（id/label/scope/type/updateMode/rule） |
+| 内置模板下拉 | 从 22 个预设变量中选择添加到当前群聊 |
+| 变量列表 | 浏览/编辑/删除已有变量，复制 `{{?vars:...}}` 查询 token |
+| 编辑器 | 修改变量定义（作用域/类型/更新方式/校验规则/默认值） |
+| 维护说明预览 | 查看注入 Director Prompt 的 {{variableMaintenance}} 实际内容 |
+| 导出/导入 | 导出变量定义+数据为 JSON，支持跨群聊复用 |
+
+> **仪表盘变量面板**：仪表盘操作栏点击「变量」按钮展开，包含索引快速定位、内置模板下拉、新建变量、导出导入。按全局/角色分组展示变量值，支持行内编辑、回滚到上次记录、锁定变量。可勾选"隐藏无更新角色变量"过滤未变化的行。
 
 #### 脚本执行器（卡片）
 
@@ -501,6 +516,18 @@ Director 要求 LLM 返回 JSON。用户可自定义 JSON schema 来控制输出
 | `{{randomDice}}` | 0.00-1.00 随机数 |
 | `{{dice}}` | 骰子 + 幸运值 |
 | `{{maxSpeakers}}` | 每轮最多发言人数 |
+
+### 变量系统（v0.7）
+
+| 占位符 | 内容 | DSL 查询 |
+|------|------|------|
+| `{{globalVars}}` | 全局变量可读列表（label: value） | `{{?globalVars:party_funds.value}}` |
+| `{{charVars}}` | 角色变量按角色分组列表 | `{{?charVars:trust_user.values.$character}}` |
+| `{{vars}}` | 完整变量快照 JSON | `{{?vars:global.story_phase.value}}` |
+| `{{varsJson}}` | 完整变量快照 JSON（同 vars） | 同上 |
+| `{{variableMaintenance}}` | 变量维护说明（自动注入 Director Prompt） | — |
+
+变量系统提供 22 个内置变量模板（story_phase、party_funds、trust_user、health 等），LLM 每轮可通过 `variable_update` JSON 字段自动更新。变量值支持 replace/delta/append/merge 四种更新模式。仪表盘点击「变量」按钮可实时查看/编辑/回滚/锁定。
 
 ### 自定义 Agent
 

@@ -34,6 +34,11 @@ const DEFAULT_ENTRIES = [
     { id: 'd31', placeholder: '{{llmJsonSchema}}', name: 'LLM JSON Schema', descZh: '用户可自定义的 JSON 输出格式模板，决定 LLM 返回的 JSON 结构。包含 {{scriptField}} 占位符用于控制 scripts 字段的有无。', descEn: 'User-customizable JSON output format template that defines the JSON structure the LLM returns. Contains {{scriptField}} placeholder to control the scripts field.' },
     { id: 'd32', placeholder: '{{scriptField}}', name: 'Script Field', descZh: '展开为 scripts 字段的 JSON 片段（开启导演剧本时）或空字符串（关闭时），嵌入在 {{llmJsonSchema}} 中使用。', descEn: 'Expands to a scripts JSON fragment when Director Script is enabled, or empty string when disabled. Used within {{llmJsonSchema}}.' },
     { id: 'd33', placeholder: '{{test}}', name: 'Test Provider', descZh: '测试用接口，占位文本，用于验证 Provider 系统是否正常工作。', descEn: 'Test provider returning placeholder text to verify the Provider system works.' },
+    { id: 'd34', placeholder: '{{globalVars}}', name: 'Global Variables', descZh: '渲染所有全局变量为可读列表（label: value），用于向 LLM 展示当前全局状态。受变量系统控制。', descEn: 'Renders all global variables as a readable list (label: value) to show current global state to the LLM. Controlled by the Variable system.' },
+    { id: 'd35', placeholder: '{{charVars}}', name: 'Character Variables', descZh: '渲染角色变量为按角色分组的可读列表。有当前角色时只渲染该角色，否则渲染全部活跃角色。受变量系统控制。', descEn: 'Renders character variables grouped by character. With a current character, renders only that character; otherwise renders all active characters. Controlled by the Variable system.' },
+    { id: 'd36', placeholder: '{{vars}}', name: 'Variable Snapshot (JSON)', descZh: '完整变量快照 JSON，含 global、character、currentCharacter、最近 20 条日志。用于需要结构化变量数据的场景。', descEn: 'Full variable snapshot JSON including global, character, currentCharacter, and last 20 log entries. For scenarios needing structured variable data.' },
+    { id: 'd37', placeholder: '{{varsJson}}', name: 'Variable Snapshot JSON', descZh: '与 {{vars}} 输出相同，完整变量快照 JSON。', descEn: 'Same output as {{vars}}, full variable snapshot JSON.' },
+    { id: 'd38', placeholder: '{{variableMaintenance}}', name: 'Variable Maintenance', descZh: '变量维护说明文本，自动注入 Director Prompt 末尾。告知 LLM 当前有哪些变量需要维护、各自的更新规则，以及如何通过 JSON 返回 variable_update。这是变量系统与 LLM 交互的核心桥梁。', descEn: 'Variable maintenance instructions auto-injected at the end of the Director Prompt. Tells the LLM which variables need maintenance, their update rules, and how to return variable_update in JSON. This is the core bridge between the variable system and the LLM.' },
 ];
 
 let nextUserIdx = 0;
@@ -43,10 +48,21 @@ registerSection('providerReference', function (ctx) {
     const { settings, $c, saveSettings } = ctx;
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
-    // Init list
+    // Init list — migrate missing defaults on every load
     if (!settings.providerReferenceList || !settings.providerReferenceList.length) {
         settings.providerReferenceList = DEFAULT_ENTRIES.map(e => ({ ...e }));
         saveSettings();
+    } else {
+        // Merge any new default entries not yet in the user's list (incremental migration)
+        const existingIds = new Set(settings.providerReferenceList.map(e => e.id));
+        let added = false;
+        for (const def of DEFAULT_ENTRIES) {
+            if (!existingIds.has(def.id)) {
+                settings.providerReferenceList.push({ ...def });
+                added = true;
+            }
+        }
+        if (added) saveSettings();
     }
     const list = settings.providerReferenceList;
 

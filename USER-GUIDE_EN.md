@@ -360,7 +360,7 @@ Recent multimodal policy decisions. Persisted with chat, auto-deduplicated.
 
 ### 3.5 Tools
 
-**Config profiles, export/import, Agents, Custom Agents, Custom Prompts, API reference, Script Executor, debugging.** Drawer collapsed by default. Nine collapsible cards.
+**Config profiles, export/import, Agents, Custom Agents, Custom Prompts, Variables, API reference, Script Executor, debugging.** Drawer collapsed by default. Ten collapsible cards.
 
 #### Config Profile Management (Card)
 
@@ -399,7 +399,22 @@ Import custom `.js` Provider or Capability files. Must export `register(deps)`. 
 
 #### API Reference (Card)
 
-Pure reference documentation listing all 31 registered Provider placeholders and their descriptions (bilingual Chinese/English). Supports search filtering, add/edit/delete custom entries, export/import JSON files, one-click restore to defaults. No functional side effects—purely for helping users quickly understand available `{{placeholder}}` options in prompts.
+Pure reference documentation listing all 36 registered Provider placeholders and their descriptions (bilingual Chinese/English). Supports search filtering, add/edit/delete custom entries, export/import JSON files, one-click restore to defaults. No functional side effects—purely for helping users quickly understand available `{{placeholder}}` options in prompts.
+
+#### Variables (Card)
+
+Manages Group Director's variable tracking system. 22 built-in templates (story_phase, party_funds, trust_user, health, etc.) with global and character scopes. The LLM auto-maintains variable values each round; the dashboard variable panel provides real-time view/edit/rollback/lock. Supports import/export of variable definitions and data.
+
+| Control | Purpose |
+|------|------|
+| New Variable | Create a custom variable (id/label/scope/type/updateMode/rule) |
+| Template dropdown | Select from 22 presets to add to the current chat |
+| Variable list | Browse/edit/delete existing variables, copy `{{?vars:...}}` query tokens |
+| Editor | Modify variable definition (scope/type/update mode/validation rules/default value) |
+| Maintenance preview | View the actual {{variableMaintenance}} content injected into the Director Prompt |
+| Export/Import | Export variable definitions + data as JSON, reusable across group chats |
+
+> **Dashboard Variable Panel**: Click the "Variables" button on the dashboard action bar to expand. Includes index quick-jump, template dropdown, new variable creation, and export/import. Variable values are grouped by global/character with inline editing, rollback to previous record, and variable locking. Check "Hide unchanged character vars" to filter inactive rows.
 
 #### Script Executor (Card)
 
@@ -501,6 +516,18 @@ One extra LLM call per round. The Director analyzes context and returns JSON:
 | `{{randomDice}}` | 0.00-1.00 random number |
 | `{{dice}}` | Dice + luck value |
 | `{{maxSpeakers}}` | Max speakers per round |
+
+### Variable System (v0.7)
+
+| Placeholder | Content | DSL Query |
+|------|------|------|
+| `{{globalVars}}` | Readable list of global variables (label: value) | `{{?globalVars:party_funds.value}}` |
+| `{{charVars}}` | Character variables grouped by character | `{{?charVars:trust_user.values.$character}}` |
+| `{{vars}}` | Full variable snapshot JSON | `{{?vars:global.story_phase.value}}` |
+| `{{varsJson}}` | Full variable snapshot JSON (same as vars) | Same as above |
+| `{{variableMaintenance}}` | Variable maintenance instructions (auto-injected into Director Prompt) | — |
+
+The variable system provides 22 built-in variable templates (story_phase, party_funds, trust_user, health, etc.). The LLM can auto-update values each round via the `variable_update` JSON field. Variables support four update modes: replace/delta/append/merge. Click the "Variables" button on the dashboard to view/edit/rollback/lock values in real time.
 
 ### Custom Agents
 

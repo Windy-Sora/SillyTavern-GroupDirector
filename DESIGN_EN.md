@@ -217,7 +217,7 @@ registerProvider({
 - **Error isolation** — Timed-out or throwing providers degrade to empty `{content:'', data:null}`. Sibling providers are unaffected.
 - **World-book scanner dedup** — `{{worldBooks}}` and `{{worldBookImportance}}` share an in-flight promise dedup so parallel Phase 1 does not duplicate `loadWorldInfo` calls.
 
-### 3.3 Registered Providers (33 built-in + N Custom Agent dynamic registrations)
+### 3.3 Registered Providers (38 built-in + N Custom Agent dynamic registrations)
 
 | Provider | Placeholder | Description |
 |----------|--------|------|
@@ -254,8 +254,35 @@ registerProvider({
 | `script` | `{{script}}` | Current character's Director script (Character Prompt Injection Template only) |
 | `importedCritique` | `{{importedCritique}}` | Imported critiques (independent storage) |
 | `test` | `{{test}}` | Template syntax test |
+| `globalVars` | `{{globalVars}}` | Global variable list (readable text) |
+| `charVars` | `{{charVars}}` | Character variable list (grouped by character) |
+| `vars` | `{{vars}}` | Full variable snapshot JSON |
+| `varsJson` | `{{varsJson}}` | Full variable snapshot JSON (same as vars) |
+| `variableMaintenance` | `{{variableMaintenance}}` | Variable maintenance instructions (injected into Director Prompt, tells LLM how to return variable_update) |
 
-### 3.4 Coding Rules
+### 3.4 Variable System (v0.7)
+
+The variable system provides structured, long-term state tracking for Group Director. Unlike `ledger_update` (free-form JSON), the variable system offers typed, validated, auto-updated named variables.
+
+**Core features:**
+- **22 built-in variable templates** — story_phase, current_goal, party_funds, danger_level, trust_user, emotion, health, etc., covering narrative/economic/relationship/status tracking
+- **Two scopes** — `global` and `character` (per-character independent values)
+- **Six data types** — string, number, boolean, enum, object, array
+- **Four update modes** — replace, delta (numeric increment/decrement), append, merge (shallow object merge)
+- **Value validation & clamping** — number has min/max, enum checks allowed values, delta auto-calculates
+- **Change log** — last 100 operations, with messageId/hash for stale detection
+- **Stale detection** — variables marked as "possibly stale" when messages are deleted or modified
+- **Rollback support** — revert to the previous non-ignored record
+- **Locking** — locked=true records LLM updates but does not write values
+- **Config profile integration** — variable data syncs with config profile export/import
+
+**LLM interaction:** `{{variableMaintenance}}` injected into Director system prompt → LLM returns `variable_update` field in JSON response → `applyUpdates()` parses and writes to `chat_metadata`.
+
+**Storage:** `chat_metadata[EXT_KEY].variables = { defs: [...], values: { global: {...}, character: {...} }, log: [...] }`
+
+**UI:** Tools drawer → Variables card (list + editor + templates + import/export); Dashboard → Variables panel (click "Variables" button to expand, real-time view/edit/rollback/lock).
+
+### 3.5 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters
@@ -473,6 +500,7 @@ SillyTavern-GroupDirector/
 │   │   ├── director-critique.js
 │   │   ├── character-critique.js
 │   │   ├── char-critique.js
+│   │   ├── variables.js          # Variable system Provider (5 placeholders)
 │   │   └── ...
 │   └── capabilities/          # 3 built-in Capabilities
 │       ├── manifest.js
@@ -507,6 +535,7 @@ SillyTavern-GroupDirector/
 │   ├── post-speech-system.js  # PostSpeech decision persistence
 │   ├── config-profile-system.js # Config profile management (with JSZip fallback loading)
 │   ├── custom-prompts-system.js # Custom Prompt templates
+│   ├── variable-system.js      # Variable system (defs/values/validation/log/rollback/stale detection)
 │   ├── world-book-scanner.js  # World book scanning
 │   ├── chat-summary-system.js # Context summarization
 │   ├── critique-system.js     # AI critique
@@ -534,6 +563,7 @@ SillyTavern-GroupDirector/
         ├── continuity.js      # Continuity mode
         ├── worldinfo.js       # World book toggles
         ├── worldBooks.js      # World book selection
+        ├── variables.js       # Variable settings + dashboard panel
         ├── ledger.js          # Ledger browser
         ├── forceSpeak.js      # Force speak
         ├── chatSummary.js     # Context summary
@@ -859,6 +889,7 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | Add new protocol | `utils/custom-api.js` → add `makeXxxCaller()` |
 | Add Prompt placeholder | `assets/providers/xxx.js` + manifest.js + `index.js` import/register |
 | Add business logic module | `systems/*.js` (new) + `index.js` import/assemble |
+| Add variable definition | UI Variables card → New/Template; or `variableSystem.upsertDefinition()` |
 | Add settings item | `settings.js` + `settings.html` + `ui/sections/*.js` |
 | Add/modify UI area | `settings.html` + `ui/sections/newname.js` + `ui/settings-init.js` import |
 | Add UI text | `ui/i18n.js` (one line each in zh+en) |

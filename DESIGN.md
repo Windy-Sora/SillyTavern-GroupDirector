@@ -216,7 +216,7 @@ registerProvider({
 - **错误隔离** — 超时或 `render()` 抛错的 Provider 降级为空内容 `{content:'', data:null}`，同批次其他 Provider 不受影响。
 - **世界书 Provider 并发安全** — `{{worldBooks}}` 和 `{{worldBookImportance}}` 共享 in-flight promise dedup，并行时不会重复调用 `loadWorldInfo`。
 
-### 3.3 已注册 Provider（33 个内置 + N 个自定义 Agent 动态注册）
+### 3.3 已注册 Provider（38 个内置 + N 个自定义 Agent 动态注册）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -253,8 +253,35 @@ registerProvider({
 | `script` | `{{script}}` | 当前角色导演剧本（角色 Prompt 注入模版专用） |
 | `importedCritique` | `{{importedCritique}}` | 导入的批判（独立存储） |
 | `test` | `{{test}}` | 模板语法测试 |
+| `globalVars` | `{{globalVars}}` | 全局变量列表（可读文本） |
+| `charVars` | `{{charVars}}` | 角色变量列表（按角色分组） |
+| `vars` | `{{vars}}` | 完整变量快照 JSON |
+| `varsJson` | `{{varsJson}}` | 完整变量快照 JSON（同 vars） |
+| `variableMaintenance` | `{{variableMaintenance}}` | 变量维护说明（注入 Director Prompt，告知 LLM 如何返回 variable_update） |
 
-### 3.3 编码规则
+### 3.4 变量系统（v0.7）
+
+变量系统为 Group Director 提供了结构化的长期状态追踪能力。与 `ledger_update`（自由格式 JSON）不同，变量系统提供类型化、带校验、自动更新的具名变量。
+
+**核心特性：**
+- **22 个内置变量模板** — story_phase、current_goal、party_funds、danger_level、trust_user、emotion、health 等，覆盖叙事/经济/关系/状态
+- **两种作用域** — `global`（全局）和 `character`（每个角色独立值）
+- **六种数据类型** — string、number、boolean、enum、object、array
+- **四种更新模式** — replace（替换）、delta（数值增减）、append（追加）、merge（对象合并）
+- **值校验与钳制** — number 有 min/max，enum 检查合法值，delta 自动计算
+- **变更日志** — 最近 100 条操作记录，含 messageId/hash 用于 stale 检测
+- **stale 检测** — 消息被删除或修改后，变量标记为"可能过期"
+- **回滚支持** — 可恢复到上一条非 ignored 记录
+- **锁定** — locked=true 的变量记录 LLM 更新但不写入值
+- **配置档集成** — 导出/导入配置档时同步携带变量数据
+
+**LLM 交互：** `{{variableMaintenance}}` 注入 Director system prompt → LLM 在 JSON 响应中返回 `variable_update` 字段 → `applyUpdates()` 解析并写入 `chat_metadata`。
+
+**存储：** `chat_metadata[EXT_KEY].variables = { defs: [...], values: { global: {...}, character: {...} }, log: [...] }`
+
+**UI：** 工具抽屉 → 变量卡片（列表+编辑器+模板+导入导出）；仪表盘 → 变量面板（点击"变量"按钮展开，实时查看/编辑/回滚/锁定）。
+
+### 3.5 编码规则
 
 - Provider 有开关时在 `render()` 内返回空字符串，不用 `enabled` 跳过
 - 可变值用 getter 传入
@@ -472,6 +499,7 @@ SillyTavern-GroupDirector/
 │   │   ├── director-critique.js
 │   │   ├── character-critique.js
 │   │   ├── char-critique.js
+│   │   ├── variables.js          # 变量系统 Provider（5 个占位符）
 │   │   └── ...
 │   └── capabilities/          # 3 个内置 Capability
 │       ├── manifest.js
@@ -506,6 +534,7 @@ SillyTavern-GroupDirector/
 │   ├── post-speech-system.js  # PostSpeech 决策持久化
 │   ├── config-profile-system.js # 配置档管理（含 JSZip fallback 加载）
 │   ├── custom-prompts-system.js # 自定义 Prompt 模板
+│   ├── variable-system.js      # 变量系统（定义/值/校验/日志/回滚/stale 检测）
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
 │   ├── critique-system.js     # AI 批判
@@ -533,6 +562,7 @@ SillyTavern-GroupDirector/
         ├── continuity.js      # 连贯性模式
         ├── worldinfo.js       # 世界书开关
         ├── worldBooks.js      # 世界书选择
+        ├── variables.js       # 变量设置 + 仪表盘面板
         ├── ledger.js          # 账本浏览器
         ├── forceSpeak.js      # 强制发言
         ├── chatSummary.js     # 上下文总结
@@ -860,6 +890,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | 加新协议 | `utils/custom-api.js` → 加 `makeXxxCaller()` |
 | 加 Prompt 占位符 | `assets/providers/xxx.js` + manifest.js + `index.js` import/register |
 | 加业务逻辑模块 | `systems/*.js`（新建）+ `index.js` import/组装 |
+| 加变量定义 | UI 变量卡片 → 新建/模板；或 `variableSystem.upsertDefinition()` |
 | 加设置项 | `settings.js` + `settings.html` + `ui/sections/*.js` |
 | 加/改 UI 区域 | `settings.html` + `ui/sections/newname.js` + `ui/settings-init.js` import |
 | 加 UI 文字 | `ui/i18n.js`（zh+en 各一行） |
