@@ -39,6 +39,7 @@ registerSection('variables', function (ctx) {
     if (!variableSystem) return;
 
     let selectedId = null;
+    let autosaveTimer = null;
     const DASH_HIDE_INACTIVE_KEY = 'gd.variables.hideInactiveCharacterRows';
     let hideInactiveCharacterRows = localStorage?.getItem(DASH_HIDE_INACTIVE_KEY) === '1';
     const TEXT = {
@@ -155,6 +156,12 @@ registerSection('variables', function (ctx) {
     function hideInactiveLabel() {
         return (settings?.lang || 'zh') === 'zh' ? '隐藏无更新角色变量' : 'Hide unchanged character vars';
     }
+    function autoSaveLabel() {
+        return (settings?.lang || 'zh') === 'zh' ? '自动保存' : 'Autosave';
+    }
+    function referenceFormatLabel() {
+        return (settings?.lang || 'zh') === 'zh' ? '引用格式' : 'Reference format';
+    }
 
     function defs() { return variableSystem.getDefs(); }
     function chars() { return getCharacters?.() || []; }
@@ -216,7 +223,8 @@ registerSection('variables', function (ctx) {
                 ? variableSystem.getValue(def)
                 : t('charValues', visibleChars().length);
             const $row = $(`
-                <div class="gd-var-row" data-id="${esc(def.id)}" style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-bottom:6px;">
+                <div class="gd-var-row" data-id="${esc(def.id)}" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-bottom:6px;">
+                    <div class="gd-var-row-head" style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;cursor:pointer;">
                     <div>
                         <b>${esc(def.label)}</b> <code>${esc(def.id)}</code>
                         <small style="color:var(--grey70a);display:block;">${esc(def.scope === 'global' ? t('scopeGlobal') : t('scopeCharacter'))} / ${esc(def.type)} / ${esc(def.updateMode)}${def.locked ? ` / ${esc(t('locked'))}` : ''}</small>
@@ -224,28 +232,36 @@ registerSection('variables', function (ctx) {
                     </div>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">
                         <span class="menu_button menu_button_icon gd-var-copy" data-token="{{?vars:${def.scope === 'global' ? `global.${def.id}.value` : `character.${def.id}.values.$avatar`}}}"><i class="fa-solid fa-copy"></i></span>
-                        <span class="menu_button menu_button_icon gd-var-edit"><i class="fa-solid fa-pen"></i></span>
                         <span class="menu_button menu_button_icon gd-var-delete" style="color:#ff5555;"><i class="fa-solid fa-trash"></i></span>
                     </div>
+                    </div>
+                    <div class="gd-var-row-editor" style="display:${selectedId === def.id ? 'block' : 'none'};margin-top:8px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:8px;"></div>
                 </div>
             `);
-            $row.find('.gd-var-edit').on('click', () => { selectedId = def.id; renderEditor(); });
-            $row.find('.gd-var-delete').on('click', async () => {
+            $row.find('.gd-var-row-head').on('click', (e) => {
+                if ($(e.target).closest('.gd-var-copy, .gd-var-delete').length) return;
+                selectedId = selectedId === def.id ? null : def.id;
+                refresh();
+            });
+            $row.find('.gd-var-delete').on('click', async (e) => {
+                e.stopPropagation();
                 if (!await callGenericPopup(t('deleteConfirm', def.id), POPUP_TYPE.CONFIRM)) return;
                 variableSystem.deleteDefinition(def.id);
                 if (selectedId === def.id) selectedId = null;
                 refresh();
             });
-            $row.find('.gd-var-copy').on('click', async function () {
+            $row.find('.gd-var-copy').on('click', async function (e) {
+                e.stopPropagation();
                 const token = $(this).data('token');
                 try { await navigator.clipboard?.writeText(token); toastr?.info?.(t('copied')); } catch (_) { toastr?.info?.(token); }
             });
             $list.append($row);
+            if (selectedId === def.id) renderEditor($row.find('.gd-var-row-editor'));
         }
     }
 
-    function renderEditor() {
-        const $editor = $('#gd-var-editor');
+    function renderEditor($target = null) {
+        const $editor = $target || $('#gd-var-editor');
         if (!$editor.length) return;
         if (!selectedId) { $editor.hide().empty(); return; }
         const def = variableSystem.getDefinition(selectedId);
@@ -271,10 +287,10 @@ registerSection('variables', function (ctx) {
                 <label class="checkbox_label"><input type="checkbox" id="gd-var-edit-locked"> <span>${esc(t('lock'))}</span></label>
             </div>
             <div id="gd-var-char-values" style="display:none;margin-top:8px;max-height:260px;overflow-y:auto;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;"></div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-                <span class="menu_button menu_button_icon" id="gd-var-save"><i class="fa-solid fa-floppy-disk"></i> ${esc(t('save'))}</span>
-                <span class="menu_button menu_button_icon" id="gd-var-cancel">${esc(t('cancel'))}</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center;">
+                <small style="color:var(--grey70a);">${esc(autoSaveLabel())}</small>
                 <span style="flex:1"></span>
+                <small style="color:var(--grey70a);">${esc(referenceFormatLabel())}:</small>
                 <code>{{?vars:${def.scope === 'global' ? `global.${def.id}.value` : `character.${def.id}.values.$avatar`}}}</code>
             </div>
         `);
@@ -302,9 +318,7 @@ registerSection('variables', function (ctx) {
             }
         }
         renderCharValues();
-        $('#gd-var-edit-scope').on('change', renderCharValues);
-        $('#gd-var-cancel').on('click', () => { selectedId = null; renderEditor(); });
-        $('#gd-var-save').on('click', () => {
+        const saveCurrentEditor = (options = {}) => {
             const oldId = def.id;
             const defaultParsed = tryParseJsonish($('#gd-var-edit-value').val(), $('#gd-var-edit-type').val());
             if (!defaultParsed.ok) {
@@ -353,9 +367,21 @@ registerSection('variables', function (ctx) {
                     variableSystem.setValue(saved.id, parsed.value, { target: parsed.avatar, source: 'manual', updateMode: 'replace' });
                 }
             }
-            refresh();
-            toastr?.info?.(t('saved'));
+            renderMaintenancePreview();
+            renderDashboardVars();
+            if (options.refreshList !== false) refresh();
+        };
+        function scheduleAutosave(options = {}) {
+            clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(() => saveCurrentEditor(options), 250);
+        }
+        $('#gd-var-edit-scope, #gd-var-edit-type').on('change', () => {
+            renderCharValues();
+            scheduleAutosave();
         });
+        $('#gd-var-edit-update, #gd-var-edit-inject, #gd-var-edit-auto, #gd-var-edit-dashboard, #gd-var-edit-locked').on('change', () => scheduleAutosave());
+        $('#gd-var-edit-id, #gd-var-edit-label, #gd-var-edit-min, #gd-var-edit-max, #gd-var-edit-enum, #gd-var-edit-rule, #gd-var-edit-value').on('change blur', () => scheduleAutosave());
+        $('#gd-var-char-values .gd-var-char-value').on('change blur', () => scheduleAutosave({ refreshList: false }));
     }
 
     function renderMaintenancePreview() {
@@ -684,14 +710,13 @@ registerSection('variables', function (ctx) {
             $card.find('> .gd-card-body').show();
         }
         try { $card[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
-        renderEditor();
     }
 
     function refresh() {
         applyStaticLabels();
         renderTemplates();
         renderList();
-        renderEditor();
+        $('#gd-var-editor').hide().empty();
         renderMaintenancePreview();
         renderDashboardVars();
     }
