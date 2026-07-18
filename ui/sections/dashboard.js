@@ -783,6 +783,8 @@ registerSection('dashboard', function (ctx) {
         $('#gd-dash-profiles').toggle(group && settings.profileEnabled);
         $('#gd-dash-memories').toggle(group && settings.memoryEnabled);
         $('#gd-dash-summary').toggle(group);
+        $('#gd-dash-vars').toggle(group);
+        if (!group) $('#gd-dash-panel-vars').hide();
     }
 
     // ── Script detail card toggle ───────────────────────────────
@@ -808,6 +810,7 @@ registerSection('dashboard', function (ctx) {
         refreshPresetSelector();
         refreshSummaryStat();
         refreshWorldBookStat();
+        window.__gdRefreshVariables?.();
     }
 
     // Initial load
@@ -819,6 +822,7 @@ registerSection('dashboard', function (ctx) {
     refreshPresetSelector();
     refreshSummaryStat();
     refreshWorldBookStat();
+    window.__gdRefreshVariables?.();
 
     // Refresh when any GD drawer is toggled
     $('.group-director-settings .inline-drawer-toggle').on('click', function () {

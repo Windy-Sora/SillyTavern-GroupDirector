@@ -34,6 +34,10 @@ export const DEFAULT_SETTINGS = {
   "speakers": ["NameOfFirstSpeaker", "NameOfSecondSpeaker"],
   "reason": "short justification"{{scriptField}},
   "ledger_update": {},
+  "variable_update": {
+    "global": {},
+    "character": {}
+  },
   "loreAssignments": {
     "NameOfFirstSpeaker": ["exact entry name", "another entry"],
     "NameOfSecondSpeaker": []

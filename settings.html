@@ -65,6 +65,7 @@
             <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-profiles" data-i18n="dashProfiles">生成档案</span>
             <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-memories" data-i18n="dashMemories">提取记忆</span>
             <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-summary" data-i18n="dashSummary">执行总结</span>
+            <span class="gd-dashboard-btn gd-dashboard-btn-secondary menu_button menu_button_icon" id="gd-dash-vars">变量</span>
         </div>
         <div class="gd-dashboard-actions">
             <select id="gd-dash-cfg-preset" class="text_pole gd-preset-select">
@@ -110,6 +111,10 @@
     <div class="gd-dash-panel gd-dash-panel-ledger" id="gd-dash-panel-ledger" style="display:none;">
         <div class="gd-dash-panel-header"><span data-i18n="dashLedgerTitle">导演账本</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="ledger" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
         <div id="gd-dash-panel-ledger-list" class="gd-dash-panel-body"></div>
+    </div>
+    <div class="gd-dash-panel gd-dash-panel-vars" id="gd-dash-panel-vars" style="display:none;">
+        <div class="gd-dash-panel-header"><span>变量</span><span class="gd-dash-panel-close menu_button menu_button_icon" data-panel="vars" style="font-size:0.7em;margin-left:auto;" data-i18n="collapseBtn">收起</span></div>
+        <div id="gd-dash-panel-vars-list" class="gd-dash-panel-body"></div>
     </div>
 
     <div class="gd-dash-worldbooks" id="gd-dash-worldbooks" style="display:none;">
@@ -682,6 +687,36 @@
                         <span class="menu_button menu_button_icon" id="gd-ledger-raw-toggle"><i class="fa-solid fa-code"></i> Raw</span>
                     </div>
                     <div id="gd-ledger-list" style="margin-top:8px;max-height:300px;overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <div class="gd-card gd-card-collapsible" data-card="variables">
+                <div class="gd-card-header">
+                    <span class="gd-card-caret">▸</span>
+                    <span>变量</span>
+                    <span class="gd-card-status" id="gd-card-status-vars"></span>
+                </div>
+                <div class="gd-card-body">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <span class="menu_button menu_button_icon" id="gd-var-add"><i class="fa-solid fa-plus"></i> 新建变量</span>
+                        <select id="gd-var-template" class="text_pole" style="width:auto;">
+                            <option value="">内置模板...</option>
+                        </select>
+                        <span class="menu_button menu_button_icon" id="gd-var-add-template"><i class="fa-solid fa-wand-magic-sparkles"></i> 添加模板</span>
+                        <span style="flex:1"></span>
+                        <span class="menu_button menu_button_icon" id="gd-var-refresh"><i class="fa-solid fa-rotate"></i> 刷新</span>
+                    </div>
+                    <div id="gd-var-list" style="margin-top:8px;max-height:340px;overflow-y:auto;"></div>
+                    <div id="gd-var-editor" style="display:none;margin-top:8px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:8px;"></div>
+                    <div class="gd-card gd-card-collapsible" data-card="variablesMaintenancePreview" style="margin-top:8px;">
+                        <div class="gd-card-header">
+                            <span class="gd-card-caret">▸</span>
+                            <span>维护说明预览</span>
+                        </div>
+                        <div class="gd-card-body">
+                            <textarea id="gd-var-maint-preview" class="text_pole textarea_compact" rows="8" style="width:100%;font-family:monospace;font-size:0.82em;" readonly></textarea>
+                        </div>
+                    </div>
                 </div>
             </div>
 

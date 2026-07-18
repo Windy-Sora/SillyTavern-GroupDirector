@@ -35,6 +35,7 @@ import './sections/userProviders.js';
 import './sections/customPrompts.js';
 import './sections/scriptExecutors.js';
 import './sections/customAgents.js';
+import './sections/variables.js';
 import './sections/agents.js';
 import './sections/gdAssistant.js';
 

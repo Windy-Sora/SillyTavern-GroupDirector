@@ -55,9 +55,11 @@ import { createMemoryExportSystem } from './systems/memory-export-system.js';
 import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { createScriptExecutorSystem } from './systems/script-executor-system.js';
+import { createVariableSystem } from './systems/variable-system.js';
 import { loadSettingsUI, reloadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
+import { register as registerVariables } from './assets/providers/variables.js';
 
 // ─── Agent Runtime ──────────────────────────────────────────────────
 import { AgentRegistry, execute, createScopedPool, AgentTrace } from './systems/agent-runtime.js';
@@ -157,7 +159,8 @@ async function getScriptForChar(charName, extraContext) {
     // (Previously it was injected after renderPrompt via a sentinel,
     // which left nested {{?directorLedger:xxx}} unresolved.)
     const combined = wrapper.split('{{script}}').join(script);
-    const ctx = { character: charName, ...extraContext };
+    const char = characters.find(c => c.name === charName);
+    const ctx = { character: charName, avatar: char?.avatar, ...extraContext };
     return await renderPrompt(combined, ctx, {
         maxPasses: settings.templateMaxPasses,
         recursive: settings.templateRecursive,
@@ -178,6 +181,17 @@ function saveSettings() {
 const getChatMetadata = () => chat_metadata;
 const getChat = () => chat;
 const getCharacters = () => characters;
+
+const variableSystem = createVariableSystem({
+    getChatMetadata,
+    EXT_KEY,
+    saveChatConditional,
+    getCharacters,
+    getCurrentGroup,
+    getChat,
+    getLang: () => settings.lang || 'zh',
+    log,
+});
 
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
@@ -291,7 +305,7 @@ const memoryExportSystem = createMemoryExportSystem({
 
 // ─── Config Profile System ──────────────────────────────────────────
 const configProfileSystem = createConfigProfileSystem({
-    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, log,
+    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log,
 });
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 
@@ -1573,6 +1587,8 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
     await postSpeechSystem.pruneAfter(newChatLength - 1);
+    window.__gdRefreshVariables?.();
+    window.__gdRefreshDashboard?.();
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
@@ -1595,6 +1611,8 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     }
     postSpeechRoundRan = false;
     scriptExecutorRoundRan = false;
+    window.__gdRefreshVariables?.();
+    window.__gdRefreshDashboard?.();
 });
 
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
@@ -1788,6 +1806,14 @@ async function initForceSpeakLLM(char, avatar) {
             }
         }
 
+        if (parsed.variable_update) {
+            const result = variableSystem.applyUpdates(parsed.variable_update, { source: 'force-speak' });
+            if (result.applied || result.ignored) {
+                log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
+                window.__gdRefreshDashboard?.();
+            }
+        }
+
         // Extract script for this character
         let script = '';
         if (parsed.scripts && typeof parsed.scripts === 'object') {
@@ -1877,6 +1903,14 @@ async function initRoundWithLLM() {
                 scripts: parsed.scripts ?? {},
                 loreAssignments: parsed.loreAssignments ?? {},
             });
+        }
+
+        if (parsed.variable_update) {
+            const result = variableSystem.applyUpdates(parsed.variable_update, { source: 'director' });
+            if (result.applied || result.ignored) {
+                log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
+                window.__gdRefreshDashboard?.();
+            }
         }
 
         // Store director scripts
@@ -2036,6 +2070,10 @@ by their exact displayed names. Use the "loreAssignments" field.
 Only assign entries that are actually relevant to that character's current situation.
 It is OK to assign none (empty array) or different entries to different characters.`;
 
+    base += `
+
+{{variableMaintenance}}`;
+
     base += '\n\n{{llmJsonSchema}}';
     return base;
 }
@@ -2091,6 +2129,7 @@ registerProvider({
 registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
 registerHistoryProviders(settings, getDirectorHistory);
 registerDirectorLedger(settings, getDirectorHistory);
+registerVariables({ variableSystem });
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
@@ -2198,6 +2237,7 @@ eventSource.on(event_types.APP_READY, async () => {
         getConfigPresetNames, loadConfigPreset,
         customPromptsSystem,
         scriptExecutorSystem,
+        variableSystem,
     };
     await loadSettingsUI(deps);
     // Restore user-imported providers and capabilities from persistent storage.

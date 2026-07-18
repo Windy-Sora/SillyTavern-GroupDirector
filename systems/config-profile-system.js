@@ -125,7 +125,7 @@ function stripApiKeys(configs) {
 // ─── Factory ─────────────────────────────────────────────────────────
 
 export function createConfigProfileSystem(deps) {
-    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, log } = deps;
+    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log } = deps;
 
     function getProfiles() {
         if (!settings.configProfiles) settings.configProfiles = [];
@@ -161,6 +161,9 @@ export function createConfigProfileSystem(deps) {
             drawers: { ...drawers },
             settings: snap,
         };
+        if (drawers.contextLedger && variableSystem) {
+            profile.variables = variableSystem.getExportData({ includeLog: true });
+        }
         getProfiles().push(profile);
         saveAll();
         log(`Config profile saved: "${name}"`);
@@ -191,6 +194,10 @@ export function createConfigProfileSystem(deps) {
 
         // ── Apply snapshot ──
         const changed = applySnapshot(settings, profile.settings);
+        if (profile.drawers?.contextLedger && profile.variables && variableSystem) {
+            const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
+            if (result.ok) changed.push('variables');
+        }
 
         // ── Merge custom prompts ──
         if (incoming && Array.isArray(incoming) && incoming.length > 0) {
@@ -281,6 +288,7 @@ export function createConfigProfileSystem(deps) {
             drawers: profile.drawers,
             settings: expSettings,
         };
+        if (profile.variables) manifest.variables = JSON.parse(JSON.stringify(profile.variables));
         zip.file('manifest.json', JSON.stringify(manifest, null, 2));
 
         // User providers/capabilities as .js files (only if assetManager drawer was selected)
@@ -360,6 +368,7 @@ export function createConfigProfileSystem(deps) {
             drawers: profile.drawers,
             settings: snap,
         };
+        if (profile.variables) manifest.variables = JSON.parse(JSON.stringify(profile.variables));
 
         const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -396,6 +405,9 @@ export function createConfigProfileSystem(deps) {
             drawers: { ...drawers },
             settings: snap,
         };
+        if (drawers.contextLedger && variableSystem) {
+            manifest.variables = variableSystem.getExportData({ includeLog: true });
+        }
 
         if (format === 'json') {
             // Strip provider/capability source code, keep metadata
@@ -523,6 +535,7 @@ export function createConfigProfileSystem(deps) {
             createdAt: Date.now(),
             drawers: manifest.drawers || {},
             settings: manifest.settings || {},
+            variables: manifest.variables || null,
         };
         getProfiles().push(profile);
         saveAll();
@@ -570,6 +583,7 @@ export function createConfigProfileSystem(deps) {
             createdAt: Date.now(),
             drawers: manifest.drawers || {},
             settings: manifest.settings || {},
+            variables: manifest.variables || null,
         };
         getProfiles().push(profile);
         saveAll();
@@ -609,6 +623,7 @@ export function createConfigProfileSystem(deps) {
                 createdAt: Date.now(),
                 drawers: manifest.drawers || {},
                 settings: manifest.settings || {},
+                variables: manifest.variables || null,
             };
             getProfiles().push(profile);
             saveAll();
