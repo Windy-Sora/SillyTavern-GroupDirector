@@ -242,6 +242,28 @@ function normalizeBlueprint(input) {
     return source;
 }
 
+function collectNodeIds(nodes, ids = new Set()) {
+    for (const node of ensureArray(nodes)) {
+        if (node?.id) ids.add(node.id);
+        collectNodeIds(node?.children, ids);
+    }
+    return ids;
+}
+
+function uniquifyNodeIds(node, usedIds, suffixBase = 'cont') {
+    if (!node || typeof node !== 'object') return node;
+    const original = node.id || slug(node.title || node.type || 'node');
+    let candidate = original;
+    let i = 1;
+    while (usedIds.has(candidate)) {
+        candidate = `${original}_${suffixBase}_${i++}`;
+    }
+    node.id = candidate;
+    usedIds.add(candidate);
+    node.children = ensureArray(node.children).map(child => uniquifyNodeIds(child, usedIds, suffixBase));
+    return node;
+}
+
 function flattenNodes(nodes, options = {}, parents = [], depth = 0, out = []) {
     const mode = options.mode || 'leaf';
     const level = Number(options.level || 0);
@@ -326,11 +348,13 @@ export function createStoryBlueprintSystem({
                 lastGeneratedAt: 0,
                 lastError: '',
                 completeNoticeKey: '',
+                continuePending: false,
             };
         }
         const state = meta[EXT_KEY].storyBlueprint;
         if (!Array.isArray(state.doneSignals)) state.doneSignals = [];
         if (typeof state.completeNoticeKey !== 'string') state.completeNoticeKey = '';
+        if (typeof state.continuePending !== 'boolean') state.continuePending = false;
         return state;
     }
 
@@ -386,6 +410,7 @@ export function createStoryBlueprintSystem({
         state.completeNoticeKey = '';
         state.lastGeneratedAt = Date.now();
         state.lastError = '';
+        state.continuePending = false;
         saveChatConditional?.();
         return state.blueprint;
     }
@@ -623,6 +648,8 @@ ${schema}`;
             throw new Error(lang() === 'zh' ? '没有可续写的故事蓝图，请先生成蓝图。' : 'No Story Blueprint to continue. Generate one first.');
         }
         generating = true;
+        root().continuePending = mode === 'continue';
+        saveChatConditional?.();
         try {
             const agentConfig = settings.agentConfigs?.['story-blueprint'] || {};
             const caller = createCaller(agentConfig, (opts) => generateRaw(opts));
@@ -636,8 +663,15 @@ ${schema}`;
             if (!parsed) throw new Error('LLM returned no valid JSON blueprint');
             if (mode === 'continue' && getBlueprint()) {
                 const current = getBlueprint();
+                const source = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+                const rawNodes = Array.isArray(source.nodes) ? source.nodes : (Array.isArray(source.chapters) ? source.chapters : []);
+                const offset = current.nodes.length;
+                const usedIds = collectNodeIds(current.nodes);
+                const incomingNodes = rawNodes
+                    .map((node, idx) => normalizeNode(node, [offset + idx]))
+                    .map((node, idx) => uniquifyNodeIds(node, usedIds, `cont${offset + idx}`));
+                current.nodes = current.nodes.concat(incomingNodes);
                 const incoming = normalizeBlueprint(parsed);
-                current.nodes = current.nodes.concat(incoming.nodes);
                 current.meta = { ...(current.meta || {}), ...(incoming.meta || {}) };
                 setBlueprint(current, { resetProgress: false });
             } else {
@@ -650,6 +684,8 @@ ${schema}`;
             throw e;
         } finally {
             generating = false;
+            root().continuePending = false;
+            saveChatConditional?.();
         }
     }
 

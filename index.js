@@ -1936,13 +1936,19 @@ async function initRoundWithLLM() {
             window.__gdRefreshStoryBlueprint?.();
             window.__gdRefreshDashboard?.();
             if (done && settings.storyBlueprintAutoContinue) {
-                try {
-                    await storyBlueprintSystem.generateBlueprint('continue');
-                    toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
-                    window.__gdRefreshStoryBlueprint?.();
-                    window.__gdRefreshDashboard?.();
-                } catch (e) {
-                    toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+                if (!storyBlueprintSystem.isGenerating()) {
+                    toastr.info(settings.lang === 'zh' ? '正在后台续写故事蓝图...' : 'Continuing Story Blueprint in the background...');
+                    storyBlueprintSystem.generateBlueprint('continue')
+                        .then(() => {
+                            toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
+                            window.__gdRefreshStoryBlueprint?.();
+                            window.__gdRefreshDashboard?.();
+                        })
+                        .catch((e) => {
+                            toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+                            window.__gdRefreshStoryBlueprint?.();
+                            window.__gdRefreshDashboard?.();
+                        });
                 }
             }
         }

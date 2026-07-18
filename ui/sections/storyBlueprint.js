@@ -224,8 +224,9 @@ registerSection('storyBlueprint', function (ctx) {
         const progressLabel = progress.total
             ? `${progress.doneCount}/${progress.total} | ${progress.complete ? (langZh() ? '已完成' : 'complete') : (data.current?.path || '')}`
             : (langZh() ? '当前推进模式无匹配节点' : 'No matching progression steps');
+        const pendingLabel = state.continuePending ? ` | ${langZh() ? '续写中' : 'continuing'}` : '';
         $c('story-blueprint-status').text(blueprint
-            ? `${blueprint.title || 'Story Blueprint'} | ${progressLabel} | ${varName}=${doneValue}`
+            ? `${blueprint.title || 'Story Blueprint'} | ${progressLabel}${pendingLabel} | ${varName}=${doneValue}`
             : (langZh() ? '未加载故事蓝图' : 'No Story Blueprint loaded'));
 
         $c('story-blueprint-json').val(blueprint ? JSON.stringify(blueprint, null, 2) : '');

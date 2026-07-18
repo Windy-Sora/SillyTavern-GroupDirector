@@ -504,6 +504,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelStoryBlueprint() {
         const $list = $('#gd-dash-panel-story-blueprint-list').empty();
         appendOpenSettingsButton($list, 'storyBlueprint');
+        const state = storyBlueprintSystem?.getState?.();
         const p = storyBlueprintSystem?.getProgress?.();
         const data = storyBlueprintSystem?.getProviderData?.();
         if (!p || !p.total) {
@@ -515,6 +516,9 @@ registerSection('dashboard', function (ctx) {
             $list.append(`<div class="gd-list-item"><span class="gd-list-name">${esc(data?.blueprint?.title || 'Story Blueprint')}</span><span class="gd-list-meta">${p.doneCount}/${p.total}</span></div>`);
             $list.append(`<div style="font-size:0.9em;color:var(--grey70a);padding:4px 0;">${esc(p.complete ? (lang === 'zh' ? '已完成' : 'complete') : (data?.current?.path || ''))}</div>`);
             $list.append(`<div style="font-size:0.85em;color:var(--grey70a);">${settings.storyBlueprintEnabled ? (lang === 'zh' ? 'Provider 已启用' : 'Provider enabled') : (lang === 'zh' ? 'Provider 未启用' : 'Provider disabled')}</div>`);
+        }
+        if (state?.continuePending) {
+            $list.append(`<div style="font-size:0.85em;color:#ff9800;">${lang === 'zh' ? '后台续写中...' : 'Continuing in background...'}</div>`);
         }
         $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;flex-wrap:wrap;">` +
             `<label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-story-enabled" ${settings.storyBlueprintEnabled ? 'checked' : ''}>${lang === 'zh' ? '启用' : 'Enable'}</label>` +
