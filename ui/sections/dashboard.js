@@ -223,6 +223,40 @@ registerSection('dashboard', function (ctx) {
 
     function esc(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+    function openSettingsLabel() {
+        return (settings.lang || 'zh') === 'zh' ? '打开设置' : 'Open settings';
+    }
+
+    function openSettingsCard(cardName) {
+        const $card = $(`[data-card="${cardName}"]`).first();
+        if (!$card.length) return;
+        const $drawer = $card.closest('.inline-drawer-content');
+        const $drawerRoot = $card.closest('.inline-drawer');
+        if ($drawer.length && !$drawer.is(':visible')) {
+            $drawer.show();
+            $drawerRoot.find('> .inline-drawer-toggle .inline-drawer-icon')
+                .removeClass('fa-circle-chevron-right right')
+                .addClass('fa-circle-chevron-down down');
+        }
+        if (!$card.hasClass('is-expanded')) {
+            $card.addClass('is-expanded');
+            if (cardName) {
+                settings.uiState.cardStates[cardName] = true;
+                saveUiState();
+            }
+            $card.find('> .gd-card-body').show();
+        }
+        try { $card[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+    }
+
+    function appendOpenSettingsButton($list, cardName) {
+        const $bar = $(`<div style="display:flex;justify-content:flex-end;margin-bottom:6px;">
+            <span class="menu_button menu_button_icon gd-dash-open-settings"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>
+        </div>`);
+        $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard(cardName));
+        $list.append($bar);
+    }
+
     function makeToggleRow($row, $detail) {
         $row.css('cursor', 'pointer');
         $row.on('click', (e) => { if (!$(e.target).closest('.gd-edit-btn, .gd-edit-textarea, .gd-edit-save, .gd-edit-cancel').length) { $detail.toggle(120); } });
@@ -266,6 +300,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelSummary() {
         const active = ctx.summarySystem?.getLatestActive?.();
         const $list = $('#gd-dash-panel-summary-list').empty();
+        appendOpenSettingsButton($list, 'summary');
         if (!active) {
             $list.append(`<small>${lang === 'zh' ? '暂无上下文总结' : 'No summary yet'}</small>`);
         } else {
@@ -313,6 +348,7 @@ registerSection('dashboard', function (ctx) {
         const profiles = getProfiles?.() || {};
         const chars = ctx.getCharacters?.() || [];
         const $list = $('#gd-dash-panel-profiles-list').empty();
+        appendOpenSettingsButton($list, 'profile');
         const entries = Object.entries(profiles).filter(([, p]) => p);
         if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色档案' : 'No profiles'}</small>`); return; }
         for (const [av, p] of entries) {
@@ -338,6 +374,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelMemories() {
         const stats = memorySystem.getStats?.() || {};
         const $list = $('#gd-dash-panel-memories-list').empty();
+        appendOpenSettingsButton($list, 'memory');
         const entries = Object.entries(stats);
         if (!entries.length) { $list.append(`<small>${lang === 'zh' ? '暂无角色记忆' : 'No memories'}</small>`); return; }
         for (const [av, s] of entries) {
@@ -369,6 +406,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelNpcs() {
         const npcs = npcSystem.getNpcs?.() || [];
         const $list = $('#gd-dash-panel-npcs-list').empty();
+        appendOpenSettingsButton($list, 'npc');
         if (!npcs.length) { $list.append(`<small>${lang === 'zh' ? '暂无 NPC' : 'No NPCs'}</small>`); return; }
         npcs.forEach((n, ni) => {
             const shortDesc = (n.description || '').slice(0, 40);
@@ -398,6 +436,7 @@ registerSection('dashboard', function (ctx) {
     function renderPanelLedger() {
         const history = getDirectorHistory();
         const $list = $('#gd-dash-panel-ledger-list').empty();
+        appendOpenSettingsButton($list, 'ledger');
         if (!history.length) { $list.append(`<small>${lang === 'zh' ? '暂无账本记录' : 'No ledger entries'}</small>`); return; }
         const recent = history.slice(-8).reverse();
         for (let i = 0; i < recent.length; i++) {
@@ -506,6 +545,7 @@ registerSection('dashboard', function (ctx) {
         const names = ctx.world_names || [];
         const sel = settings.worldBookSelection;
         $wbList.empty();
+        appendOpenSettingsButton($wbList, 'worldbooks');
         if (!names.length) {
             $wbList.append(`<small>${lang === 'zh' ? '未找到任何世界书' : 'No world books found'}</small>`);
             return;
