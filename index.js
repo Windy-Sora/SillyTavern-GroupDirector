@@ -56,10 +56,12 @@ import { createConfigProfileSystem } from './systems/config-profile-system.js';
 import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { createScriptExecutorSystem } from './systems/script-executor-system.js';
 import { createVariableSystem } from './systems/variable-system.js';
+import { createStoryBlueprintSystem } from './systems/story-blueprint-system.js';
 import { loadSettingsUI, reloadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
 import { register as registerVariables } from './assets/providers/variables.js';
+import { register as registerStoryBlueprint } from './assets/providers/story-blueprint.js';
 
 // ─── Agent Runtime ──────────────────────────────────────────────────
 import { AgentRegistry, execute, createScopedPool, AgentTrace } from './systems/agent-runtime.js';
@@ -89,6 +91,14 @@ delete loaded.directorLlmEnabled;
 delete loaded.directorLlmModel;
 if (loaded.directorLlmPrompt && !loaded.llmPrompt) loaded.llmPrompt = loaded.directorLlmPrompt;
 delete loaded.directorLlmPrompt;
+if (typeof loaded.llmJsonSchema === 'string'
+    && !loaded.llmJsonSchema.includes('{{storyBlueprintDoneField}}')
+    && loaded.llmJsonSchema.includes('"global": {},')) {
+    loaded.llmJsonSchema = loaded.llmJsonSchema.replace(
+        '"global": {},',
+        '"global": { {{storyBlueprintDoneField}} },',
+    );
+}
 
 let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 settings.scoreWeights = Object.assign({}, DEFAULT_SETTINGS.scoreWeights, loaded.scoreWeights || {});
@@ -192,6 +202,28 @@ const variableSystem = createVariableSystem({
     getLang: () => settings.lang || 'zh',
     log,
 });
+
+const storyBlueprintSystem = createStoryBlueprintSystem({
+    settings,
+    getChatMetadata,
+    getChat,
+    EXT_KEY,
+    saveChatConditional,
+    renderPrompt,
+    generateRaw: (opts) => getContext().generateRaw(opts),
+    createCaller,
+    parseJson: (raw) => {
+        const extracted = extractJsonObject(raw || '');
+        if (!extracted) return null;
+        try { return JSON.parse(sanitizeJson(extracted)); }
+        catch (e) { log('Story Blueprint JSON parse failed:', e.message); return null; }
+    },
+    variableSystem,
+    getCurrentGroup,
+    getLang: () => settings.lang || 'zh',
+    log,
+});
+storyBlueprintSystem.ensureCompletionVariable();
 
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
@@ -1893,6 +1925,25 @@ async function initRoundWithLLM() {
                 log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
                 window.__gdRefreshDashboard?.();
             }
+            const storyAdvance = storyBlueprintSystem.consumeCompletionSignal('director');
+            if (storyAdvance.advanced) {
+                const done = storyAdvance.complete;
+                toastr.info(done
+                    ? (settings.lang === 'zh' ? '当前故事蓝图已完成，请生成或续写新的蓝图。' : 'Story Blueprint complete. Generate or continue a blueprint.')
+                    : (settings.lang === 'zh' ? '故事蓝图已推进到下一块。' : 'Story Blueprint advanced to the next step.'));
+                window.__gdRefreshStoryBlueprint?.();
+                window.__gdRefreshDashboard?.();
+                if (done && settings.storyBlueprintAutoContinue) {
+                    try {
+                        await storyBlueprintSystem.generateBlueprint('continue');
+                        toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
+                        window.__gdRefreshStoryBlueprint?.();
+                        window.__gdRefreshDashboard?.();
+                    } catch (e) {
+                        toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+                    }
+                }
+            }
         }
 
         if (!parsed.speakers?.length) {
@@ -2079,6 +2130,10 @@ It is OK to assign none (empty array) or different entries to different characte
 
 {{variableMaintenance}}`;
 
+    base += `
+
+{{storyBlueprintCurrent}}`;
+
     base += '\n\n{{llmJsonSchema}}';
     return base;
 }
@@ -2087,9 +2142,13 @@ function buildJsonSchema() {
     const scriptField = settings.llmScriptEnabled
         ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
         : '';
+    const storyBlueprintDoneField = settings.storyBlueprintEnabled
+        ? `\n      "${settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done'}": false\n    `
+        : '';
     const schema = settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema;
     return schema
         .replace(/\{\{scriptField\}\}/g, scriptField)
+        .replace(/\{\{storyBlueprintDoneField\}\}/g, storyBlueprintDoneField)
         .replace(/\{\{llmJsonSchema\}\}/g, '');
 }
 
@@ -2124,6 +2183,22 @@ registerProvider({
     },
 });
 
+// StoryBlueprintDoneField — expands inside variable_update.global when Story Blueprint is enabled.
+registerProvider({
+    id: 'storyBlueprintDoneField',
+    placeholder: '{{storyBlueprintDoneField}}',
+    render: () => {
+        const enabled = settings.storyBlueprintEnabled;
+        const variableName = settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done';
+        return {
+            content: enabled
+                ? `\n      "${variableName}": false\n    `
+                : '',
+            data: { enabled, variableName },
+        };
+    },
+});
+
 // LlmJsonSchema — user-customizable JSON output format template
 registerProvider({
     id: 'llmJsonSchema',
@@ -2135,6 +2210,7 @@ registerWorldInfoProvider(settings, wiState, buildDirectorWorldInfo);
 registerHistoryProviders(settings, getDirectorHistory);
 registerDirectorLedger(settings, getDirectorHistory);
 registerVariables({ variableSystem });
+registerStoryBlueprint({ settings, storyBlueprintSystem });
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
@@ -2243,6 +2319,7 @@ eventSource.on(event_types.APP_READY, async () => {
         customPromptsSystem,
         scriptExecutorSystem,
         variableSystem,
+        storyBlueprintSystem,
     };
     await loadSettingsUI(deps);
     // Restore user-imported providers and capabilities from persistent storage.

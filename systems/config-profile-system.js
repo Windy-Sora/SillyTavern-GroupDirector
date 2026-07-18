@@ -55,6 +55,11 @@ const DRAWER_KEYS = {
     contextLedger: [
         'summaryEnabled', 'summaryReusePrevious', 'summaryPrompt',
         'autoSummaryEnabled', 'autoSummaryInterval',
+        'storyBlueprintEnabled', 'storyBlueprintAutoContinue',
+        'storyBlueprintProgressionMode', 'storyBlueprintProgressionLevel',
+        'storyBlueprintCompletionVariable', 'storyBlueprintMaxNodes',
+        'storyBlueprintPrompt', 'storyBlueprintContinuePrompt',
+        'storyBlueprintJsonSchema', 'storyBlueprintProviderTemplate',
         'critiqueEnabled', 'critiqueReusePrevious', 'critiquePrompt',
         'critiqueSchema',
         'autoCritiqueEnabled', 'autoCritiqueInterval',

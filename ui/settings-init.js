@@ -15,6 +15,7 @@ import './sections/worldBooks.js';
 import './sections/ledger.js';
 import './sections/forceSpeak.js';
 import './sections/chatSummary.js';
+import './sections/storyBlueprint.js';
 import './sections/critique.js';
 import './sections/summaryExport.js';
 import './sections/critiqueExport.js';

@@ -6,7 +6,7 @@ registerSection('dashboard', function (ctx) {
         settings, $c, saveSettings, getDirectorHistory, getProfiles,
         memorySystem, npcSystem, loadConfigPreset, getConfigPresetNames,
         isRoundActive, saveChatConditional, getChat, toastr, exportGroup, importGroup,
-        configProfileSystem, onLatestEntryEdited,
+        configProfileSystem, onLatestEntryEdited, storyBlueprintSystem,
     } = ctx;
 
     // ── Card collapse state persistence ──────────────────────────
@@ -113,6 +113,11 @@ registerSection('dashboard', function (ctx) {
             const history = getDirectorHistory();
             $('#gd-stat-ledger .gd-stat-value').text(history.length);
         } catch (_) {}
+
+        try {
+            const p = storyBlueprintSystem?.getProgress?.();
+            $('#gd-stat-story-blueprint .gd-stat-value').text(p?.total ? `${p.doneCount}/${p.total}` : '-');
+        } catch (_) {}
     }
 
     // ── Dashboard: card status labels ────────────────────────────
@@ -163,6 +168,15 @@ registerSection('dashboard', function (ctx) {
             const presets = getConfigPresetNames?.() || [];
             const $s = $('#gd-card-status-config');
             if (presets.length) { $s.text(presets.length + ' saved').show(); }
+        } catch (_) {}
+
+        try {
+            const p = storyBlueprintSystem?.getProgress?.();
+            const $s = $('#gd-story-blueprint-card-status');
+            if ($s.length) {
+                $s.text(p?.total ? `${p.doneCount}/${p.total}` : settings.storyBlueprintEnabled ? 'empty' : 'off');
+                $s.css('color', p?.total ? '#4caf50' : '');
+            }
         } catch (_) {}
     }
 
@@ -219,6 +233,7 @@ registerSection('dashboard', function (ctx) {
         memories: { stat: 'gd-stat-memories', panel: 'gd-dash-panel-memories', list: 'gd-dash-panel-memories-list' },
         npcs:     { stat: 'gd-stat-npcs',     panel: 'gd-dash-panel-npcs',     list: 'gd-dash-panel-npcs-list' },
         ledger:   { stat: 'gd-stat-ledger',   panel: 'gd-dash-panel-ledger',   list: 'gd-dash-panel-ledger-list' },
+        storyBlueprint: { stat: 'gd-stat-story-blueprint', panel: 'gd-dash-panel-story-blueprint', list: 'gd-dash-panel-story-blueprint-list' },
     };
 
     function esc(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -486,7 +501,47 @@ registerSection('dashboard', function (ctx) {
         }
     }
 
-    const panelRenderers = { summary: renderPanelSummary, profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger };
+    function renderPanelStoryBlueprint() {
+        const $list = $('#gd-dash-panel-story-blueprint-list').empty();
+        appendOpenSettingsButton($list, 'storyBlueprint');
+        const p = storyBlueprintSystem?.getProgress?.();
+        const data = storyBlueprintSystem?.getProviderData?.();
+        if (!p || !p.total) {
+            $list.append(`<small>${lang === 'zh' ? '暂无故事蓝图' : 'No Story Blueprint'}</small>`);
+        } else {
+            $list.append(`<div class="gd-list-item"><span class="gd-list-name">${esc(data?.blueprint?.title || 'Story Blueprint')}</span><span class="gd-list-meta">${p.doneCount}/${p.total}</span></div>`);
+            $list.append(`<div style="font-size:0.9em;color:var(--grey70a);padding:4px 0;">${esc(p.complete ? (lang === 'zh' ? '已完成' : 'complete') : (data?.current?.path || ''))}</div>`);
+            $list.append(`<div style="font-size:0.85em;color:var(--grey70a);">${settings.storyBlueprintEnabled ? (lang === 'zh' ? 'Provider 已启用' : 'Provider enabled') : (lang === 'zh' ? 'Provider 未启用' : 'Provider disabled')}</div>`);
+        }
+        $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;flex-wrap:wrap;">` +
+            `<label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-story-enabled" ${settings.storyBlueprintEnabled ? 'checked' : ''}>${lang === 'zh' ? '启用' : 'Enable'}</label>` +
+            `<span class="menu_button menu_button_icon" id="gd-dash-panel-story-generate" style="font-size:0.8em;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${lang === 'zh' ? '生成蓝图' : 'Generate'}</span>` +
+            `<span class="menu_button menu_button_icon" id="gd-dash-panel-story-preview" style="font-size:0.8em;"><i class="fa-solid fa-eye"></i> ${lang === 'zh' ? '预览' : 'Preview'}</span>` +
+            `</div><textarea id="gd-dash-panel-story-preview-text" class="text_pole textarea_compact" rows="5" style="width:100%;font-family:monospace;font-size:0.82em;margin-top:4px;display:none;" readonly></textarea>`);
+        $('#gd-dash-panel-story-enabled').on('change', function () {
+            settings.storyBlueprintEnabled = !!$(this).prop('checked');
+            $('#gd-story-blueprint-enabled').prop('checked', settings.storyBlueprintEnabled);
+            storyBlueprintSystem?.ensureCompletionVariable?.();
+            storyBlueprintSystem?.clearCompletionSignal?.(settings.storyBlueprintEnabled ? 'enabled-reset' : 'disabled-reset');
+            saveSettings();
+            refreshAll();
+        });
+        $('#gd-dash-panel-story-generate').on('click', function () {
+            if (!settings.storyBlueprintEnabled) {
+                settings.storyBlueprintEnabled = true;
+                $('#gd-story-blueprint-enabled').prop('checked', true);
+                storyBlueprintSystem?.ensureCompletionVariable?.();
+                saveSettings();
+            }
+            $('#gd-story-blueprint-generate').trigger('click');
+        });
+        $('#gd-dash-panel-story-preview').on('click', function () {
+            const $t = $('#gd-dash-panel-story-preview-text');
+            $t.val(storyBlueprintSystem?.renderCurrent?.() || '').toggle();
+        });
+    }
+
+    const panelRenderers = { summary: renderPanelSummary, profiles: renderPanelProfiles, memories: renderPanelMemories, npcs: renderPanelNpcs, ledger: renderPanelLedger, storyBlueprint: renderPanelStoryBlueprint };
 
     let openPanel = null;
     function togglePanel(name) {
