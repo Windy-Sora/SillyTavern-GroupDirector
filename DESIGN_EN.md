@@ -4,7 +4,7 @@
 
 Group Director is a **group-chat context pipeline**: collect data → Agent decision → inject character prompt.
 
-It ships with 9 Agent groups by default: Director, ForceSpeak, Profile, Summary, NPC, Memory, PostSpeech (multimodal strategy), Critique, and Custom Agent (user-defined — not registered as an Agent, calls LLM directly through the system). The first 8 Agents each have independent API configurations; Custom Agent shares the `custom-agent` API configuration.
+It ships with 10 configurable LLM call groups by default: Director, ForceSpeak, Profile, Summary, NPC, Memory, PostSpeech (multimodal strategy), Critique, Story Blueprint, and Custom Agent (user-defined — not registered as an Agent, calls LLM directly through the system). Runtime-registered Agents use the declarative pipeline; Story Blueprint and Custom Agent call the LLM directly through their systems, but still have independent API configurations.
 
 The framework is not bound to any specific use case — replace prompt templates to implement dungeon master, debate referee, combat system, social simulation, and other scenarios.
 
@@ -186,6 +186,7 @@ settings.agentConfigs = {
   'npc':         { ... },
   'memory':      { ... },
   'post-speech': { ... },
+  'story-blueprint': { ... }, // Story Blueprint generation/continuation
   'custom-agent': { ... },  // All Custom Agent instances coexist
 };
 ```
@@ -217,7 +218,7 @@ registerProvider({
 - **Error isolation** — Timed-out or throwing providers degrade to empty `{content:'', data:null}`. Sibling providers are unaffected.
 - **World-book scanner dedup** — `{{worldBooks}}` and `{{worldBookImportance}}` share an in-flight promise dedup so parallel Phase 1 does not duplicate `loadWorldInfo` calls.
 
-### 3.3 Registered Providers (38 built-in + N Custom Agent dynamic registrations)
+### 3.3 Registered Providers (44 built-in + N Custom Agent dynamic registrations)
 
 | Provider | Placeholder | Description |
 |----------|--------|------|
@@ -233,6 +234,7 @@ registerProvider({
 | `directorHistory` | `{{directorHistory}}` | Full Director history JSON |
 | `llmJsonSchema` | `{{llmJsonSchema}}` | User-editable JSON output format template, containing `{{scriptField}}` |
 | `scriptField` | `{{scriptField}}` | Expands to scripts field fragment when scripts enabled, or emptied when disabled |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Expands to the completion variable field when Story Blueprint is enabled, or empties when disabled |
 | `worldBooks` | `{{worldBooks}}` | Activated world book list |
 | `worldBookImportance` | `{{worldBookImportance}}` | Entry importance ranking |
 | `characterLore` | `{{characterLore}}` | Character world book trigger words |
@@ -259,6 +261,11 @@ registerProvider({
 | `vars` | `{{vars}}` | Full variable snapshot JSON |
 | `varsJson` | `{{varsJson}}` | Full variable snapshot JSON (same as vars) |
 | `variableMaintenance` | `{{variableMaintenance}}` | Variable maintenance instructions (injected into Director Prompt, tells LLM how to return variable_update) |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | Current Story Blueprint step; completion notice is consumed once by Director |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | Current progression node JSON |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | Blueprint progress summary |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | Completion variable protocol hint |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | Full blueprint JSON |
 
 ### 3.4 Variable System (v0.7)
 
@@ -282,7 +289,38 @@ The variable system provides structured, long-term state tracking for Group Dire
 
 **UI:** Tools drawer → Variables card (list + editor + templates + import/export); Dashboard → Variables panel (click "Variables" button to expand, real-time view/edit/rollback/lock).
 
-### 3.5 Coding Rules
+### 3.5 Story Blueprint System
+
+Story Blueprint is the story-structure system in the continuity layer. The framework only stores a structured blueprint and progress; it does not decide in code whether the story is narratively complete. Director/ForceSpeak declare completion through a boolean variable protocol.
+
+**Core protocol:**
+- The completion variable defaults to `gd_story_chapter_done`, stored as a global boolean variable.
+- The Director JSON schema uses `{{storyBlueprintDoneField}}` inside `variable_update.global`; when Story Blueprint is disabled, this placeholder renders empty.
+- When the LLM sets the completion variable to `true`, the system advances one step and immediately resets it to `false`.
+- If ForceSpeak returns the completion variable, the signal is consumed there too so it does not leak into the next Director round.
+
+**Blueprint shape:** `nodes` is a dynamic tree: flat, chapter/section/beat, or deeper. Progression modes are `leaf`, `all`, and `level`. `content` is a free-form object owned by prompt authors.
+
+**Generation and continuation:**
+- Generation/continuation prompts use the normal Provider renderer, so they can reference characters, profiles, world books, ledgers, summaries, variables, and custom interfaces.
+- The default generation prompt includes `{{storyBlueprintFullJson}}` and `{{storyBlueprintProgress}}` so regeneration can preserve existing continuity; users can remove those interfaces from the prompt for a hard restart.
+- Story Blueprint uses `agentConfigs['story-blueprint']`, configurable in the Tools drawer's Agent Configuration card.
+- Auto-continuation runs in the background and does not block the current Director decision; `continuePending` drives the "continuing" UI state.
+- Continuation appends nodes after re-normalizing ids with the current top-level offset, then recursively resolves id collisions to protect `doneSignals`.
+- Continuation that returns no nodes fails explicitly instead of reporting success with no change.
+
+**Manual editing:**
+- The UI can create a user-authored blank blueprint, append root-level chapters, inspect progression rows, and use the location button separately to set the current step.
+- Blueprint title, meta fields, and current/viewed node `content` fields are inline-editable. Saves reuse `setBlueprint(..., { resetProgress:false })` and do not reset progress.
+
+**State and safety:**
+- Blueprint content and progress live in `chat_metadata[EXT_KEY].storyBlueprint`; configuration lives in `extension_settings`.
+- `doneSignals` records completed node id, step index, chat length, timestamp, and source.
+- The completion notice is consumed once only by Director prompt rendering; UI preview and ForceSpeak cannot steal it.
+- Import and advanced JSON editing validate a non-empty `nodes` array before saving.
+- Config profiles sync Story Blueprint configuration plus variable definitions/data, not the current chat's blueprint body or progress. Blueprint body uses the Story Blueprint card's own import/export.
+
+### 3.6 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters

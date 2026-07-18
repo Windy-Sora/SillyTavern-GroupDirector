@@ -61,6 +61,14 @@ export const DEFAULT_STORY_BLUEPRINT_PROMPT_ZH = `请基于当前群聊上下文
 [上下文总结]
 {{chatSummary}}
 
+[已有故事蓝图（如有）]
+{{storyBlueprintFullJson}}
+
+[当前蓝图进度（如有）]
+{{storyBlueprintProgress}}
+
+如果已有故事蓝图，优先保护已有连续性和已发生剧情；除非用户明确要重启，不要与旧蓝图的核心事件矛盾。
+
 目标：
 - 蓝图只描述“接下来故事可以如何推进”，不要记录运行进度。
 - 使用动态 nodes 树，可以是一层，也可以有章、节、小结等多层。
@@ -97,6 +105,12 @@ export const DEFAULT_STORY_BLUEPRINT_PROMPT_EN = `Generate a structured Story Bl
 [Chat summary]
 {{chatSummary}}
 
+[Existing Story Blueprint, if any]
+{{storyBlueprintFullJson}}
+
+[Current blueprint progress, if any]
+{{storyBlueprintProgress}}
+
 Goals:
 - The blueprint describes how the story can proceed next. Do not store runtime progress in it.
 - Use a dynamic nodes tree. It may be flat, or it may contain chapters, sections, beats, or deeper layers.
@@ -107,6 +121,7 @@ Goals:
 - Character usage should fit the available characters' profiles, relationships, and current state.
 - World details, locations, factions, items, and rules should come primarily from world book / world info.
 - Respect player agency. Do not force or overwrite user actions in the blueprint.
+- If an existing Story Blueprint is present, preserve established continuity and played events unless the user clearly wants a restart. Do not contradict the old blueprint's core events.
 
 Generate about {{storyBlueprintMaxNodes}} leaf-level progression nodes.`;
 
@@ -138,6 +153,8 @@ export const DEFAULT_STORY_BLUEPRINT_CONTINUE_PROMPT_ZH = `请基于现有故事
 
 [上下文总结]
 {{chatSummary}}
+
+续写必须保护已有蓝图的连续性，不要重复已完成节点，不要推翻已经发生的关键事件。
 
 要求：
 - 不要重写旧蓝图，只输出要追加的新蓝图片段。
@@ -187,6 +204,7 @@ Requirements:
 - content should usually include purpose, director_prompt, and completion_rule.
 - Continue from established character details, world book context, and already-played plot.
 - Do not store runtime progress. Do not include done, status, or currentIndex.
+- Preserve existing blueprint continuity. Do not repeat completed nodes or contradict key events that already happened.
 
 Generate about {{storyBlueprintMaxNodes}} leaf-level progression nodes.`;
 
@@ -625,6 +643,51 @@ export function createStoryBlueprintSystem({
         saveChatConditional?.();
     }
 
+    function createBlankBlueprint() {
+        const zh = lang() === 'zh';
+        return setBlueprint({
+            version: 1,
+            title: zh ? '用户自建故事蓝图' : 'User Story Blueprint',
+            meta: {
+                premise: '',
+                style: '',
+            },
+            nodes: [
+                {
+                    id: 'node_001',
+                    type: 'chapter',
+                    title: zh ? '第一章' : 'Chapter 1',
+                    content: {
+                        purpose: '',
+                        director_prompt: '',
+                        completion_rule: '',
+                    },
+                    children: [],
+                },
+            ],
+        }, { resetProgress: true });
+    }
+
+    function appendBlankChapter() {
+        const zh = lang() === 'zh';
+        const blueprint = getBlueprint() || createBlankBlueprint();
+        const nextNumber = ensureArray(blueprint.nodes).length + 1;
+        const usedIds = collectNodeIds(blueprint.nodes);
+        const node = uniquifyNodeIds(normalizeNode({
+            id: `chapter_${String(nextNumber).padStart(3, '0')}`,
+            type: 'chapter',
+            title: zh ? `第${nextNumber}章` : `Chapter ${nextNumber}`,
+            content: {
+                purpose: '',
+                director_prompt: '',
+                completion_rule: '',
+            },
+            children: [],
+        }, [nextNumber - 1]), usedIds, `manual${nextNumber}`);
+        blueprint.nodes = ensureArray(blueprint.nodes).concat(node);
+        return setBlueprint(blueprint, { resetProgress: false });
+    }
+
     function buildGenerationPrompt(mode = 'new') {
         const schema = settings.storyBlueprintJsonSchema || DEFAULT_STORY_BLUEPRINT_SCHEMA;
         const maxNodes = settings.storyBlueprintMaxNodes || 8;
@@ -782,6 +845,8 @@ ${schema}`;
         setCurrentStep,
         resetProgress,
         resetBlueprint,
+        createBlankBlueprint,
+        appendBlankChapter,
         renderGenerationPrompt,
         generateBlueprint,
         buildExportFile,

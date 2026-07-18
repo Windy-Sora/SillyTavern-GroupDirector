@@ -49,6 +49,7 @@ function encodeAttr(value) {
 registerSection('storyBlueprint', function (ctx) {
     const { settings, $c, saveSettings, storyBlueprintSystem, toastr, isRoundActive } = ctx;
     if (!storyBlueprintSystem) return;
+    let viewedStepIndex = null;
 
     function langZh() { return (settings.lang || 'zh') === 'zh'; }
 
@@ -77,15 +78,23 @@ registerSection('storyBlueprint', function (ctx) {
         for (let i = 0; i < progress.steps.length; i++) {
             const step = progress.steps[i];
             const state = i < progress.doneCount ? '✓' : i === progress.doneCount && !progress.complete ? '●' : '○';
-            const cls = i < progress.doneCount ? 'gd-step-done' : i === progress.doneCount && !progress.complete ? 'gd-step-current' : '';
-            const $row = $(`<div class="gd-story-step ${cls}" style="padding-left:${Math.min(step.depth * 14, 56)}px;">
+            const cls = [
+                i < progress.doneCount ? 'gd-step-done' : i === progress.doneCount && !progress.complete ? 'gd-step-current' : '',
+                viewedStepIndex === i ? 'gd-step-viewing' : '',
+            ].filter(Boolean).join(' ');
+            const $row = $(`<div class="gd-story-step ${cls}" style="padding-left:${Math.min(step.depth * 14, 56)}px;" title="${langZh() ? '点击查看节点内容' : 'Click to view node content'}">
                 <span class="gd-story-step-state">${state}</span>
                 <span class="gd-story-step-title">${esc(step.pathText)}</span>
                 <span class="menu_button menu_button_icon gd-story-set-current" data-index="${i}" title="${langZh() ? '设为当前' : 'Set current'}"><i class="fa-solid fa-location-dot"></i></span>
             </div>`);
+            $row.on('click', () => {
+                viewedStepIndex = i;
+                refresh();
+            });
             $row.find('.gd-story-set-current').on('click', async (ev) => {
                 ev.stopPropagation();
                 storyBlueprintSystem.setCurrentStep(i);
+                viewedStepIndex = null;
                 refresh();
             });
             $list.append($row);
@@ -154,10 +163,59 @@ registerSection('storyBlueprint', function (ctx) {
         });
     }
 
+    function bindBlueprintTitleEditor($card, blueprint) {
+        $card.find('.gd-story-title-editable').on('click', function () {
+            const $field = $(this);
+            if ($field.find('input').length) return;
+            const oldTitle = blueprint.title || '';
+            const $editor = $(`<input type="text" class="text_pole gd-story-title-input" style="width:100%;">`);
+            $editor.val(oldTitle);
+            $field.empty().append($editor);
+            $editor.trigger('focus').trigger('select');
+
+            let saved = false;
+            const save = () => {
+                if (saved) return;
+                saved = true;
+                const nextTitle = String($editor.val() || '').trim() || 'Story Blueprint';
+                try {
+                    blueprint.title = nextTitle;
+                    storyBlueprintSystem.setBlueprint(blueprint, { resetProgress: false });
+                    toastr.success(langZh() ? '蓝图标题已保存' : 'Blueprint title saved');
+                    refresh();
+                } catch (e) {
+                    saved = false;
+                    toastr.error(`${langZh() ? '保存失败' : 'Save failed'}: ${e.message}`);
+                    $editor.trigger('focus');
+                }
+            };
+            $editor.on('blur', save);
+            $editor.on('keydown', (ev) => {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    save();
+                }
+                if (ev.key === 'Escape') {
+                    saved = true;
+                    refresh();
+                }
+            });
+        });
+    }
+
     function renderCurrentCard(data, progress) {
         const $card = $c('story-blueprint-current-card');
         $card.empty();
-        const current = data.current?.node || null;
+        const viewedStep = Number.isInteger(viewedStepIndex) ? progress.steps[viewedStepIndex] : null;
+        const currentInfo = viewedStep ? {
+            id: viewedStep.id,
+            depth: viewedStep.depth,
+            path: viewedStep.pathText,
+            node: viewedStep.node,
+            nodeJson: JSON.stringify(viewedStep.node, null, 2),
+            content: viewedStep.node?.content || {},
+        } : data.current;
+        const current = currentInfo?.node || null;
         const blueprint = data.blueprint || null;
         if (!blueprint) {
             $card.append(`<div class="gd-story-empty">${langZh() ? '尚未生成故事蓝图。' : 'No Story Blueprint generated yet.'}</div>`);
@@ -167,7 +225,7 @@ registerSection('storyBlueprint', function (ctx) {
             $card.append(`<div class="gd-story-empty">${langZh() ? '蓝图存在，但当前推进模式没有匹配的节点。请调整推进模式或层级。' : 'Blueprint loaded, but the current progression mode has no matching nodes. Adjust mode or level.'}</div>`);
             return;
         }
-        if (progress.complete) {
+        if (progress.complete && !viewedStep) {
             $card.append(`<div class="gd-story-empty">${langZh() ? '当前蓝图已完成。' : 'The current blueprint is complete.'}</div>`);
             return;
         }
@@ -179,16 +237,18 @@ registerSection('storyBlueprint', function (ctx) {
             <div class="gd-story-overview">
                 <div>
                     <div class="gd-story-kicker">${langZh() ? '故事' : 'Story'}</div>
-                    <div class="gd-story-title">${esc(blueprint.title || 'Story Blueprint')}</div>
+                    <div class="gd-story-title gd-story-title-editable" title="${langZh() ? '点击编辑标题' : 'Click to edit title'}">${esc(blueprint.title || 'Story Blueprint')}</div>
                 </div>
                 <div class="gd-story-progress-pill">${progress.doneCount}/${progress.total}</div>
             </div>
-            <div class="gd-story-path">${esc(data.current?.path || '')}</div>
+            <div class="gd-story-path">${esc(currentInfo?.path || '')}</div>
+            ${viewedStep ? `<div class="gd-story-path">${langZh() ? '正在查看节点，不改变当前进度' : 'Viewing node without changing progress'}</div>` : ''}
             <div class="gd-story-node-head">
                 <span class="gd-story-node-type">${esc(current.type || 'node')}</span>
                 <span class="gd-story-node-title">${esc(current.title || current.id || '')}</span>
             </div>
         `);
+        bindBlueprintTitleEditor($card, blueprint);
 
         if (Object.keys(meta).length) {
             $card.append(`<div class="gd-story-section-title">${langZh() ? '蓝图 Meta' : 'Blueprint Meta'}</div>`);
@@ -345,6 +405,28 @@ registerSection('storyBlueprint', function (ctx) {
             $c(id).prop('disabled', false);
         }
     }
+
+    $c('story-blueprint-new').on('click', async () => {
+        if (storyBlueprintSystem.getBlueprint()) {
+            const ok = await callGenericPopup(
+                langZh() ? '新建蓝图会替换当前故事蓝图并重置进度，继续？' : 'Create a new blueprint and reset current progress?',
+                POPUP_TYPE.CONFIRM,
+            );
+            if (!ok) return;
+        }
+        storyBlueprintSystem.createBlankBlueprint();
+        viewedStepIndex = 0;
+        toastr.success(langZh() ? '已新建空白故事蓝图' : 'Blank Story Blueprint created');
+        refresh();
+    });
+
+    $c('story-blueprint-add-chapter').on('click', () => {
+        storyBlueprintSystem.appendBlankChapter();
+        const progress = storyBlueprintSystem.getProgress();
+        viewedStepIndex = Math.max(0, progress.steps.length - 1);
+        toastr.success(langZh() ? '已添加章节' : 'Chapter added');
+        refresh();
+    });
 
     $c('story-blueprint-generate').on('click', () => runGenerate('new'));
     $c('story-blueprint-continue').on('click', () => runGenerate('continue'));

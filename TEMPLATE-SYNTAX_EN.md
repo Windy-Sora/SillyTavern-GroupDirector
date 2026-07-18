@@ -21,6 +21,8 @@ Group Director's template system supports six placeholder syntax types, usable i
 {{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
 {{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
 {{globalVars}}  {{charVars}}  {{vars}}  {{varsJson}}  {{variableMaintenance}}
+{{storyBlueprintCurrent}}  {{storyBlueprintProgress}}  {{storyBlueprintCurrentJson}}
+{{storyBlueprintSchemaHint}}  {{storyBlueprintFullJson}}  {{storyBlueprintDoneField}}
 ```
 
 Inserts the Provider's rendered result for `name` directly into the template. Behavior for unregistered placeholders is controlled by the `templateDebugPlaceholders` setting:
@@ -216,6 +218,12 @@ return {
 | `vars` | `{{vars}}` | Full variable snapshot JSON | `{ global, character, currentCharacter, log }` | `providers/variables.js` |
 | `varsJson` | `{{varsJson}}` | Full variable snapshot JSON (same as vars) | Same as above | `providers/variables.js` |
 | `variableMaintenance` | `{{variableMaintenance}}` | Variable maintenance instructions (injected into Director Prompt) | Full snapshot object | `providers/variables.js` |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | Current Story Blueprint step; completion notice consumed once by Director | `{ blueprint, progress, current, doneSignals }` | `providers/story-blueprint.js` |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | Current progression node JSON | Current node object | `providers/story-blueprint.js` |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | Blueprint progress summary | `{ current, done, total, complete, currentIndex }` | `providers/story-blueprint.js` |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | Completion variable protocol hint | `{ completionVariable }` | `providers/story-blueprint.js` |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | Full blueprint JSON | Blueprint object | `providers/story-blueprint.js` |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Director JSON Schema field fragment | `{ enabled, variableName }` | `index.js` |
 
 ### 5.3 Variable System Provider Details
 

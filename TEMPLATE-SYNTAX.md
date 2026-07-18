@@ -21,6 +21,8 @@ Group Director 的模板系统支持六种占位符语法，可在**任何模板
 {{worldInfo}}  {{character_profiles}}  {{maxSpeakers}}  {{previousPlans}}
 {{worldBookImportance}}  {{characterLore}}  {{worldBooks}}
 {{globalVars}}  {{charVars}}  {{vars}}  {{varsJson}}  {{variableMaintenance}}
+{{storyBlueprintCurrent}}  {{storyBlueprintProgress}}  {{storyBlueprintCurrentJson}}
+{{storyBlueprintSchemaHint}}  {{storyBlueprintFullJson}}  {{storyBlueprintDoneField}}
 ```
 
 将 `name` 对应的 Provider 渲染结果直接插入模板。未注册的占位符行为由 `templateDebugPlaceholders` 设置控制：
@@ -216,6 +218,12 @@ return {
 | `vars` | `{{vars}}` | 完整变量快照 JSON | `{ global, character, currentCharacter, log }` | `providers/variables.js` |
 | `varsJson` | `{{varsJson}}` | 完整变量快照 JSON（同 vars） | 同上 | `providers/variables.js` |
 | `variableMaintenance` | `{{variableMaintenance}}` | 变量维护说明（注入 Director Prompt） | 完整快照对象 | `providers/variables.js` |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | 当前故事蓝图推进块；完成提示仅 Director 消费一次 | `{ blueprint, progress, current, doneSignals }` | `providers/story-blueprint.js` |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | 当前推进节点 JSON | 当前节点对象 | `providers/story-blueprint.js` |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | 蓝图进度摘要 | `{ current, done, total, complete, currentIndex }` | `providers/story-blueprint.js` |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | 完成变量协议提示 | `{ completionVariable }` | `providers/story-blueprint.js` |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | 完整蓝图 JSON | 蓝图对象 | `providers/story-blueprint.js` |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | Director JSON Schema 专用字段片段 | `{ enabled, variableName }` | `index.js` |
 
 ### 5.3 变量系统 Provider 详解
 

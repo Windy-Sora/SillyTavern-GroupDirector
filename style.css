@@ -498,6 +498,7 @@
     min-height: 28px;
     border-bottom: 1px solid var(--SmartThemeBorderColor);
     font-size: 0.9em;
+    cursor: pointer;
 }
 
 .gd-story-step:last-child {
@@ -510,6 +511,15 @@
     white-space: nowrap;
 }
 
+.gd-story-title-editable {
+    cursor: text;
+}
+
+.gd-story-title-editable:hover {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
 .gd-story-step-current .gd-story-step-state,
 .gd-story-step-current .gd-story-step-title {
     color: #4caf50;
@@ -518,6 +528,10 @@
 
 .gd-step-done .gd-story-step-state {
     color: #8bc34a;
+}
+
+.gd-step-viewing {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
 }
 
 .gd-muted {

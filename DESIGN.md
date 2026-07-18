@@ -4,7 +4,7 @@
 
 Group Director 是一个 **群聊上下文管线**：收集数据 → Agent 决策 → 注入角色 prompt。
 
-默认搭载 9 组 Agent：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）、Custom Agent（用户自定义 —— 不注册为 Agent，直接通过 system 调用 LLM）。前 8 个 Agent 拥有独立的 API 配置，Custom Agent 共用 `custom-agent` API 配置。
+默认搭载 10 组可配置 LLM 调用：Director（导演）、ForceSpeak（强制发言）、Profile（角色档案）、Summary（上下文总结）、NPC（NPC 生成）、Memory（角色记忆）、PostSpeech（多模态策略）、Critique（批判）、Story Blueprint（故事蓝图）、Custom Agent（用户自定义 —— 不注册为 Agent，直接通过 system 调用 LLM）。注册到 Agent Runtime 的 Agent 走声明式 pipeline；Story Blueprint 和 Custom Agent 直接通过各自 system 调用 LLM，但同样拥有独立 API 配置。
 
 框架不绑定任何特定用例——可替换 prompt 模板实现地牢主宰、辩论裁判、战斗系统、社会模拟等场景。
 
@@ -185,6 +185,7 @@ settings.agentConfigs = {
   'npc':         { ... },
   'memory':      { ... },
   'post-speech': { ... },
+  'story-blueprint': { ... }, // 故事蓝图生成/续写
   'custom-agent': { ... },  // 所有自定义 Agent 实例共存
 };
 ```
@@ -216,7 +217,7 @@ registerProvider({
 - **错误隔离** — 超时或 `render()` 抛错的 Provider 降级为空内容 `{content:'', data:null}`，同批次其他 Provider 不受影响。
 - **世界书 Provider 并发安全** — `{{worldBooks}}` 和 `{{worldBookImportance}}` 共享 in-flight promise dedup，并行时不会重复调用 `loadWorldInfo`。
 
-### 3.3 已注册 Provider（38 个内置 + N 个自定义 Agent 动态注册）
+### 3.3 已注册 Provider（44 个内置 + N 个自定义 Agent 动态注册）
 
 | Provider | 占位符 | 说明 |
 |----------|--------|------|
@@ -232,6 +233,7 @@ registerProvider({
 | `directorHistory` | `{{directorHistory}}` | 全部导演历史 JSON |
 | `llmJsonSchema` | `{{llmJsonSchema}}` | 用户可编辑的 JSON 输出格式模板，含 `{{scriptField}}` |
 | `scriptField` | `{{scriptField}}` | 根据剧本开关展开 scripts 字段片段或清空 |
+| `storyBlueprintDoneField` | `{{storyBlueprintDoneField}}` | 根据故事蓝图开关展开完成变量字段或清空 |
 | `worldBooks` | `{{worldBooks}}` | 激活世界书清单 |
 | `worldBookImportance` | `{{worldBookImportance}}` | 条目重要性排名 |
 | `characterLore` | `{{characterLore}}` | 角色世界书触发词 |
@@ -258,6 +260,11 @@ registerProvider({
 | `vars` | `{{vars}}` | 完整变量快照 JSON |
 | `varsJson` | `{{varsJson}}` | 完整变量快照 JSON（同 vars） |
 | `variableMaintenance` | `{{variableMaintenance}}` | 变量维护说明（注入 Director Prompt，告知 LLM 如何返回 variable_update） |
+| `storyBlueprintCurrent` | `{{storyBlueprintCurrent}}` | 当前故事蓝图推进块；完成提示仅 Director 消费一次 |
+| `storyBlueprintCurrentJson` | `{{storyBlueprintCurrentJson}}` | 当前推进节点 JSON |
+| `storyBlueprintProgress` | `{{storyBlueprintProgress}}` | 蓝图进度摘要 |
+| `storyBlueprintSchemaHint` | `{{storyBlueprintSchemaHint}}` | 完成变量协议提示 |
+| `storyBlueprintFullJson` | `{{storyBlueprintFullJson}}` | 完整蓝图 JSON |
 
 ### 3.4 变量系统（v0.7）
 
@@ -281,7 +288,38 @@ registerProvider({
 
 **UI：** 工具抽屉 → 变量卡片（列表+编辑器+模板+导入导出）；仪表盘 → 变量面板（点击"变量"按钮展开，实时查看/编辑/回滚/锁定）。
 
-### 3.5 编码规则
+### 3.5 Story Blueprint 系统
+
+Story Blueprint 是连续性层的故事结构系统。框架只维护结构化蓝图和进度，不在代码里判断剧情是否合理；是否完成当前块由 Director/ForceSpeak 通过布尔变量协议声明。
+
+**核心协议：**
+- 完成变量默认 `gd_story_chapter_done`，存为全局 boolean 变量。
+- Director JSON schema 通过 `{{storyBlueprintDoneField}}` 在 `variable_update.global` 中展开完成字段；关闭故事蓝图时该占位符为空。
+- LLM 把完成变量设为 `true` 时，系统推进一个步骤并立即把变量重置为 `false`。
+- 如果 ForceSpeak LLM 返回了完成变量，也会消费该信号，避免残留到下一轮 Director。
+
+**蓝图结构：** `nodes` 是动态树，可一层、章/节/小节或更深。推进模式支持 `leaf`、`all`、`level`。`content` 是 prompt 作者自由定义的对象。
+
+**生成与续写：**
+- 生成/续写 prompt 走普通 Provider 渲染，可使用角色、档案、世界书、账本、总结、变量等接口。
+- 默认生成 prompt 带 `{{storyBlueprintFullJson}}` 和 `{{storyBlueprintProgress}}`，让重新生成时也能保护已有连续性；用户可在 prompt 中删除这些接口来强制重启。
+- Story Blueprint 使用 `agentConfigs['story-blueprint']`，在工具抽屉的 Agent 配置中可单独设置 API。
+- 自动续写在后台运行，不阻塞当前 Director 决策；`continuePending` 用于 UI 显示“续写中”。
+- 续写追加节点时会按当前顶层长度重新生成缺失 id，并递归处理 id 冲突，保护 `doneSignals`。
+- 续写返回空节点会报错，不会显示成功但无变化。
+
+**人工编辑：**
+- UI 支持新建用户自建蓝图、追加根级章节、点击推进节点查看内容，以及用定位按钮单独设置当前步骤。
+- 蓝图标题、meta 字段和当前/查看节点的 content 字段支持行内编辑，保存时复用 `setBlueprint(..., { resetProgress:false })`，不重置进度。
+
+**状态与安全：**
+- 蓝图正文和进度保存在 `chat_metadata[EXT_KEY].storyBlueprint`，配置保存在 `extension_settings`。
+- `doneSignals` 记录已完成节点 id、步骤索引、聊天长度、时间和来源。
+- 完成提示只在 Director prompt 中消费一次；UI 预览和 ForceSpeak 不会抢占该提示。
+- 导入/高级 JSON 编辑会校验非空 `nodes`，非法结构不会被静默保存。
+- 配置档只同步故事蓝图配置和变量定义/数据，不同步当前聊天的蓝图正文与进度；蓝图正文走 Story Blueprint 自己的导入/导出。
+
+### 3.6 编码规则
 
 - Provider 有开关时在 `render()` 内返回空字符串，不用 `enabled` 跳过
 - 可变值用 getter 传入
