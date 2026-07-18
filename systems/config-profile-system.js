@@ -192,12 +192,16 @@ export function createConfigProfileSystem(deps) {
             customPromptConflicts = incoming.filter(e => existingNames.has(e.name)).map(e => e.name);
         }
 
-        // ── Apply snapshot ──
-        const changed = applySnapshot(settings, profile.settings);
+        let variablesChanged = false;
         if (profile.drawers?.contextLedger && profile.variables && variableSystem) {
             const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
-            if (result.ok) changed.push('variables');
+            if (!result.ok) throw new Error(`Variable import failed: ${result.error}`);
+            variablesChanged = true;
         }
+
+        // ── Apply snapshot ──
+        const changed = applySnapshot(settings, profile.settings);
+        if (variablesChanged) changed.push('variables');
 
         // ── Merge custom prompts ──
         if (incoming && Array.isArray(incoming) && incoming.length > 0) {

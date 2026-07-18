@@ -16,6 +16,14 @@ function parseJsonish(raw, type) {
     return raw;
 }
 
+function tryParseJsonish(raw, type) {
+    try {
+        return { ok: true, value: parseJsonish(raw, type) };
+    } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+    }
+}
+
 function formatValue(value) {
     if (value === undefined || value === null) return '';
     if (typeof value === 'object') return JSON.stringify(value, null, 2);
@@ -298,6 +306,11 @@ registerSection('variables', function (ctx) {
         $('#gd-var-cancel').on('click', () => { selectedId = null; renderEditor(); });
         $('#gd-var-save').on('click', () => {
             const oldId = def.id;
+            const defaultParsed = tryParseJsonish($('#gd-var-edit-value').val(), $('#gd-var-edit-type').val());
+            if (!defaultParsed.ok) {
+                toastr?.error?.(defaultParsed.error);
+                return;
+            }
             const newDef = {
                 id: $('#gd-var-edit-id').val(),
                 label: $('#gd-var-edit-label').val(),
@@ -312,17 +325,33 @@ registerSection('variables', function (ctx) {
                 autoUpdate: $('#gd-var-edit-auto').prop('checked'),
                 showInDashboard: $('#gd-var-edit-dashboard').prop('checked'),
                 locked: $('#gd-var-edit-locked').prop('checked'),
-                defaultValue: parseJsonish($('#gd-var-edit-value').val(), $('#gd-var-edit-type').val()),
+                defaultValue: defaultParsed.value,
             };
+            const parsedCharValues = [];
+            if (newDef.scope === 'character') {
+                $('#gd-var-char-values .gd-var-char-value').each(function () {
+                    const parsed = tryParseJsonish($(this).val(), newDef.type);
+                    if (!parsed.ok) {
+                        parsedCharValues.push({ ok: false, error: parsed.error });
+                        return false;
+                    }
+                    parsedCharValues.push({ ok: true, avatar: $(this).data('avatar'), value: parsed.value });
+                });
+                const failed = parsedCharValues.find(v => !v.ok);
+                if (failed) {
+                    toastr?.error?.(failed.error);
+                    return;
+                }
+            }
             if (newDef.id !== oldId) variableSystem.deleteDefinition(oldId);
             const saved = variableSystem.upsertDefinition(newDef);
             selectedId = saved.id;
             if (saved.scope === 'global') {
                 variableSystem.setValue(saved.id, newDef.defaultValue, { source: 'manual', updateMode: 'replace' });
             } else {
-                $('#gd-var-char-values .gd-var-char-value').each(function () {
-                    variableSystem.setValue(saved.id, parseJsonish($(this).val(), saved.type), { target: $(this).data('avatar'), source: 'manual', updateMode: 'replace' });
-                });
+                for (const parsed of parsedCharValues) {
+                    variableSystem.setValue(saved.id, parsed.value, { target: parsed.avatar, source: 'manual', updateMode: 'replace' });
+                }
             }
             refresh();
             toastr?.info?.(t('saved'));
@@ -499,7 +528,12 @@ registerSection('variables', function (ctx) {
             $row.find('.gd-dash-var-lock').before($cancel);
             $input.trigger('focus').trigger('select');
             $save.on('click', () => {
-                const result = variableSystem.setValue(def.id, parseJsonish($input.val(), def.type), { target, source: 'manual', updateMode: 'replace' });
+                const parsed = tryParseJsonish($input.val(), def.type);
+                if (!parsed.ok) {
+                    toastr?.error?.(parsed.error);
+                    return;
+                }
+                const result = variableSystem.setValue(def.id, parsed.value, { target, source: 'manual', updateMode: 'replace' });
                 if (!result.ok) toastr?.error?.(result.error);
                 else { toastr?.info?.(t('updated')); refresh(); }
             });

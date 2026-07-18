@@ -65,7 +65,7 @@ function ensureStore(chatMetadata, EXT_KEY) {
 }
 
 function normalizeDefinition(def = {}) {
-    const id = slugifyId(def.id || def.label || `var_${Date.now()}`);
+    const id = slugifyId(def.id || def.label || 'unnamed_variable');
     const type = ['string', 'number', 'boolean', 'enum', 'object', 'array'].includes(def.type) ? def.type : 'string';
     const scope = def.scope === 'character' ? 'character' : 'global';
     const updateMode = ['replace', 'append', 'merge', 'delta'].includes(def.updateMode) ? def.updateMode : 'replace';
@@ -107,7 +107,7 @@ function coerceValue(def, incoming, oldValue) {
     const mode = def.updateMode;
 
     if (def.type === 'number') {
-        if (mode === 'delta' && typeof value === 'string' && /^[+-]\s*\d+(\.\d+)?$/.test(value.trim())) {
+        if (mode === 'delta' && typeof value === 'string' && /^[+-]?\s*(?:\d+(\.\d+)?|\.\d+)$/.test(value.trim())) {
             value = Number(oldValue || 0) + Number(value.replace(/\s+/g, ''));
         } else if (mode === 'delta' && typeof value === 'number') {
             value = Number(oldValue || 0) + value;
@@ -121,6 +121,10 @@ function coerceValue(def, incoming, oldValue) {
     }
 
     if (def.type === 'boolean') {
+        if (typeof value === 'number') {
+            if (value === 1) value = true;
+            else if (value === 0) value = false;
+        }
         if (typeof value === 'string') {
             const lower = value.trim().toLowerCase();
             if (['true', 'yes', '1', 'on'].includes(lower)) value = true;
@@ -220,7 +224,14 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         const normalized = normalizeDefinition(def);
         const vars = store();
         const idx = vars.defs.findIndex(d => d.id === normalized.id);
-        if (idx >= 0) vars.defs[idx] = { ...vars.defs[idx], ...normalized };
+        if (idx >= 0) {
+            const old = normalizeDefinition(vars.defs[idx]);
+            if (old.scope !== normalized.scope) {
+                if (old.scope === 'global') delete vars.values.global[normalized.id];
+                else delete vars.values.character[normalized.id];
+            }
+            vars.defs[idx] = { ...vars.defs[idx], ...normalized };
+        }
         else vars.defs.push(normalized);
         if (normalized.scope === 'global' && vars.values.global[normalized.id] === undefined) {
             vars.values.global[normalized.id] = clone(normalized.defaultValue);
@@ -234,6 +245,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         vars.defs = vars.defs.filter(d => d.id !== id);
         delete vars.values.global[id];
         delete vars.values.character[id];
+        vars.log = vars.log.filter(e => e?.id !== id);
         saveChatConditional?.();
     }
 
@@ -276,10 +288,6 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             const avatar = resolveAvatar(targetAvatar) || targetAvatar;
             for (const key of characterStorageKeys(avatar)) {
                 if (bucket[key] !== undefined) {
-                    if (avatar && key !== avatar && bucket[avatar] === undefined) {
-                        bucket[avatar] = clone(bucket[key]);
-                        saveChatConditional?.();
-                    }
                     return bucket[key];
                 }
             }
@@ -381,7 +389,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
     function revertValue(id, target = null) {
         const def = getDefinition(id);
         if (!def) return { ok: false, error: 'unknown variable' };
-        const avatar = def.scope === 'character' ? resolveAvatar(target) || target : null;
+        const avatar = def.scope === 'character' ? resolveAvatar(target) : null;
         if (def.scope === 'character' && !avatar) return { ok: false, error: 'unknown character target' };
         const latest = getLatestLog(id, avatar);
         if (!latest) return { ok: false, error: 'no previous record' };
@@ -405,7 +413,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             if (!def) { ignored++; return; }
             if (!def.autoUpdate || def.locked) {
                 ignored++;
-                pushLog({ id, scope: def.scope, target, oldValue: getValue(def, target), newValue: raw?.value ?? raw, reason: raw?.reason || '', source: 'director', ignored: true });
+                pushLog({ id, scope: def.scope, target, oldValue: getValue(def, target), newValue: raw?.value ?? raw, reason: raw?.reason || '', source: options.source || 'director', ignored: true });
                 return;
             }
             const value = raw && typeof raw === 'object' && 'value' in raw ? raw.value : raw;
@@ -422,7 +430,15 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             for (const [target, values] of Object.entries(update.character)) {
                 if (!values || typeof values !== 'object') continue;
                 const avatar = resolveAvatar(target);
-                if (!avatar) { ignored += Object.keys(values).length; continue; }
+                if (!avatar) {
+                    for (const [id, raw] of Object.entries(values)) {
+                        ignored++;
+                        const reason = raw && typeof raw === 'object' ? raw.reason || '' : '';
+                        errors.push(`${id}: unknown character target "${target}"`);
+                        pushLog({ id, scope: 'character', target, oldValue: undefined, newValue: raw?.value ?? raw, reason, source: options.source || 'director', ignored: true });
+                    }
+                    continue;
+                }
                 for (const [id, raw] of Object.entries(values)) applyOne(id, raw, avatar);
             }
         }

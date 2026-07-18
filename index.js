@@ -1882,7 +1882,20 @@ async function initRoundWithLLM() {
         // Clean up QUIET_PROMPT
         setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
 
-        if (!parsed || !parsed.speakers?.length) {
+        if (!parsed) {
+            log('LLM returned no valid response');
+            return;
+        }
+
+        if (parsed.variable_update) {
+            const result = variableSystem.applyUpdates(parsed.variable_update, { source: 'director' });
+            if (result.applied || result.ignored) {
+                log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
+                window.__gdRefreshDashboard?.();
+            }
+        }
+
+        if (!parsed.speakers?.length) {
             log('LLM returned no valid speakers');
             return;
         }
@@ -1903,14 +1916,6 @@ async function initRoundWithLLM() {
                 scripts: parsed.scripts ?? {},
                 loreAssignments: parsed.loreAssignments ?? {},
             });
-        }
-
-        if (parsed.variable_update) {
-            const result = variableSystem.applyUpdates(parsed.variable_update, { source: 'director' });
-            if (result.applied || result.ignored) {
-                log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
-                window.__gdRefreshDashboard?.();
-            }
         }
 
         // Store director scripts
