@@ -354,7 +354,7 @@ export function createStoryBlueprintSystem({
         const state = meta[EXT_KEY].storyBlueprint;
         if (!Array.isArray(state.doneSignals)) state.doneSignals = [];
         if (typeof state.completeNoticeKey !== 'string') state.completeNoticeKey = '';
-        if (typeof state.continuePending !== 'boolean') state.continuePending = false;
+        if (generating !== true) state.continuePending = false;
         return state;
     }
 
@@ -377,7 +377,9 @@ export function createStoryBlueprintSystem({
                 injectMode: 'manual',
                 locked: false,
             });
-        } else if (settings.storyBlueprintEnabled && (!existing.locked && (existing.injectMode !== 'manual' || existing.autoUpdate === false))) {
+        } else if (settings.storyBlueprintEnabled && existing.locked) {
+            log('[StoryBlueprint] Completion variable is locked; Story Blueprint advancement may not work until it is unlocked:', id);
+        } else if (settings.storyBlueprintEnabled && (existing.injectMode !== 'manual' || existing.autoUpdate === false)) {
             variableSystem?.upsertDefinition?.({
                 ...existing,
                 autoUpdate: true,
@@ -424,9 +426,9 @@ export function createStoryBlueprintSystem({
         });
     }
 
-    function pruneDoneSignals() {
+    function pruneDoneSignals(steps = null) {
         const state = root();
-        const steps = getSteps();
+        steps = steps || getSteps();
         const ids = new Set(steps.map(s => s.id));
         const chatLen = getChatLength(getChat);
         const next = state.doneSignals.filter(s => ids.has(s.nodeId) && (s.chatLength == null || s.chatLength <= chatLen));
@@ -439,8 +441,8 @@ export function createStoryBlueprintSystem({
     }
 
     function getProgress() {
-        pruneDoneSignals();
         const steps = getSteps();
+        pruneDoneSignals(steps);
         const doneCount = root().doneSignals.length;
         const complete = steps.length > 0 && doneCount >= steps.length;
         const idx = complete ? Math.max(steps.length - 1, 0) : doneCount;
@@ -589,7 +591,10 @@ export function createStoryBlueprintSystem({
 
     function setCurrentStep(stepIndex) {
         const steps = getSteps();
-        const idx = Math.max(0, Math.min(Number(stepIndex) || 0, steps.length));
+        const idx = Number(stepIndex);
+        if (!Number.isInteger(idx) || idx < 0 || idx > steps.length) {
+            throw new Error(lang() === 'zh' ? '无效的故事蓝图步骤索引。' : 'Invalid Story Blueprint step index.');
+        }
         const state = root();
         state.doneSignals = steps.slice(0, idx).map((step, i) => ({
             nodeId: step.id,
@@ -648,9 +653,9 @@ ${schema}`;
             throw new Error(lang() === 'zh' ? '没有可续写的故事蓝图，请先生成蓝图。' : 'No Story Blueprint to continue. Generate one first.');
         }
         generating = true;
-        root().continuePending = mode === 'continue';
-        saveChatConditional?.();
         try {
+            root().continuePending = mode === 'continue';
+            saveChatConditional?.();
             const agentConfig = settings.agentConfigs?.['story-blueprint'] || {};
             const caller = createCaller(agentConfig, (opts) => generateRaw(opts));
             const prompt = await renderPrompt(buildGenerationPrompt(mode), buildRenderContext(), {
@@ -665,6 +670,9 @@ ${schema}`;
                 const current = getBlueprint();
                 const source = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
                 const rawNodes = Array.isArray(source.nodes) ? source.nodes : (Array.isArray(source.chapters) ? source.chapters : []);
+                if (!rawNodes.length) {
+                    throw new Error(lang() === 'zh' ? '续写蓝图没有返回任何节点。' : 'Story Blueprint continuation returned no nodes.');
+                }
                 const offset = current.nodes.length;
                 const usedIds = collectNodeIds(current.nodes);
                 const incomingNodes = rawNodes
@@ -675,7 +683,11 @@ ${schema}`;
                 current.meta = { ...(current.meta || {}), ...(incoming.meta || {}) };
                 setBlueprint(current, { resetProgress: false });
             } else {
-                setBlueprint(parsed, { resetProgress: true });
+                const incoming = normalizeBlueprint(parsed);
+                if (!incoming.nodes.length) {
+                    throw new Error(lang() === 'zh' ? '生成蓝图没有返回任何节点。' : 'Story Blueprint generation returned no nodes.');
+                }
+                setBlueprint(incoming, { resetProgress: true });
             }
             return getBlueprint();
         } catch (e) {
@@ -698,12 +710,32 @@ ${schema}`;
     }
 
     function buildExportFile(includeProgress = true) {
+        const state = root();
+        const exportedState = clone(state) || {
+            blueprint: clone(state.blueprint),
+            doneSignals: clone(state.doneSignals) || [],
+            lastGeneratedAt: state.lastGeneratedAt || 0,
+            lastError: state.lastError || '',
+            completeNoticeKey: state.completeNoticeKey || '',
+            continuePending: false,
+        };
         return {
             version: 1,
             type: 'group-director-story-blueprint',
             exportedAt: new Date().toISOString(),
-            storyBlueprint: includeProgress ? clone(root()) : { blueprint: clone(getBlueprint()), doneSignals: [] },
+            storyBlueprint: includeProgress ? exportedState : { blueprint: clone(getBlueprint()), doneSignals: [] },
         };
+    }
+
+    function validateBlueprintInput(input) {
+        const valid = validateImportData(input);
+        if (!valid.ok) return valid;
+        const blueprint = valid.payload.blueprint || valid.payload;
+        const normalized = normalizeBlueprint(blueprint);
+        if (!Array.isArray(normalized.nodes) || !normalized.nodes.length) {
+            return { ok: false, error: 'Blueprint must contain a non-empty nodes array' };
+        }
+        return { ok: true, blueprint: normalized };
     }
 
     function applyImportText(text, options = {}) {
@@ -753,6 +785,7 @@ ${schema}`;
         renderGenerationPrompt,
         generateBlueprint,
         buildExportFile,
+        validateBlueprintInput,
         applyImportText,
         getDefaultTemplate: () => DEFAULT_STORY_BLUEPRINT_TEMPLATE,
         getDefaultSchema: () => DEFAULT_STORY_BLUEPRINT_SCHEMA,

@@ -31,6 +31,7 @@ export function createDirectorAgent({
 
                 // Context for renderPrompt
                 const runtimeContext = {
+                    agentId: 'director',
                     recentMessages,
                     enabledMembers,
                     maxSpeakers: settings.llmMaxSpeakers ?? 3,

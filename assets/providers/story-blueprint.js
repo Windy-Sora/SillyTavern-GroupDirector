@@ -9,8 +9,8 @@ export function register({ settings, storyBlueprintSystem }) {
         id: 'storyBlueprintCurrent',
         placeholder: '{{storyBlueprintCurrent}}',
         enabled: isEnabled,
-        render: () => ({
-            content: storyBlueprintSystem.renderCurrent({ consumeCompleteNotice: true }),
+        render: (ctx) => ({
+            content: storyBlueprintSystem.renderCurrent({ consumeCompleteNotice: ctx?.agentId === 'director' }),
             data: storyBlueprintSystem.getProviderData(),
         }),
     });

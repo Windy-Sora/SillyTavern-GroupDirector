@@ -353,7 +353,9 @@ registerSection('storyBlueprint', function (ctx) {
     $c('story-blueprint-save-json').on('click', () => {
         try {
             const parsed = JSON.parse($c('story-blueprint-json').val() || '{}');
-            storyBlueprintSystem.setBlueprint(parsed, { resetProgress: false });
+            const valid = storyBlueprintSystem.validateBlueprintInput(parsed);
+            if (!valid.ok) throw new Error(valid.error);
+            storyBlueprintSystem.setBlueprint(valid.blueprint, { resetProgress: false });
             toastr.success(langZh() ? '故事蓝图已保存' : 'Story Blueprint saved');
             refresh();
         } catch (e) {

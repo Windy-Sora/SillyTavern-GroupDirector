@@ -1751,6 +1751,57 @@ async function runManualOrderedGeneration() {
 }
 
 /**
+ * Story Blueprint completion handling is deliberately isolated from Director
+ * decision parsing so blueprint state errors do not discard a valid speaker plan.
+ */
+function handleStoryBlueprintAdvance(source = 'director') {
+    let storyAdvance;
+    try {
+        storyAdvance = storyBlueprintSystem.consumeCompletionSignal(source);
+    } catch (e) {
+        console.warn('[GroupDirector] Story Blueprint advance failed:', e.message || e);
+        toastr.error(e.message || (settings.lang === 'zh' ? '故事蓝图推进失败' : 'Story Blueprint advance failed'));
+        window.__gdRefreshStoryBlueprint?.();
+        window.__gdRefreshDashboard?.();
+        return;
+    }
+
+    if (!storyAdvance.advanced) return;
+
+    const done = storyAdvance.complete;
+    toastr.info(done
+        ? (settings.lang === 'zh' ? '当前故事蓝图已完成，请生成或续写新的蓝图。' : 'Story Blueprint complete. Generate or continue a blueprint.')
+        : (settings.lang === 'zh' ? '故事蓝图已推进到下一块。' : 'Story Blueprint advanced to the next step.'));
+    window.__gdRefreshStoryBlueprint?.();
+    window.__gdRefreshDashboard?.();
+
+    if (!done || !settings.storyBlueprintAutoContinue || storyBlueprintSystem.isGenerating()) return;
+
+    let continuation;
+    try {
+        continuation = storyBlueprintSystem.generateBlueprint('continue');
+    } catch (e) {
+        toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+        window.__gdRefreshStoryBlueprint?.();
+        window.__gdRefreshDashboard?.();
+        return;
+    }
+
+    toastr.info(settings.lang === 'zh' ? '正在后台续写故事蓝图...' : 'Continuing Story Blueprint in the background...');
+    continuation
+        .then(() => {
+            toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshDashboard?.();
+        })
+        .catch((e) => {
+            toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshDashboard?.();
+        });
+}
+
+/**
  * Force-speak LLM takeover — now delegates to ForceSpeak agent.
  */
 async function initForceSpeakLLM(char, avatar) {
@@ -1845,6 +1896,7 @@ async function initForceSpeakLLM(char, avatar) {
                 window.__gdRefreshDashboard?.();
             }
         }
+        handleStoryBlueprintAdvance('force-speak');
 
         // Extract script for this character
         let script = '';
@@ -1927,31 +1979,7 @@ async function initRoundWithLLM() {
             }
         }
 
-        const storyAdvance = storyBlueprintSystem.consumeCompletionSignal('director');
-        if (storyAdvance.advanced) {
-            const done = storyAdvance.complete;
-            toastr.info(done
-                ? (settings.lang === 'zh' ? '当前故事蓝图已完成，请生成或续写新的蓝图。' : 'Story Blueprint complete. Generate or continue a blueprint.')
-                : (settings.lang === 'zh' ? '故事蓝图已推进到下一块。' : 'Story Blueprint advanced to the next step.'));
-            window.__gdRefreshStoryBlueprint?.();
-            window.__gdRefreshDashboard?.();
-            if (done && settings.storyBlueprintAutoContinue) {
-                if (!storyBlueprintSystem.isGenerating()) {
-                    toastr.info(settings.lang === 'zh' ? '正在后台续写故事蓝图...' : 'Continuing Story Blueprint in the background...');
-                    storyBlueprintSystem.generateBlueprint('continue')
-                        .then(() => {
-                            toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
-                            window.__gdRefreshStoryBlueprint?.();
-                            window.__gdRefreshDashboard?.();
-                        })
-                        .catch((e) => {
-                            toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
-                            window.__gdRefreshStoryBlueprint?.();
-                            window.__gdRefreshDashboard?.();
-                        });
-                }
-            }
-        }
+        handleStoryBlueprintAdvance('director');
 
         if (!parsed.speakers?.length) {
             log('LLM returned no valid speakers');

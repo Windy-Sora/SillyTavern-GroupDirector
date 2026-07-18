@@ -51,6 +51,7 @@ export function createForceSpeakAgent({
             async prompt(ctx, _state, pool, settings) {
                 const promptTemplate = settings.llmPrompt || getDefaultLlmPrompt();
                 const runtimeContext = {
+                    agentId: 'force-speak',
                     recentMessages: ctx.recentMessages,
                     enabledMembers: ctx.enabledMembers,
                     maxSpeakers: 1,
