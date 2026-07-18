@@ -507,7 +507,10 @@ registerSection('dashboard', function (ctx) {
         const p = storyBlueprintSystem?.getProgress?.();
         const data = storyBlueprintSystem?.getProviderData?.();
         if (!p || !p.total) {
-            $list.append(`<small>${lang === 'zh' ? '暂无故事蓝图' : 'No Story Blueprint'}</small>`);
+            const hasBlueprint = !!data?.blueprint;
+            $list.append(`<small>${hasBlueprint
+                ? (lang === 'zh' ? '蓝图存在，但当前推进模式无匹配节点' : 'Blueprint loaded, but no matching progression steps')
+                : (lang === 'zh' ? '暂无故事蓝图' : 'No Story Blueprint')}</small>`);
         } else {
             $list.append(`<div class="gd-list-item"><span class="gd-list-name">${esc(data?.blueprint?.title || 'Story Blueprint')}</span><span class="gd-list-meta">${p.doneCount}/${p.total}</span></div>`);
             $list.append(`<div style="font-size:0.9em;color:var(--grey70a);padding:4px 0;">${esc(p.complete ? (lang === 'zh' ? '已完成' : 'complete') : (data?.current?.path || ''))}</div>`);
@@ -521,7 +524,7 @@ registerSection('dashboard', function (ctx) {
         $('#gd-dash-panel-story-enabled').on('change', function () {
             settings.storyBlueprintEnabled = !!$(this).prop('checked');
             $('#gd-story-blueprint-enabled').prop('checked', settings.storyBlueprintEnabled);
-            storyBlueprintSystem?.ensureCompletionVariable?.();
+            if (settings.storyBlueprintEnabled) storyBlueprintSystem?.ensureCompletionVariable?.();
             storyBlueprintSystem?.clearCompletionSignal?.(settings.storyBlueprintEnabled ? 'enabled-reset' : 'disabled-reset');
             saveSettings();
             refreshAll();

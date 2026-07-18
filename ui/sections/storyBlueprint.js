@@ -163,7 +163,11 @@ registerSection('storyBlueprint', function (ctx) {
             $card.append(`<div class="gd-story-empty">${langZh() ? '尚未生成故事蓝图。' : 'No Story Blueprint generated yet.'}</div>`);
             return;
         }
-        if (!current || progress.complete) {
+        if (!current && !progress.complete) {
+            $card.append(`<div class="gd-story-empty">${langZh() ? '蓝图存在，但当前推进模式没有匹配的节点。请调整推进模式或层级。' : 'Blueprint loaded, but the current progression mode has no matching nodes. Adjust mode or level.'}</div>`);
+            return;
+        }
+        if (progress.complete) {
             $card.append(`<div class="gd-story-empty">${langZh() ? '当前蓝图已完成。' : 'The current blueprint is complete.'}</div>`);
             return;
         }
@@ -217,8 +221,11 @@ registerSection('storyBlueprint', function (ctx) {
         const varName = settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done';
         const doneValue = progress.completionValue === true ? 'true' : 'false';
 
+        const progressLabel = progress.total
+            ? `${progress.doneCount}/${progress.total} | ${progress.complete ? (langZh() ? '已完成' : 'complete') : (data.current?.path || '')}`
+            : (langZh() ? '当前推进模式无匹配节点' : 'No matching progression steps');
         $c('story-blueprint-status').text(blueprint
-            ? `${blueprint.title || 'Story Blueprint'} | ${progress.doneCount}/${progress.total} | ${progress.complete ? (langZh() ? '已完成' : 'complete') : (data.current?.path || '')} | ${varName}=${doneValue}`
+            ? `${blueprint.title || 'Story Blueprint'} | ${progressLabel} | ${varName}=${doneValue}`
             : (langZh() ? '未加载故事蓝图' : 'No Story Blueprint loaded'));
 
         $c('story-blueprint-json').val(blueprint ? JSON.stringify(blueprint, null, 2) : '');
@@ -290,7 +297,7 @@ registerSection('storyBlueprint', function (ctx) {
     $c('story-blueprint-template').on('input', () => {
         settings.storyBlueprintProviderTemplate = $c('story-blueprint-template').val();
         saveSettings();
-        refresh();
+        $c('story-blueprint-provider-preview').val(storyBlueprintSystem.renderCurrent());
     });
 
     $c('story-blueprint-template-reset').on('click', () => {

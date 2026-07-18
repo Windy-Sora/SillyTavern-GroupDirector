@@ -73,10 +73,12 @@ function normalizeDefinition(def = {}) {
     return {
         id,
         label: String(def.label || id),
+        labelZh: def.labelZh ? String(def.labelZh) : '',
         scope,
         type,
         defaultValue: def.defaultValue !== undefined ? def.defaultValue : (def.value !== undefined ? def.value : defaultForType(type)),
         rule: String(def.rule || ''),
+        ruleZh: def.ruleZh ? String(def.ruleZh) : '',
         autoUpdate: def.autoUpdate !== false,
         injectMode,
         updateMode,

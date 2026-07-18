@@ -192,7 +192,11 @@ Generate about {{storyBlueprintMaxNodes}} leaf-level progression nodes.`;
 
 function clone(value) {
     if (value === undefined) return undefined;
-    try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
+    try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
+}
+
+function getChatLength(getChat) {
+    return getChat?.()?.length ?? 0;
 }
 
 function slug(input) {
@@ -209,21 +213,24 @@ function ensureArray(value) {
 }
 
 function normalizeNode(node, path = []) {
-    const obj = node && typeof node === 'object' && !Array.isArray(node) ? clone(node) : {};
+    const obj = node && typeof node === 'object' && !Array.isArray(node) ? (clone(node) || {}) : {};
     const indexPath = path.join('_') || '0';
     if (!obj.id) obj.id = `${slug(obj.type || obj.title || 'node')}_${indexPath}`;
     if (!obj.type) obj.type = 'node';
     if (!obj.title) obj.title = obj.id;
     if (!obj.content || typeof obj.content !== 'object' || Array.isArray(obj.content)) {
-        const { id, type, title, children, ...rest } = obj;
+        const { id, type, title, children, content, ...rest } = obj;
         obj.content = Object.keys(rest).length ? rest : {};
+        if (content !== undefined && content !== null && content !== '') {
+            obj.content.text = String(content);
+        }
     }
     obj.children = ensureArray(obj.children).map((child, idx) => normalizeNode(child, path.concat(idx)));
     return obj;
 }
 
 function normalizeBlueprint(input) {
-    const source = input && typeof input === 'object' && !Array.isArray(input) ? clone(input) : {};
+    const source = input && typeof input === 'object' && !Array.isArray(input) ? (clone(input) || {}) : {};
     if (!source.version) source.version = 1;
     if (!source.title) source.title = 'Story Blueprint';
     if (!source.meta || typeof source.meta !== 'object' || Array.isArray(source.meta)) source.meta = {};
@@ -329,33 +336,35 @@ export function createStoryBlueprintSystem({
         const id = completionVariable();
         const existing = variableSystem?.getDefinition?.(id);
         if (!existing) {
+            const zh = lang() === 'zh';
             variableSystem?.upsertDefinition?.({
                 id,
-                label: 'Story Chapter Done',
+                label: zh ? '故事蓝图当前块完成' : 'Story Chapter Done',
                 labelZh: '故事蓝图当前块完成',
                 scope: 'global',
                 type: 'boolean',
                 defaultValue: false,
                 value: false,
-                rule: 'Set to true only when the current Story Blueprint step is complete.',
+                rule: zh ? '仅当当前故事蓝图推进块完成时设为 true。' : 'Set to true only when the current Story Blueprint step is complete.',
                 ruleZh: '仅当当前故事蓝图推进块完成时设为 true。',
                 showInDashboard: true,
                 injectMode: 'manual',
                 locked: false,
             });
-        } else if (existing.locked || existing.injectMode !== 'manual' || existing.autoUpdate === false) {
+        } else if (settings.storyBlueprintEnabled && (!existing.locked && (existing.injectMode !== 'manual' || existing.autoUpdate === false))) {
             variableSystem?.upsertDefinition?.({
                 ...existing,
                 autoUpdate: true,
                 injectMode: 'manual',
-                locked: false,
             });
         }
     }
 
     function clearCompletionSignal(reason = 'clear') {
-        ensureCompletionVariable();
-        variableSystem?.setValue?.(completionVariable(), false, {
+        const id = completionVariable();
+        if (settings.storyBlueprintEnabled) ensureCompletionVariable();
+        else if (!variableSystem?.getDefinition?.(id)) return;
+        variableSystem?.setValue?.(id, false, {
             source: 'story-blueprint',
             reason,
         });
@@ -391,7 +400,7 @@ export function createStoryBlueprintSystem({
         const state = root();
         const steps = getSteps();
         const ids = new Set(steps.map(s => s.id));
-        const chatLen = getChat?.().length ?? 0;
+        const chatLen = getChatLength(getChat);
         const next = state.doneSignals.filter(s => ids.has(s.nodeId) && (s.chatLength == null || s.chatLength <= chatLen));
         const changed = next.length !== state.doneSignals.length;
         if (changed) {
@@ -461,7 +470,11 @@ export function createStoryBlueprintSystem({
 
     function renderProgress() {
         const p = getProgress();
-        if (!p.total) return lang() === 'zh' ? '无蓝图' : 'No blueprint';
+        if (!p.total) {
+            return getBlueprint()
+                ? (lang() === 'zh' ? '蓝图存在，但当前推进模式无匹配节点' : 'Blueprint loaded, but current progression mode has no matching steps')
+                : (lang() === 'zh' ? '无蓝图' : 'No blueprint');
+        }
         const label = p.complete ? (lang() === 'zh' ? '已完成' : 'complete') : (p.current?.pathText || '');
         return `${p.doneCount}/${p.total} ${label}`;
     }
@@ -497,7 +510,11 @@ export function createStoryBlueprintSystem({
 
         const state = root();
         const progress = getProgress();
-        const chatLen = getChat?.().length ?? 0;
+        if (!progress.total || !progress.current) {
+            variableSystem.setValue(id, false, { source: 'story-blueprint', reason: 'no-progress-step-reset' });
+            return { advanced: false, complete: false, reason: 'no-progress-step', progress };
+        }
+        const chatLen = getChatLength(getChat);
         const last = state.doneSignals[state.doneSignals.length - 1];
         if (last && last.chatLength === chatLen && last.nodeId === progress.current?.id) {
             variableSystem.setValue(id, false, { source: 'story-blueprint', reason: 'dedupe-reset' });
@@ -536,7 +553,7 @@ export function createStoryBlueprintSystem({
         state.doneSignals = steps.slice(0, idx).map((step, i) => ({
             nodeId: step.id,
             stepIndex: i,
-            chatLength: getChat?.().length ?? 0,
+            chatLength: getChatLength(getChat),
             time: Date.now(),
             source: 'manual',
         }));
@@ -582,6 +599,9 @@ ${schema}`;
 
     async function generateBlueprint(mode = 'new') {
         if (generating) throw new Error('Story Blueprint generation already in progress');
+        if (mode === 'continue' && !getBlueprint()) {
+            throw new Error(lang() === 'zh' ? '没有可续写的故事蓝图，请先生成蓝图。' : 'No Story Blueprint to continue. Generate one first.');
+        }
         generating = true;
         try {
             const agentConfig = settings.agentConfigs?.['story-blueprint'] || {};
@@ -626,7 +646,7 @@ ${schema}`;
             version: 1,
             type: 'group-director-story-blueprint',
             exportedAt: new Date().toISOString(),
-            storyBlueprint: includeProgress ? clone(root()) : { blueprint: getBlueprint(), doneSignals: [] },
+            storyBlueprint: includeProgress ? clone(root()) : { blueprint: clone(getBlueprint()), doneSignals: [] },
         };
     }
 
@@ -636,7 +656,8 @@ ${schema}`;
         const valid = validateImportData(obj);
         if (!valid.ok) return valid;
         const payload = valid.payload;
-        setBlueprint(payload.blueprint || payload, { resetProgress: options.includeProgress ? false : true });
+        const hasProgress = options.includeProgress && Array.isArray(payload.doneSignals);
+        setBlueprint(payload.blueprint || payload, { resetProgress: !hasProgress });
         if (options.includeProgress && Array.isArray(payload.doneSignals)) {
             root().doneSignals = payload.doneSignals;
             pruneDoneSignals();

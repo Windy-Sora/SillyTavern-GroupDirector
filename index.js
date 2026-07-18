@@ -93,10 +93,10 @@ if (loaded.directorLlmPrompt && !loaded.llmPrompt) loaded.llmPrompt = loaded.dir
 delete loaded.directorLlmPrompt;
 if (typeof loaded.llmJsonSchema === 'string'
     && !loaded.llmJsonSchema.includes('{{storyBlueprintDoneField}}')
-    && loaded.llmJsonSchema.includes('"global": {},')) {
+    && /"global"\s*:\s*\{\s*\}/.test(loaded.llmJsonSchema)) {
     loaded.llmJsonSchema = loaded.llmJsonSchema.replace(
-        '"global": {},',
-        '"global": { {{storyBlueprintDoneField}} },',
+        /"global"\s*:\s*\{\s*\}/,
+        '"global": { {{storyBlueprintDoneField}} }',
     );
 }
 
@@ -1925,23 +1925,24 @@ async function initRoundWithLLM() {
                 log(`Variables updated: ${result.applied} applied, ${result.ignored} ignored`);
                 window.__gdRefreshDashboard?.();
             }
-            const storyAdvance = storyBlueprintSystem.consumeCompletionSignal('director');
-            if (storyAdvance.advanced) {
-                const done = storyAdvance.complete;
-                toastr.info(done
-                    ? (settings.lang === 'zh' ? '当前故事蓝图已完成，请生成或续写新的蓝图。' : 'Story Blueprint complete. Generate or continue a blueprint.')
-                    : (settings.lang === 'zh' ? '故事蓝图已推进到下一块。' : 'Story Blueprint advanced to the next step.'));
-                window.__gdRefreshStoryBlueprint?.();
-                window.__gdRefreshDashboard?.();
-                if (done && settings.storyBlueprintAutoContinue) {
-                    try {
-                        await storyBlueprintSystem.generateBlueprint('continue');
-                        toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
-                        window.__gdRefreshStoryBlueprint?.();
-                        window.__gdRefreshDashboard?.();
-                    } catch (e) {
-                        toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
-                    }
+        }
+
+        const storyAdvance = storyBlueprintSystem.consumeCompletionSignal('director');
+        if (storyAdvance.advanced) {
+            const done = storyAdvance.complete;
+            toastr.info(done
+                ? (settings.lang === 'zh' ? '当前故事蓝图已完成，请生成或续写新的蓝图。' : 'Story Blueprint complete. Generate or continue a blueprint.')
+                : (settings.lang === 'zh' ? '故事蓝图已推进到下一块。' : 'Story Blueprint advanced to the next step.'));
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshDashboard?.();
+            if (done && settings.storyBlueprintAutoContinue) {
+                try {
+                    await storyBlueprintSystem.generateBlueprint('continue');
+                    toastr.success(settings.lang === 'zh' ? '已自动续写故事蓝图' : 'Story Blueprint continued');
+                    window.__gdRefreshStoryBlueprint?.();
+                    window.__gdRefreshDashboard?.();
+                } catch (e) {
+                    toastr.error(e.message || (settings.lang === 'zh' ? '自动续写故事蓝图失败' : 'Failed to continue Story Blueprint'));
                 }
             }
         }
