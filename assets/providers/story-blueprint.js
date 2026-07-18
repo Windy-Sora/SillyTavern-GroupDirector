@@ -10,7 +10,7 @@ export function register({ settings, storyBlueprintSystem }) {
         placeholder: '{{storyBlueprintCurrent}}',
         enabled: isEnabled,
         render: () => ({
-            content: storyBlueprintSystem.renderCurrent(),
+            content: storyBlueprintSystem.renderCurrent({ consumeCompleteNotice: true }),
             data: storyBlueprintSystem.getProviderData(),
         }),
     });

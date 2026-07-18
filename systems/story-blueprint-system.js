@@ -325,10 +325,12 @@ export function createStoryBlueprintSystem({
                 doneSignals: [],
                 lastGeneratedAt: 0,
                 lastError: '',
+                completeNoticeKey: '',
             };
         }
         const state = meta[EXT_KEY].storyBlueprint;
         if (!Array.isArray(state.doneSignals)) state.doneSignals = [];
+        if (typeof state.completeNoticeKey !== 'string') state.completeNoticeKey = '';
         return state;
     }
 
@@ -381,6 +383,7 @@ export function createStoryBlueprintSystem({
         const state = root();
         state.blueprint = normalizeBlueprint(blueprint);
         if (options.resetProgress !== false) state.doneSignals = [];
+        state.completeNoticeKey = '';
         state.lastGeneratedAt = Date.now();
         state.lastError = '';
         saveChatConditional?.();
@@ -455,11 +458,23 @@ export function createStoryBlueprintSystem({
         };
     }
 
-    function renderCurrent() {
+    function completeNoticeKey(data) {
+        const last = data.doneSignals[data.doneSignals.length - 1];
+        return `${data.progress.total}:${data.progress.done}:${last?.nodeId || 'complete'}`;
+    }
+
+    function renderCurrent(options = {}) {
         if (!settings.storyBlueprintEnabled) return '';
         const data = getProviderData();
         if (!data.blueprint || !data.current || data.progress.total === 0) return '';
         if (data.progress.complete) {
+            if (options.consumeCompleteNotice) {
+                const state = root();
+                const key = completeNoticeKey(data);
+                if (state.completeNoticeKey === key) return '';
+                state.completeNoticeKey = key;
+                saveChatConditional?.();
+            }
             return lang() === 'zh'
                 ? '[Story Blueprint]\n当前故事蓝图已完成。请生成或续写新的蓝图。'
                 : '[Story Blueprint]\nThe current story blueprint is complete. Generate or continue a new blueprint.';
@@ -541,6 +556,7 @@ export function createStoryBlueprintSystem({
         const state = root();
         if (!state.doneSignals.length) return false;
         state.doneSignals.pop();
+        state.completeNoticeKey = '';
         variableSystem?.setValue?.(completionVariable(), false, { source: 'story-blueprint', reason: 'rollback' });
         saveChatConditional?.();
         return true;
@@ -557,13 +573,16 @@ export function createStoryBlueprintSystem({
             time: Date.now(),
             source: 'manual',
         }));
+        state.completeNoticeKey = '';
         variableSystem?.setValue?.(completionVariable(), false, { source: 'story-blueprint', reason: 'set-current-step' });
         saveChatConditional?.();
         return getProgress();
     }
 
     function resetProgress() {
-        root().doneSignals = [];
+        const state = root();
+        state.doneSignals = [];
+        state.completeNoticeKey = '';
         variableSystem?.setValue?.(completionVariable(), false, { source: 'story-blueprint', reason: 'reset-progress' });
         saveChatConditional?.();
     }
@@ -572,6 +591,7 @@ export function createStoryBlueprintSystem({
         const state = root();
         state.blueprint = null;
         state.doneSignals = [];
+        state.completeNoticeKey = '';
         saveChatConditional?.();
     }
 
@@ -660,6 +680,7 @@ ${schema}`;
         setBlueprint(payload.blueprint || payload, { resetProgress: !hasProgress });
         if (options.includeProgress && Array.isArray(payload.doneSignals)) {
             root().doneSignals = payload.doneSignals;
+            root().completeNoticeKey = '';
             pruneDoneSignals();
             saveChatConditional?.();
         }
