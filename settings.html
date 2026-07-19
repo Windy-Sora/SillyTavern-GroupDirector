@@ -235,6 +235,11 @@
                 <hr>
                 <label for="gd-llm-script-wrapper" data-i18n="scriptWrapper">角色 Prompt 注入模版</label>
                 <textarea id="gd-llm-script-wrapper" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
+                <label for="gd-llm-script-position" data-i18n="llmScriptPosition">注入位置</label>
+                <select id="gd-llm-script-position" class="text_pole" style="width:auto;">
+                    <option value="0" data-i18n="llmScriptPositionTop">Prompt 开头</option>
+                    <option value="1" data-i18n="llmScriptPositionChat">对话附近</option>
+                </select>
                 <span class="menu_button menu_button_icon" id="gd-llm-script-wrapper-reset" style="margin-top:4px;">
                     <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                 </span>
@@ -260,11 +265,6 @@
                     <span data-i18n="scriptEnabled">导演剧本 (Director Script)</span>
                 </label>
                 <div id="gd-script-detail" style="display:none;">
-                    <label for="gd-llm-script-position" data-i18n="llmScriptPosition">注入位置</label>
-                    <select id="gd-llm-script-position" class="text_pole" style="width:auto;">
-                        <option value="0" data-i18n="llmScriptPositionTop">Prompt 开头</option>
-                        <option value="1" data-i18n="llmScriptPositionChat">对话附近</option>
-                    </select>
                     <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本风格要求</label>
                     <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
                 </div>
