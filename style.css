@@ -492,13 +492,31 @@
 
 .gd-story-step {
     display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) 28px;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
     align-items: center;
     gap: 4px;
     min-height: 28px;
     border-bottom: 1px solid var(--SmartThemeBorderColor);
     font-size: 0.9em;
     cursor: pointer;
+}
+
+.gd-story-step-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    justify-content: flex-end;
+}
+
+.gd-story-step-actions .menu_button {
+    min-width: 24px;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 0.75em;
+}
+
+.gd-story-delete-step {
+    color: #ff5555;
 }
 
 .gd-story-step:last-child {

@@ -58,7 +58,7 @@ registerSection('storyBlueprint', function (ctx) {
         $c('story-blueprint-auto-continue').prop('checked', !!settings.storyBlueprintAutoContinue);
         $c('story-blueprint-mode').val(settings.storyBlueprintProgressionMode || 'leaf');
         $c('story-blueprint-level').val(settings.storyBlueprintProgressionLevel ?? 0);
-        $c('story-blueprint-var').val(settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done');
+        $c('story-blueprint-var').val(storyBlueprintSystem.getCompletionVariable());
         $c('story-blueprint-max-nodes').val(settings.storyBlueprintMaxNodes ?? 8);
         $c('story-blueprint-prompt').val(settings.storyBlueprintPrompt || storyBlueprintSystem.getDefaultPrompt());
         $c('story-blueprint-continue-prompt').val(settings.storyBlueprintContinuePrompt || storyBlueprintSystem.getDefaultContinuePrompt());
@@ -85,7 +85,11 @@ registerSection('storyBlueprint', function (ctx) {
             const $row = $(`<div class="gd-story-step ${cls}" style="padding-left:${Math.min(step.depth * 14, 56)}px;" title="${langZh() ? '点击查看节点内容' : 'Click to view node content'}">
                 <span class="gd-story-step-state">${state}</span>
                 <span class="gd-story-step-title">${esc(step.pathText)}</span>
-                <span class="menu_button menu_button_icon gd-story-set-current" data-index="${i}" title="${langZh() ? '设为当前' : 'Set current'}"><i class="fa-solid fa-location-dot"></i></span>
+                <span class="gd-story-step-actions">
+                    <span class="menu_button menu_button_icon gd-story-set-current" data-index="${i}" title="${langZh() ? '设为当前' : 'Set current'}"><i class="fa-solid fa-location-dot"></i></span>
+                    <span class="menu_button menu_button_icon gd-story-edit-step" data-index="${i}" title="${langZh() ? '改标题' : 'Edit title'}"><i class="fa-solid fa-pen-to-square"></i></span>
+                    <span class="menu_button menu_button_icon gd-story-delete-step" data-index="${i}" title="${langZh() ? '删除节点' : 'Delete step'}"><i class="fa-solid fa-trash"></i></span>
+                </span>
             </div>`);
             $row.on('click', () => {
                 viewedStepIndex = i;
@@ -96,6 +100,42 @@ registerSection('storyBlueprint', function (ctx) {
                 storyBlueprintSystem.setCurrentStep(i);
                 viewedStepIndex = null;
                 refresh();
+            });
+            $row.find('.gd-story-edit-step').on('click', async (ev) => {
+                ev.stopPropagation();
+                const currentTitle = step.node?.title || step.id || '';
+                const nextTitle = await callGenericPopup(
+                    langZh() ? '<b>编辑节点标题</b>' : '<b>Edit Step Title</b>',
+                    POPUP_TYPE.INPUT,
+                    currentTitle,
+                    { placeholder: langZh() ? '例如：第1章' : 'e.g. Chapter 1' },
+                );
+                if (nextTitle === null || nextTitle === false) return;
+                try {
+                    storyBlueprintSystem.updateStepTitle(i, nextTitle);
+                    viewedStepIndex = i;
+                    toastr.success(langZh() ? '节点标题已保存' : 'Step title saved');
+                    refresh();
+                } catch (e) {
+                    toastr.error(e.message || (langZh() ? '保存失败' : 'Save failed'));
+                }
+            });
+            $row.find('.gd-story-delete-step').on('click', async (ev) => {
+                ev.stopPropagation();
+                const title = step.pathText || step.id;
+                if (!await callGenericPopup(
+                    langZh() ? `删除节点「${esc(title)}」？` : `Delete step "${esc(title)}"?`,
+                    POPUP_TYPE.CONFIRM,
+                )) return;
+                try {
+                    storyBlueprintSystem.deleteStep(i);
+                    const nextProgress = storyBlueprintSystem.getProgress();
+                    if (viewedStepIndex === i || viewedStepIndex >= nextProgress.steps.length) viewedStepIndex = null;
+                    toastr.info(langZh() ? '节点已删除' : 'Step deleted');
+                    refresh();
+                } catch (e) {
+                    toastr.error(e.message || (langZh() ? '删除失败' : 'Delete failed'));
+                }
             });
             $list.append($row);
         }
@@ -278,7 +318,7 @@ registerSection('storyBlueprint', function (ctx) {
         const blueprint = storyBlueprintSystem.getBlueprint();
         const progress = storyBlueprintSystem.getProgress();
         const data = storyBlueprintSystem.getProviderData();
-        const varName = settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done';
+        const varName = storyBlueprintSystem.getCompletionVariable();
         const doneValue = progress.completionValue === true ? 'true' : 'false';
 
         const progressLabel = progress.total
@@ -340,8 +380,9 @@ registerSection('storyBlueprint', function (ctx) {
         refresh();
     });
 
-    $c('story-blueprint-var').on('input', () => {
-        settings.storyBlueprintCompletionVariable = $c('story-blueprint-var').val().trim() || 'gd_story_chapter_done';
+    $c('story-blueprint-var').on('change blur', () => {
+        settings.storyBlueprintCompletionVariable = storyBlueprintSystem.normalizeCompletionVariable($c('story-blueprint-var').val());
+        $c('story-blueprint-var').val(settings.storyBlueprintCompletionVariable);
         storyBlueprintSystem.ensureCompletionVariable();
         saveSettings();
         refresh();

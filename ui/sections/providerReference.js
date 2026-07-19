@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 const DEFAULT_ENTRIES = [
     { id: 'd1', placeholder: '{{recentMessages}}', name: 'Recent Messages', descZh: '最近的聊天消息，用于给 LLM 提供对话上下文。消息数由"最近消息条数"设置控制。', descEn: 'Recent chat messages for LLM context. Number controlled by recentMessageCount.' },
@@ -49,21 +50,24 @@ const DEFAULT_ENTRIES = [
 
 let nextUserIdx = 0;
 function genId() { return `u_${Date.now()}_${++nextUserIdx}`; }
+const DEFAULT_IDS = new Set(DEFAULT_ENTRIES.map(e => e.id));
 
 registerSection('providerReference', function (ctx) {
     const { settings, $c, saveSettings } = ctx;
     const isZh = () => (settings.lang || 'zh') === 'zh';
+    if (!Array.isArray(settings.providerReferenceDeletedDefaultIds)) settings.providerReferenceDeletedDefaultIds = [];
 
     // Init list — migrate missing defaults on every load
-    if (!settings.providerReferenceList || !settings.providerReferenceList.length) {
+    if (!Array.isArray(settings.providerReferenceList)) {
         settings.providerReferenceList = DEFAULT_ENTRIES.map(e => ({ ...e }));
         saveSettings();
     } else {
         // Merge any new default entries not yet in the user's list (incremental migration)
         const existingIds = new Set(settings.providerReferenceList.map(e => e.id));
+        const deletedDefaultIds = new Set(settings.providerReferenceDeletedDefaultIds);
         let added = false;
         for (const def of DEFAULT_ENTRIES) {
-            if (!existingIds.has(def.id)) {
+            if (!existingIds.has(def.id) && !deletedDefaultIds.has(def.id)) {
                 settings.providerReferenceList.push({ ...def });
                 added = true;
             }
@@ -93,14 +97,13 @@ registerSection('providerReference', function (ctx) {
 
         const html = filtered.map(e => {
             const desc = isZh() ? (e.descZh || e.descEn) : (e.descEn || e.descZh);
-            const isUser = e.id && e.id.startsWith('u_');
             return `
             <div class="gd-provider-ref-entry" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-top:4px;">
                 <div style="display:flex;align-items:flex-start;gap:6px;">
                     <code style="background:var(--grey20a);padding:2px 6px;border-radius:3px;font-size:0.85em;white-space:nowrap;flex-shrink:0;">${escHtml(e.placeholder)}</code>
                     <span style="font-weight:bold;font-size:0.9em;flex:1;min-width:0;">${escHtml(e.name)}</span>
                     <span class="menu_button menu_button_icon gd-provider-ref-edit" data-id="${escAttr(e.id)}" style="font-size:0.7em;flex-shrink:0;" title="${isZh() ? '编辑' : 'Edit'}"><i class="fa-solid fa-pen-to-square"></i></span>
-                    ${isUser ? `<span class="menu_button menu_button_icon gd-provider-ref-delete" data-id="${escAttr(e.id)}" style="font-size:0.7em;flex-shrink:0;color:#ff5555;" title="${isZh() ? '删除' : 'Delete'}"><i class="fa-solid fa-trash"></i></span>` : ''}
+                    <span class="menu_button menu_button_icon gd-provider-ref-delete" data-id="${escAttr(e.id)}" style="font-size:0.7em;flex-shrink:0;color:#ff5555;" title="${isZh() ? '删除' : 'Delete'}"><i class="fa-solid fa-trash"></i></span>
                 </div>
                 <div style="font-size:0.8em;color:var(--grey70a);margin-top:2px;margin-left:2px;">${escHtml(desc)}</div>
             </div>`;
@@ -115,14 +118,23 @@ registerSection('providerReference', function (ctx) {
         });
 
         // Delete
-        $container.find('.gd-provider-ref-delete').off('click').on('click', function () {
+        $container.find('.gd-provider-ref-delete').off('click').on('click', async function () {
             const id = $(this).data('id');
             const idx = list.findIndex(e => e.id === id);
-            if (idx >= 0) {
-                list.splice(idx, 1);
-                save();
-                render();
+            if (idx < 0) return;
+            const entry = list[idx];
+            if (!await callGenericPopup(
+                isZh()
+                    ? `删除接口「${entry.name || entry.placeholder}」？可通过“恢复默认”找回内置接口。`
+                    : `Delete "${entry.name || entry.placeholder}"? Built-in entries can be restored with Reset Defaults.`,
+                POPUP_TYPE.CONFIRM,
+            )) return;
+            if (DEFAULT_IDS.has(id) && !settings.providerReferenceDeletedDefaultIds.includes(id)) {
+                settings.providerReferenceDeletedDefaultIds.push(id);
             }
+            list.splice(idx, 1);
+            save();
+            render();
         });
     }
 
@@ -176,6 +188,7 @@ registerSection('providerReference', function (ctx) {
     // ── Reset ──
 
     $c('provider-ref-reset').off('click').on('click', () => {
+        settings.providerReferenceDeletedDefaultIds = [];
         settings.providerReferenceList = DEFAULT_ENTRIES.map(e => ({ ...e }));
         save();
         render();

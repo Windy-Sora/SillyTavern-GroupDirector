@@ -47,8 +47,8 @@ export function register({ settings, storyBlueprintSystem }) {
         placeholder: '{{storyBlueprintSchemaHint}}',
         enabled: isEnabled,
         render: () => ({
-            content: `When the current Story Blueprint step is complete, set variable_update.global.${settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done'} = true. Otherwise keep it false.`,
-            data: { completionVariable: settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done' },
+            content: `When the current Story Blueprint step is complete, set variable_update.global.${storyBlueprintSystem.getCompletionVariable()} = true. Otherwise keep it false.`,
+            data: { completionVariable: storyBlueprintSystem.getCompletionVariable() },
         }),
     });
 

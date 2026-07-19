@@ -226,6 +226,15 @@ function slug(input) {
         .slice(0, 48) || 'node';
 }
 
+function variableId(input) {
+    return String(input || DEFAULT_COMPLETION_VARIABLE)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 64) || DEFAULT_COMPLETION_VARIABLE;
+}
+
 function ensureArray(value) {
     return Array.isArray(value) ? value : [];
 }
@@ -257,6 +266,8 @@ function normalizeBlueprint(input) {
         delete source.chapters;
     }
     source.nodes = ensureArray(source.nodes).map((node, idx) => normalizeNode(node, [idx]));
+    const usedIds = new Set();
+    source.nodes = source.nodes.map(node => uniquifyNodeIds(node, usedIds, 'dup'));
     return source;
 }
 
@@ -280,6 +291,28 @@ function uniquifyNodeIds(node, usedIds, suffixBase = 'cont') {
     usedIds.add(candidate);
     node.children = ensureArray(node.children).map(child => uniquifyNodeIds(child, usedIds, suffixBase));
     return node;
+}
+
+function findNodeById(nodes, id) {
+    for (const node of ensureArray(nodes)) {
+        if (node?.id === id) return node;
+        const child = findNodeById(node?.children, id);
+        if (child) return child;
+    }
+    return null;
+}
+
+function removeNodeById(nodes, id) {
+    const list = ensureArray(nodes);
+    const idx = list.findIndex(node => node?.id === id);
+    if (idx >= 0) {
+        list.splice(idx, 1);
+        return true;
+    }
+    for (const node of list) {
+        if (removeNodeById(node?.children, id)) return true;
+    }
+    return false;
 }
 
 function flattenNodes(nodes, options = {}, parents = [], depth = 0, out = []) {
@@ -336,6 +369,29 @@ function validateImportData(obj) {
     return { ok: true, payload };
 }
 
+function sanitizeDoneSignals(doneSignals, steps, chatLength, source = 'import') {
+    const incoming = Array.isArray(doneSignals) ? doneSignals : [];
+    const byId = new Map();
+    for (const signal of incoming) {
+        if (!signal?.nodeId || byId.has(signal.nodeId)) continue;
+        byId.set(signal.nodeId, signal);
+    }
+
+    const sanitized = [];
+    for (let i = 0; i < steps.length; i++) {
+        const signal = byId.get(steps[i].id);
+        if (!signal) break;
+        sanitized.push({
+            nodeId: steps[i].id,
+            stepIndex: i,
+            chatLength: Number.isFinite(Number(signal.chatLength)) ? Math.min(Number(signal.chatLength), chatLength) : chatLength,
+            time: Number.isFinite(Number(signal.time)) ? Number(signal.time) : Date.now(),
+            source: signal.source || source,
+        });
+    }
+    return sanitized;
+}
+
 export function createStoryBlueprintSystem({
     settings,
     getChatMetadata,
@@ -354,7 +410,7 @@ export function createStoryBlueprintSystem({
     let generating = false;
 
     function lang() { return getLang?.() || settings.lang || 'zh'; }
-    function completionVariable() { return settings.storyBlueprintCompletionVariable || DEFAULT_COMPLETION_VARIABLE; }
+    function completionVariable() { return variableId(settings.storyBlueprintCompletionVariable); }
 
     function root() {
         const meta = getChatMetadata();
@@ -447,10 +503,14 @@ export function createStoryBlueprintSystem({
     function pruneDoneSignals(steps = null) {
         const state = root();
         steps = steps || getSteps();
-        const ids = new Set(steps.map(s => s.id));
         const chatLen = getChatLength(getChat);
-        const next = state.doneSignals.filter(s => ids.has(s.nodeId) && (s.chatLength == null || s.chatLength <= chatLen));
-        const changed = next.length !== state.doneSignals.length;
+        const next = sanitizeDoneSignals(
+            state.doneSignals.filter(s => s.chatLength == null || s.chatLength <= chatLen),
+            steps,
+            chatLen,
+            'prune',
+        );
+        const changed = JSON.stringify(next) !== JSON.stringify(state.doneSignals);
         if (changed) {
             state.doneSignals = next;
             saveChatConditional?.();
@@ -643,6 +703,43 @@ export function createStoryBlueprintSystem({
         saveChatConditional?.();
     }
 
+    function updateStepTitle(stepIndex, title) {
+        const steps = getSteps();
+        const idx = Number(stepIndex);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= steps.length) {
+            throw new Error(lang() === 'zh' ? '无效的故事蓝图步骤索引。' : 'Invalid Story Blueprint step index.');
+        }
+        const nextTitle = String(title || '').trim();
+        if (!nextTitle) {
+            throw new Error(lang() === 'zh' ? '标题不能为空。' : 'Title cannot be empty.');
+        }
+        const blueprint = getBlueprint();
+        const node = findNodeById(blueprint?.nodes, steps[idx].id);
+        if (!node) {
+            throw new Error(lang() === 'zh' ? '找不到要编辑的节点。' : 'Step node not found.');
+        }
+        node.title = nextTitle;
+        setBlueprint(blueprint, { resetProgress: false });
+        pruneDoneSignals();
+        return getProgress();
+    }
+
+    function deleteStep(stepIndex) {
+        const steps = getSteps();
+        const idx = Number(stepIndex);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= steps.length) {
+            throw new Error(lang() === 'zh' ? '无效的故事蓝图步骤索引。' : 'Invalid Story Blueprint step index.');
+        }
+        const blueprint = getBlueprint();
+        const removed = removeNodeById(blueprint?.nodes, steps[idx].id);
+        if (!removed) {
+            throw new Error(lang() === 'zh' ? '找不到要删除的节点。' : 'Step node not found.');
+        }
+        setBlueprint(blueprint, { resetProgress: false });
+        pruneDoneSignals();
+        return getProgress();
+    }
+
     function createBlankBlueprint() {
         const zh = lang() === 'zh';
         return setBlueprint({
@@ -656,7 +753,7 @@ export function createStoryBlueprintSystem({
                 {
                     id: 'node_001',
                     type: 'chapter',
-                    title: zh ? '第一章' : 'Chapter 1',
+                    title: zh ? '第1章' : 'Chapter 1',
                     content: {
                         purpose: '',
                         director_prompt: '',
@@ -821,9 +918,8 @@ ${schema}`;
         const hasProgress = options.includeProgress && Array.isArray(payload.doneSignals);
         setBlueprint(payload.blueprint || payload, { resetProgress: !hasProgress });
         if (options.includeProgress && Array.isArray(payload.doneSignals)) {
-            root().doneSignals = payload.doneSignals;
+            root().doneSignals = sanitizeDoneSignals(payload.doneSignals, getSteps(), getChatLength(getChat), 'import');
             root().completeNoticeKey = '';
-            pruneDoneSignals();
             saveChatConditional?.();
         }
         return { ok: true };
@@ -856,6 +952,8 @@ ${schema}`;
         setCurrentStep,
         resetProgress,
         resetBlueprint,
+        updateStepTitle,
+        deleteStep,
         createBlankBlueprint,
         appendBlankChapter,
         renderGenerationPrompt,
@@ -867,6 +965,8 @@ ${schema}`;
         getDefaultSchema: () => DEFAULT_STORY_BLUEPRINT_SCHEMA,
         getDefaultPrompt,
         getDefaultContinuePrompt,
+        getCompletionVariable: completionVariable,
+        normalizeCompletionVariable: variableId,
         isGenerating: () => generating,
     };
 }

@@ -2178,7 +2178,7 @@ function buildJsonSchema() {
         ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
         : '';
     const storyBlueprintDoneField = settings.storyBlueprintEnabled
-        ? `\n      "${settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done'}": false\n    `
+        ? `\n      "${storyBlueprintSystem.getCompletionVariable()}": false\n    `
         : '';
     const schema = settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema;
     return schema
@@ -2224,7 +2224,7 @@ registerProvider({
     placeholder: '{{storyBlueprintDoneField}}',
     render: () => {
         const enabled = settings.storyBlueprintEnabled;
-        const variableName = settings.storyBlueprintCompletionVariable || 'gd_story_chapter_done';
+        const variableName = storyBlueprintSystem.getCompletionVariable();
         return {
             content: enabled
                 ? `\n      "${variableName}": false\n    `
