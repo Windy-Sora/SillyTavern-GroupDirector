@@ -96,6 +96,10 @@ registerSection('configProfiles', function (ctx) {
 
             const result = sys.applyProfile(id, mergeMode);
             try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[configProfiles] reload after apply failed:', e); }
+            window.__gdRefreshDashboard?.();
+            window.__gdRefreshProfileLibrary?.();
+            window.__gdRefreshStoryBlueprint?.();
+            window.__gdRefreshSummaryStatus?.();
             let msg = isZh()
                 ? `已应用「${profile.name}」，${result.changed.length} 项设置已更新。`
                 : `Applied "${profile.name}", ${result.changed.length} setting(s) updated.`;

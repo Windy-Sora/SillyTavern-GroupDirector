@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types } from '../../../../script.js';
+import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
@@ -22,6 +22,7 @@ import { register as registerDirectorLedger } from './assets/providers/director-
 import { register as registerTestProvider } from './assets/providers/test-provider.js';
 import { register as registerWorldBooks } from './assets/providers/world-books.js';
 import { register as registerWorldBookImportance } from './assets/providers/world-book-importance.js';
+import { register as registerGdWorldBooks } from './assets/providers/gd-world-books.js';
 import { register as registerCharacterLore } from './assets/providers/character-lore.js';
 import { register as registerSystemTime } from './assets/providers/system-time.js';
 import { register as registerRandomDice } from './assets/providers/random-dice.js';
@@ -48,7 +49,9 @@ import { createCritiqueSystem } from './systems/critique-system.js';
 import { createCustomAgentSystem } from './systems/custom-agent-system.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
+import { createProfileLibrarySystem } from './systems/profile-library-system.js';
 import { createNpcExportSystem } from './systems/npc-export-system.js';
+import { createNpcLibrarySystem } from './systems/npc-library-system.js';
 import { createSummaryExportSystem } from './systems/summary-export-system.js';
 import { createCritiqueExportSystem } from './systems/critique-export-system.js';
 import { createMemoryExportSystem } from './systems/memory-export-system.js';
@@ -57,6 +60,7 @@ import { createCustomPromptsSystem } from './systems/custom-prompts-system.js';
 import { createScriptExecutorSystem } from './systems/script-executor-system.js';
 import { createVariableSystem } from './systems/variable-system.js';
 import { createStoryBlueprintSystem } from './systems/story-blueprint-system.js';
+import { createStoryBlueprintLibrarySystem } from './systems/story-blueprint-library-system.js';
 import { loadSettingsUI, reloadSettingsUI } from './ui/settings-init.js';
 import { AssetLoader } from './systems/asset-loader.js';
 import { providerModules } from './assets/providers/manifest.js';
@@ -225,6 +229,17 @@ const storyBlueprintSystem = createStoryBlueprintSystem({
 });
 storyBlueprintSystem.ensureCompletionVariable();
 
+const storyBlueprintLibrarySystem = createStoryBlueprintLibrarySystem({
+    settings,
+    extension_settings,
+    EXT_KEY,
+    saveSettings,
+    saveChatConditional,
+    getCurrentGroup,
+    storyBlueprintSystem,
+    log,
+});
+
 const { getDirectorHistory, addToDirectorHistory, pruneDirectorHistory, updateEntry, clearEntry } =
     createHistorySystem({ getChatMetadata, getChat, EXT_KEY, saveChatConditional, settings, log });
 
@@ -252,10 +267,32 @@ const customAgentSystem = createCustomAgentSystem({
     log,
 });
 
+function getActivatedWorldBookNames() {
+    const books = new Set();
+    const chatMeta = getChatMetadata();
+    if (chatMeta?.world_info && world_names.includes(chatMeta.world_info)) {
+        books.add(chatMeta.world_info);
+    }
+    if (Array.isArray(selected_world_info)) {
+        for (const name of selected_world_info) {
+            if (world_names.includes(name)) books.add(name);
+        }
+    }
+    if (world_info && Array.isArray(world_info.charLore)) {
+        for (const entry of world_info.charLore) {
+            if (entry.name && world_names.includes(entry.name)) books.add(entry.name);
+        }
+    }
+    return [...books];
+}
+
 const worldBookScanner = createWorldBookScanner({
     world_names, loadWorldInfo, log,
     getSelection: () => settings.worldBookSelection,
     getMaxEntries: () => settings.worldBookMaxEntries,
+    getSourceMode: () => settings.worldBookSourceMode || 'st',
+    getStSelection: getActivatedWorldBookNames,
+    renderMacros: (text) => substituteParams(text, { replaceCharacterCard: false }),
 });
 
 const profileSystem = createProfileSystem({
@@ -298,6 +335,25 @@ const { exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames
         getCurrentGroup, getCharacters, saveChatConditional,
         refreshProfileManagementUI, log,
     });
+
+const profileLibrarySystem = createProfileLibrarySystem({
+    settings,
+    extension_settings,
+    EXT_KEY,
+    saveSettings,
+    saveChatConditional,
+    getProfiles,
+    getCurrentGroup,
+    getCharacters,
+    getDefaultProfileGeneratorPrompt,
+    getDefaultProfileSchema,
+    getDefaultProfileRenderTemplate,
+    parseImportFile,
+    applyImport,
+    refreshProfileManagementUI,
+    hashChar,
+    log,
+});
 
 // ─── NPC Export System ──────────────────────────────────────────────
 const { exportNpcs, parseImportFile: parseNpcImportFile, applyImport: applyNpcImport,
@@ -466,6 +522,19 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 const npcSystem = createNpcSystem({
     settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
+});
+
+const npcLibrarySystem = createNpcLibrarySystem({
+    settings,
+    extension_settings,
+    EXT_KEY,
+    saveSettings,
+    getCurrentGroup,
+    npcSystem,
+    parseNpcImportFile,
+    applyNpcImport,
+    getDefaultNpcPrompt: () => DEFAULT_NPC_PROMPT,
+    log,
 });
 
 // ─── Memory Agent + System ───────────────────────────────────────────
@@ -1624,6 +1693,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    profileLibrarySystem.resetAutoLoadDedup?.();
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
@@ -1643,6 +1713,17 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     }
     postSpeechRoundRan = false;
     scriptExecutorRoundRan = false;
+    if (settings.profileEnabled) {
+        profileLibrarySystem.autoLoadForCurrentGroup('chat-changed')
+            .then((result) => {
+                if (result?.applied > 0) {
+                    toastr.info(`Auto-loaded ${result.applied} profile(s)`);
+                    window.__gdRefreshProfileLibrary?.();
+                    window.__gdRefreshDashboard?.();
+                }
+            })
+            .catch(e => console.warn('[GroupDirector] Profile library auto-load failed:', e.message || e));
+    }
     window.__gdRefreshVariables?.();
     window.__gdRefreshDashboard?.();
 });
@@ -2249,6 +2330,7 @@ registerStoryBlueprint({ settings, storyBlueprintSystem });
 registerTestProvider();
 registerWorldBooks(worldBookScanner);
 registerWorldBookImportance(worldBookScanner, () => settings.worldBookMaxEntries);
+registerGdWorldBooks(worldBookScanner);
 registerCharacterLore(getDirectorHistory);
 registerSystemTime(settings);
 registerRandomDice();
@@ -2324,7 +2406,7 @@ eventSource.on(event_types.APP_READY, async () => {
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
-        toastr, world_names, loadWorldInfo, renderPrompt,
+        toastr, world_names, loadWorldInfo, renderPrompt, worldBookScanner,
         getDirectorHistory, updateEntry, clearEntry,
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },
@@ -2345,7 +2427,9 @@ eventSource.on(event_types.APP_READY, async () => {
         userProviderLoader,
         memorySystem,
         exportProfiles, parseImportFile, applyImport, loadPreset, getPresetNames,
+        profileLibrarySystem,
         exportNpcs, parseNpcImportFile, applyNpcImport, loadNpcPreset, getNpcPresetNames,
+        npcLibrarySystem,
         summaryExportSystem,
         critiqueExportSystem,
         memoryExportSystem,
@@ -2355,8 +2439,20 @@ eventSource.on(event_types.APP_READY, async () => {
         scriptExecutorSystem,
         variableSystem,
         storyBlueprintSystem,
+        storyBlueprintLibrarySystem,
     };
     await loadSettingsUI(deps);
+    if (settings.profileEnabled) {
+        profileLibrarySystem.autoLoadForCurrentGroup('app-ready')
+            .then((result) => {
+                if (result?.applied > 0) {
+                    toastr.info(`Auto-loaded ${result.applied} profile(s)`);
+                    window.__gdRefreshProfileLibrary?.();
+                    window.__gdRefreshDashboard?.();
+                }
+            })
+            .catch(e => console.warn('[GroupDirector] Profile library auto-load failed:', e.message || e));
+    }
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };

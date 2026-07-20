@@ -14,6 +14,12 @@ import { configPresets } from '../assets/profiles/manifest.js';
 import { DEFAULT_SETTINGS } from '../settings.js';
 
 const CONFIG_PROFILE_VERSION = 1;
+const INTENTIONALLY_UNCOVERED_KEYS = new Set([
+    // Profile libraries are reusable content data, not a config-profile setting.
+    'profileLibraries',
+    'storyBlueprintLibraries',
+    'npcLibraries',
+]);
 
 // ─── Drawer → settings key mapping ──────────────────────────────────
 //
@@ -40,10 +46,11 @@ const DRAWER_KEYS = {
         'knowledgeText',
         'forceSpeakMode', 'forceSpeakPrompt',
     ],
-    worldBooks: ['worldBookMaxEntries'],
+    worldBooks: ['worldBookSourceMode', 'worldBookSelection', 'worldBookMaxEntries'],
     profilesAndData: [
         'profileEnabled', 'profileTokenBudget', 'profileConcurrency',
         'profileGeneratorPrompt', 'profileJsonSchema', 'profileRenderTemplate',
+        'profileLibraryAutoLoad',
         'memoryEnabled', 'memoryTokenBudget', 'memoryPrompt',
         'memoryJsonSchema', 'memoryRenderTemplate', 'memoryKeepRecent',
         'memoryMaxEntries', 'memoryCompressPrompt',
@@ -617,7 +624,7 @@ export function createConfigProfileSystem(deps) {
             for (const keys of Object.values(DRAWER_KEYS)) {
                 for (const k of keys) allDk.add(k);
             }
-            return Object.keys(DEFAULT_SETTINGS).filter(k => !allDk.has(k));
+            return Object.keys(DEFAULT_SETTINGS).filter(k => !allDk.has(k) && !INTENTIONALLY_UNCOVERED_KEYS.has(k));
         },
         getPresetNames: () => [...configPresets],
         loadPreset: async (name) => {

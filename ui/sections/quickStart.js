@@ -114,6 +114,7 @@ registerSection('quickStart', function (ctx) {
         $('#gd-profile-section').toggle(settings.profileEnabled);
         saveSettings();
         if (settings.profileEnabled) { refreshQuickProfileList(); renderReadiness(); }
+        window.__gdRefreshDashboard?.();
     });
 
     $c('qs-profile-regenerate-all').on('click', async function () {
@@ -128,6 +129,8 @@ registerSection('quickStart', function (ctx) {
             const ready = Object.values(profiles).filter(p => p.state === 'ready').length;
             refreshQuickProfileList(); renderReadiness();
             if (ctx.renderProfileManagementList) ctx.renderProfileManagementList();
+            window.__gdRefreshDashboard?.();
+            window.__gdRefreshProfileLibrary?.();
             toastr.success(isZh() ? `${ready} 个档案已就绪` : `${ready} profiles ready`);
         } catch (e) { toastr.error(e.message); }
         finally { btn.prop('disabled', false); }
@@ -192,8 +195,10 @@ registerSection('quickStart', function (ctx) {
     $c('qs-memory-enabled').on('change', function () {
         settings.memoryEnabled = !!$(this).prop('checked');
         $c('memory-enabled').prop('checked', settings.memoryEnabled);
+        $('#gd-memory-section').toggle(settings.memoryEnabled);
         saveSettings();
         if (settings.memoryEnabled) refreshQuickMemoryList();
+        window.__gdRefreshDashboard?.();
     });
 
     $c('qs-memory-extract').on('click', async function () {
@@ -202,6 +207,8 @@ registerSection('quickStart', function (ctx) {
         try {
             await memorySystem.generateForAll();
             refreshQuickMemoryList();
+            ctx.renderMemoryList?.();
+            window.__gdRefreshDashboard?.();
             toastr.success(isZh() ? '记忆提取完成' : 'Memory extraction done');
         } catch (e) { toastr.error(e.message); }
         finally { btn.prop('disabled', false); }
