@@ -426,13 +426,13 @@ registerSection('dashboard', function (ctx) {
             `</div>`);
         $('#gd-dash-panel-summary-enabled').on('change', function () {
             settings.summaryEnabled = !!$(this).prop('checked');
-            $('#gd-summary-enabled').prop('checked', settings.summaryEnabled).trigger('change');
+            $('#gd-summary-enabled').prop('checked', settings.summaryEnabled);
             saveSettings();
             refreshDashboardAndOpenPanel('summary');
         });
         $('#gd-dash-panel-auto-summary').on('change', function () {
             settings.autoSummaryEnabled = !!$(this).prop('checked');
-            $('#gd-auto-summary-enabled').prop('checked', settings.autoSummaryEnabled).trigger('change');
+            $('#gd-auto-summary-enabled').prop('checked', settings.autoSummaryEnabled);
             $('#gd-auto-summary-row').toggle(settings.autoSummaryEnabled);
             saveSettings();
             refreshDashboardAndOpenPanel('summary');
@@ -501,7 +501,7 @@ registerSection('dashboard', function (ctx) {
         $list.append(`<hr style="margin:6px 0;opacity:0.3;"><div style="display:flex;align-items:center;gap:6px;font-size:0.82em;"><label class="checkbox_label" style="margin:0;"><input type="checkbox" id="gd-dash-panel-auto-memory" ${amOn ? 'checked' : ''}>${lang === 'zh' ? '自动提取' : 'Auto-extract'}</label><span>${lang === 'zh' ? '每' : 'Every'}</span><input type="number" value="${amInt}" id="gd-dash-panel-auto-memory-int" class="text_pole" min="1" max="200" style="width:50px;margin:0;"><span>${lang === 'zh' ? '条触发' : 'msgs'}</span></div>`);
         $('#gd-dash-panel-auto-memory').on('change', function () {
             settings.autoMemoryEnabled = !!$(this).prop('checked');
-            $('#gd-auto-memory-enabled').prop('checked', settings.autoMemoryEnabled).trigger('change');
+            $('#gd-auto-memory-enabled').prop('checked', settings.autoMemoryEnabled);
             $('#gd-auto-memory-row').toggle(settings.autoMemoryEnabled);
             saveSettings();
             refreshDashboardAndOpenPanel('memories');
@@ -838,13 +838,13 @@ registerSection('dashboard', function (ctx) {
         </select>`);
         const $settings = $(`<span class="menu_button menu_button_icon gd-dash-open-settings" style="font-size:0.78em;"><i class="fa-solid fa-sliders"></i> ${esc(openSettingsLabel())}</span>`);
         $mode.val(sourceMode);
-        $mode.on('change', function () {
+        $mode.on('change', async function () {
             settings.worldBookSourceMode = $(this).val() || 'st';
             ctx.worldBookScanner?.clearCache?.();
             saveSettings();
             renderDashWorldBookList();
             refreshWorldBookStat();
-            window.__gdRefreshWorldBookList?.();
+            await window.__gdRefreshWorldBookList?.();
         });
         $settings.on('click', () => openSettingsCard('worldbooks'));
         $modeLeft.append($modeLabel, $mode);
@@ -857,8 +857,8 @@ registerSection('dashboard', function (ctx) {
         const $toolbar = $('<div style="margin-bottom:4px;display:flex;gap:4px;"></div>');
         const $all = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-check-double"></i> ${lang === 'zh' ? '全选' : 'All'}</span>`);
         const $none = $(`<span class="menu_button menu_button_icon" style="font-size:0.75em;cursor:pointer;"><i class="fa-solid fa-xmark"></i> ${lang === 'zh' ? '取消' : 'None'}</span>`);
-        $all.on('click', () => { if (sourceMode === 'st') return; for (const n of names) sel[n] = true; ctx.worldBookScanner?.clearCache?.(); saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
-        $none.on('click', () => { if (sourceMode === 'st') return; for (const n of names) sel[n] = false; ctx.worldBookScanner?.clearCache?.(); saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
+        $all.on('click', async () => { if (sourceMode === 'st') return; for (const n of names) sel[n] = true; ctx.worldBookScanner?.clearCache?.(); saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
+        $none.on('click', async () => { if (sourceMode === 'st') return; for (const n of names) sel[n] = false; ctx.worldBookScanner?.clearCache?.(); saveSettings(); renderDashWorldBookList(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
         if (sourceMode === 'st') {
             $all.css({ opacity: 0.55, pointerEvents: 'none' });
             $none.css({ opacity: 0.55, pointerEvents: 'none' });
@@ -874,7 +874,7 @@ registerSection('dashboard', function (ctx) {
             const $input = $(`<input type="checkbox">`);
             $input.prop('checked', checked);
             $input.prop('disabled', sourceMode === 'st');
-            $input.on('change', function () { sel[name] = !!$(this).prop('checked'); ctx.worldBookScanner?.clearCache?.(); saveSettings(); refreshWorldBookStat(); window.__gdRefreshWorldBookList?.(); });
+            $input.on('change', async function () { sel[name] = !!$(this).prop('checked'); ctx.worldBookScanner?.clearCache?.(); saveSettings(); refreshWorldBookStat(); await window.__gdRefreshWorldBookList?.(); });
             $label.append($input, name);
             $wbList.append($label);
         }

@@ -228,7 +228,7 @@ registerSection('profileLibrary', function (ctx) {
 
     $('#gd-profile-library-select').off('change').on('change', function () {
         const id = $(this).val();
-        $('#gd-profile-library-select').val(id);
+        $('#gd-dash-panel-profile-library').val(id);
     });
 
     window.__gdRefreshProfileLibrary = renderList;

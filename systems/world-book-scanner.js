@@ -245,19 +245,21 @@ export function createWorldBookScanner({ world_names, loadWorldInfo, getSelectio
         const fullEntries = flattenEntries(books);
         const constantEntries = flattenEntries(books, (entry) => !!entry.constant);
         const names = books.map(b => b.name);
+        const fullText = formatEntries(fullEntries);
+        const constantText = formatEntries(constantEntries);
         return {
             books,
             names,
             fullEntries,
             constantEntries,
-            fullText: formatEntries(fullEntries),
-            constantText: formatEntries(constantEntries),
+            fullText,
+            constantText,
             stats: {
                 bookCount: books.length,
                 entryCount: fullEntries.length,
                 constantCount: constantEntries.length,
-                fullChars: formatEntries(fullEntries).length,
-                constantChars: formatEntries(constantEntries).length,
+                fullChars: fullText.length,
+                constantChars: constantText.length,
             },
         };
     }

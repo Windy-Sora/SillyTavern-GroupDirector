@@ -54,7 +54,7 @@ export function createProfileLibrarySystem({
         if (!settings.profileLibraryAutoLoad || typeof settings.profileLibraryAutoLoad !== 'object') {
             settings.profileLibraryAutoLoad = {};
         }
-        settings.profileLibraryAutoLoad = {
+        const defaults = {
             enabled: false,
             mode: 'best',
             fixedId: '',
@@ -63,8 +63,12 @@ export function createProfileLibrarySystem({
             matchNameOnly: false,
             overwriteExisting: false,
             importTemplate: false,
-            ...settings.profileLibraryAutoLoad,
         };
+        for (const [key, value] of Object.entries(defaults)) {
+            if (settings.profileLibraryAutoLoad[key] === undefined) {
+                settings.profileLibraryAutoLoad[key] = value;
+            }
+        }
         return settings.profileLibraryAutoLoad;
     }
 
@@ -167,9 +171,10 @@ export function createProfileLibrarySystem({
     function currentMembers() {
         const group = getCurrentGroup?.();
         const chars = getCharacters?.() || [];
+        const charsByAvatar = new Map(chars.map(c => [c.avatar, c]));
         const avatars = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
         return avatars.map(avatar => {
-            const char = chars.find(c => c.avatar === avatar);
+            const char = charsByAvatar.get(avatar);
             const hash = char && hashChar ? hashChar(char.description, char.personality, char.scenario) : '';
             return char ? { avatar, name: char.name, hash, char } : null;
         }).filter(Boolean);
@@ -178,7 +183,7 @@ export function createProfileLibrarySystem({
     function matchLibraryProfiles(libraryOrData, options = {}) {
         const data = normalizeLibraryEntry(libraryOrData) || libraryOrData;
         const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
-        const members = currentMembers();
+        const members = Array.isArray(options.members) ? options.members : currentMembers();
         const liveProfiles = getProfiles?.() || {};
         const opts = {
             matchHash: true,
@@ -315,11 +320,13 @@ export function createProfileLibrarySystem({
 
     function findBestLibrary(options = {}) {
         const auto = getAutoLoadSettings();
+        const members = Array.isArray(options.members) ? options.members : currentMembers();
         const opts = {
             matchHash: auto.matchHash,
             matchAvatarName: auto.matchAvatarName,
             matchNameOnly: false,
             overwriteExisting: auto.overwriteExisting,
+            members,
             ...options,
         };
         let best = null;
@@ -346,11 +353,12 @@ export function createProfileLibrarySystem({
         autoLoadBusy = true;
         try {
             let target = null;
+            const members = currentMembers();
             if (auto.mode === 'fixed' && auto.fixedId) {
                 const entry = getLibrary(auto.fixedId);
-                if (entry) target = { entry, preview: matchLibraryProfiles(entry, { ...auto, matchNameOnly: false }) };
+                if (entry) target = { entry, preview: matchLibraryProfiles(entry, { ...auto, matchNameOnly: false, members }) };
             } else {
-                target = findBestLibrary({ matchNameOnly: false });
+                target = findBestLibrary({ matchNameOnly: false, members });
             }
             if (!target) return { applied: 0, reason: 'no-match' };
             const result = await applyLibrary(target.entry.id, { ...auto, matchNameOnly: false });
