@@ -263,6 +263,20 @@ Generate structured character profiles (traits, motivations, relationships), inj
 | Regenerate all | One-click profile generation for all characters |
 | Profile management cards | Each character expandable, supports edit/regenerate/delete |
 
+**Profile Library** (inside the Character Profiles card)
+
+Save all ready character profiles in the current group as a named "profile library", reusable across group chats. Library entries live in global settings, not exported with chat.
+
+| Control | Purpose |
+|------|------|
+| Save Current | Prompt for a name, save all ready profiles in the current group as a new library |
+| Apply / Import to Library / Export / Delete | Operations on the selected or a specific library |
+| Auto-fill | When enabled, automatically match and apply the best library when switching chats or on startup |
+| Set as Auto | Set a library as the fixed auto-load target (fixed mode) |
+| Overwrite existing / Allow name-only match / Apply template | Matching and apply options |
+
+Apply matches current group members by hash -> avatar+name -> name only, in three tiers; already-ready characters are skipped by default (unless "Overwrite existing" is checked). Each library card shows a match preview (importable / skipped counts).
+
 #### Character Memory (Card)
 
 Extracts key experiences and emotional changes from conversation history. Status label shows total entry count.
@@ -281,6 +295,18 @@ Extracts key experiences and emotional changes from conversation history. Status
 #### NPC Generation (Card)
 
 Batch-generate NPCs based on conversation context, can be imported as character cards. Status label shows NPC count.
+
+**NPC Library** (inside the NPC Generation card)
+
+Save the current group's NPCs as a named "NPC library", reusable across group chats. Library entries live in global settings, not exported with chat.
+
+| Control | Purpose |
+|------|------|
+| Save Current | Prompt for a name, save current NPCs as a new library |
+| Apply / Import as Library / Export / Delete | Operations on NPC libraries |
+| Apply template | Also import the NPC generation prompt template on apply |
+
+Each NPC library card previews how many NPCs would be newly created vs overwritten.
 
 #### Identity Anchor (Card)
 
@@ -335,6 +361,15 @@ The default generation prompt includes `{{storyBlueprintFullJson}}` and `{{story
 
 Blueprint body and progress are stored in the current chat. Config profiles sync blueprint configuration only, not the concrete story blueprint. Story Blueprint uses the `story-blueprint` independent API settings in the Tools drawer's Agent Configuration card.
 
+**Story Blueprint Library** (inside the Story Blueprint card)
+
+Save the current story blueprint as a named "blueprint library", reusable across group chats. Library entries live in global settings, not exported with chat.
+
+| Control | Purpose |
+|------|------|
+| Save Current | Save the current blueprint as a new library (optionally with progress) |
+| Apply / Import as Library / Export / Delete | Operations on blueprint libraries; applying can optionally restore progress |
+
 #### AI Critique (Card)
 
 Has the AI review recent conversations, critiquing Director decision quality and character performance. When enabled, `{{directorCritique}}`, `{{characterCritique}}`, `{{charCritique}}` have content.
@@ -358,6 +393,15 @@ Browse, edit, and clear Director history decisions. Status label shows round cou
 #### World Books (Card)
 
 Check which ST world book entries to inject into the Director Prompt. Refresh button syncs changes. Max injection entry limit (recommended: 15-30).
+
+**Source mode** (`worldBookSourceMode`):
+
+- **ST** (default): follow SillyTavern's currently active world books (chat-bound world book + global selection + character world books). The selection list below is read-only
+- **GD**: fully use the manual selection list below (`worldBookSelection`), decoupled from ST activation
+
+**Selection list**: Select All / Deselect All + per-item checkboxes (editable in GD mode).
+
+**Provider preview**: scans currently active world books in real time and previews the rendered text and character-count stats of `{{gdWorldBooksConstant}}` / `{{gdWorldBooksFull}}` / `{{gdWorldBooksNames}}`, with one-click copy buttons for each placeholder.
 
 ---
 
@@ -510,6 +554,9 @@ One extra LLM call per round. The Director analyzes context and returns JSON:
 | `{{worldInfo}}` | Currently activated and checked world book entry text |
 | `{{worldBooks}}` | Activated world book list |
 | `{{worldBookImportance}}` | Entries sorted by importance |
+| `{{gdWorldBooksFull}}` | Full text of all entries in currently active world books |
+| `{{gdWorldBooksConstant}}` | Always-on (constant) entries in currently active world books |
+| `{{gdWorldBooksNames}}` | List of currently active world book names |
 | `{{characterLore}}` | World book trigger content relevant to current character |
 
 ### Director State
@@ -642,6 +689,12 @@ Example:
 | Summaries | Tools → Export/Import → Summaries | `.json` | One-click export active summary |
 
 Auto-match characters on import (avatar exact → name exact → fuzzy match), confirmation popup for same-name conflicts.
+
+### Reusable Libraries (Cross-Chat)
+
+Character Profiles / NPC / Story Blueprint each have a "library" card (inside the Character Profiles and NPC Generation cards in the Characters drawer, and the Story Blueprint card in the Continuity drawer). They save the current group's data as named reusable packages, applicable across group chats. Library entries live in global settings, not exported with chat; each library supports Save Current, Apply, Import file, Export JSON, and Delete. The Profile library additionally supports auto-matching and loading when switching chats.
+
+See each card's section for details.
 
 ### Config-Level Export (Global)
 
