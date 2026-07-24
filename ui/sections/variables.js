@@ -245,7 +245,7 @@ registerSection('variables', function (ctx) {
             });
             $row.find('.gd-var-delete').on('click', async (e) => {
                 e.stopPropagation();
-                if (!await callGenericPopup(t('deleteConfirm', def.id), POPUP_TYPE.CONFIRM)) return;
+                if (!await callGenericPopup(t('deleteConfirm', esc(def.id)), POPUP_TYPE.CONFIRM)) return;
                 variableSystem.deleteDefinition(def.id);
                 if (selectedId === def.id) selectedId = null;
                 refresh();

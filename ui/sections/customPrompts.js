@@ -97,9 +97,10 @@ registerSection('customPrompts', function (ctx) {
             const id = $(this).data('id');
             const entry = sys.getList().find(e => e.id === id);
             if (!entry) return;
+            const promptName = escHtml(entry.name);
             if (!await callGenericPopup(isZh()
-                ? `删除 {{${entry.name}}}？已引用此占位符的位置将变为空。`
-                : `Delete {{${entry.name}}}? References to it will become empty.`, POPUP_TYPE.CONFIRM)) return;
+                ? `删除 {{${promptName}}}？已引用此占位符的位置将变为空。`
+                : `Delete {{${promptName}}}? References to it will become empty.`, POPUP_TYPE.CONFIRM)) return;
             sys.remove(id);
             renderList();
             toastr.info(isZh() ? '已删除' : 'Deleted');
@@ -149,9 +150,10 @@ registerSection('customPrompts', function (ctx) {
             });
             let overwrite = false;
             if (conflicts.length > 0) {
+                const conflictNames = conflicts.map(p => escHtml(p.name)).join(', ');
                 overwrite = await callGenericPopup(isZh()
-                    ? `检测到 ${conflicts.length} 个同名 Prompt：${conflicts.map(p => p.name).join(', ')}。\n确定=覆盖同名，取消=仅添加不同名的`
-                    : `Found ${conflicts.length} same-name prompt(s): ${conflicts.map(p => p.name).join(', ')}.\nOK=overwrite conflicts, Cancel=add only new ones`, POPUP_TYPE.CONFIRM);
+                    ? `检测到 ${conflicts.length} 个同名 Prompt：${conflictNames}。\n确定=覆盖同名，取消=仅添加不同名的`
+                    : `Found ${conflicts.length} same-name prompt(s): ${conflictNames}.\nOK=overwrite conflicts, Cancel=add only new ones`, POPUP_TYPE.CONFIRM);
             }
             const result2 = sys.importPrompts(result.data, overwrite);
             renderList();

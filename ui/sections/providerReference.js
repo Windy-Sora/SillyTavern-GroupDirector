@@ -126,10 +126,11 @@ registerSection('providerReference', function (ctx) {
             const idx = list.findIndex(e => e.id === id);
             if (idx < 0) return;
             const entry = list[idx];
+            const entryName = escHtml(entry.name || entry.placeholder);
             if (!await callGenericPopup(
                 isZh()
-                    ? `删除接口「${entry.name || entry.placeholder}」？可通过“恢复默认”找回内置接口。`
-                    : `Delete "${entry.name || entry.placeholder}"? Built-in entries can be restored with Reset Defaults.`,
+                    ? `删除接口「${entryName}」？可通过“恢复默认”找回内置接口。`
+                    : `Delete "${entryName}"? Built-in entries can be restored with Reset Defaults.`,
                 POPUP_TYPE.CONFIRM,
             )) return;
             if (DEFAULT_IDS.has(id) && !settings.providerReferenceDeletedDefaultIds.includes(id)) {

@@ -7,7 +7,7 @@ import { registerSection } from './registry.js';
 registerSection('quickStart', function (ctx) {
     const { settings, $c, saveSettings, generateProfilesBatch, getProfiles,
         getCurrentGroup, toastr, world_names,
-        memorySystem, summarySystem, loadConfigPreset, configProfileSystem, getCharacters } = ctx;
+        memorySystem, summarySystem, loadConfigPreset, configProfileSystem, getCharacters, worldBookScanner } = ctx;
     const isZh = () => (settings.lang || 'zh') === 'zh';
 
     const $container = $('#gd-quick-start');
@@ -93,7 +93,10 @@ registerSection('quickStart', function (ctx) {
             memCount = Object.values(stats).reduce((s, st) => s + st.count, 0);
         }
         const wbCount = (world_names || []).length;
-        const wbChecked = Object.values(settings.worldBookSelection || {}).filter(Boolean).length;
+        const wbSourceMode = settings.worldBookSourceMode || 'st';
+        const wbChecked = wbSourceMode === 'st'
+            ? (worldBookScanner?.getSelectedNames?.() || []).length
+            : Object.values(settings.worldBookSelection || {}).filter(Boolean).length;
 
         const light = (label, ok, detail) =>
             `<span style="margin-right:10px;"><span style="color:${ok ? '#4caf50' : '#ff9800'};">${ok ? '🟢' : '🟡'}</span> ${label}${detail ? ` (${detail})` : ''}</span>`;
@@ -225,16 +228,22 @@ registerSection('quickStart', function (ctx) {
             renderReadiness();
             return;
         }
+        const sourceMode = settings.worldBookSourceMode || 'st';
         const selection = settings.worldBookSelection || {};
-        let html = '';
+        const stActive = new Set(sourceMode === 'st' ? (worldBookScanner?.getSelectedNames?.() || []) : []);
+        let html = sourceMode === 'st'
+            ? `<small style="display:block;color:var(--grey70a);margin-bottom:3px;">${isZh() ? '璺熼殢 ST 褰撳墠婵€娲讳笘鐣屼功' : 'Following ST active world books'}</small>`
+            : '';
         for (const name of names) {
-            const checked = !!selection[name];
+            const checked = sourceMode === 'st' ? stActive.has(name) : !!selection[name];
             html += `<label class="checkbox_label" style="display:block;font-size:0.8em;${checked ? '' : 'color:var(--grey70a);'}">
-                <input type="checkbox" class="gd-qs-wb-check" data-book="${escHtml(name)}" ${checked ? 'checked' : ''}> ${escHtml(name)}
+                <input type="checkbox" class="gd-qs-wb-check" data-book="${escHtml(name)}" ${checked ? 'checked' : ''} ${sourceMode === 'st' ? 'disabled' : ''}> ${escHtml(name)}
             </label>`;
         }
         $list.html(html);
         $list.find('.gd-qs-wb-check').off('change').on('change', function () {
+            if (sourceMode === 'st') return;
+            if (!settings.worldBookSelection) settings.worldBookSelection = {};
             settings.worldBookSelection[$(this).attr('data-book')] = !!$(this).prop('checked');
             saveSettings();
             if (ctx.renderWorldBookList) ctx.renderWorldBookList();

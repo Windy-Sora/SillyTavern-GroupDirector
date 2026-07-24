@@ -131,7 +131,8 @@ registerSection('storyBlueprintLibrary', function (ctx) {
         const id = $(this).data('id');
         const lib = storyBlueprintLibrarySystem.getLibrary(id);
         if (!lib) return;
-        const ok = await callGenericPopup(L(`删除蓝图包“${lib.name}”？`, `Delete Story Blueprint "${lib.name}"?`), POPUP_TYPE.CONFIRM);
+        const libName = esc(lib.name);
+        const ok = await callGenericPopup(L(`删除蓝图包“${libName}”？`, `Delete Story Blueprint "${libName}"?`), POPUP_TYPE.CONFIRM);
         if (!ok) return;
         storyBlueprintLibrarySystem.deleteLibrary(id);
         refreshLinkedUi();

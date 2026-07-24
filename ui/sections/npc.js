@@ -159,7 +159,8 @@ registerSection('npc', function (ctx) {
         // Delete
         $list.find('.gd-npc-delete').on('click', async function () {
             const idx = parseInt($(this).data('idx'));
-            if (await callGenericPopup(L(`确定删除 NPC「${npcs[idx].name}」？`, `Delete NPC "${npcs[idx].name}"?`), POPUP_TYPE.CONFIRM)) {
+            const npcName = esc(npcs[idx]?.name);
+            if (await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) {
                 npcSystem.deleteNpc(idx);
                 renderNpcList();
                 window.__gdRefreshDashboard?.();

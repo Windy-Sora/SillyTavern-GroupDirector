@@ -100,6 +100,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             return { ok: false, name, error: `"${name}" already exists. Delete it first to re-import.` };
         }
 
+        let blobUrl = '';
         try {
             const source = await readFileAsText(file);
 
@@ -118,11 +119,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 log(`User ${type} "${name}": user confirmed import despite security warning: ${findings.map(f => f.label).join(', ')}`);
             }
 
-            const blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+            blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
             const mod = await import(blobUrl);
 
             if (typeof mod.register !== 'function') {
-                URL.revokeObjectURL(blobUrl);
                 return { ok: false, name, error: 'Module must export function register(deps)' };
             }
 
@@ -145,9 +145,6 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 : [];
             log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
 
-            // Revoke Blob URL — module is cached by import(), URL resource can be freed
-            URL.revokeObjectURL(blobUrl);
-
             // Persist with enabled state
             store.push({ name, source, importedAt: Date.now(), ids: addedIds, enabled: true });
             await saveStore();
@@ -157,6 +154,8 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         } catch (e) {
             log(`User ${type} "${name}" import failed:`, e.message);
             return { ok: false, name, error: e.message };
+        } finally {
+            if (blobUrl) URL.revokeObjectURL(blobUrl);
         }
     }
 
@@ -191,12 +190,13 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         const loaded = [], failed = [];
 
         for (const p of store) {
+            let blobUrl = '';
             try {
                 const findings = scanSource(p.source);
                 if (findings.length > 0) {
                     log(`Security: persisted ${type} "${p.name}" contains: ${findings.map(f => f.label).join(', ')}`);
                 }
-                const blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
+                blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
                 const mod = await import(blobUrl);
                 if (typeof mod.register === 'function') {
                     mod.register(deps);
@@ -204,9 +204,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 } else {
                     failed.push({ name: p.name, error: 'no register() export' });
                 }
-                URL.revokeObjectURL(blobUrl);
             } catch (e) {
                 failed.push({ name: p.name, error: e.message });
+            } finally {
+                if (blobUrl) URL.revokeObjectURL(blobUrl);
             }
         }
 

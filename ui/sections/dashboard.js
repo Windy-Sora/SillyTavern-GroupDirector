@@ -238,6 +238,7 @@ registerSection('dashboard', function (ctx) {
     };
 
     function esc(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function escPopup(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
     function openSettingsLabel() {
         return (settings.lang || 'zh') === 'zh' ? '打开设置' : 'Open settings';
@@ -329,8 +330,9 @@ registerSection('dashboard', function (ctx) {
             }
             const lib = profileLibrarySystem.getLibrary?.(id);
             if (!lib) return;
+            const libName = escPopup(lib.name);
             const ok = await callGenericPopup(
-                lang === 'zh' ? `删除档案包“${lib.name}”？` : `Delete profile library "${lib.name}"?`,
+                lang === 'zh' ? `删除档案包“${libName}”？` : `Delete profile library "${libName}"?`,
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
@@ -584,8 +586,9 @@ registerSection('dashboard', function (ctx) {
             if (!id) { toastr?.warning?.(lang === 'zh' ? '请先选择 NPC 包' : 'Select an NPC library first'); return; }
             const lib = npcLibrarySystem.getLibrary?.(id);
             if (!lib) return;
+            const libName = escPopup(lib.name);
             const ok = await callGenericPopup(
-                lang === 'zh' ? `删除 NPC 包“${lib.name}”？` : `Delete NPC library "${lib.name}"?`,
+                lang === 'zh' ? `删除 NPC 包“${libName}”？` : `Delete NPC library "${libName}"?`,
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
@@ -743,8 +746,9 @@ registerSection('dashboard', function (ctx) {
             if (!id) { toastr?.warning?.(lang === 'zh' ? '请先选择蓝图包' : 'Select a blueprint library first'); return; }
             const lib = storyBlueprintLibrarySystem.getLibrary?.(id);
             if (!lib) return;
+            const libName = escPopup(lib.name);
             const ok = await callGenericPopup(
-                lang === 'zh' ? `删除蓝图包“${lib.name}”？` : `Delete Story Blueprint "${lib.name}"?`,
+                lang === 'zh' ? `删除蓝图包“${libName}”？` : `Delete Story Blueprint "${libName}"?`,
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
@@ -915,8 +919,9 @@ registerSection('dashboard', function (ctx) {
         const id = rawValue.slice(PROF_PREFIX.length);
         const profile = (configProfileSystem.getProfiles() || []).find(p => p.id === id);
         const name = profile?.name || id;
+        const popupName = escPopup(name);
         const ok = await callGenericPopup(
-            (lang === 'zh' ? `确定删除配置档「${name}」？此操作不可撤销。` : `Delete config profile "${name}"? This cannot be undone.`),
+            (lang === 'zh' ? `确定删除配置档「${popupName}」？此操作不可撤销。` : `Delete config profile "${popupName}"? This cannot be undone.`),
             POPUP_TYPE.CONFIRM,
         );
         if (!ok) return;

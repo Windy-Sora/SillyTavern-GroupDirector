@@ -133,7 +133,8 @@ registerSection('npcLibrary', function (ctx) {
         const id = $(this).data('id');
         const lib = npcLibrarySystem.getLibrary(id);
         if (!lib) return;
-        const ok = await callGenericPopup(L(`删除 NPC 包“${lib.name}”？`, `Delete NPC library "${lib.name}"?`), POPUP_TYPE.CONFIRM);
+        const libName = esc(lib.name);
+        const ok = await callGenericPopup(L(`删除 NPC 包“${libName}”？`, `Delete NPC library "${libName}"?`), POPUP_TYPE.CONFIRM);
         if (!ok) return;
         npcLibrarySystem.deleteLibrary(id);
         refreshLinkedUi();

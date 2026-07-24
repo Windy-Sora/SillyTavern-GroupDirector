@@ -190,8 +190,9 @@ registerSection('profileLibrary', function (ctx) {
         const id = $(this).data('id');
         const lib = profileLibrarySystem.getLibrary(id);
         if (!lib) return;
+        const libName = esc(lib.name);
         const ok = await callGenericPopup(
-            L(`删除档案包“${lib.name}”？`, `Delete profile library "${lib.name}"?`),
+            L(`删除档案包“${libName}”？`, `Delete profile library "${libName}"?`),
             POPUP_TYPE.CONFIRM,
         );
         if (!ok) return;
