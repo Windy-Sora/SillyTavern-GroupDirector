@@ -33,8 +33,8 @@ export const CapabilityRegistry = {
             // Constraints: { maxPerMessage, requires, cooldown }
             constraints: Object.assign({ maxPerMessage: 1, cooldown: 0 }, cap.constraints),
             enabled: cap.enabled !== false,
-            scope: Object.prototype.hasOwnProperty.call(this._scopeOverrides, cap.id)
-                ? this._scopeOverrides[cap.id]
+            scope: Object.prototype.hasOwnProperty.call(CapabilityRegistry._scopeOverrides, cap.id)
+                ? CapabilityRegistry._scopeOverrides[cap.id]
                 : (cap.scope || 'both'),  // 'message' | 'round' | 'both' | 'off'
         });
     },
