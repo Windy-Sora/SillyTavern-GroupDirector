@@ -118,6 +118,13 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         }
     }
 
+    function deepFreeze(obj, seen = new WeakSet()) {
+        if (!obj || typeof obj !== 'object' || seen.has(obj)) return obj;
+        seen.add(obj);
+        for (const value of Object.values(obj)) deepFreeze(value, seen);
+        return Object.freeze(obj);
+    }
+
     // ── Decision phase: blocking, await all, 10s timeout ──
     async function executeAllDecision(rawEvent) {
         const event = rawEvent ? { ...rawEvent } : {};
@@ -210,7 +217,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         }
 
         // Snapshot decision state for message/round phases (frozen for read-only enforcement)
-        decisionSnapshot = Object.freeze({
+        decisionSnapshot = deepFreeze({
             decision: safeClone(workingDecision),
             shared: safeClone(turnShared),
         });
