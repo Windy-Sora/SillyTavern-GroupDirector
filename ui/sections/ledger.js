@@ -52,7 +52,9 @@ registerSection('ledger', function (ctx) {
             if (isEmpty) {
                 header.append(`<span class="gd-ledger-card-title" style="color:var(--grey70a);font-style:italic">${settings.lang === 'zh' ? '(已清空)' : '(cleared)'}</span>`);
             } else {
-                header.append(`<span class="gd-ledger-card-title">#${realIndex + 1} ${speakers} — ${reason}${entry.reason && entry.reason.length > 60 ? '...' : ''}</span>`);
+                const title = $(`<span class="gd-ledger-card-title"></span>`);
+                title.text(`#${realIndex + 1} ${speakers} — ${reason}${entry.reason && entry.reason.length > 60 ? '...' : ''}`);
+                header.append(title);
             }
             header.append(`<span style="flex:1"></span>`);
 
