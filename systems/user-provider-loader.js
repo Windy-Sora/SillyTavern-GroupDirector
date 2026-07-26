@@ -171,6 +171,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             for (const id of (entry.ids || [])) {
                 unregisterProvider(id);
             }
+        } else if (type === 'capability' && CapabilityRegistry) {
+            for (const id of (entry.ids || [])) {
+                CapabilityRegistry.unregister(id);
+            }
         }
         store.splice(idx, 1);
         await saveStore();

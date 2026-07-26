@@ -37,6 +37,10 @@ export const CapabilityRegistry = {
         });
     },
 
+    unregister(id) {
+        return capabilities.delete(id);
+    },
+
     get(id) {
         return capabilities.get(id);
     },
@@ -147,4 +151,3 @@ export function registerCapabilityProviders({ registerProvider }) {
         },
     });
 }
-
