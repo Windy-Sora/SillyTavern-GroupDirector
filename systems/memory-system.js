@@ -76,7 +76,9 @@ export function createMemorySystem({
         });
 
         if (!result || !Array.isArray(result) || result.length === 0) {
-            throw new Error(L('未提取到新记忆', 'No new memories extracted'));
+            const error = new Error(L('未提取到新记忆', 'No new memories extracted'));
+            error.code = 'NO_NEW_MEMORIES';
+            throw error;
         }
 
         // Re-read current memories to avoid overwriting concurrent changes

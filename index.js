@@ -1375,9 +1375,14 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             if (targets.length < members.length) {
                                 log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
                             }
+                            let memoryFailed = false;
                             for (const av of targets) {
-                                try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
+                                try { await memorySystem.generateForCharacter(av); } catch (e2) {
+                                    log('Auto-memory fail:', av, e2.message);
+                                    if (e2.code !== 'NO_NEW_MEMORIES') memoryFailed = true;
+                                }
                             }
+                            if (memoryFailed) throw new Error('Auto-memory incomplete');
                             await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
@@ -1401,9 +1406,14 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             if (targets.length < members.length) {
                                 log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
                             }
+                            let memoryFailed = false;
                             for (const av of targets) {
-                                try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
+                                try { await memorySystem.generateForCharacter(av); } catch (e2) {
+                                    log('Auto-memory fail:', av, e2.message);
+                                    if (e2.code !== 'NO_NEW_MEMORIES') memoryFailed = true;
+                                }
                             }
+                            if (memoryFailed) throw new Error('Auto-memory incomplete');
                             await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
@@ -1472,7 +1482,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             try {
                                 log(`[GD-auto-ca] "${inst.name}": first-enable, ${currentLen} msgs`);
                                 toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${currentLen} 条现有消息）...` : `"${inst.name}" auto (${currentLen} msgs)...`, '', { timeOut: 3000 });
-                                await customAgentSystem.execute(inst);
+                                const result = await customAgentSystem.execute(inst);
+                                if (!result) throw new Error('Custom agent returned no result');
                                 chat_metadata[EXT_KEY][caKey] = currentLen;
                                 await saveChatConditional();
                                 toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
@@ -1491,7 +1502,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             try {
                                 log(`[GD-auto-ca] "${inst.name}" triggered (${newMsgs} msgs)`);
                                 toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${newMsgs} 条新消息）...` : `"${inst.name}" auto (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                                await customAgentSystem.execute(inst);
+                                const result = await customAgentSystem.execute(inst);
+                                if (!result) throw new Error('Custom agent returned no result');
                                 chat_metadata[EXT_KEY][caKey] = currentLen;
                                 await saveChatConditional();
                                 toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
