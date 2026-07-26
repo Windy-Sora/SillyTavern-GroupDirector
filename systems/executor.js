@@ -14,7 +14,10 @@
  * @param {boolean} [options.blocking=true]   True = await each, false = fire-and-forget
  * @param {Function} [options.onExecuted]     Callback after each action: (capId, result)
  * @param {Function} [options.log]            Log function for debug output
- * @returns {{ run: (policy, capabilities) => Promise<Object> }}
+ * @returns {{
+ *   run: (policy, capabilities) => Promise<Object>,
+ *   executeDeferred: (plans) => Promise<Object>
+ * }}
  */
 export function createExecutor(options = {}) {
     const blocking = options.blocking !== false;
@@ -180,6 +183,25 @@ export function createExecutor(options = {}) {
         return { results, completion };
     }
 
+    function buildResult({
+        resolved,
+        scheduled,
+        executed,
+        deferred,
+        execution,
+    }) {
+        return {
+            resolved,
+            scheduled,
+            executed,
+            roundEndQueued: deferred.length,
+            blocking,
+            results: execution.results,
+            completion: execution.completion,
+            deferred,
+        };
+    }
+
     // ── public API ───────────────────────────────────────────────────
 
     return {
@@ -198,24 +220,42 @@ export function createExecutor(options = {}) {
                     blocking,
                     results: [],
                     completion: Promise.resolve([]),
+                    deferred: [],
                 };
             }
 
             // 2. schedule
             const planned = schedule(actions, timing);
+            const deferred = planned.filter(plan => plan.roundEnd);
+            const executable = planned.filter(plan => !plan.roundEnd);
 
-            // 3. execute
-            const execution = await executeAll(planned);
-
-            return {
+            // 3. execute only work due now. round_end plans are caller-owned
+            // and must be passed back through executeDeferred at the boundary.
+            const execution = await executeAll(executable);
+            return buildResult({
                 resolved: actions.length,
                 scheduled: planned.length,
-                executed: planned.filter(p => !p.roundEnd).length,
-                roundEndQueued: planned.filter(p => p.roundEnd).length,
-                blocking,
-                results: execution.results,
-                completion: execution.completion,
-            };
-        }
+                executed: executable.length,
+                deferred,
+                execution,
+            });
+        },
+
+        /** Execute a deferred plan batch returned by run(). */
+        async executeDeferred(deferred = []) {
+            if (!Array.isArray(deferred)) {
+                throw new TypeError('Deferred execution plans must be an array');
+            }
+
+            const executable = deferred.map(plan => ({ ...plan, roundEnd: false }));
+            const execution = await executeAll(executable);
+            return buildResult({
+                resolved: executable.length,
+                scheduled: executable.length,
+                executed: executable.length,
+                deferred: [],
+                execution,
+            });
+        },
     };
 }

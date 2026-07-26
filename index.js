@@ -133,7 +133,7 @@ let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, rea
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
-let postSpeechRoundQueue = [];                  // intents deferred to group wrapper finished
+let postSpeechRoundQueue = [];                  // caller-owned jobs deferred to group wrapper finished
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
@@ -142,10 +142,49 @@ let postSpeechMessageAbortController = null;    // AbortController for PostSpeec
 let directorAbortController = null;             // AbortController for Director + ForceSpeak LLM calls
 
 function isPostSpeechIntentQueued(messageIndex, capabilityId) {
-    return postSpeechRoundQueue.some(context =>
-        context.messageIndex === messageIndex &&
-        context.intent?.type === capabilityId
+    return postSpeechRoundQueue.some(job =>
+        job.contexts.some(context =>
+            context.messageIndex === messageIndex &&
+            context.intent?.type === capabilityId
+        )
     );
+}
+
+function enqueuePostSpeechRoundJob(contexts, deferred = []) {
+    if (!contexts.length) return;
+    postSpeechRoundQueue.push({
+        contexts: [...contexts],
+        deferred: [...deferred],
+    });
+}
+
+function countQueuedPostSpeechIntents() {
+    return postSpeechRoundQueue.reduce((total, job) => total + job.contexts.length, 0);
+}
+
+async function drainPostSpeechRoundQueue() {
+    const pendingJobs = postSpeechRoundQueue.splice(0);
+    const pendingCount = pendingJobs.reduce(
+        (total, job) => total + job.contexts.length,
+        0
+    );
+    log(`PostSpeech: executing ${pendingCount} deferred per-message intents`);
+
+    for (const job of pendingJobs) {
+        let execResult;
+        if (job.deferred.length) {
+            execResult = await postSpeechExecutor.executeDeferred(job.deferred);
+        } else {
+            execResult = await postSpeechExecutor.run(
+                { intents: job.contexts.map(context => context.intent) },
+                CapabilityRegistry.listExecutableForMode('message')
+            );
+            if (execResult.deferred.length) {
+                execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+            }
+        }
+        await postSpeechSystem.trackExecution(execResult, job.contexts);
+    }
 }
 
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
@@ -1146,6 +1185,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
         await runManualOrderedGeneration();
     }
     takeoverPending = false;
+    let postSpeechRoundWasAborted = false;
 
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
@@ -1193,21 +1233,23 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     onRetry: ({ attempt, maxRetries }) => log(`PostSpeech round retry ${attempt}/${maxRetries}`),
                 };
 
-                if (postSpeechAbortController.signal.aborted) return;
-
-                const response = await execute(agent, {
-                    pool,
-                    caller,
-                    config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
-                }).catch(e => {
-                    if (e.name === 'AbortError' || postSpeechAbortController.signal.aborted) {
-                        log('PostSpeech round aborted');
-                        return null;
-                    }
-                    throw e;
-                });
-
-                if (!response) return;
+                let response = null;
+                if (postSpeechAbortController.signal.aborted) {
+                    postSpeechRoundWasAborted = true;
+                } else {
+                    response = await execute(agent, {
+                        pool,
+                        caller,
+                        config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
+                    }).catch(e => {
+                        if (e.name === 'AbortError' || postSpeechAbortController.signal.aborted) {
+                            postSpeechRoundWasAborted = true;
+                            log('PostSpeech round aborted');
+                            return null;
+                        }
+                        throw e;
+                    });
+                }
 
                 if (response) {
                     const policy = agent.parseResponse(response);
@@ -1219,25 +1261,17 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             intent,
                             policy,
                         }));
-                        const execResult = await postSpeechExecutor.run(
+                        let execResult = await postSpeechExecutor.run(
                             policy,
                             CapabilityRegistry.listExecutableForMode('round')
                         );
+                        if (execResult.deferred.length) {
+                            execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                        }
                         await postSpeechSystem.trackExecution(execResult, contexts);
                     }
                 }
 
-                // Drain deferred per-message intents (round/both timing)
-                if (postSpeechRoundQueue.length > 0) {
-                    const pendingContexts = postSpeechRoundQueue.splice(0);
-                    const pendingIntents = pendingContexts.map(context => context.intent);
-                    log(`PostSpeech: executing ${pendingContexts.length} deferred per-message intents`);
-                    const execResult = await postSpeechExecutor.run(
-                        { intents: pendingIntents },
-                        CapabilityRegistry.listExecutableForMode('message')
-                    );
-                    await postSpeechSystem.trackExecution(execResult, pendingContexts);
-                }
             }
         } catch (e) {
             log('PostSpeech round skipped:', e.message);
@@ -1258,6 +1292,20 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     );
                 }
             }
+        }
+    }
+
+    // Deferred message actions belong to the caller and must drain at the real
+    // round boundary even when the optional round-analysis agent is disabled
+    // or fails.
+    if (!postSpeechRoundWasAborted &&
+        takeoverGenCount === 0 &&
+        !manualGenInProgress &&
+        postSpeechRoundQueue.length > 0) {
+        try {
+            await drainPostSpeechRoundQueue();
+        } catch (e) {
+            log('PostSpeech deferred execution failed:', e.message);
         }
     }
 
@@ -1671,19 +1719,26 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             policy,
         }));
 
+        let queuedByPolicy = false;
         if (timing === 'message' || timing === 'both') {
             const execResult = await postSpeechExecutor.run(
                 { ...policy, intents: freshIntents },
                 CapabilityRegistry.listExecutableForMode('message')
             );
-            await postSpeechSystem.trackExecution(execResult, intentContexts);
+            if (execResult.deferred.length) {
+                enqueuePostSpeechRoundJob(intentContexts, execResult.deferred);
+                queuedByPolicy = true;
+                log(`PostSpeech: policy deferred ${intentContexts.length} intents to round end`);
+            } else {
+                await postSpeechSystem.trackExecution(execResult, intentContexts);
+            }
             log('PostSpeech execution (message):', execResult);
         }
 
         // Queue for round-end execution (round | both modes)
-        if (timing === 'round' || timing === 'both') {
-            postSpeechRoundQueue.push(...intentContexts);
-            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${postSpeechRoundQueue.length})`);
+        if ((timing === 'round' || timing === 'both') && !queuedByPolicy) {
+            enqueuePostSpeechRoundJob(intentContexts);
+            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
         }
 
         // Done notification
