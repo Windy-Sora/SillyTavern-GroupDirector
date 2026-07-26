@@ -232,7 +232,7 @@ registerSection('quickStart', function (ctx) {
         const selection = settings.worldBookSelection || {};
         const stActive = new Set(sourceMode === 'st' ? (worldBookScanner?.getSelectedNames?.() || []) : []);
         let html = sourceMode === 'st'
-            ? `<small style="display:block;color:var(--grey70a);margin-bottom:3px;">${isZh() ? '璺熼殢 ST 褰撳墠婵€娲讳笘鐣屼功' : 'Following ST active world books'}</small>`
+            ? `<small style="display:block;color:var(--grey70a);margin-bottom:3px;">${isZh() ? '跟随 ST 当前激活世界书' : 'Following ST active world books'}</small>`
             : '';
         for (const name of names) {
             const checked = sourceMode === 'st' ? stActive.has(name) : !!selection[name];
