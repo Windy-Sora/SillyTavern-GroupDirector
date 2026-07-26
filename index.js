@@ -565,6 +565,7 @@ const userProviderLoader = createUserProviderLoader({
     extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
     getRegisteredProviderIds: () => [...getProviders().map(p => p.id)],
     unregisterProvider: (id) => unregisterProvider(id),
+    CapabilityRegistry,
 });
 
 // ─── Expose core modules globally for user-imported .js files ───────
