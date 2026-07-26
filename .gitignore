@@ -19,3 +19,4 @@ yarn-debug.log*
 .env
 .env.local
 .claude/worktrees/
+.bug-hunter/
