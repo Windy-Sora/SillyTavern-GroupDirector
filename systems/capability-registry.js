@@ -61,6 +61,15 @@ export const CapabilityRegistry = {
             .map(c => ({ id: c.id, displayName: c.displayName, description: c.description, promptHint: c.promptHint, schema: c.schema }));
     },
 
+    /**
+     * List full capability records for execution.
+     * Keep executors out of listForMode() so prompt providers receive data only.
+     */
+    listExecutableForMode(mode) {
+        return [...capabilities.values()]
+            .filter(c => c.enabled && (c.scope === 'both' || c.scope === mode));
+    },
+
     /** Deprecated — use listForMode() instead. */
     listEnabled() {
         return this.listForMode('message');

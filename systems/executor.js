@@ -28,7 +28,7 @@ export function createExecutor(options = {}) {
         const enabled = capabilities.filter(c => c.enabled !== false);
         const actions = [];
 
-        for (const intent of intents) {
+        for (const [intentIndex, intent] of intents.entries()) {
             const intentType = (intent.type || '').toLowerCase().trim();
             if (!intentType) continue;
 
@@ -47,19 +47,23 @@ export function createExecutor(options = {}) {
             }
 
             for (const cap of matches) {
+                let params = { ...(intent.params || {}) };
+
                 // Schema validation: required params
                 if (cap.schema?.params) {
-                    const valid = validateParams(intent.params || {}, cap.schema.params);
+                    const valid = validateParams(params, cap.schema.params);
                     if (!valid.ok) {
                         log(`[Executor] ${cap.id}: param validation failed — ${valid.error}`);
                         continue;
                     }
-                    intent.params = valid.sanitized;
+                    params = valid.sanitized;
                 }
 
                 actions.push({
                     capabilityId: cap.id,
-                    params: intent.params || {},
+                    intentIndex,
+                    intentType: intent.type,
+                    params,
                     executor: cap.executor,
                 });
             }
@@ -125,9 +129,20 @@ export function createExecutor(options = {}) {
         await sleep(delay);
         try {
             await action.executor(action.params);
-            return { capabilityId: action.capabilityId, success: true };
+            return {
+                capabilityId: action.capabilityId,
+                intentIndex: action.intentIndex,
+                intentType: action.intentType,
+                success: true,
+            };
         } catch (e) {
-            return { capabilityId: action.capabilityId, success: false, error: e.message };
+            return {
+                capabilityId: action.capabilityId,
+                intentIndex: action.intentIndex,
+                intentType: action.intentType,
+                success: false,
+                error: e.message,
+            };
         }
     }
 
@@ -142,15 +157,27 @@ export function createExecutor(options = {}) {
                 const r = await executeOne(s);
                 results.push(r);
             }
-            return results;
+            return { results, completion: Promise.resolve(results) };
         }
-        // Fire-and-forget: callbacks fire as each completes, return minimal
-        Promise.allSettled(scheduled.map(async s => {
+
+        // Non-blocking callers still receive a completion receipt for accurate
+        // bookkeeping after the fire-and-forget work settles.
+        const completion = Promise.all(scheduled.map(async s => {
             const r = await executeOne(s);
-            onExecuted(s.action.capabilityId, r);
+            try {
+                onExecuted(s.action.capabilityId, r);
+            } catch (e) {
+                log(`[Executor] onExecuted callback failed: ${e.message}`);
+            }
             return r;
-        })).catch(() => {});
-        return scheduled.map(s => ({ capabilityId: s.action.capabilityId, pending: true }));
+        }));
+        const results = scheduled.map(s => ({
+            capabilityId: s.action.capabilityId,
+            intentIndex: s.action.intentIndex,
+            intentType: s.action.intentType,
+            pending: true,
+        }));
+        return { results, completion };
     }
 
     // ── public API ───────────────────────────────────────────────────
@@ -163,14 +190,22 @@ export function createExecutor(options = {}) {
             // 1. resolve
             const actions = resolve(intents, capabilities);
             if (!actions.length) {
-                return { resolved: 0, scheduled: 0, executed: 0, results: [] };
+                return {
+                    resolved: 0,
+                    scheduled: 0,
+                    executed: 0,
+                    roundEndQueued: 0,
+                    blocking,
+                    results: [],
+                    completion: Promise.resolve([]),
+                };
             }
 
             // 2. schedule
             const planned = schedule(actions, timing);
 
             // 3. execute
-            const results = await executeAll(planned);
+            const execution = await executeAll(planned);
 
             return {
                 resolved: actions.length,
@@ -178,7 +213,8 @@ export function createExecutor(options = {}) {
                 executed: planned.filter(p => !p.roundEnd).length,
                 roundEndQueued: planned.filter(p => p.roundEnd).length,
                 blocking,
-                results,
+                results: execution.results,
+                completion: execution.completion,
             };
         }
     };

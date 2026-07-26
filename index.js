@@ -141,6 +141,13 @@ let postSpeechAbortController = null;           // AbortController for PostSpeec
 let postSpeechMessageAbortController = null;    // AbortController for PostSpeech per-message LLM call
 let directorAbortController = null;             // AbortController for Director + ForceSpeak LLM calls
 
+function isPostSpeechIntentQueued(messageIndex, capabilityId) {
+    return postSpeechRoundQueue.some(context =>
+        context.messageIndex === messageIndex &&
+        context.intent?.type === capabilityId
+    );
+}
+
 // Custom extension prompt key for director script (not QUIET_PROMPT to avoid leakage)
 const DIRECTOR_SCRIPT_KEY = 'group_director_script';
 
@@ -1206,24 +1213,30 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const policy = agent.parseResponse(response);
                     if (policy?.intents?.length) {
                         log('PostSpeech round policy:', policy);
-                        await postSpeechExecutor.run(policy, CapabilityRegistry.listForMode('round'));
-                        for (const intent of policy.intents) {
-                            await postSpeechSystem.record(chat.length - 1, '_round_', intent.type, intent.params, policy);
-                        }
+                        const contexts = policy.intents.map(intent => ({
+                            messageIndex: chat.length - 1,
+                            messageName: '_round_',
+                            intent,
+                            policy,
+                        }));
+                        const execResult = await postSpeechExecutor.run(
+                            policy,
+                            CapabilityRegistry.listExecutableForMode('round')
+                        );
+                        await postSpeechSystem.trackExecution(execResult, contexts);
                     }
                 }
 
                 // Drain deferred per-message intents (round/both timing)
                 if (postSpeechRoundQueue.length > 0) {
-                    const pendingIntents = postSpeechRoundQueue.splice(0);
-                    log(`PostSpeech: executing ${pendingIntents.length} deferred per-message intents`);
-                    await postSpeechExecutor.run(
+                    const pendingContexts = postSpeechRoundQueue.splice(0);
+                    const pendingIntents = pendingContexts.map(context => context.intent);
+                    log(`PostSpeech: executing ${pendingContexts.length} deferred per-message intents`);
+                    const execResult = await postSpeechExecutor.run(
                         { intents: pendingIntents },
-                        CapabilityRegistry.listForMode('message')
+                        CapabilityRegistry.listExecutableForMode('message')
                     );
-                    for (const intent of pendingIntents) {
-                        await postSpeechSystem.record(chat.length - 1, '_round_deferred', intent.type, intent.params, {});
-                    }
+                    await postSpeechSystem.trackExecution(execResult, pendingContexts);
                 }
             }
         } catch (e) {
@@ -1625,7 +1638,9 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         if (!isReroll) {
             const enabledCaps = CapabilityRegistry.listForMode('message').map(c => c.id);
             const allAlreadyExecuted = enabledCaps.every(cid =>
-                postSpeechSystem.wasExecuted(msgIndex, cid));
+                postSpeechSystem.wasExecuted(msgIndex, cid) ||
+                postSpeechSystem.isPending(msgIndex, cid) ||
+                isPostSpeechIntentQueued(msgIndex, cid));
             if (allAlreadyExecuted) {
                 log('PostSpeech: all capabilities already executed for message', msgIndex);
                 return;
@@ -1641,30 +1656,34 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         // Only execute intents that haven't been done yet
         const freshIntents = policy.intents.filter(i =>
-            !postSpeechSystem.wasExecuted(msgIndex, i.type)
+            !postSpeechSystem.wasExecuted(msgIndex, i.type) &&
+            !postSpeechSystem.isPending(msgIndex, i.type) &&
+            !isPostSpeechIntentQueued(msgIndex, i.type)
         );
         if (!freshIntents.length) { log('PostSpeech: all intents already executed'); return; }
 
         // Run executor with filtered intents
         const timing = settings.postSpeechTiming || 'message';
+        const intentContexts = freshIntents.map(intent => ({
+            messageIndex: msgIndex,
+            messageName: msg.name || '?',
+            intent,
+            policy,
+        }));
 
         if (timing === 'message' || timing === 'both') {
             const execResult = await postSpeechExecutor.run(
                 { ...policy, intents: freshIntents },
-                CapabilityRegistry.listForMode('message')
+                CapabilityRegistry.listExecutableForMode('message')
             );
+            await postSpeechSystem.trackExecution(execResult, intentContexts);
             log('PostSpeech execution (message):', execResult);
         }
 
         // Queue for round-end execution (round | both modes)
         if (timing === 'round' || timing === 'both') {
-            postSpeechRoundQueue.push(...freshIntents);
+            postSpeechRoundQueue.push(...intentContexts);
             log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${postSpeechRoundQueue.length})`);
-        }
-
-        // Record each executed intent
-        for (const intent of freshIntents) {
-            await postSpeechSystem.record(msgIndex, msg.name || '?', intent.type, intent.params, policy);
         }
 
         // Done notification
