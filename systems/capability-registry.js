@@ -13,6 +13,7 @@
  */
 
 const capabilities = new Map();
+let capabilityRevision = 0;
 
 export const CapabilityRegistry = {
     register(cap) {
@@ -22,6 +23,10 @@ export const CapabilityRegistry = {
         }
         capabilities.set(cap.id, {
             id: cap.id,
+            // Monotonic identity for deferred plans. Re-registering or changing
+            // runtime availability invalidates work queued against an older
+            // capability definition.
+            revision: ++capabilityRevision,
             displayName: cap.displayName || cap.id,
             description: cap.description || '',
             // Guidance for the LLM: when to trigger this capability and how to decide params
@@ -78,13 +83,20 @@ export const CapabilityRegistry = {
     /** Set scope for a capability. */
     setScope(id, scope) {
         const c = capabilities.get(id);
-        if (c) c.scope = scope;
+        if (c && c.scope !== scope) {
+            c.scope = scope;
+            c.revision = ++capabilityRevision;
+        }
     },
 
     /** Enable/disable a capability at runtime. */
     setEnabled(id, enabled) {
         const c = capabilities.get(id);
-        if (c) c.enabled = !!enabled;
+        const next = !!enabled;
+        if (c && c.enabled !== next) {
+            c.enabled = next;
+            c.revision = ++capabilityRevision;
+        }
     },
 
     _scopeOverrides: {},

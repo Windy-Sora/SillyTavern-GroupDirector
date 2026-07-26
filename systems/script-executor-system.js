@@ -125,6 +125,39 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         return Object.freeze(obj);
     }
 
+    /**
+     * Shared script results become immutable cross-phase snapshots. Limit that
+     * boundary to JSON-style values whose immutability Object.freeze can
+     * actually enforce. Map/Set keep mutable internal slots and non-empty typed
+     * arrays can throw during Object.freeze in current JavaScript runtimes.
+     */
+    function assertSnapshotValue(value, path = 'result', seen = new WeakSet()) {
+        if (value === null) return;
+        const type = typeof value;
+        if (type === 'string' || type === 'number' || type === 'boolean' || type === 'undefined') return;
+        if (type !== 'object') {
+            throw new TypeError(`Unsupported snapshot value at ${path}: ${type}`);
+        }
+        if (seen.has(value)) {
+            throw new TypeError(`Unsupported snapshot value at ${path}: cyclic reference`);
+        }
+        seen.add(value);
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => assertSnapshotValue(item, `${path}[${index}]`, seen));
+            seen.delete(value);
+            return;
+        }
+        const proto = Object.getPrototypeOf(value);
+        if (proto !== Object.prototype && proto !== null) {
+            const label = value?.constructor?.name || 'non-plain object';
+            throw new TypeError(`Unsupported snapshot value at ${path}: ${label}`);
+        }
+        for (const [key, item] of Object.entries(value)) {
+            assertSnapshotValue(item, `${path}.${key}`, seen);
+        }
+        seen.delete(value);
+    }
+
     // ── Decision phase: blocking, await all, 10s timeout ──
     async function executeAllDecision(rawEvent) {
         const event = rawEvent ? { ...rawEvent } : {};
@@ -177,6 +210,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     if (Array.isArray(result)) {
                         log?.(`[GD] Script executor (decision) "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
                     } else {
+                        assertSnapshotValue(result);
                         Object.assign(turnShared, result);
                     }
                 }
@@ -184,6 +218,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 // Apply mutations back to working copy (only if turn hasn't changed).
                 // Detect if the script replaced ctx.decision entirely, losing old keys.
                 if (turnId === myTurnId) {
+                    assertSnapshotValue(ctx.decision, 'ctx.decision');
                     if (ctx.decision !== decisionForScript) {
                         const oldKeys = Object.keys(decisionForScript || {});
                         const newKeys = Object.keys(ctx.decision || {});
@@ -273,6 +308,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                     if (Array.isArray(result)) {
                         log?.(`[GD] Script executor "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
                     } else {
+                        assertSnapshotValue(result);
                         Object.assign(turnShared, result);
                     }
                 }

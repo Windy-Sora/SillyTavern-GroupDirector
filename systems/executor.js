@@ -14,6 +14,8 @@
  * @param {boolean} [options.blocking=true]   True = await each, false = fire-and-forget
  * @param {Function} [options.onExecuted]     Callback after each action: (capId, result)
  * @param {Function} [options.log]            Log function for debug output
+ * @param {Function} [options.resolveCapability] Resolve a capability by id at
+ *   execution time. When supplied, stale deferred plans are cancelled.
  * @returns {{
  *   run: (policy, capabilities) => Promise<Object>,
  *   executeDeferred: (plans) => Promise<Object>
@@ -23,6 +25,7 @@ export function createExecutor(options = {}) {
     const blocking = options.blocking !== false;
     const onExecuted = options.onExecuted || (() => {});
     const log = options.log || (() => {});
+    const resolveCapability = options.resolveCapability;
 
     // ── resolve ──────────────────────────────────────────────────────
 
@@ -68,6 +71,7 @@ export function createExecutor(options = {}) {
                     intentType: intent.type,
                     params,
                     executor: cap.executor,
+                    capabilityRevision: cap.revision,
                 });
             }
         }
@@ -131,7 +135,25 @@ export function createExecutor(options = {}) {
     async function executeOne({ action, delay }) {
         await sleep(delay);
         try {
-            await action.executor(action.params);
+            let executor = action.executor;
+            if (typeof resolveCapability === 'function') {
+                const current = resolveCapability(action.capabilityId);
+                const unavailable = !current
+                    || current.enabled === false
+                    || current.revision !== action.capabilityRevision;
+                if (unavailable) {
+                    return {
+                        capabilityId: action.capabilityId,
+                        intentIndex: action.intentIndex,
+                        intentType: action.intentType,
+                        success: false,
+                        cancelled: true,
+                        error: 'Capability unavailable or changed after scheduling',
+                    };
+                }
+                executor = current.executor;
+            }
+            await executor(action.params);
             return {
                 capabilityId: action.capabilityId,
                 intentIndex: action.intentIndex,

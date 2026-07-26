@@ -3,6 +3,7 @@
  * Profile, Memory, World Books, one-click config + summary.
  */
 import { registerSection } from './registry.js';
+import { getWorldBookSourceLabel } from './quick-start-helpers.js';
 
 registerSection('quickStart', function (ctx) {
     const { settings, $c, saveSettings, generateProfilesBatch, getProfiles,
@@ -232,7 +233,7 @@ registerSection('quickStart', function (ctx) {
         const selection = settings.worldBookSelection || {};
         const stActive = new Set(sourceMode === 'st' ? (worldBookScanner?.getSelectedNames?.() || []) : []);
         let html = sourceMode === 'st'
-            ? `<small style="display:block;color:var(--grey70a);margin-bottom:3px;">${isZh() ? '跟随 ST 当前激活世界书' : 'Following ST active world books'}</small>`
+            ? `<small style="display:block;color:var(--grey70a);margin-bottom:3px;">${getWorldBookSourceLabel(settings.lang || 'zh')}</small>`
             : '';
         for (const name of names) {
             const checked = sourceMode === 'st' ? stActive.has(name) : !!selection[name];

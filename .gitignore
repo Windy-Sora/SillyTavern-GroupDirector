@@ -11,6 +11,8 @@ Thumbs.db
 node_modules/
 npm-debug.log*
 yarn-debug.log*
+test-results/
+coverage/
 
 # Logs
 *.log
@@ -18,5 +20,6 @@ yarn-debug.log*
 # Local
 .env
 .env.local
+.claude/settings.local.json
 .claude/worktrees/
 .bug-hunter/

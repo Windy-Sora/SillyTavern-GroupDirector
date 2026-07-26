@@ -12,7 +12,8 @@
  * Create a model caller based on runtime config.
  * @param {object} config - Agent config (useCustom, protocol, endpoint, apiKey, model)
  * @param {Function} stGenerateRaw - ST's native ctx.generateRaw (for non-custom fallback)
- * @param {Function} [stAbort] - ST native generation cancel adapter
+ * @param {Function} [stAbort] - Deprecated ST global stop adapter. It is not
+ *   used for request timeouts because it also stops unrelated generations.
  * @returns {{
  *   supportsAbort: boolean,
  *   generate: (prompt: string, options?: {signal?: AbortSignal}) => Promise<string>,
@@ -33,27 +34,18 @@ export function createCaller(config, stGenerateRaw, stAbort) {
 
 function makeNativeCaller(stGenerateRaw, stAbort) {
     return {
-        // SillyTavern's current generateRaw API has no per-request AbortSignal,
-        // so the host stopGeneration adapter bridges attempt cancellation to
-        // generateRaw's internal AbortController.
-        supportsAbort: typeof stAbort === 'function',
+        // SillyTavern's current generateRaw API has no request-scoped
+        // cancellation. Calling the host's global stopGeneration() here would
+        // broadcast GENERATION_STOPPED and abort Director/PostSpeech plus any
+        // unrelated generation. Mark this caller non-cancellable so managedCall
+        // times out without retrying and creating overlapping native requests.
+        supportsAbort: false,
 
         async generate(prompt, { signal } = {}) {
             if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-            const onAbort = typeof stAbort === 'function'
-                ? () => {
-                    try { stAbort(); } catch (_) {}
-                }
-                : null;
-            if (onAbort) signal?.addEventListener('abort', onAbort, { once: true });
-
-            try {
-                const response = await stGenerateRaw({ prompt, signal });
-                if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-                return (typeof response === 'string') ? response : String(response ?? '');
-            } finally {
-                if (onAbort) signal?.removeEventListener('abort', onAbort);
-            }
+            const response = await stGenerateRaw({ prompt });
+            if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+            return (typeof response === 'string') ? response : String(response ?? '');
         },
         async test() {
             return { ok: true }; // native always "connected" — user's main model is working

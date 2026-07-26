@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { summarizeTrace } from './execution-trace-helpers.js';
 
 registerSection('executionTrace', function (ctx) {
     const { settings, $c, saveSettings, AgentTrace } = ctx;
@@ -30,15 +31,9 @@ registerSection('executionTrace', function (ctx) {
         // Show newest first
         for (let i = traces.length - 1; i >= 0; i--) {
             const t = traces[i];
-            const realStages = t.stages.filter(s => {
-                const name = s.stage || s.name || s.id;
-                return name !== '_start' && name !== '_done';
-            });
-            const hasError = t.stages.some(s => s.error);
+            const { realStages, hasError, totalMs, stageSummary } = summarizeTrace(t);
             const icon = hasError ? '✗' : '✓';
             const color = hasError ? '#ff5555' : 'var(--green)';
-            const totalMs = realStages.reduce((sum, s) => sum + (s.duration ?? s.elapsed ?? 0), 0).toFixed(0);
-            const stageSummary = realStages.map(s => s.stage || s.name || s.id).join(' → ');
 
             html += `
                 <div class="gd-trace-card" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-bottom:4px;">
@@ -49,7 +44,7 @@ registerSection('executionTrace', function (ctx) {
                             <span style="font-size:0.85em;color:var(--grey70a);margin-left:4px;">${esc(t.startTime?.substring(11, 19) || '')}</span>
                         </span>
                         <span style="font-size:0.85em;color:var(--grey70a);">
-                            ${realStages.length} ${L('阶段', 'stages')} | ${totalMs}ms | ${stageSummary}
+                            ${realStages.length} ${L('阶段', 'stages')} | ${totalMs.toFixed(0)}ms | ${stageSummary}
                             <i class="fa-solid fa-chevron-down gd-trace-arrow" data-idx="${i}"></i>
                         </span>
                     </div>

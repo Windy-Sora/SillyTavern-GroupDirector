@@ -1207,9 +1207,19 @@
                         <span data-i18n="customPromptsEnabledShort">启用</span>
                     </label>
                     <div id="gd-custom-prompt-list" style="margin:6px 0;"></div>
-                    <input type="text" id="gd-cp-new-name" class="text_pole" style="width:120px;" placeholder="name">
-                    <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        <input type="text" id="gd-cp-new-name" class="text_pole" style="width:120px;" placeholder="name">
+                        <select id="gd-cp-new-scope" class="text_pole" style="width:auto;font-size:0.85em;">
+                            <option value="global" data-i18n="customPromptScopeGlobal">通用</option>
+                            <option value="character" data-i18n="customPromptScopeCharacter">当前角色</option>
+                            <option value="mixed" data-i18n="customPromptScopeMixed">高级 JSON</option>
+                        </select>
+                        <small style="color:var(--grey70a);"> (a-z, 0-9, _)</small>
+                    </div>
                     <textarea id="gd-cp-new-content" class="text_pole textarea_compact" rows="2" style="width:100%;margin-top:2px;" placeholder="content"></textarea>
+                    <textarea id="gd-cp-new-data" class="text_pole textarea_compact" rows="3" style="width:100%;margin-top:2px;" placeholder='可选 JSON 数据，例如 {"Alice":"10岁","Bob":"30岁"}' data-i18n-placeholder="customPromptDataPlaceholder"></textarea>
+                    <small style="color:var(--grey70a);" data-i18n="customPromptDataHint">JSON 会作为 data 暴露，可用 {{?name:field}} 精确读取；角色映射可用 {{?age:$character}}。</small>
+                    <div id="gd-cp-new-data-builder" class="gd-cp-data-builder" style="margin-top:4px;"></div>
                     <span class="menu_button menu_button_icon" id="gd-cp-add-btn" style="margin-top:4px;">
                         <i class="fa-solid fa-plus"></i> <span data-i18n="providerRefAdd">添加</span>
                     </span>

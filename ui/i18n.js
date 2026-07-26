@@ -329,6 +329,11 @@ const I18N = {
         customPromptsAddBtn: '添加',
         customPromptsExportBtn: '导出全部',
         customPromptsImportBtn: '导入',
+        customPromptScopeGlobal: '通用',
+        customPromptScopeCharacter: '当前角色',
+        customPromptScopeMixed: '高级 JSON',
+        customPromptDataPlaceholder: '可选 JSON 数据，例如 {"Alice":"10岁","Bob":"30岁"}',
+        customPromptDataHint: 'JSON 会作为 data 暴露，可用 {{?name:field}} 精确读取；角色映射可用 {{?age:$character}}。',
 
         // Memory (was in orphan en block)
         memoryTitle: '角色记忆系统',
@@ -914,6 +919,11 @@ const I18N = {
         customPromptsAddBtn: 'Add',
         customPromptsExportBtn: 'Export All',
         customPromptsImportBtn: 'Import',
+        customPromptScopeGlobal: 'Global',
+        customPromptScopeCharacter: 'Current character',
+        customPromptScopeMixed: 'Advanced JSON',
+        customPromptDataPlaceholder: 'Optional JSON data, e.g. {"Alice":"10 years old","Bob":"30 years old"}',
+        customPromptDataHint: 'JSON is exposed as data. Query fields with {{?name:field}}, or character maps with {{?age:$character}}.',
 
         // Memory
         memoryTitle: 'Character Memory',

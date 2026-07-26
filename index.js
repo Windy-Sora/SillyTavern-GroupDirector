@@ -84,6 +84,7 @@ import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry, registerCapabilityProviders } from './systems/capability-registry.js';
 import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
+import { runAutoMemoryTargets } from './systems/auto-memory-coordinator.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -600,6 +601,7 @@ const postSpeechSystem = createPostSpeechSystem({
 const postSpeechExecutor = createExecutor({
     blocking: settings.postSpeechBlocking !== false,
     log,
+    resolveCapability: capabilityId => CapabilityRegistry.get(capabilityId),
     onExecuted: (capId, result) => {
         if (!result.success) log(`[Executor] ${capId} execution failed: ${result.error}`);
     },
@@ -612,6 +614,7 @@ const userProviderLoader = createUserProviderLoader({
     getRegisteredProviderIds: () => [...getProviders().map(p => p.id)],
     unregisterProvider: (id) => unregisterProvider(id),
     CapabilityRegistry,
+    confirmImport: html => callGenericPopup(html, POPUP_TYPE.CONFIRM),
 });
 
 // ─── Expose core modules globally for user-imported .js files ───────
@@ -1367,6 +1370,39 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             await saveChatConditional();
         }
 
+        const memoryCoverage = (
+            chat_metadata[EXT_KEY]._autoMemCharLen
+            && typeof chat_metadata[EXT_KEY]._autoMemCharLen === 'object'
+            && !Array.isArray(chat_metadata[EXT_KEY]._autoMemCharLen)
+        ) ? chat_metadata[EXT_KEY]._autoMemCharLen : {};
+        chat_metadata[EXT_KEY]._autoMemCharLen = memoryCoverage;
+
+        async function saveMemoryTargetLen(target, val) {
+            const hadPrevious = Object.prototype.hasOwnProperty.call(memoryCoverage, target);
+            const previous = memoryCoverage[target];
+            memoryCoverage[target] = val;
+            try {
+                await saveChatConditional();
+            } catch (error) {
+                if (hadPrevious) memoryCoverage[target] = previous;
+                else delete memoryCoverage[target];
+                throw error;
+            }
+        }
+
+        async function runAutoMemoryBatch(targets, interval) {
+            return await runAutoMemoryTargets({
+                targets,
+                currentLen,
+                interval,
+                defaultCovered: memLen,
+                coveredByTarget: memoryCoverage,
+                generateForTarget: avatar => memorySystem.generateForCharacter(avatar),
+                onCovered: saveMemoryTargetLen,
+                log,
+            });
+        }
+
         function resolveMemoryTargets(members, interval) {
             if (!settings.autoMemorySpeakers) return members;
             const history = getDirectorHistory();
@@ -1440,14 +1476,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             if (targets.length < members.length) {
                                 log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
                             }
-                            let memoryFailed = false;
-                            for (const av of targets) {
-                                try { await memorySystem.generateForCharacter(av); } catch (e2) {
-                                    log('Auto-memory fail:', av, e2.message);
-                                    if (e2.code !== 'NO_NEW_MEMORIES') memoryFailed = true;
-                                }
-                            }
-                            if (memoryFailed) throw new Error('Auto-memory incomplete');
+                            const memoryRun = await runAutoMemoryBatch(targets, interval);
+                            if (!memoryRun.complete) throw new Error('Auto-memory incomplete');
                             await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
@@ -1456,6 +1486,9 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     }
                 } else if (currentLen < memLen) {
                     console.log('[GD-auto-mem] path: deletion');
+                    for (const target of Object.keys(memoryCoverage)) {
+                        memoryCoverage[target] = Math.min(Number(memoryCoverage[target]) || 0, currentLen);
+                    }
                     await saveMemLen(currentLen);
                     toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动记忆计数器已重置。' : 'Messages deleted. Auto-memory counter reset.', '', { timeOut: 8000 });
                 } else {
@@ -1471,14 +1504,8 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             if (targets.length < members.length) {
                                 log(`Auto-memory: speakers filter ${targets.length}/${members.length} chars`);
                             }
-                            let memoryFailed = false;
-                            for (const av of targets) {
-                                try { await memorySystem.generateForCharacter(av); } catch (e2) {
-                                    log('Auto-memory fail:', av, e2.message);
-                                    if (e2.code !== 'NO_NEW_MEMORIES') memoryFailed = true;
-                                }
-                            }
-                            if (memoryFailed) throw new Error('Auto-memory incomplete');
+                            const memoryRun = await runAutoMemoryBatch(targets, interval);
+                            if (!memoryRun.complete) throw new Error('Auto-memory incomplete');
                             await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
@@ -1810,6 +1837,7 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
         delete chat_metadata[EXT_KEY]._autoCheckLength;
         delete chat_metadata[EXT_KEY]._autoSumLen;
         delete chat_metadata[EXT_KEY]._autoMemLen;
+        delete chat_metadata[EXT_KEY]._autoMemCharLen;
         delete chat_metadata[EXT_KEY]._autoCritiqueLen;
         // Clean up custom agent auto counters
         for (const key of Object.keys(chat_metadata[EXT_KEY])) {

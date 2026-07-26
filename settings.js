@@ -156,7 +156,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     postSpeechDecisionLimit: 20,
     // Agent Runtime — per-agent API config (stored in extension_settings, not chat_metadata)
     agentConfigs: {}, // { [agentId]: { useCustom: false, protocol: 'openai', endpoint: '', apiKey: '', model: '', call: { retries: 2, timeout: 30000 }, strictMode: false } }
-    customPrompts: [], // [{ id, name, content, enabled }]
+    customPrompts: [], // [{ id, name, content, dataJson, scope, enabled }]
     customPromptsEnabled: true,
     scriptExecutors: [], // [{ id, name, triggerOn, priority, code, enabled, params, renderParams, returnMode }]
     providerReferenceList: [], // user-editable provider reference list

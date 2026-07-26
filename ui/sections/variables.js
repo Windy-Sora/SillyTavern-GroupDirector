@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { hasVariableIdCollision } from './variable-helpers.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 function esc(value) {
@@ -357,7 +358,7 @@ registerSection('variables', function (ctx) {
                     return;
                 }
             }
-            if (newDef.id !== oldId && variableSystem.getDefinition(newDef.id)) {
+            if (hasVariableIdCollision(variableSystem, oldId, newDef.id)) {
                 toastr?.error?.((settings?.lang || 'zh') === 'zh'
                     ? `变量 ID "${newDef.id}" 已存在`
                     : `Variable ID "${newDef.id}" already exists`);
