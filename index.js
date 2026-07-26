@@ -2478,9 +2478,10 @@ eventSource.on(event_types.APP_READY, async () => {
     }
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.
+    CapabilityRegistry._scopeOverrides = settings._capabilityScopes || {};
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
-    await userProviderLoader.restoreAll('provider', userDeps);
-    await userProviderLoader.restoreAll('capability', userDeps);
+    userProviderLoader.restoreAll('provider', userDeps);
+    userProviderLoader.restoreAll('capability', userDeps);
 
     // Hook capability toggle to persist enabled state.
     // Always replace the monkey-patch so closure captures current settings/saveSettingsDebounced on hot reload.
@@ -2510,6 +2511,7 @@ eventSource.on(event_types.APP_READY, async () => {
         try {
             if (!settings._capabilityScopes) settings._capabilityScopes = {};
             settings._capabilityScopes[id] = scope;
+            CapabilityRegistry._scopeOverrides[id] = scope;
             saveSettingsDebounced();
         } catch (_) { }
     };
