@@ -205,12 +205,12 @@ export function createCustomPromptsSystem(deps) {
 
         for (const p of data.prompts) {
             if (!p.name || !NAME_RE.test(p.name)) continue;
-            const nameCheck = validateName(p.name);
+            const existing = list.find(e => e.name === p.name);
+            const nameCheck = validateName(p.name, existing?.id);
             if (!nameCheck.ok) {
                 console.warn(`[GroupDirector] Import prompt skipped: "${p.name}" — ${nameCheck.error}`);
                 continue;
             }
-            const existing = list.find(e => e.name === p.name);
             if (existing) {
                 if (overwriteConflicts) {
                     existing.content = p.content;
