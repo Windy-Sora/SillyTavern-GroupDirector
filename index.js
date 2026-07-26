@@ -1216,7 +1216,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             if (agent) {
                 const agentConfig = settings.agentConfigs?.['post-speech'] || {};
                 const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-                const caller = createCaller(agentConfig, stGenerateRaw);
+                const caller = createCaller(
+                    agentConfig,
+                    stGenerateRaw,
+                    () => getContext().stopGeneration()
+                );
                 const modeConfig = { ...settings, postSpeechPrompt: settings.postSpeechRoundPrompt || undefined };
 
                 const pool = buildContextPool({
@@ -1657,7 +1661,11 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         // Inject mode-specific prompt via config — agent prompt() reads from config.postSpeechPrompt
         const modeConfig = { ...settings, postSpeechPrompt: settings.postSpeechMessagePrompt || undefined };
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({
             group,
@@ -2010,7 +2018,11 @@ async function initForceSpeakLLM(char, avatar) {
 
         const agentConfig = settings.agentConfigs?.['force-speak'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({
             group,
@@ -2123,7 +2135,11 @@ async function initRoundWithLLM() {
 
         const agentConfig = settings.agentConfigs?.['director'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
 
         const pool = buildContextPool({ group, enabledMembers });
 

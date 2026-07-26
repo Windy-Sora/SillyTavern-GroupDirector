@@ -12,11 +12,16 @@
  * Create a model caller based on runtime config.
  * @param {object} config - Agent config (useCustom, protocol, endpoint, apiKey, model)
  * @param {Function} stGenerateRaw - ST's native ctx.generateRaw (for non-custom fallback)
- * @returns {{ generate: (prompt: string) => Promise<string>, test: () => Promise<{ok: boolean, error?: string}> }}
+ * @param {Function} [stAbort] - ST native generation cancel adapter
+ * @returns {{
+ *   supportsAbort: boolean,
+ *   generate: (prompt: string, options?: {signal?: AbortSignal}) => Promise<string>,
+ *   test: (options?: {signal?: AbortSignal}) => Promise<{ok: boolean, error?: string}>
+ * }}
  */
-export function createCaller(config, stGenerateRaw) {
+export function createCaller(config, stGenerateRaw, stAbort) {
     if (!config?.useCustom) {
-        return makeNativeCaller(stGenerateRaw);
+        return makeNativeCaller(stGenerateRaw, stAbort);
     }
     if (config.protocol === 'anthropic') {
         return makeAnthropicCaller(config);
@@ -26,11 +31,29 @@ export function createCaller(config, stGenerateRaw) {
 
 // ─── Native ST caller ────────────────────────────────────────────────
 
-function makeNativeCaller(stGenerateRaw) {
+function makeNativeCaller(stGenerateRaw, stAbort) {
     return {
-        async generate(prompt) {
-            const response = await stGenerateRaw({ prompt });
-            return (typeof response === 'string') ? response : String(response ?? '');
+        // SillyTavern's current generateRaw API has no per-request AbortSignal,
+        // so the host stopGeneration adapter bridges attempt cancellation to
+        // generateRaw's internal AbortController.
+        supportsAbort: typeof stAbort === 'function',
+
+        async generate(prompt, { signal } = {}) {
+            if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+            const onAbort = typeof stAbort === 'function'
+                ? () => {
+                    try { stAbort(); } catch (_) {}
+                }
+                : null;
+            if (onAbort) signal?.addEventListener('abort', onAbort, { once: true });
+
+            try {
+                const response = await stGenerateRaw({ prompt, signal });
+                if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+                return (typeof response === 'string') ? response : String(response ?? '');
+            } finally {
+                if (onAbort) signal?.removeEventListener('abort', onAbort);
+            }
         },
         async test() {
             return { ok: true }; // native always "connected" — user's main model is working
@@ -69,10 +92,13 @@ function makeOpenAICaller(config) {
     }
 
     return {
-        async generate(prompt) {
+        supportsAbort: true,
+
+        async generate(prompt, { signal } = {}) {
             const resp = await fetch(`${base}/v1/chat/completions`, {
                 method: 'POST',
                 headers: headers(),
+                signal,
                 body: JSON.stringify({
                     model: config.model,
                     messages: [{ role: 'user', content: prompt }],
@@ -88,11 +114,12 @@ function makeOpenAICaller(config) {
             return extractContent(data);
         },
 
-        async test() {
+        async test({ signal } = {}) {
             try {
                 const resp = await fetch(`${base}/v1/chat/completions`, {
                     method: 'POST',
                     headers: headers(),
+                    signal,
                     body: JSON.stringify({
                         model: config.model,
                         messages: [{ role: 'user', content: 'Hi' }],
@@ -120,7 +147,9 @@ function makeAnthropicCaller(config) {
     const base = config.endpoint.replace(/\/+$/, '');
 
     return {
-        async generate(prompt) {
+        supportsAbort: true,
+
+        async generate(prompt, { signal } = {}) {
             const resp = await fetch(`${base}/v1/messages`, {
                 method: 'POST',
                 headers: {
@@ -128,6 +157,7 @@ function makeAnthropicCaller(config) {
                     'x-api-key': config.apiKey,
                     'anthropic-version': '2023-06-01',
                 },
+                signal,
                 body: JSON.stringify({
                     model: config.model,
                     max_tokens: 4096,
@@ -142,7 +172,7 @@ function makeAnthropicCaller(config) {
             return data.content?.[0]?.text ?? '';
         },
 
-        async test() {
+        async test({ signal } = {}) {
             try {
                 const resp = await fetch(`${base}/v1/messages`, {
                     method: 'POST',
@@ -151,6 +181,7 @@ function makeAnthropicCaller(config) {
                         'x-api-key': config.apiKey,
                         'anthropic-version': '2023-06-01',
                     },
+                    signal,
                     body: JSON.stringify({
                         model: config.model,
                         max_tokens: 50,

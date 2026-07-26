@@ -60,7 +60,11 @@ export function createMemorySystem({
         const existing = getMemories(avatar);
         const agentConfig = settings.agentConfigs?.['memory'] || {};
         const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-        const caller = createCaller(agentConfig, stGenerateRaw);
+        const caller = createCaller(
+            agentConfig,
+            stGenerateRaw,
+            () => getContext().stopGeneration()
+        );
         const group = getCurrentGroup();
 
         const pool = buildContextPool({
@@ -211,7 +215,11 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         try {
             const agentConfig = settings.agentConfigs?.['memory'] || {};
             const stGenerateRaw = (opts) => getContext().generateRaw(opts);
-            const compressCaller = createCaller(agentConfig, stGenerateRaw);
+            const compressCaller = createCaller(
+                agentConfig,
+                stGenerateRaw,
+                () => getContext().stopGeneration()
+            );
             const response = await compressCaller.generate(filled);
             summary = (typeof response === 'string' ? response : String(response ?? '')).trim();
             if (!summary) throw new Error('Empty response');
