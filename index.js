@@ -1330,14 +1330,16 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                 const interval = settings.autoSummaryInterval || 10;
                 if (sumLen === 0 && chat_metadata[EXT_KEY]._autoSumLen === undefined && legacyLen === undefined) {
                     console.log('[GD-auto-sum] path: first-enable currentLen=', currentLen);
-                    await saveSumLen(currentLen);
                     if (currentLen >= interval) {
                         try {
                             log(`Auto-summary: first enable, ${currentLen} existing msgs`);
                             toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `Auto-summary (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
                             await chatSummarySystem.generateSummary();
+                            await saveSumLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-summary failed:', e.message); }
+                    } else {
+                        await saveSumLen(currentLen);
                     }
                 } else if (currentLen < sumLen) {
                     console.log('[GD-auto-sum] path: deletion');
@@ -1347,11 +1349,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const newMsgs = currentLen - sumLen;
                     console.log('[GD-auto-sum] path: normal newMsgs=', newMsgs, 'interval=', interval);
                     if (newMsgs >= interval) {
-                        await saveSumLen(currentLen);
                         try {
                             log(`Auto-summary triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
                             await chatSummarySystem.generateSummary();
+                            await saveSumLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-summary failed:', e.message); }
                     }
@@ -1363,7 +1365,6 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                 const interval = settings.autoMemoryInterval || 10;
                 if (memLen === 0 && chat_metadata[EXT_KEY]._autoMemLen === undefined && legacyLen === undefined) {
                     console.log('[GD-auto-mem] path: first-enable currentLen=', currentLen);
-                    await saveMemLen(currentLen);
                     if (currentLen >= interval) {
                         try {
                             log(`Auto-memory: first enable, ${currentLen} existing msgs`);
@@ -1377,8 +1378,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             for (const av of targets) {
                                 try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
                             }
+                            await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
+                    } else {
+                        await saveMemLen(currentLen);
                     }
                 } else if (currentLen < memLen) {
                     console.log('[GD-auto-mem] path: deletion');
@@ -1388,7 +1392,6 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const newMsgs = currentLen - memLen;
                     console.log('[GD-auto-mem] path: normal newMsgs=', newMsgs, 'interval=', interval);
                     if (newMsgs >= interval) {
-                        await saveMemLen(currentLen);
                         try {
                             log(`Auto-memory triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动记忆提取触发（${newMsgs} 条新消息）...` : `Auto-memory (${newMsgs} msgs)...`, '', { timeOut: 3000 });
@@ -1401,6 +1404,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             for (const av of targets) {
                                 try { await memorySystem.generateForCharacter(av); } catch (e2) { log('Auto-memory fail:', av, e2.message); }
                             }
+                            await saveMemLen(currentLen);
                             toastr?.success?.(lang === 'zh' ? '自动记忆提取完成' : 'Auto-memory done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-memory failed:', e.message); }
                     }
@@ -1415,15 +1419,18 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
                 if (criLen === 0 && chat_metadata[EXT_KEY]._autoCritiqueLen === undefined && legacyLen === undefined) {
                     console.log('[GD-auto-cri] path: first-enable currentLen=', currentLen);
-                    chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                    await saveChatConditional();
                     if (currentLen >= interval) {
                         try {
                             log(`Auto-critique: first enable, ${currentLen} existing msgs`);
                             toastr?.info?.(lang === 'zh' ? `自动批判触发（检测到 ${currentLen} 条现有消息）...` : `Auto-critique (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
                             await critiqueSystem.generateCritique();
+                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                            await saveChatConditional();
                             toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-critique failed:', e.message); }
+                    } else {
+                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                        await saveChatConditional();
                     }
                 } else if (currentLen < criLen) {
                     console.log('[GD-auto-cri] path: deletion');
@@ -1434,12 +1441,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const newMsgs = currentLen - criLen;
                     console.log('[GD-auto-cri] path: normal newMsgs=', newMsgs, 'interval=', interval);
                     if (newMsgs >= interval) {
-                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                        await saveChatConditional();
                         try {
                             log(`Auto-critique triggered (${newMsgs} msgs)`);
                             toastr?.info?.(lang === 'zh' ? `自动批判触发（${newMsgs} 条新消息）...` : `Auto-critique (${newMsgs} msgs)...`, '', { timeOut: 3000 });
                             await critiqueSystem.generateCritique();
+                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
+                            await saveChatConditional();
                             toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
                         } catch (e) { log('Auto-critique failed:', e.message); }
                     }
@@ -1461,15 +1468,18 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     const interval = inst.autoInterval || 10;
 
                     if (caLen === 0 && chat_metadata[EXT_KEY][caKey] === undefined && legacyLen === undefined) {
-                        chat_metadata[EXT_KEY][caKey] = currentLen;
-                        await saveChatConditional();
                         if (currentLen >= interval) {
                             try {
                                 log(`[GD-auto-ca] "${inst.name}": first-enable, ${currentLen} msgs`);
                                 toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${currentLen} 条现有消息）...` : `"${inst.name}" auto (${currentLen} msgs)...`, '', { timeOut: 3000 });
                                 await customAgentSystem.execute(inst);
+                                chat_metadata[EXT_KEY][caKey] = currentLen;
+                                await saveChatConditional();
                                 toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
                             } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
+                        } else {
+                            chat_metadata[EXT_KEY][caKey] = currentLen;
+                            await saveChatConditional();
                         }
                     } else if (currentLen < caLen) {
                         chat_metadata[EXT_KEY][caKey] = currentLen;
@@ -1478,12 +1488,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                     } else {
                         const newMsgs = currentLen - caLen;
                         if (newMsgs >= interval) {
-                            chat_metadata[EXT_KEY][caKey] = currentLen;
-                            await saveChatConditional();
                             try {
                                 log(`[GD-auto-ca] "${inst.name}" triggered (${newMsgs} msgs)`);
                                 toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${newMsgs} 条新消息）...` : `"${inst.name}" auto (${newMsgs} msgs)...`, '', { timeOut: 3000 });
                                 await customAgentSystem.execute(inst);
+                                chat_metadata[EXT_KEY][caKey] = currentLen;
+                                await saveChatConditional();
                                 toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
                             } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
                         }
