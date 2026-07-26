@@ -2467,8 +2467,8 @@ eventSource.on(event_types.APP_READY, async () => {
     // Restore user-imported providers and capabilities from persistent storage.
     // Inject window.GroupDirector so user modules don't need relative imports.
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
-    userProviderLoader.restoreAll('provider', userDeps);
-    userProviderLoader.restoreAll('capability', userDeps);
+    await userProviderLoader.restoreAll('provider', userDeps);
+    await userProviderLoader.restoreAll('capability', userDeps);
 
     // Hook capability toggle to persist enabled state.
     // Always replace the monkey-patch so closure captures current settings/saveSettingsDebounced on hot reload.
@@ -2488,6 +2488,22 @@ eventSource.on(event_types.APP_READY, async () => {
     const builtinCaps = settings._builtinCapEnabled || {};
     for (const [id, enabled] of Object.entries(builtinCaps)) {
         try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) { }
+    }
+    // Persist capability scopes for built-in and user-imported capabilities.
+    if (!CapabilityRegistry._gdOrigSetScope) {
+        CapabilityRegistry._gdOrigSetScope = CapabilityRegistry.setScope.bind(CapabilityRegistry);
+    }
+    CapabilityRegistry.setScope = function (id, scope) {
+        CapabilityRegistry._gdOrigSetScope(id, scope);
+        try {
+            if (!settings._capabilityScopes) settings._capabilityScopes = {};
+            settings._capabilityScopes[id] = scope;
+            saveSettingsDebounced();
+        } catch (_) { }
+    };
+    const capabilityScopes = settings._capabilityScopes || {};
+    for (const [id, scope] of Object.entries(capabilityScopes)) {
+        try { CapabilityRegistry.setScope(id, scope); } catch (_) { }
     }
     customPromptsSystem.initAll();
     // Warn about settings keys not covered by any config profile drawer
