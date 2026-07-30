@@ -2,7 +2,7 @@
 function countMentions(name, recentMessages) {
     const text = recentMessages.map(message => message.mes || '').join(' ');
     if (!name) return 0;
-    if (/[\u3400-\u9FFF]/u.test(name)) {
+    if (/[\u3040-\u30FF\u3400-\u9FFF]/u.test(name)) {
         let count = 0;
         let index = 0;
         while ((index = text.indexOf(name, index)) !== -1) {
