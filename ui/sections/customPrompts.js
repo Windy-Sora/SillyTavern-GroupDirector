@@ -390,13 +390,13 @@ registerSection('customPrompts', function (ctx) {
 
     // ── Initial ─────────────────────────────────────────────────────
 
-    $('#gd-cp-new-data-builder').attr('data-prefix', 'new').html(renderDataBuilderHtml('new', $c('cp-new-data').val() || '', $c('cp-new-scope').val() || 'global', $c('cp-new-name').val().trim() || 'name'));
+    $('#gd-cp-new-data-builder').attr('data-prefix', 'new').html(renderDataBuilderHtml('new', $c('cp-new-data').val() || '', $c('cp-new-scope').val() || 'global', String($c('cp-new-name').val() ?? '').trim() || 'name'));
     bindOneBuilder($('#gd-cp-new-data-builder'));
     $c('cp-new-data').off('blur').on('blur', function () {
-        refreshBuilder($('#gd-cp-new-data-builder'), $(this).val(), $c('cp-new-scope').val() || 'global', $c('cp-new-name').val().trim() || 'name');
+        refreshBuilder($('#gd-cp-new-data-builder'), $(this).val(), $c('cp-new-scope').val() || 'global', String($c('cp-new-name').val() ?? '').trim() || 'name');
     });
     $c('cp-new-scope').off('change.gdBuilder').on('change.gdBuilder', function () {
-        refreshBuilder($('#gd-cp-new-data-builder'), $c('cp-new-data').val(), $(this).val() || 'global', $c('cp-new-name').val().trim() || 'name');
+        refreshBuilder($('#gd-cp-new-data-builder'), $c('cp-new-data').val(), $(this).val() || 'global', String($c('cp-new-name').val() ?? '').trim() || 'name');
     });
     $c('cp-new-name').off('blur.gdBuilder').on('blur.gdBuilder', function () {
         refreshBuilder($('#gd-cp-new-data-builder'), $c('cp-new-data').val(), $c('cp-new-scope').val() || 'global', $(this).val().trim() || 'name');

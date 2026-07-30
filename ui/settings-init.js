@@ -66,6 +66,10 @@ export async function loadSettingsUI(deps) {
     }
 
     const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    if (typeof html !== 'string') {
+        console.error('[GroupDirector] Settings template could not be loaded; UI initialization skipped');
+        return;
+    }
 
     // Create a top-level settings drawer at the same level as Extensions,
     // then render the Group Director settings inside it.
@@ -128,6 +132,10 @@ export async function reloadSettingsUI(deps) {
         return;
     }
     const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    if (typeof html !== 'string') {
+        console.error('[GroupDirector] Settings template could not be reloaded; UI initialization skipped');
+        return;
+    }
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
     bindLanguageHandler(deps, $c);
