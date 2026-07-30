@@ -628,8 +628,13 @@ export function createConfigProfileSystem(deps) {
         },
         getPresetNames: () => [...configPresets],
         loadPreset: async (name) => {
-            const resp = await fetch(`scripts/extensions/third-party/SillyTavern-GroupDirector/assets/profiles/${name}.json`);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            let resp;
+            for (const folder of ['SillyTavern-GroupDirector', 'SillyTavern-GroupWorld']) {
+                const candidate = await fetch(`scripts/extensions/third-party/${folder}/assets/profiles/${name}.json`);
+                if (candidate.ok) { resp = candidate; break; }
+                resp = candidate;
+            }
+            if (!resp?.ok) throw new Error(`HTTP ${resp?.status ?? 'network error'}`);
             const manifest = await resp.json();
             if (manifest.type !== 'config-profile') throw new Error('Not a config profile preset');
             const profile = {

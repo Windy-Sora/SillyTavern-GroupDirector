@@ -3,6 +3,20 @@ import { doNavbarIconClick } from '../../../../../script.js';
 import { applyI18n } from './i18n.js';
 import { initAllSections } from './sections/registry.js';
 
+const TEMPLATE_FOLDERS = ['SillyTavern-GroupDirector', 'SillyTavern-GroupWorld'];
+async function renderSettingsTemplate() {
+    for (const folder of TEMPLATE_FOLDERS) {
+        const path = `scripts/extensions/third-party/${folder}/settings.html`;
+        try {
+            const probe = await fetch(path);
+            if (!probe.ok) continue;
+            const html = await renderExtensionTemplateAsync(`third-party/${folder}`, 'settings');
+            if (typeof html === 'string') return html;
+        } catch (_) { /* try the compatible extension directory */ }
+    }
+    return undefined;
+}
+
 // Side-effect imports: each section module self-registers on load
 import './sections/dashboard.js';
 import './sections/modes.js';
@@ -65,7 +79,7 @@ export async function loadSettingsUI(deps) {
         return;
     }
 
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    const html = await renderSettingsTemplate();
     if (typeof html !== 'string') {
         console.error('[GroupDirector] Settings template could not be loaded; UI initialization skipped');
         return;
@@ -131,7 +145,7 @@ export async function reloadSettingsUI(deps) {
         // 主路径未走（fallback 模式下不存在 panel）。不委托 loadSettingsUI，否则会重复 append。
         return;
     }
-    const html = await renderExtensionTemplateAsync('third-party/SillyTavern-GroupDirector', 'settings');
+    const html = await renderSettingsTemplate();
     if (typeof html !== 'string') {
         console.error('[GroupDirector] Settings template could not be reloaded; UI initialization skipped');
         return;
