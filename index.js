@@ -12,6 +12,14 @@ import { renderPrompt, setProviderTimeoutDefault } from './prompt-renderer.js';
 import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-utils.js';
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
+import { scoreFormulaCharacter } from './systems/speaker-selection.js';
+import { decideFormulaTurn, decideTakeoverTurn, transitionWrapperStarted } from './systems/round-state.js';
+import { recoverDirectorPlan } from './systems/director-plan.js';
+import { buildTakeoverSchedule } from './systems/takeover-scheduler.js';
+import { canFinalizeRound } from './systems/round-finalization.js';
+import { decideLlmSpeakerTurn } from './systems/llm-speaker-state.js';
+import { getForceSpeakAction } from './systems/generation-guards.js';
+import { matchesTrigger, rollInitiative as rollInitiativeValue } from './systems/trigger-initiative.js';
 // ─── Providers (assets/providers/) ──────────────────────────────────
 import { register as registerRecentMessages } from './assets/providers/recent-messages.js';
 import { register as registerCharacters } from './assets/providers/characters.js';
@@ -641,6 +649,13 @@ function checkTriggers(characterName, characterAvatar, recentMessages) {
     const char = characters.find(c => c.avatar === characterAvatar);
     if (!char) return false;
 
+    const matched = matchesTrigger(char, recentMessages, { enabled: settings.triggerEnabled });
+    if (matched) log(`Trigger matched for ${characterName}`);
+    return matched;
+
+    // Legacy implementation retained temporarily while the extracted trigger
+    // engine is characterized by tests.
+
     // Extract keywords from character description + personality + scenario
     const desc = (char.description || '') + ' ' + (char.personality || '') + ' ' + (char.scenario || '');
     const keywords = desc
@@ -664,10 +679,10 @@ function checkTriggers(characterName, characterAvatar, recentMessages) {
 
 // ─── Initiative Engine ────────────────────────────────────────────────
 function rollInitiative(avatar) {
-    if (!settings.initiativeEnabled) return 0;
-    // Initiative: random base + slight variation
-    const base = settings.initiativeBaseScore;
-    const roll = Math.random() * base;
+    const roll = rollInitiativeValue({
+        enabled: settings.initiativeEnabled,
+        baseScore: settings.initiativeBaseScore,
+    });
     roundInitiative[avatar] = roll;
     return roll;
 }
@@ -679,6 +694,23 @@ function scoreCharacter(chId, recentMessages) {
 
     const name = char.name;
     const avatar = char.avatar;
+    const result = scoreFormulaCharacter({
+        character: char,
+        recentMessages,
+        chat,
+        scoreWeights: settings.scoreWeights,
+        triggerScore: settings.triggerScore,
+        consecutivePenalty: settings.consecutivePenalty,
+        triggered: roundTriggeredAvatars.has(avatar),
+        initiative: roundInitiative[avatar] || 0,
+    });
+    const { score, breakdown } = result;
+    log(`Score for ${name}: ${score.toFixed(1)} (mention=${breakdown.mentionCount}, trigger=${breakdown.triggered}, recencyIdx=${breakdown.lastSpokenIndex}, consec=${breakdown.consecutiveCount}, talk=${breakdown.talkativeness.toFixed(2)})`);
+    return score;
+
+    /* Legacy implementation retained temporarily while this extraction is
+     * characterized by tests. Remove after the next state-machine slice. */
+    {
     const weights = settings.scoreWeights;
 
     let score = 0;
@@ -731,6 +763,7 @@ function scoreCharacter(chId, recentMessages) {
 
     log(`Score for ${name}: ${score.toFixed(1)} (mention=${mentionCount}, trigger=${roundTriggeredAvatars.has(avatar)}, recencyIdx=${lastSpokenIndex}, consec=${consecutiveCount}, talk=${talkativeness.toFixed(2)})`);
     return score;
+    }
 }
 
 function findLastSpokenIndex(avatar, recentMessages) {
@@ -830,14 +863,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     // in a group chat. /send and /sendas add a user or character message first,
     // so lastMsgIsUser or normal round flags will be set — they fall through to Director.
     const lastMsgIsUser = chat.length > 0 && !!chat[chat.length - 1]?.is_user;
-    const isForceTriggered = !roundInitialized
-        && roundGenerateType !== 'swipe'
-        && roundGenerateType !== 'regenerate'
-        && !lastMsgIsUser
-        && !!getCurrentGroup();
+    const forceSpeakAction = getForceSpeakAction({
+        roundInitialized,
+        generationType: roundGenerateType,
+        lastMessageIsUser: lastMsgIsUser,
+        hasGroup: !!getCurrentGroup(),
+        mode: settings.forceSpeakMode || 'native',
+    });
+    const isForceTriggered = forceSpeakAction !== 'pass';
 
     if (isForceTriggered) {
-        const mode = settings.forceSpeakMode || 'native';
+        const mode = forceSpeakAction;
         if (mode === 'block') {
             abort(false);
             return;
@@ -932,6 +968,22 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     if (settings.mode === MODE_LLM) {
         // Manual ordered generation in progress — validate identity, inject script, let through
         if (takeoverGenCount > 0) {
+            const takeoverDecision = decideTakeoverTurn({
+                remaining: takeoverGenCount,
+                swipeCount: takeoverSwipeCount,
+                generationType: roundGenerateType,
+                avatar,
+                plannedAvatars: llmPickedAvatars,
+            });
+            // Keep the existing script-injection path below, but centralize
+            // terminal takeover guards in the pure state reducer.
+            if (takeoverDecision.action === 'block') {
+                takeoverGenCount = takeoverDecision.remaining;
+                takeoverSwipeCount = takeoverDecision.swipeCount;
+                takeoverFailed = takeoverDecision.failed;
+                abort(false);
+                return;
+            }
             // Auto-swipe/regenerate during takeover: same character re-rolling,
             // don't consume the takeover count. Detected via roundGenerateType
             // which is now captured before the nested START guard.
@@ -981,6 +1033,45 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         // filter by director picks — the swiped character may differ from
         // the original plan (e.g., user swipes a message from a prior round).
         const isSwipeOrRegen = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
+        const llmTurn = decideLlmSpeakerTurn({
+            plannedAvatars: llmPickedAvatars,
+            spokenAvatars: [...llmSpokenSet],
+            cursor: llmCursor,
+            avatar,
+            generationType: roundGenerateType,
+            respectOrder: settings.llmRespectOrder,
+        });
+        if (llmTurn.action === 'block') {
+            log(`BLOCKED ${char.name} (not in LLM picks)`);
+            abort(false);
+            return;
+        }
+        if (isSwipeOrRegen) {
+            // Re-rolls operate on an existing message, not a new Director
+            // decision. Keep script context if available, but do not mutate
+            // the plan cursor, spoken set, or round speaker count.
+            const rerollScript = await getScriptForChar(char.name, {
+                speakerIndex: Math.max(roundSpeakerCount, 1),
+                speakerIndex0: Math.max(roundSpeakerCount - 1, 0),
+                speakerCount: llmPickedAvatars?.length || 0,
+            });
+            setExtensionPrompt(DIRECTOR_SCRIPT_KEY, rerollScript || '', getScriptPosition(), 0, true);
+            log(`REROLL ALLOWED ${char.name} (Director plan state unchanged)`);
+            return;
+        }
+        // Normal LLM-mode generations commit the reducer's state in one
+        // place; the legacy branch below is retained only during migration.
+        llmSpokenSet = new Set(llmTurn.spokenAvatars);
+        llmCursor = llmTurn.cursor;
+        roundSpeakerCount++;
+        const plannedScript = await getScriptForChar(char.name, {
+            speakerIndex: roundSpeakerCount,
+            speakerIndex0: roundSpeakerCount - 1,
+            speakerCount: llmPickedAvatars?.length || 0,
+        });
+        setExtensionPrompt(DIRECTOR_SCRIPT_KEY, plannedScript || '', getScriptPosition(), 0, true);
+        log(`ALLOWED ${char.name} (LLM pick #${roundSpeakerCount})`);
+        return;
         if (!isSwipeOrRegen && !llmPickedSet.has(avatar)) {
             log(`BLOCKED ${char.name} (not in LLM picks)`);
             abort(false);
@@ -1001,7 +1092,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             }
         }
         // Validate: this character must be in the picked set
-        if (!llmPickedSet.has(avatar)) {
+        if (!isSwipeOrRegen && !llmPickedSet.has(avatar)) {
             console.warn(`[GroupDirector] VALIDATION FAILED: ${char.name} (${avatar}) not in llmPickedSet! Aborting.`);
             abort(false);
             return;
@@ -1024,15 +1115,16 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     }
 
     // ─── Mode: Formula (Top-N) ──────────────────────────────────────
-    const sortedAvatars = Object.entries(roundScores)
-        .sort((a, b) => b[1] - a[1])
-        .map(([a]) => a);
-    const topN = Math.min(settings.topN, sortedAvatars.length);
-    const allowedAvatars = new Set(sortedAvatars.slice(0, topN));
-    const score = roundScores[avatar] ?? -Infinity;
+    const formulaTurn = decideFormulaTurn({
+        scores: roundScores,
+        topN: settings.topN,
+        avatar,
+        speakerCount: roundSpeakerCount,
+    });
+    const { allowed, score, nextSpeakerCount } = formulaTurn;
 
-    if (allowedAvatars.has(avatar)) {
-        roundSpeakerCount++;
+    if (allowed) {
+        roundSpeakerCount = nextSpeakerCount;
         log(`ALLOWED ${char.name} (score=${score.toFixed(1)}, speaker #${roundSpeakerCount})`);
     } else {
         log(`BLOCKED ${char.name} (score=${score.toFixed(1)})`);
@@ -1046,10 +1138,15 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Always capture the generation type, even for nested wrappers.
     // Auto-swipes during takeover need to be visible to the interceptor.
     roundGenerateType = data?.type || 'normal';
+    const wrapperTransition = transitionWrapperStarted({
+        generationType: roundGenerateType,
+        manualRemaining: takeoverGenCount,
+        takeoverFailed,
+    });
 
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
-    if (takeoverGenCount > 0) {
+    if (wrapperTransition.kind === 'preserve_nested') {
         console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
         return;
     }
@@ -1057,7 +1154,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Previous takeover failed mid-round: reuse the existing director decision
     // instead of making a new one. Chat already has partial messages from the
     // failed attempt; a new decision would conflict with existing dialog boxes.
-    if (takeoverFailed) {
+    if (wrapperTransition.kind === 'retry_failed') {
         takeoverFailed = false;
         takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
         takeoverGenCount = 0;
@@ -1076,7 +1173,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // per-speaker tracking. Don't re-trigger takeover; let ST decide which
     // messages to regenerate. Reconstruct state from chat_metadata so it
     // survives browser restarts (in-memory state is gone on reload).
-    if (roundGenerateType === 'regenerate' || roundGenerateType === 'swipe') {
+    if (wrapperTransition.kind === 'reuse_or_restore_plan') {
         // Allow PostSpeech to re-analyze the swiped messages
         postSpeechLastMsgIndex = -1;
         postSpeechRoundRan = false;
@@ -1088,6 +1185,30 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
                 const group = getCurrentGroup();
                 const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
+                const recovered = recoverDirectorPlan(lastPlan, {
+                    enabledMembers: members,
+                    maxSpeakers: settings.llmMaxSpeakers,
+                    matchCharacterByName,
+                });
+                if (recovered) {
+                    llmPickedAvatars = recovered.avatars;
+                    llmPickedSet = new Set(recovered.avatars);
+                    directorScripts = recovered.scripts;
+                    llmSpokenSet = new Set();
+                    llmCursor = 0;
+                    roundSpeakerCount = 0;
+                    takeoverPending = false;
+                    takeoverGenCount = 0;
+                    roundInitialized = true;
+                    const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
+                    if (saved) {
+                        for (const [name, val] of Object.entries(saved)) {
+                            if (!scriptCounterSnapshots.has(name)) scriptCounterSnapshots.set(name, val);
+                        }
+                    }
+                    log('Regenerate/swipe — restored director plan from history');
+                    return;
+                }
                 const avatars = [];
                 for (const name of lastPlan.speakers) {
                     const c = matchCharacterByName(name, members);
@@ -1193,7 +1314,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
     // Only fire when takeover is fully complete (not during nested wrappers)
-    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && takeoverGenCount === 0 && !manualGenInProgress) {
+    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && canFinalizeRound({
+        takeoverRemaining: takeoverGenCount,
+        manualGenerationInProgress: manualGenInProgress,
+        generationStopped,
+    })) {
         postSpeechRoundRan = true;
 
         generationStopped = false;
@@ -1306,8 +1431,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     // round boundary even when the optional round-analysis agent is disabled
     // or fails.
     if (!postSpeechRoundWasAborted &&
-        takeoverGenCount === 0 &&
-        !manualGenInProgress &&
+        canFinalizeRound({
+            takeoverRemaining: takeoverGenCount,
+            manualGenerationInProgress: manualGenInProgress,
+            generationStopped,
+        }) &&
         postSpeechRoundQueue.length > 0) {
         try {
             await drainPostSpeechRoundQueue();
@@ -1318,7 +1446,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // ─── Script Executor: round trigger (before auto summary, deduped) ──
     // Only fire when takeover is fully complete (same guard as PostSpeech round)
-    if (!scriptExecutorRoundRan && takeoverGenCount === 0 && !manualGenInProgress) {
+    if (!scriptExecutorRoundRan && canFinalizeRound({
+        takeoverRemaining: takeoverGenCount,
+        manualGenerationInProgress: manualGenInProgress,
+        generationStopped,
+    })) {
         scriptExecutorRoundRan = true;
         try {
             scriptExecutorSystem.executeAll('round', {
@@ -1335,7 +1467,11 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     const lang = settings.lang || 'zh';
     const hasAutoCA = (settings.customAgents || []).some(a => a.enabled && a.autoEnabled);
     const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled || settings.autoCritiqueEnabled || hasAutoCA;
-    const _c2 = takeoverGenCount === 0;
+    const _c2 = canFinalizeRound({
+        takeoverRemaining: takeoverGenCount,
+        manualGenerationInProgress: manualGenInProgress,
+        generationStopped,
+    });
     const _c3 = !manualGenInProgress;
     console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: takeoverGenCount, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
     if (_c1 && _c2 && _c3) {
@@ -1866,8 +2002,12 @@ let manualGenInProgress = false;
 async function runManualOrderedGeneration() {
     manualGenInProgress = true;
     takeoverPending = false;
-    const orderedList = [...llmPickedAvatars];
-    takeoverGenCount = orderedList.length;
+    const schedule = buildTakeoverSchedule(llmPickedAvatars, {
+        completed: takeoverCompleted,
+        knownAvatars: new Set(characters.map(character => character.avatar)),
+    });
+    const orderedList = schedule.queue.map(step => step.avatar);
+    takeoverGenCount = schedule.remaining;
     const ctx = getContext();
     const savedChId = ctx.characterId;
     const savedChName = characters[savedChId]?.name || '';
@@ -2261,6 +2401,18 @@ async function initRoundWithLLM() {
         const history = getDirectorHistory();
         const lastPlan = history[history.length - 1];
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
+            const recovered = recoverDirectorPlan(lastPlan, {
+                enabledMembers,
+                maxSpeakers: settings.llmMaxSpeakers,
+                matchCharacterByName,
+            });
+            if (recovered) {
+                llmPickedAvatars = recovered.avatars;
+                llmPickedSet = new Set(recovered.avatars);
+                directorScripts = recovered.scripts;
+                if (settings.llmRespectOrder) takeoverPending = true;
+                return;
+            }
             toastr.warning('导演决策失败，正在复用上一轮决策...');
             console.warn('[GroupDirector] Director failed — reusing last plan from history');
             const avatars = [];

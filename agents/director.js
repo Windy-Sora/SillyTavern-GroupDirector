@@ -1,3 +1,5 @@
+import { normalizeDirectorPlan } from '../systems/director-plan.js';
+
 /**
  * Director Agent — decides who speaks and in what order.
  *
@@ -101,6 +103,15 @@ export function createDirectorAgent({
 
             parse(raw, ctx) {
                 const parsed = parseLlmResponse(raw, log);
+                return normalizeDirectorPlan(parsed, {
+                    enabledMembers: ctx.enabledMembers,
+                    maxSpeakers: ctx.runtimeContext?.maxSpeakers ?? 3,
+                    matchCharacterByName,
+                    log,
+                });
+
+                // Legacy implementation retained temporarily while the pure
+                // normalizer is characterized by tests.
                 if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
                     return null;
                 }
