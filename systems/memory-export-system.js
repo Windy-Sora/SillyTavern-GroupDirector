@@ -285,7 +285,19 @@ export function createMemoryExportSystem(deps) {
 
         const matchResults = {};
         for (const [avatar, data] of Object.entries(obj.memories)) {
-            if (!data || typeof data !== 'object') continue;
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+                return { ok: false, error: `Invalid memory entry for "${avatar}"` };
+            }
+            if (typeof data.name !== 'string' || !data.name.trim()) {
+                return { ok: false, error: `Missing or invalid name for "${avatar}"` };
+            }
+            if (!Array.isArray(data.entries)) {
+                return { ok: false, error: `Missing or invalid entries for "${avatar}"` };
+            }
+            const invalidEntryIndex = data.entries.findIndex(entry => !entry || typeof entry !== 'object' || Array.isArray(entry));
+            if (invalidEntryIndex !== -1) {
+                return { ok: false, error: `Invalid memory entry at index ${invalidEntryIndex} for "${avatar}"` };
+            }
             const match = findMatchingCharacter(avatar, data.name, members, chars);
             matchResults[avatar] = {
                 importedName: data.name,

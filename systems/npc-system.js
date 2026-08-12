@@ -10,6 +10,7 @@ export function createNpcSystem({
     getChatMetadata,
     saveChatConditional,
     characters,
+    getCharacters = () => characters,
     log,
     AgentRegistry,
     execute,
@@ -38,7 +39,7 @@ export function createNpcSystem({
     function nameExists(name) {
         const lower = name.toLowerCase();
         if (getNpcs().some(n => n.name.toLowerCase() === lower)) return true;
-        if (characters.some(c => c.name.toLowerCase() === lower)) return true;
+        if ((getCharacters() || []).some(c => c.name.toLowerCase() === lower)) return true;
         return false;
     }
 

@@ -5,6 +5,18 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
+Current verified baseline (2026-08-12):
+
+- 181 JavaScript source files pass static validation;
+- 81 behavior tests are discovered, with 80 passing and one optional real-host
+  contract skipped when `GD_TEST_ST_ROOT` is not configured;
+- all 17 historical regression-contract IDs are represented;
+- entry-point reachability is 133/141 production modules, while tests directly or
+  transitively reach 29/141 production modules.
+
+The reachability numbers are diagnostics, not success targets. A module can be
+entry-reachable without being safe, and test reachability is not line coverage.
+
 The workflow in `.github/workflows/gd-test.yml` runs the full platform on Windows
 and Linux with Node 22 and 24 for every push and pull request, then uploads the
 JSON report even when a test fails.
@@ -89,6 +101,25 @@ shows which production modules have never been loaded by any automated test.
 Node's percentage coverage only describes modules loaded during that run; use it
 together with test reachability instead of treating the percentage as whole-project
 coverage.
+
+## Round lifecycle coverage
+
+The takeover flow is intentionally tested at three boundaries:
+
+| Boundary | Primary modules/tests | Contract |
+|---|---|---|
+| Pure transition rules | `round-state.js`, `round-finalization.js`, `takeover-scheduler.js`; unit tests | No hidden state; mismatches, rerolls, finalization gates, and queue filtering are deterministic |
+| Stateful coordination | `round-orchestrator.js`; `tests/integration/round-orchestrator.test.mjs` | One owner advances remaining speakers, retries failed plans, preserves completed speakers, and exposes finalization readiness |
+| Host-facing execution | fake host plus `takeover-execution.test.mjs` | Ordered generation, request failure, nested wrappers, rerolls, and user stop behave correctly across asynchronous calls |
+
+`index.js` should remain the event-and-side-effect adapter. New takeover rules
+belong in the pure modules or orchestrator so they can be tested without importing
+the SillyTavern browser runtime.
+
+Import validators should be tested with malformed values at every nesting level,
+including `null`, arrays where objects are expected, primitives, missing strings,
+and invalid array elements. Validation failures must return structured results and
+must not escape into UI event handlers as exceptions.
 
 ## Writing behavior tests
 

@@ -42,7 +42,9 @@ test('takeover consumes only normal generations and allows rerolls without consu
 
 test('takeover blocks pending ST order, plan mismatches, and excessive rerolls', () => {
     assert.equal(decideTakeoverTurn({ remaining: 0, pending: true, avatar: 'alice' }).reason, 'takeover_pending');
-    assert.equal(decideTakeoverTurn({ remaining: 1, avatar: 'eve', plannedAvatars: ['alice'] }).reason, 'plan_mismatch');
+    assert.deepEqual(decideTakeoverTurn({ remaining: 1, avatar: 'eve', plannedAvatars: ['alice'] }), {
+        action: 'block', reason: 'plan_mismatch', remaining: 1, swipeCount: 0, failed: false, reroll: false,
+    });
     assert.deepEqual(decideTakeoverTurn({ remaining: 1, swipeCount: 5, generationType: 'regenerate', avatar: 'alice' }), {
         action: 'block', reason: 'swipe_limit', remaining: 0, swipeCount: 6, failed: true, reroll: true,
     });

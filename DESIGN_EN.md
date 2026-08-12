@@ -457,6 +457,25 @@ MESSAGE_DELETED → trim ledger + trim summary + clear state
 CHAT_CHANGED → trim ledger + trim summary (branch/switch)
 ```
 
+### 7.1 Round Orchestrator and State Ownership
+
+`systems/round-orchestrator.js` is the stateful coordinator for takeover rounds. `index.js` receives SillyTavern events and performs generation side effects, but no longer derives remaining-speaker counts, retry state, or finalization readiness on its own.
+
+| Module | Responsibility |
+|------|------|
+| `round-state.js` | Pure wrapper/takeover transitions with no retained runtime state |
+| `takeover-scheduler.js` | Builds the queue in Director order and excludes completed or unavailable characters |
+| `round-finalization.js` | Determines whether round-end work may run |
+| `round-orchestrator.js` | Owns takeover state and composes the rules above for `index.js` |
+
+Key invariants:
+
+- Blocking an out-of-plan character does not consume `takeoverRemaining`.
+- Swipe/regenerate preserves the plan and only advances the safety-limit counter.
+- Round finalization is blocked while takeover is pending, failed, manually generating, or stopped by the user.
+- Nested wrappers preserve the active takeover; a failed plan enters the retry path on the next normal wrapper.
+- `takeoverCompleted` survives retries, so resumed scheduling does not regenerate completed characters.
+
 ---
 
 ## 8. How to Add a New Agent
@@ -580,6 +599,10 @@ SillyTavern-GroupDirector/
 │
 ├── systems/                   # Stateful business logic
 │   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry + Trace
+│   ├── round-state.js         # Pure wrapper/takeover state transitions
+│   ├── takeover-scheduler.js  # Ordered takeover queue and skip reasons
+│   ├── round-finalization.js  # Round-end gating rules
+│   ├── round-orchestrator.js  # Takeover state owner and coordination entry point
 │   ├── capability-registry.js # CapabilityRegistry (multimodal capability registration)
 │   ├── executor.js            # PostSpeech Executor (resolve→schedule→execute)
 │   ├── history-system.js      # Director ledger CRUD
@@ -985,7 +1008,8 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | Modify script executor UI | `ui/sections/scriptExecutors.js` |
 | Add new Capability | `assets/capabilities/xxx.js` + one line in manifest |
 | User import extension | Tools → User Extensions → select `.js` file |
-| Modify interceptor behavior | `index.js` → `groupDirector_Interceptor` |
+| Modify interceptor event wiring | `index.js` → `groupDirector_Interceptor` / wrapper event listeners |
+| Modify takeover state rules | Prefer `round-state.js` / `takeover-scheduler.js` / `round-finalization.js`, composed by `round-orchestrator.js` |
 
 ---
 
@@ -1031,6 +1055,9 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | `cp` doesn't overwrite existing files | In some environments `cp` silently skips same-content files | `rm -f` then `cp` |
 | JSZip `import()` fails | Non-module JS files can't be loaded via `import()` | Script tag injection fallback |
 | Config profile dropdowns out of sync | Dashboard and card share the same ID; two codebases overwrite each other | Separate IDs, `refreshPresetSelector()` updates both |
+| A factory captures the `characters` array | SillyTavern may replace the entire array, leaving the closure on a stale reference | Inject `getCharacters()` and resolve the live value at use time |
+| An editor reuses a display summary | Tags, motivation, and HTML enter the stored source value | Keep the editor value separate from the display formatter |
+| Import validation checks only the array container | Malformed values such as `entries: [null]` throw during later field access | Validate both the container and every element at the parse boundary |
 
 ---
 
@@ -1052,6 +1079,9 @@ Group Director allows users to import and write custom code (User Providers, Use
 | Config profile import | Confirmation popup | Importing config profiles also imports userProviders/userCapabilities; ST native confirmation popup reminds users to check when clicking import |
 | Config profile export | API Key stripping | `apiKey` in `agentConfigs` is automatically cleared on export |
 | Config profile import | API Key stripping | `agentConfigs` is discarded on import to prevent endpoint hijacking |
+| Custom Agent import | Field allowlist and ID normalization | Ignores external IDs, bounds numeric fields, imports disabled, and avoids interpolating IDs into jQuery selectors |
+| Memory import | Nested structure validation | Validates character objects, names, the `entries` array, and every entry; malformed data returns a structured error |
+| Execution Trace | Output escaping | Escapes stage summaries and object keys before inserting them into the DOM |
 | Script Executor | Execution timeout | Each script has a 10-second timeout; skipped on timeout, continues execution |
 | Script Executor | Exception isolation | Individual script exceptions don't affect other scripts or the Director flow |
 

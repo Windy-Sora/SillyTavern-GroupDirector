@@ -44,7 +44,7 @@ registerSection('executionTrace', function (ctx) {
                             <span style="font-size:0.85em;color:var(--grey70a);margin-left:4px;">${esc(t.startTime?.substring(11, 19) || '')}</span>
                         </span>
                         <span style="font-size:0.85em;color:var(--grey70a);">
-                            ${realStages.length} ${L('阶段', 'stages')} | ${totalMs.toFixed(0)}ms | ${stageSummary}
+                            ${realStages.length} ${L('阶段', 'stages')} | ${totalMs.toFixed(0)}ms | ${esc(stageSummary)}
                             <i class="fa-solid fa-chevron-down gd-trace-arrow" data-idx="${i}"></i>
                         </span>
                     </div>
@@ -76,7 +76,7 @@ registerSection('executionTrace', function (ctx) {
         if (s.outputSummary) {
             const o = s.outputSummary;
             if (o.type === 'text') meta += ` ${L('输出', 'out')}: ${o.length}chars`;
-            if (o.type === 'object') meta += ` ${L('输出', 'out')}: {${o.keys?.join(', ')}}`;
+            if (o.type === 'object') meta += ` ${L('输出', 'out')}: {${(o.keys || []).map(esc).join(', ')}}`;
             if (o.type === 'array') meta += ` ${L('输出', 'out')}: [${o.length}]`;
         }
 

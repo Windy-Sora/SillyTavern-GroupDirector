@@ -40,7 +40,7 @@ export function decideTakeoverTurn({
             return { action: 'block', reason: 'swipe_limit', remaining: 0, swipeCount: nextSwipeCount, failed: true, reroll };
         }
         if (plannedAvatars && !plannedAvatars.includes(avatar)) {
-            return { action: 'block', reason: 'plan_mismatch', remaining: nextRemaining, swipeCount: nextSwipeCount, failed: false, reroll };
+            return { action: 'block', reason: 'plan_mismatch', remaining, swipeCount: nextSwipeCount, failed: false, reroll };
         }
         return { action: 'allow', reason: 'manual_takeover', remaining: nextRemaining, swipeCount: nextSwipeCount, failed: false, reroll };
     }

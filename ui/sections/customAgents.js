@@ -26,6 +26,26 @@ registerSection('customAgents', function (ctx) {
         if (s === null || s === undefined) return '';
         return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
     }
+    function toBoundedInt(value, fallback, min, max) {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+    }
+    function $byId(selector, id) {
+        return $list.find(selector).filter((_, element) => String($(element).attr('data-id')) === String(id));
+    }
+    function normalizeImportedAgent(agent, id) {
+        return {
+            id,
+            name: String(agent.name).trim(),
+            providerName: String(agent.providerName).trim(),
+            prompt: typeof agent.prompt === 'string' ? agent.prompt : '',
+            schema: typeof agent.schema === 'string' ? agent.schema : '',
+            enabled: false,
+            autoEnabled: false,
+            autoInterval: toBoundedInt(agent.autoInterval, 10, 1, 200),
+            order: toBoundedInt(agent.order, 0, 0, 999),
+        };
+    }
 
     function renderList() {
         const list = getList();
@@ -37,6 +57,8 @@ registerSection('customAgents', function (ctx) {
         let html = '';
         list.forEach(inst => {
             const data = customAgentSystem.getData(inst.id);
+            const order = toBoundedInt(inst.order, 0, 0, 999);
+            const autoInterval = toBoundedInt(inst.autoInterval, 10, 1, 200);
             const statusText = data
                 ? L(`已覆盖 ${data.rangeEnd} 条消息`, `Covered ${data.rangeEnd} msgs`)
                 : L('未执行', 'Not executed');
@@ -46,7 +68,7 @@ registerSection('customAgents', function (ctx) {
                     <div style="flex:1;min-width:0;">
                         <b>${escHtml(inst.name || '(unnamed)')}</b>
                         <span style="font-size:0.75em;color:#64b5f6;margin-left:4px;">{{${escHtml(inst.providerName || '?')}}}</span>
-                        <span style="font-size:0.7em;color:var(--grey70a);margin-left:4px;">${L('顺序', 'order')}:${inst.order ?? 0}</span>
+                        <span style="font-size:0.7em;color:var(--grey70a);margin-left:4px;">${L('顺序', 'order')}:${order}</span>
                         ${inst.enabled ? '' : `<span style="color:var(--grey70a);font-size:0.8em;"> (${L('关闭', 'off')})</span>`}
                         <div style="font-size:0.8em;color:var(--grey70a);">${statusText}</div>
                     </div>
@@ -62,7 +84,7 @@ registerSection('customAgents', function (ctx) {
                         <span style="font-size:0.85em;">{{</span>
                         <input type="text" class="gd-ca-edit-pn text_pole" data-id="${escAttr(inst.id)}" value="${escAttr(inst.providerName)}" style="width:100px;" placeholder="${L('providerName', 'providerName')}">
                         <span style="font-size:0.85em;">}}</span>
-                        <label style="font-size:0.8em;margin:0;">${L('顺序', 'Order')}:<input type="number" class="gd-ca-edit-order text_pole" data-id="${escAttr(inst.id)}" value="${inst.order ?? 0}" min="0" max="999" style="width:50px;margin-left:2px;"></label>
+                        <label style="font-size:0.8em;margin:0;">${L('顺序', 'Order')}:<input type="number" class="gd-ca-edit-order text_pole" data-id="${escAttr(inst.id)}" value="${order}" min="0" max="999" style="width:50px;margin-left:2px;"></label>
                     </div>
                     <label for="gd-ca-edit-prompt-${escAttr(inst.id)}" style="font-size:0.85em;display:block;margin-top:2px;">${L('Prompt', 'Prompt')}</label>
                     <textarea class="gd-ca-edit-prompt text_pole textarea_compact" data-id="${escAttr(inst.id)}" rows="4" style="width:100%;font-size:0.85em;">${escHtml(inst.prompt)}</textarea>
@@ -74,7 +96,7 @@ registerSection('customAgents', function (ctx) {
                             ${L('自动触发', 'Auto')}
                         </label>
                         <label style="font-size:0.82em;margin:0;">${L('每', 'Every')}
-                            <input type="number" class="gd-ca-edit-interval text_pole" data-id="${escAttr(inst.id)}" value="${inst.autoInterval || 10}" min="1" max="200" step="1" style="width:50px;margin-left:2px;">
+                            <input type="number" class="gd-ca-edit-interval text_pole" data-id="${escAttr(inst.id)}" value="${autoInterval}" min="1" max="200" step="1" style="width:50px;margin-left:2px;">
                             ${L('条新消息', 'msgs')}
                         </label>
                     </div>
@@ -99,7 +121,7 @@ registerSection('customAgents', function (ctx) {
         // Toggle edit panel on card header click — prompt if unsaved
         $list.find('.gd-ca-header').off('click').on('click', async function () {
             const id = $(this).data('id');
-            const $edit = $(`.gd-ca-edit[data-id="${id}"]`);
+            const $edit = $byId('.gd-ca-edit', id);
             if ($edit.is(':visible')) {
                 if (isEditDirty(id)) {
                     const ok = await callGenericPopup(
@@ -145,26 +167,26 @@ registerSection('customAgents', function (ctx) {
 
         function snapshotEditState(id) {
             _editSnapshots[id] = {
-                name: $(`.gd-ca-edit-name[data-id="${id}"]`).val()?.trim(),
-                providerName: $(`.gd-ca-edit-pn[data-id="${id}"]`).val()?.trim(),
-                prompt: $(`.gd-ca-edit-prompt[data-id="${id}"]`).val() || '',
-                schema: $(`.gd-ca-edit-schema[data-id="${id}"]`).val() || '',
-                order: $(`.gd-ca-edit-order[data-id="${id}"]`).val() || '0',
-                autoEnabled: $(`.gd-ca-edit-auto[data-id="${id}"]`).prop('checked'),
-                autoInterval: $(`.gd-ca-edit-interval[data-id="${id}"]`).val() || '10',
+                name: $byId('.gd-ca-edit-name', id).val()?.trim(),
+                providerName: $byId('.gd-ca-edit-pn', id).val()?.trim(),
+                prompt: $byId('.gd-ca-edit-prompt', id).val() || '',
+                schema: $byId('.gd-ca-edit-schema', id).val() || '',
+                order: $byId('.gd-ca-edit-order', id).val() || '0',
+                autoEnabled: $byId('.gd-ca-edit-auto', id).prop('checked'),
+                autoInterval: $byId('.gd-ca-edit-interval', id).val() || '10',
             };
         }
 
         function isEditDirty(id) {
             const snap = _editSnapshots[id];
             if (!snap) return false;
-            return snap.name !== $(`.gd-ca-edit-name[data-id="${id}"]`).val()?.trim()
-                || snap.providerName !== $(`.gd-ca-edit-pn[data-id="${id}"]`).val()?.trim()
-                || snap.prompt !== ($(`.gd-ca-edit-prompt[data-id="${id}"]`).val() || '')
-                || snap.schema !== ($(`.gd-ca-edit-schema[data-id="${id}"]`).val() || '')
-                || snap.order !== ($(`.gd-ca-edit-order[data-id="${id}"]`).val() || '0')
-                || snap.autoEnabled !== $(`.gd-ca-edit-auto[data-id="${id}"]`).prop('checked')
-                || snap.autoInterval !== ($(`.gd-ca-edit-interval[data-id="${id}"]`).val() || '10');
+            return snap.name !== $byId('.gd-ca-edit-name', id).val()?.trim()
+                || snap.providerName !== $byId('.gd-ca-edit-pn', id).val()?.trim()
+                || snap.prompt !== ($byId('.gd-ca-edit-prompt', id).val() || '')
+                || snap.schema !== ($byId('.gd-ca-edit-schema', id).val() || '')
+                || snap.order !== ($byId('.gd-ca-edit-order', id).val() || '0')
+                || snap.autoEnabled !== $byId('.gd-ca-edit-auto', id).prop('checked')
+                || snap.autoInterval !== ($byId('.gd-ca-edit-interval', id).val() || '10');
         }
 
         function saveFromEditPanel(id, showToast = false) {
@@ -172,8 +194,8 @@ registerSection('customAgents', function (ctx) {
             const inst = list.find(a => a.id === id);
             if (!inst) return false;
 
-            const name = $(`.gd-ca-edit-name[data-id="${id}"]`).val()?.trim();
-            const providerName = $(`.gd-ca-edit-pn[data-id="${id}"]`).val()?.trim();
+            const name = $byId('.gd-ca-edit-name', id).val()?.trim();
+            const providerName = $byId('.gd-ca-edit-pn', id).val()?.trim();
             if (!name || !providerName) return false;
 
             const otherWithSamePN = list.find(a => a.id !== id && a.providerName === providerName);
@@ -182,11 +204,11 @@ registerSection('customAgents', function (ctx) {
             const wasPNChanged = inst.providerName !== providerName;
             inst.name = name;
             inst.providerName = providerName;
-            inst.prompt = $(`.gd-ca-edit-prompt[data-id="${id}"]`).val() || '';
-            inst.schema = $(`.gd-ca-edit-schema[data-id="${id}"]`).val() || '';
-            inst.order = parseInt($(`.gd-ca-edit-order[data-id="${id}"]`).val()) || 0;
-            inst.autoInterval = parseInt($(`.gd-ca-edit-interval[data-id="${id}"]`).val()) || 10;
-            inst.autoEnabled = inst.enabled && $(`.gd-ca-edit-auto[data-id="${id}"]`).prop('checked');
+            inst.prompt = $byId('.gd-ca-edit-prompt', id).val() || '';
+            inst.schema = $byId('.gd-ca-edit-schema', id).val() || '';
+            inst.order = toBoundedInt($byId('.gd-ca-edit-order', id).val(), 0, 0, 999);
+            inst.autoInterval = toBoundedInt($byId('.gd-ca-edit-interval', id).val(), 10, 1, 200);
+            inst.autoEnabled = inst.enabled && $byId('.gd-ca-edit-auto', id).prop('checked');
 
             save();
             if (wasPNChanged) customAgentSystem.refreshProviders();
@@ -200,7 +222,7 @@ registerSection('customAgents', function (ctx) {
             e.stopPropagation();
             const id = $(this).data('id');
             const store = customAgentSystem.getData(id);
-            const $ta = $(`.gd-ca-edit-result[data-id="${id}"]`);
+            const $ta = $byId('.gd-ca-edit-result', id);
             if (store && $ta.length) {
                 $ta.val(typeof store.data === 'object' ? JSON.stringify(store.data, null, 2) : String(store.content || ''));
             }
@@ -212,7 +234,7 @@ registerSection('customAgents', function (ctx) {
             const id = $(this).data('id');
             const store = customAgentSystem.getData(id);
             if (!store) return;
-            const newContent = $(`.gd-ca-edit-result[data-id="${id}"]`).val() || '';
+            const newContent = $byId('.gd-ca-edit-result', id).val() || '';
             let newData;
             try { newData = JSON.parse(newContent); } catch (_) { newData = newContent; }
             store.content = newContent;
@@ -228,13 +250,13 @@ registerSection('customAgents', function (ctx) {
             if (!ok) {
                 toastr.warning(L('保存失败：名称或 providerName 无效或已被占用', 'Save failed: name or providerName invalid or taken'));
             }
-            $(`.gd-ca-edit[data-id="${id}"]`).show();
+            $byId('.gd-ca-edit', id).show();
         });
 
         // Cancel
         $list.find('.gd-ca-cancel-btn').off('click').on('click', function () {
             const id = $(this).data('id');
-            $(`.gd-ca-edit[data-id="${id}"]`).hide();
+            $byId('.gd-ca-edit', id).hide();
         });
 
         // Delete
@@ -321,25 +343,24 @@ registerSection('customAgents', function (ctx) {
             const list = getList();
             let imported = 0;
             for (const a of data.agents) {
-                if (!a.name || !a.providerName) continue;
-                const conflict = list.find(x => x.providerName === a.providerName);
+                if (!a || typeof a !== 'object' || typeof a.name !== 'string' || typeof a.providerName !== 'string') continue;
+                const name = a.name.trim();
+                const providerNameValue = a.providerName.trim();
+                if (!name || !providerNameValue) continue;
+                const conflict = list.find(x => x.providerName === providerNameValue);
                 if (conflict) {
-                    const providerName = escHtml(a.providerName);
+                    const providerName = escHtml(providerNameValue);
                     if (!await callGenericPopup(
                         L(`providerName "${providerName}" 已存在，是否覆盖？`, `Provider "${providerName}" exists. Overwrite?`),
                         POPUP_TYPE.CONFIRM,
                     )) continue;
                     const old = list.find(x => x.id === conflict.id);
-                    if (old) Object.assign(old, a);
+                    if (old) Object.assign(old, normalizeImportedAgent({ ...a, name, providerName: providerNameValue }, old.id));
                     imported++;
                     continue;
                 }
-                list.push({
-                    id: `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-                    ...a,
-                    enabled: false,
-                    autoEnabled: false,
-                });
+                const id = `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+                list.push(normalizeImportedAgent({ ...a, name, providerName: providerNameValue }, id));
                 imported++;
             }
             save();
@@ -371,7 +392,7 @@ registerSection('customAgents', function (ctx) {
         save();
         renderList();
         // Auto-open edit for new entry
-        $(`.gd-ca-edit[data-id="${id}"]`).show();
+        $byId('.gd-ca-edit', id).show();
         toastr.info(L(`已创建 "${name}"，请编辑配置`, `"${name}" created, edit config`));
     });
 

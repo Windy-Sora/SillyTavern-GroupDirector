@@ -456,6 +456,25 @@ MESSAGE_DELETED → 裁剪账本 + 裁剪总结 + 清空状态
 CHAT_CHANGED → 裁剪账本 + 裁剪总结（分支/切换）
 ```
 
+### 7.1 回合编排器与状态所有权
+
+`systems/round-orchestrator.js` 是 takeover 回合的有状态协调层。`index.js` 负责接收 SillyTavern 事件和执行生成副作用，但不再自行推导剩余人数、重试状态或终结条件。
+
+| 模块 | 职责 |
+|------|------|
+| `round-state.js` | 单次 wrapper/takeover 状态转换；纯函数，不持有运行时状态 |
+| `takeover-scheduler.js` | 按 Director 原始顺序建立队列，排除已完成或不可用角色 |
+| `round-finalization.js` | 判断是否允许执行 round-end 收尾 |
+| `round-orchestrator.js` | 持有 takeover 状态，并组合上述规则供 `index.js` 调用 |
+
+关键不变量：
+
+- 计划外角色被阻止时不消耗 `takeoverRemaining`。
+- swipe/regenerate 不消耗计划，只累计安全限制计数。
+- takeover 未完成、失败、等待手动生成或用户停止时，禁止 round finalization。
+- 嵌套 wrapper 保留当前 takeover；失败计划在下一次正常 wrapper 中进入重试路径。
+- `takeoverCompleted` 跨重试保留，恢复调度时不会重复生成已完成角色。
+
 ---
 
 ## 8. 如何添加新 Agent
@@ -579,6 +598,10 @@ SillyTavern-GroupDirector/
 │
 ├── systems/                   # 有状态业务逻辑
 │   ├── agent-runtime.js       # execute + managedCall + createScopedPool + AgentRegistry + Trace
+│   ├── round-state.js         # wrapper/takeover 纯状态转换
+│   ├── takeover-scheduler.js  # takeover 有序队列与跳过原因
+│   ├── round-finalization.js  # 回合收尾门控规则
+│   ├── round-orchestrator.js  # takeover 状态所有者与协调入口
 │   ├── capability-registry.js # CapabilityRegistry（多模态能力注册）
 │   ├── executor.js            # PostSpeech Executor (resolve→schedule→execute)
 │   ├── history-system.js      # 导演账本 CRUD
@@ -986,7 +1009,8 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | 改脚本执行器 UI | `ui/sections/scriptExecutors.js` |
 | 加新 Capability | `assets/capabilities/xxx.js` + manifest 加一行 |
 | 用户导入扩展 | 工具 → 用户扩展 → 选 `.js` 文件 |
-| 改拦截器行为 | `index.js` → `groupDirector_Interceptor` |
+| 改拦截器事件接线 | `index.js` → `groupDirector_Interceptor` / wrapper 事件监听 |
+| 改 takeover 状态规则 | 优先修改 `round-state.js` / `takeover-scheduler.js` / `round-finalization.js`，由 `round-orchestrator.js` 组合 |
 
 ---
 
@@ -1032,18 +1056,21 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | `cp` 不覆盖已有文件 | 部分环境 `cp` 静默跳过同内容文件 | `rm -f` 后 `cp` |
 | JSZip `import()` 失败 | 非模块 JS 文件无法通过 `import()` 加载 | script 标签注入 fallback |
 | 配置档下拉不同步 | 仪表盘和卡片共用同一个 ID，两套代码互相覆盖 | 分用两个 ID，`refreshPresetSelector()` 同时更新 |
+| 工厂捕获 `characters` 数组 | SillyTavern 可能替换整个数组，闭包继续读取旧引用 | 注入 `getCharacters()`，在使用点读取实时值 |
+| 编辑器复用展示摘要 | 展示文本混入标签、动机和 HTML，保存后污染原始数据 | 编辑值与展示 formatter 分离 |
+| 只校验导入数组容器 | `entries: [null]` 等畸形元素在后续字段读取时抛错 | 在解析边界同时校验容器和每个元素 |
 
 ---
 
 ## 22. 安全说明
 
-### 21.1 用户代码信任模型
+### 22.1 用户代码信任模型
 
 Group Director 允许用户导入和编写自定义代码（用户 Provider、用户 Capability、脚本执行器）。这些代码运行在 SillyTavern 的页面上下文中，拥有与 SillyTavern 本身相同的权限——包括访问 localStorage、发送 HTTP 请求、操作 DOM。
 
 **设计决策**：系统信任用户自己编写的代码，但对外部导入（他人分享的配置档、脚本执行器包）采取防御性措施。
 
-### 21.2 防御措施
+### 22.2 防御措施
 
 | 层面 | 措施 | 说明 |
 |------|------|------|
@@ -1053,10 +1080,13 @@ Group Director 允许用户导入和编写自定义代码（用户 Provider、�
 | 配置档导入 | 确认弹窗 | 导入配置档会同时导入 userProviders、userCapabilities，点击导入按钮时弹出 ST 原生确认框提醒用户检查 |
 | 配置档导出 | API Key 剥离 | `agentConfigs` 中的 `apiKey` 在导出时自动清空 |
 | 配置档导入 | API Key 剥离 | `agentConfigs` 在导入时被丢弃，防止端点劫持 |
+| 自定义 Agent 导入 | 字段白名单与 ID 归一化 | 忽略外部 ID，限制数值范围，导入后默认禁用，并避免把 ID 拼入 jQuery 选择器 |
+| 记忆导入 | 嵌套结构校验 | 校验角色对象、名称、`entries` 数组及每个条目，畸形数据返回结构化错误 |
+| Execution Trace | 输出转义 | stage 摘要和对象键在插入 DOM 前进行 HTML 转义 |
 | 脚本执行器 | 执行超时 | 每个脚本 10 秒超时，超时后跳过继续执行 |
 | 脚本执行器 | 异常隔离 | 单个脚本异常不影响其他脚本和导演流程 |
 
-### 21.3 破坏性操作确认
+### 22.3 破坏性操作确认
 
 所有破坏性操作均使用 ST 原生 `callGenericPopup` + `POPUP_TYPE.CONFIRM` 弹窗确认，不再使用浏览器原生 `confirm()`：
 
@@ -1071,7 +1101,7 @@ Group Director 允许用户导入和编写自定义代码（用户 Provider、�
 - NPC：重置、删除
 - 档案：全部重新生成
 
-### 21.4 静态代码扫描规则
+### 22.4 静态代码扫描规则
 
 `systems/user-provider-loader.js` 中定义的 `DANGEROUS_PATTERNS` 正则数组：
 

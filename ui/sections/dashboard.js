@@ -463,7 +463,7 @@ registerSection('dashboard', function (ctx) {
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="profile-summary">${summarize() || (lang === 'zh' ? '(空)' : '(empty)')}</div></div>`);
             makeEditable($detail, 'profile-summary',
-                () => summarize(),
+                () => profile.summary || '',
                 (v) => { profile.summary = v; },
                 () => saveChatConditional(),
                 () => summarize()

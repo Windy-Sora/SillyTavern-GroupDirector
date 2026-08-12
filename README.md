@@ -474,3 +474,12 @@ Group Director 不是一个发言过滤器。
 让状态、关系、剧情与世界观能够长期积累，并在未来被重新利用、相互影响。
 
 最终实现一个虚拟世界。
+
+---
+
+# 开发文档
+
+- [设计文档](DESIGN.md)：运行时架构、回合编排器、Provider、Agent、UI 与安全边界
+- [测试指南](TESTING.md)：GD Test Lab、测试分层、真实 SillyTavern 契约与回归规则
+- [用户手册](USER-GUIDE.md)：配置与功能使用说明
+- [模板语法](TEMPLATE-SYNTAX.md)：Prompt DSL 与 Provider 查询语法

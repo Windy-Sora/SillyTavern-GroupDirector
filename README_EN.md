@@ -402,3 +402,12 @@ It is more like a runtime for open-ended narrative:
 Its goal is to allow the world to continuously evolve, enabling characters, knowledge, state, and story to accumulate and influence each other over the long term.
 
 Ultimately, SillyTavern group chat is not just chatting—it's a programmable narrative world.
+
+---
+
+## Development Documentation
+
+- [Design document](DESIGN_EN.md): runtime architecture, round orchestration, Providers, Agents, UI, and security boundaries
+- [Testing guide](TESTING.md): GD Test Lab, test layers, real SillyTavern contracts, and regression rules
+- [User guide](USER-GUIDE_EN.md): configuration and feature usage
+- [Template syntax](TEMPLATE-SYNTAX_EN.md): Prompt DSL and Provider query syntax

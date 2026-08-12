@@ -13,10 +13,9 @@ import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
 import { scoreFormulaCharacter } from './systems/speaker-selection.js';
-import { decideFormulaTurn, decideTakeoverTurn, transitionWrapperStarted } from './systems/round-state.js';
+import { decideFormulaTurn } from './systems/round-state.js';
 import { recoverDirectorPlan } from './systems/director-plan.js';
-import { buildTakeoverSchedule } from './systems/takeover-scheduler.js';
-import { canFinalizeRound } from './systems/round-finalization.js';
+import { createRoundOrchestrator } from './systems/round-orchestrator.js';
 import { decideLlmSpeakerTurn } from './systems/llm-speaker-state.js';
 import { getForceSpeakAction } from './systems/generation-guards.js';
 import { matchesTrigger, rollInitiative as rollInitiativeValue } from './systems/trigger-initiative.js';
@@ -131,11 +130,7 @@ let llmCursor = 0;
 let roundInitialized = false;
 let initPromise = null;              // guards concurrent interceptor calls
 let isGroupChat = false;
-let takeoverPending = false;
-let takeoverGenCount = 0;
-let takeoverFailed = false;          // set when manual generation fails mid-round
-let takeoverCompleted = new Set();    // avatars already generated (for resume after failure)
-let takeoverSwipeCount = 0;          // auto-swipe counter per character (cap at 5)
+const roundOrchestrator = createRoundOrchestrator();
 let directorScripts = {};           // { characterName: scriptText } from LLM
 let directorLastReason = '';         // reason from last director decision, exposed to script executors
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
@@ -575,7 +570,7 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 
 // ─── NPC System ──────────────────────────────────────────────────────
 const npcSystem = createNpcSystem({
-    settings, EXT_KEY, getChatMetadata, saveChatConditional, characters, log,
+    settings, EXT_KEY, getChatMetadata, saveChatConditional, getCharacters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
 });
 
@@ -967,47 +962,17 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
     // ─── Mode: LLM ──────────────────────────────────────────────────
     if (settings.mode === MODE_LLM) {
         // Manual ordered generation in progress — validate identity, inject script, let through
-        if (takeoverGenCount > 0) {
-            const takeoverDecision = decideTakeoverTurn({
-                remaining: takeoverGenCount,
-                swipeCount: takeoverSwipeCount,
+        if (roundOrchestrator.getSnapshot().takeoverRemaining > 0) {
+            const takeoverDecision = roundOrchestrator.decideTakeoverTurn({
                 generationType: roundGenerateType,
                 avatar,
                 plannedAvatars: llmPickedAvatars,
             });
-            // Keep the existing script-injection path below, but centralize
-            // terminal takeover guards in the pure state reducer.
             if (takeoverDecision.action === 'block') {
-                takeoverGenCount = takeoverDecision.remaining;
-                takeoverSwipeCount = takeoverDecision.swipeCount;
-                takeoverFailed = takeoverDecision.failed;
                 abort(false);
                 return;
             }
-            // Auto-swipe/regenerate during takeover: same character re-rolling,
-            // don't consume the takeover count. Detected via roundGenerateType
-            // which is now captured before the nested START guard.
-            const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
-            if (isReroll) {
-                takeoverSwipeCount++;
-                if (takeoverSwipeCount > 5) {
-                    console.warn(`[GroupDirector] takeoverSwipeCount exceeded (${takeoverSwipeCount}) — aborting takeover for ${char.name}`);
-                    takeoverFailed = true;
-                    takeoverGenCount = 0;
-                    abort(false);
-                    return;
-                }
-            } else {
-                takeoverGenCount--;
-                roundSpeakerCount++;
-                takeoverSwipeCount = 0; // new character, reset swipe counter
-            }
-            // Verify this character is actually in the director's plan
-            if (llmPickedAvatars && !llmPickedAvatars.includes(avatar)) {
-                console.error(`[GroupDirector] TAKEOVER MISMATCH: ${char.name} (${avatar}) not in director plan — aborting!`);
-                abort(false);
-                return;
-            }
+            if (!takeoverDecision.reroll) roundSpeakerCount++;
             // Safety-net script injection: ensure the correct per-character script is set
             const takeoverScript = await getScriptForChar(char.name, {
                 speakerIndex: roundSpeakerCount,
@@ -1017,11 +982,11 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             if (takeoverScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, takeoverScript, getScriptPosition(), 0, true);
             }
-            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverGenCount→${takeoverGenCount}, speaker #${roundSpeakerCount}${isReroll ? ', reroll' : ''})`);
+            console.warn(`[GroupDirector] MANUAL-GEN ALLOWED ${char.name} (takeoverRemaining→${takeoverDecision.remaining}, speaker #${roundSpeakerCount}${takeoverDecision.reroll ? ', reroll' : ''})`);
             return;
         }
         // ST's activation loop is being suppressed — abort all
-        if (takeoverPending) {
+        if (roundOrchestrator.getSnapshot().takeoverPending) {
             console.warn(`[GroupDirector] TAKEOVER-BLOCK ${char.name} (ST order suppressed, director will drive order)`);
             abort(false);
             return;
@@ -1138,11 +1103,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Always capture the generation type, even for nested wrappers.
     // Auto-swipes during takeover need to be visible to the interceptor.
     roundGenerateType = data?.type || 'normal';
-    const wrapperTransition = transitionWrapperStarted({
-        generationType: roundGenerateType,
-        manualRemaining: takeoverGenCount,
-        takeoverFailed,
-    });
+    const wrapperTransition = roundOrchestrator.startWrapper({ generationType: roundGenerateType });
 
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
@@ -1155,9 +1116,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // instead of making a new one. Chat already has partial messages from the
     // failed attempt; a new decision would conflict with existing dialog boxes.
     if (wrapperTransition.kind === 'retry_failed') {
-        takeoverFailed = false;
-        takeoverPending = settings.mode === MODE_LLM && settings.llmRespectOrder;
-        takeoverGenCount = 0;
+        roundOrchestrator.retryFailed({ pending: settings.mode === MODE_LLM && settings.llmRespectOrder });
         llmSpokenSet = new Set();
         llmCursor = 0;
         roundSpeakerCount = 0;
@@ -1197,8 +1156,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
                     llmSpokenSet = new Set();
                     llmCursor = 0;
                     roundSpeakerCount = 0;
-                    takeoverPending = false;
-                    takeoverGenCount = 0;
+                    roundOrchestrator.clearTakeover();
                     roundInitialized = true;
                     const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
                     if (saved) {
@@ -1251,8 +1209,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
             llmSpokenSet = new Set();
             llmCursor = 0;
             roundSpeakerCount = 0;
-            takeoverPending = false;
-            takeoverGenCount = 0;
+            roundOrchestrator.clearTakeover();
             roundInitialized = true;
             // Restore counter snapshots (may be lost on page reload while plan survived in memory)
             const saved = chat_metadata[EXT_KEY]?._counterSnapshots;
@@ -1279,11 +1236,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     roundInitialized = false;
     initPromise = null;
     generationStopped = false;
-    takeoverPending = false;
-    takeoverGenCount = 0;
-    takeoverFailed = false;
-    takeoverCompleted = new Set();
-    takeoverSwipeCount = 0;
+    roundOrchestrator.reset();
     manualGenInProgress = false;
     directorScripts = {};
     directorLastReason = '';
@@ -1305,17 +1258,16 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     isGroupChat = false;
     log('Group generation finished');
 
-    if (takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
+    if (roundOrchestrator.getSnapshot().takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
         await runManualOrderedGeneration();
     }
-    takeoverPending = false;
+    roundOrchestrator.setPending(false);
     let postSpeechRoundWasAborted = false;
 
     // PostSpeech per-round: run EXACTLY ONCE after ALL characters
     // (including takeover) have finished speaking.
     // Only fire when takeover is fully complete (not during nested wrappers)
-    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && canFinalizeRound({
-        takeoverRemaining: takeoverGenCount,
+    if (settings.postSpeechRoundEnabled && !postSpeechRoundRan && roundOrchestrator.canFinalize({
         manualGenerationInProgress: manualGenInProgress,
         generationStopped,
     })) {
@@ -1431,8 +1383,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     // round boundary even when the optional round-analysis agent is disabled
     // or fails.
     if (!postSpeechRoundWasAborted &&
-        canFinalizeRound({
-            takeoverRemaining: takeoverGenCount,
+        roundOrchestrator.canFinalize({
             manualGenerationInProgress: manualGenInProgress,
             generationStopped,
         }) &&
@@ -1446,8 +1397,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
     // ─── Script Executor: round trigger (before auto summary, deduped) ──
     // Only fire when takeover is fully complete (same guard as PostSpeech round)
-    if (!scriptExecutorRoundRan && canFinalizeRound({
-        takeoverRemaining: takeoverGenCount,
+    if (!scriptExecutorRoundRan && roundOrchestrator.canFinalize({
         manualGenerationInProgress: manualGenInProgress,
         generationStopped,
     })) {
@@ -1467,13 +1417,12 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     const lang = settings.lang || 'zh';
     const hasAutoCA = (settings.customAgents || []).some(a => a.enabled && a.autoEnabled);
     const _c1 = settings.autoSummaryEnabled || settings.autoMemoryEnabled || settings.autoCritiqueEnabled || hasAutoCA;
-    const _c2 = canFinalizeRound({
-        takeoverRemaining: takeoverGenCount,
+    const _c2 = roundOrchestrator.canFinalize({
         manualGenerationInProgress: manualGenInProgress,
         generationStopped,
     });
     const _c3 = !manualGenInProgress;
-    console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: takeoverGenCount, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
+    console.log('[GD-auto] guard:', { _c1, _c2, _c3, tGC: roundOrchestrator.getSnapshot().takeoverRemaining, mGP: manualGenInProgress, allOk: _c1 && _c2 && _c3 });
     if (_c1 && _c2 && _c3) {
         const currentLen = chat.length;
         // Base prevLen on actual summary/memory coverage, not a possibly stale counter
@@ -1942,11 +1891,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
     roundInitialized = false;
     initPromise = null;
     generationStopped = false;
-    takeoverPending = false;
-    takeoverGenCount = 0;
-    takeoverFailed = false;
-    takeoverCompleted = new Set();
-    takeoverSwipeCount = 0;
+    roundOrchestrator.reset();
     manualGenInProgress = false;
     directorScripts = {};
     wiState.text = '';
@@ -2001,33 +1946,25 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
 let manualGenInProgress = false;
 async function runManualOrderedGeneration() {
     manualGenInProgress = true;
-    takeoverPending = false;
-    const schedule = buildTakeoverSchedule(llmPickedAvatars, {
-        completed: takeoverCompleted,
+    roundOrchestrator.setPending(false);
+    const schedule = roundOrchestrator.beginTakeover(llmPickedAvatars, {
         knownAvatars: new Set(characters.map(character => character.avatar)),
     });
     const orderedList = schedule.queue.map(step => step.avatar);
-    takeoverGenCount = schedule.remaining;
     const ctx = getContext();
     const savedChId = ctx.characterId;
     const savedChName = characters[savedChId]?.name || '';
 
     console.warn('[GroupDirector] TAKEOVER START — orderedList:', orderedList.map(a => characters.find(c => c.avatar === a)?.name));
-    console.warn('[GroupDirector] takeoverGenCount:', takeoverGenCount);
+    console.warn('[GroupDirector] takeoverRemaining:', roundOrchestrator.getSnapshot().takeoverRemaining);
 
     try {
         for (let i = 0; i < orderedList.length; i++) {
             const avatar = orderedList[i];
-            // Resume after failure: skip characters already generated
-            if (takeoverCompleted.has(avatar)) {
-                takeoverGenCount--;
-                console.warn(`[GroupDirector] SKIP already completed: ${characters.find(c => c.avatar === avatar)?.name}, takeoverGenCount→${takeoverGenCount}`);
-                continue;
-            }
             const chId = characters.findIndex(c => c.avatar === avatar);
             if (chId === -1) {
-                takeoverGenCount--;
-                console.warn('[GroupDirector] SKIP unknown avatar, takeoverGenCount→', takeoverGenCount);
+                const remaining = roundOrchestrator.skipTurn();
+                console.warn('[GroupDirector] SKIP unknown avatar, takeoverRemaining→', remaining);
                 continue;
             }
             setCharacterId(chId);
@@ -2037,10 +1974,10 @@ async function runManualOrderedGeneration() {
             const verifyAvatar = characters[verifyChId]?.avatar;
             if (verifyAvatar !== avatar) {
                 console.error(`[GroupDirector] VALIDATION FAILED: takeover set chId=${chId} for avatar=${avatar}, but context has chId=${verifyChId} avatar=${verifyAvatar} — aborting this speaker`);
-                takeoverGenCount--;
+                roundOrchestrator.skipTurn();
                 continue;
             }
-            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverGenCount=${takeoverGenCount})`);
+            console.warn(`[GroupDirector] GEN #${i + 1}: ${characters[chId].name} (chId=${chId}, takeoverRemaining=${roundOrchestrator.getSnapshot().takeoverRemaining})`);
 
             // Inject per-character director script with order context.
             // Use original plan position so retries/skips don't shift the index.
@@ -2075,11 +2012,10 @@ async function runManualOrderedGeneration() {
                     }
                 }
                 console.warn(`[GroupDirector] GEN #${i + 1} DONE: ${characters[chId].name}`);
-                takeoverCompleted.add(avatar);
+                roundOrchestrator.markCompleted(avatar);
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
-                takeoverGenCount = 0;
-                takeoverFailed = true;
+                roundOrchestrator.markFailed();
                 // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
                 // so a retry reuses the same director decision instead of making a new one.
                 return;
@@ -2093,7 +2029,7 @@ async function runManualOrderedGeneration() {
         console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
     } finally {
         console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
-        takeoverGenCount = 0;
+        roundOrchestrator.finishTakeover();
         manualGenInProgress = false;
         // Restore the original character context so ST doesn't stay stuck
         // on the last generated character after takeover
@@ -2379,7 +2315,7 @@ async function initRoundWithLLM() {
 
         // Takeover
         if (settings.llmRespectOrder) {
-            takeoverPending = true;
+            roundOrchestrator.setPending(true);
             console.warn('[GroupDirector] TAKEOVER SET — picked:', capped.map(a => characters.find(c => c.avatar === a)?.name));
         }
 
@@ -2410,7 +2346,7 @@ async function initRoundWithLLM() {
                 llmPickedAvatars = recovered.avatars;
                 llmPickedSet = new Set(recovered.avatars);
                 directorScripts = recovered.scripts;
-                if (settings.llmRespectOrder) takeoverPending = true;
+                if (settings.llmRespectOrder) roundOrchestrator.setPending(true);
                 return;
             }
             toastr.warning('导演决策失败，正在复用上一轮决策...');
@@ -2430,7 +2366,7 @@ async function initRoundWithLLM() {
                         if (c) directorScripts[c.name] = script;
                     }
                 }
-                if (settings.llmRespectOrder) takeoverPending = true;
+                if (settings.llmRespectOrder) roundOrchestrator.setPending(true);
                 return;
             }
         }
