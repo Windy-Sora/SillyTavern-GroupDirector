@@ -296,6 +296,8 @@ Extracts key experiences and emotional changes from conversation history. Status
 
 Batch-generate NPCs based on conversation context, can be imported as character cards. Status label shows NPC count.
 
+After a successful “Import as Card,” the NPC shows an imported badge and the duplicate-import button is hidden. Renames or content edits made while the import is pending are preserved. If SillyTavern creates the character card but chat-metadata persistence fails, the UI explicitly reports “character created, import status not saved.” Do not import the same card again; once storage recovers, a later chat save can flush the in-memory tracking receipt.
+
 **NPC Library** (inside the NPC Generation card)
 
 Save the current group's NPCs as a named "NPC library", reusable across group chats. Library entries live in global settings, not exported with chat.

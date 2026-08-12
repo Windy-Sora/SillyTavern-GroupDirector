@@ -1041,6 +1041,15 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 - Takeover mid-failure → `takeoverFailed = true`, retry reuse next time
 - JSZip load failure → `import()` fails → script tag injection → 10s timeout error
 
+### 18.1 Asynchronous Generation Consistency
+
+Asynchronous results from Summary, Critique, Memory, NPC, Profile, Story Blueprint, and Custom Agent must follow capture → await → validate → commit in the system layer. UI sections never own the commit.
+
+- `systems/execution-snapshot.js` captures the active `chat_metadata` reference, chat-array reference, serialized chat contents, and a business-resource snapshot.
+- After any LLM/render await that can yield control, and before persistence, the system calls `assertExecutionSnapshot()`. Chat switches, in-place message appends/edits, manual result edits, reverts, and resets invalidate the older request with `StaleExecutionError`.
+- Resource snapshots serialize only fields that affect the request input or result ownership. Persistence rollback is conditional so it cannot overwrite a newer revision.
+- Irreversible external side effects do not use ordinary stale rollback. NPC character-card import performs its final snapshot check before POST, then reconciles a successful create by stable `importId`. If the card exists but tracking persistence fails, `NpcImportTrackingError` carries the `avatarName`; the UI reports partial success and retains an in-memory receipt for a later save.
+
 ---
 
 ## 19. Development Quick Reference
@@ -1123,6 +1132,8 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | A factory captures the `characters` array | SillyTavern may replace the entire array, leaving the closure on a stale reference | Inject `getCharacters()` and resolve the live value at use time |
 | An editor reuses a display summary | Tags, motivation, and HTML enter the stored source value | Keep the editor value separate from the display formatter |
 | Import validation checks only the array container | Malformed values such as `entries: [null]` throw during later field access | Validate both the container and every element at the parse boundary |
+| Only the chat-array reference is compared | SillyTavern appends or edits messages in place, so the reference stays stable while prompt input changes | Snapshot both the array reference and serialized contents |
+| Ordinary stale rollback runs after remote success | The POST already created a character card, so a later local stale error misreports real success as failure | Validate before the side effect, reconcile by stable ID, and explicitly report partial success |
 
 ---
 

@@ -7,12 +7,12 @@ readable reports.
 
 Current verified baseline (2026-08-12):
 
-- 222 JavaScript source files pass static validation;
-- 111 behavior tests are discovered, with 110 passing and one optional real-host
+- 251 JavaScript source files and 10 JSON files pass static validation;
+- 201 behavior tests are discovered, with 200 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
-- entry-point reachability is 136/144 production modules, while tests directly or
-  transitively reach 38/144 production modules.
+- entry-point reachability is 146/154 production modules, while tests directly or
+  transitively reach 54/154 production modules.
 
 The reachability numbers are diagnostics, not success targets. A module can be
 entry-reachable without being safe, and test reachability is not line coverage.
@@ -187,6 +187,21 @@ and the auto coordinator tests first-enable, interval, deletion reset, and
 checkpoint rollback. System tests cover prompt reuse, raw-text fallback, stale-chat
 rejection, and edited-result persistence. The UI contract forbids direct history
 mutation, JSON parsing, and chat persistence from the section module.
+
+## Asynchronous result consistency coverage
+
+`tests/unit/similar-agent-concurrency.test.mjs` owns the shared concurrency contract
+for Summary, Memory, NPC, Profile, and Story Blueprint. Deferred promises create
+deterministic interleavings for chat switches, in-place message appends, manual
+edits, reverts, compression, and stale LLM responses. A valid stale rejection must
+use `StaleExecutionError` and leave the newer state untouched.
+
+External side effects have a separate contract. NPC character-card tests verify
+that staleness is checked before the create POST, successful creates reconcile by
+stable `importId` even when a same-timestamp sibling exists and the target is
+renamed, and tracking-save failure surfaces `NpcImportTrackingError` with the
+created `avatarName`. The in-memory receipt remains marked imported so a later
+successful chat save can flush it, while the UI warns against retrying the create.
 
 ## UI safety coverage
 

@@ -1040,6 +1040,15 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 - Takeover 中途失败 → `takeoverFailed = true`，下次重试复用
 - JSZip 加载失败 → `import()` 失败 → script 标签注入 → 10 秒超时抛错
 
+### 18.1 异步生成一致性
+
+Summary、Critique、Memory、NPC、Profile、Story Blueprint 和 Custom Agent 的异步结果都必须在系统层完成“捕获 → 等待 → 校验 → 提交”，UI 不得直接接管提交逻辑。
+
+- `systems/execution-snapshot.js` 捕获当前 `chat_metadata` 引用、聊天数组引用、聊天内容序列化值和业务资源快照。
+- 每个可能让控制权交还事件循环的 LLM/渲染等待之后、持久化之前，都要调用 `assertExecutionSnapshot()`；切换聊天、原地追加/编辑消息、手动编辑结果、回退或重置都会使旧请求以 `StaleExecutionError` 结束。
+- 业务资源只序列化会影响当前请求输入或输出归属的字段；保存失败时仅在没有更新版本覆盖的情况下回滚。
+- 不可逆外部副作用不能套用普通 stale 回滚。NPC 角色卡导入在 POST 前做最终快照校验，POST 成功后按稳定 `importId` 协调当前 NPC；若角色已创建但跟踪状态持久化失败，则抛出带 `avatarName` 的 `NpcImportTrackingError`，UI 以“部分成功”提示处理，并保留内存收据供后续保存刷新。
+
 ---
 
 ## 19. 开发速查
@@ -1122,6 +1131,8 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | 工厂捕获 `characters` 数组 | SillyTavern 可能替换整个数组，闭包继续读取旧引用 | 注入 `getCharacters()`，在使用点读取实时值 |
 | 编辑器复用展示摘要 | 展示文本混入标签、动机和 HTML，保存后污染原始数据 | 编辑值与展示 formatter 分离 |
 | 只校验导入数组容器 | `entries: [null]` 等畸形元素在后续字段读取时抛错 | 在解析边界同时校验容器和每个元素 |
+| 只比较聊天数组引用 | SillyTavern 会在同一数组上原地追加或编辑消息，引用不变但提示词输入已变 | 快照同时保存数组引用和序列化内容 |
+| 远端成功后继续按 stale 回滚 | POST 已创建角色卡，本地再抛普通失效错误会把真实成功伪装成失败 | 外部副作用前校验；成功后用稳定 ID 协调，并显式报告部分成功 |
 
 ---
 
