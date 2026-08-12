@@ -70,6 +70,30 @@ test('critique system rejects stale generation results after a chat switch', asy
     assert.equal(h.saves(), 0);
 });
 
+test('critique generation keeps start coverage on append and rejects covered message edits', async () => {
+    const h = harness();
+    let pending = deferred();
+    h.chat = [{ name: 'User', mes: 'first' }];
+    h.response = () => pending.promise;
+    const generation = h.system.generateCritique();
+    await Promise.resolve();
+    h.chat.push({ name: 'Alice', mes: 'second' });
+    pending.resolve('{"directorCritique":{},"characterCritiques":{}}');
+    const entry = await generation;
+    assert.equal(entry.rangeEnd, 1);
+
+    const edited = harness();
+    pending = deferred();
+    edited.chat = [{ name: 'User', mes: 'original' }];
+    edited.response = () => pending.promise;
+    const stale = edited.system.generateCritique();
+    await Promise.resolve();
+    edited.chat[0].mes = 'edited';
+    pending.resolve('{"directorCritique":{},"characterCritiques":{}}');
+    await assert.rejects(stale, { name: 'StaleExecutionError' });
+    assert.equal(edited.saves(), 0);
+});
+
 test('regeneration updates the active predecessor after a revert', async () => {
     const h = harness();
     h.chat = [{ name: 'User', mes: 'one' }];

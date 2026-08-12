@@ -118,10 +118,19 @@ export function createCritiqueSystem({
         throw error;
     }
 
+    function assertCurrentCoverage(chat, rangeEnd, snapshot) {
+        if (chat.length >= rangeEnd && formatMessages(chat.slice(0, rangeEnd)) === snapshot) return;
+        const error = new Error('Critique execution became stale after covered messages changed');
+        error.name = 'StaleExecutionError';
+        throw error;
+    }
+
     async function generateCritique() {
         const metadata = getChatMetadata();
         const chat = getChat();
         if (!chat.length) throw new Error('No messages to critique');
+        const rangeEnd = chat.length;
+        const coverageSnapshot = formatMessages(chat.slice(0, rangeEnd));
 
         const latestActive = repository.getLatestActive(metadata);
         if (latestActive && latestActive.rangeEnd === chat.length) {
@@ -143,8 +152,9 @@ export function createCritiqueSystem({
         log?.(`[critique] generate: prompt length=${prompt.length}`);
         const response = await execution.execute(prompt);
         assertCurrentContext(metadata, chat);
+        assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
         const entry = {
-            rangeEnd: chat.length,
+            rangeEnd,
             content: response || '',
             data: parseResponseData(response),
             active: true,
@@ -153,6 +163,7 @@ export function createCritiqueSystem({
             timestamp: Date.now(),
         };
         assertCurrentContext(metadata, chat);
+        assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
         return await repository.add(entry, metadata);
     }
 

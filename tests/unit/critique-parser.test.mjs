@@ -8,6 +8,15 @@ test('critique parser extracts fenced JSON with escaped braces and trailing comm
     assert.deepEqual(parsed.characterCritiques.Alice.suggestions, ['go']);
 });
 
+test('critique parser preserves comma-brace and comma-bracket text in valid JSON strings', () => {
+    const pacing = 'literal ,} marker and ,] marker';
+    const parsed = parseCritiqueResponse(JSON.stringify({
+        directorCritique: { pacing },
+        characterCritiques: {},
+    }));
+    assert.equal(parsed.directorCritique.pacing, pacing);
+});
+
 test('critique parser skips an invalid prose brace before the real object', () => {
     const parsed = extractCritiqueJson('Example {not json} then {"directorCritique":{},"characterCritiques":{}}');
     assert.deepEqual(parsed, { directorCritique: {}, characterCritiques: {} });

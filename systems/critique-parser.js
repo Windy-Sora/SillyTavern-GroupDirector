@@ -1,8 +1,34 @@
 import { normalizeCritiqueData } from './critique-validation.js';
 
+function removeTrailingCommas(text) {
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        if (escaped) {
+            result += char;
+            escaped = false;
+            continue;
+        }
+        if (inString && char === '\\') {
+            result += char;
+            escaped = true;
+            continue;
+        }
+        if (char === '"') inString = !inString;
+        if (!inString && char === ',') {
+            let next = index + 1;
+            while (/\s/.test(text[next])) next++;
+            if (text[next] === '}' || text[next] === ']') continue;
+        }
+        result += char;
+    }
+    return result;
+}
+
 function sanitizeJson(text) {
-    return text
-        .replace(/,(\s*[}\]])/g, '$1')
+    return removeTrailingCommas(text)
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
 }
 
@@ -27,10 +53,15 @@ export function extractCritiqueJson(text) {
     for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
         const end = findBalancedObjectEnd(text, start);
         if (end < 0) continue;
+        const candidate = text.slice(start, end + 1);
         try {
-            return JSON.parse(sanitizeJson(text.slice(start, end + 1)));
+            return JSON.parse(candidate);
         } catch (_) {
-            // A prose brace or malformed candidate may precede the real JSON object.
+            try {
+                return JSON.parse(sanitizeJson(candidate));
+            } catch (_) {
+                // A prose brace or malformed candidate may precede the real JSON object.
+            }
         }
     }
     return null;
