@@ -4,6 +4,21 @@ import {
     snapshotValue,
 } from './execution-snapshot.js';
 
+export class NpcImportTrackingError extends Error {
+    constructor(avatarName, cause) {
+        super(`Character was created as ${avatarName}, but its import status could not be saved`);
+        this.name = 'NpcImportTrackingError';
+        this.avatarName = avatarName;
+        this.remoteCreated = true;
+        this.cause = cause;
+    }
+}
+
+function createNpcImportId() {
+    if (globalThis.crypto?.randomUUID) return `npc_${globalThis.crypto.randomUUID()}`;
+    return `npc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * NPC System — generate, store, edit, and import NPCs as character cards.
  *
@@ -161,13 +176,17 @@ export function createNpcSystem({
      * and creates a PNG card from DEFAULT_AVATAR_PATH.
      */
     async function importNpcAsCharacter(index) {
-        const executionSnapshot = captureExecutionSnapshot({
-            getChatMetadata,
-            getResource: metadata => getNpcs(metadata),
-        });
-        const npcs = getNpcs(executionSnapshot.metadata);
+        const metadata = getChatMetadata();
+        const npcs = getNpcs(metadata);
         const npc = npcs[index];
         if (!npc) throw new Error('NPC not found');
+        if (npc.imported && npc.importedAvatar) return npc.importedAvatar;
+        if (!npc.importId) npc.importId = createNpcImportId();
+        const importId = npc.importId;
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getResource: capturedMetadata => getNpcs(capturedMetadata),
+        });
 
         // Build character data in V2 format
         const charData = {
@@ -211,18 +230,7 @@ export function createNpcSystem({
             // avatarName is something like "张铁柱.png"
             if (getChatMetadata() === executionSnapshot.metadata) {
                 const current = getNpcs(executionSnapshot.metadata);
-                let currentIndex = npc.createdAt == null ? -1 : current.findIndex(candidate => (
-                    candidate.createdAt === npc.createdAt && candidate.name === npc.name
-                ));
-                if (currentIndex < 0 && npc.createdAt != null) {
-                    const createdAtMatches = current
-                        .map((candidate, candidateIndex) => candidate.createdAt === npc.createdAt ? candidateIndex : -1)
-                        .filter(candidateIndex => candidateIndex >= 0);
-                    if (createdAtMatches.length === 1) currentIndex = createdAtMatches[0];
-                }
-                if (currentIndex < 0) {
-                    currentIndex = current.findIndex(candidate => candidate.name === npc.name);
-                }
+                const currentIndex = current.findIndex(candidate => candidate.importId === importId);
                 if (currentIndex >= 0) {
                     const next = structuredClone(current);
                     next[currentIndex] = { ...next[currentIndex], imported: true, importedAvatar: avatarName };
@@ -231,6 +239,7 @@ export function createNpcSystem({
                     } catch (saveError) {
                         executionSnapshot.metadata[EXT_KEY].npcs = next;
                         log('NPC import tracking save failed after character creation:', saveError.message);
+                        throw new NpcImportTrackingError(avatarName, saveError);
                     }
                 }
             }

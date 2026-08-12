@@ -240,7 +240,7 @@ test('NPC generation rejects an in-place chat append while the LLM is pending', 
     assert.equal(system.getNpcs().length, 0);
 });
 
-test('NPC import reconciles a successful remote create with a concurrent edit', async () => {
+test('NPC import reconciles a renamed target when generated siblings share a timestamp', async () => {
     const gate = deferred();
     const metadata = { gd: { npcs: [
         { name: 'Alice', description: 'other', createdAt: 1 },
@@ -263,13 +263,41 @@ test('NPC import reconciles a successful remote create with a concurrent edit', 
     try {
         const request = system.importNpcAsCharacter(1);
         await settle();
-        await system.updateNpc(1, { description: 'manual edit' });
+        await system.updateNpc(1, { name: 'Robert', description: 'manual edit' });
         gate.resolve();
         assert.equal(await request, 'Bob.png');
         assert.equal(system.getNpcs()[0].imported, undefined);
+        assert.equal(system.getNpcs()[1].name, 'Robert');
         assert.equal(system.getNpcs()[1].description, 'manual edit');
         assert.equal(system.getNpcs()[1].imported, true);
         assert.equal(system.getNpcs()[1].importedAvatar, 'Bob.png');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('NPC import reports partial success when tracking persistence fails', async () => {
+    const metadata = { gd: { npcs: [{ name: 'Alice', createdAt: 1 }] } };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async url => url === '/csrf-token'
+        ? { json: async () => ({ token: 'csrf' }) }
+        : { ok: true, text: async () => 'Alice.png' };
+    const system = createNpcSystem({
+        settings: { lang: 'en' },
+        EXT_KEY: 'gd',
+        getChatMetadata: () => metadata,
+        saveChatConditional: async () => { throw new Error('disk unavailable'); },
+        getCharacters: () => [],
+        log: () => {},
+    });
+    try {
+        await assert.rejects(system.importNpcAsCharacter(0), error => (
+            error.name === 'NpcImportTrackingError'
+            && error.avatarName === 'Alice.png'
+            && error.remoteCreated === true
+        ));
+        assert.equal(system.getNpcs()[0].imported, true);
+        assert.equal(system.getNpcs()[0].importedAvatar, 'Alice.png');
     } finally {
         globalThis.fetch = originalFetch;
     }

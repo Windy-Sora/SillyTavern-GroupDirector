@@ -114,7 +114,7 @@ registerSection('npc', function (ctx) {
             const importedBadge = npc.imported
                 ? `<span style="color:green;font-size:0.8em;">&#10003; ${L('已导入', 'Imported')} (${esc(npc.importedAvatar || '')})</span>`
                 : '';
-            const importBtn = `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
+            const importBtn = npc.imported && npc.importedAvatar ? '' : `<span class="menu_button menu_button_icon gd-npc-import" data-idx="${i}" style="font-size:0.8em;"><i class="fa-solid fa-user-plus"></i> ${L('导入为角色卡', 'Import as Card')}</span>`;
 
             html += `
                 <div class="gd-npc-card" style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:6px;margin-top:4px;" data-idx="${i}">
@@ -178,6 +178,15 @@ registerSection('npc', function (ctx) {
                 renderNpcList();
                 window.__gdRefreshDashboard?.();
             } catch (e) {
+                if (e.name === 'NpcImportTrackingError' && e.avatarName) {
+                    toastr.warning(L(
+                        `角色卡已创建为 ${e.avatarName}，但导入状态保存失败。请勿重复导入。`,
+                        `Character card was created as ${e.avatarName}, but its import status could not be saved. Do not import it again.`,
+                    ));
+                    renderNpcList();
+                    window.__gdRefreshDashboard?.();
+                    return;
+                }
                 toastr.error(L('导入失败: ' + e.message, 'Import failed: ' + e.message));
                 btn.prop('disabled', false);
             }
