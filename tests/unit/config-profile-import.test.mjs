@@ -48,6 +48,21 @@ test('config profile import normalizes script executors and replaces external id
     assert.equal(profile.settings.scriptExecutors[0].triggerOn, 'both');
 });
 
+test('config profile import validates and disables custom agents with fresh ids', async () => {
+    const { subject } = createConfigProfileSubject();
+    const profile = await subject.importProfileFromJson(jsonFile(manifest({
+        settings: { customAgents: [{
+            id: 'external', name: 'Agent', providerName: 'agent_result',
+            enabled: true, autoEnabled: true,
+        }] },
+    })));
+    const imported = profile.settings.customAgents[0];
+    assert.match(imported.id, /^ca_/);
+    assert.notEqual(imported.id, 'external');
+    assert.equal(imported.enabled, false);
+    assert.equal(imported.autoEnabled, false);
+});
+
 test('JSON import strips credentials and executable asset stubs before storage', async () => {
     const { subject, settings, calls } = createConfigProfileSubject();
     const profile = await subject.importProfileFromJson(jsonFile(manifest({

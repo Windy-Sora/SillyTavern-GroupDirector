@@ -95,3 +95,26 @@ test('save failure rolls live settings back to their previous values', () => {
     assert.equal(calls.saves, 1);
     assert.equal(calls.logs.length, 0);
 });
+
+test('custom agent provider refresh failure rolls profile settings back', () => {
+    let refreshes = 0;
+    const customAgentSystem = {
+        validateList: () => {},
+        refreshProviders: () => {
+            refreshes++;
+            if (refreshes === 1) throw new Error('provider collision');
+        },
+    };
+    const { subject, settings, calls } = createConfigProfileSubject({
+        customAgents: [],
+        configProfiles: [profile({ customAgents: [{
+            id: 'ca_profile', name: 'Agent', providerName: 'agent_result',
+        }] })],
+    }, { ok: true }, { customAgentSystem });
+    const before = structuredClone(settings);
+
+    assert.throws(() => subject.applyProfile('profile-1'), /provider collision/);
+    assert.deepEqual(settings, before);
+    assert.equal(refreshes, 2);
+    assert.equal(calls.saves, 0);
+});

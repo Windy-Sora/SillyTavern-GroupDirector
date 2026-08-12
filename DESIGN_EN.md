@@ -553,7 +553,7 @@ Save/delete/import operations auto-refresh both dropdowns and the config profile
 
 UI sections retain event binding and DOM mutation, while security-sensitive rules such as input normalization, output encoding, and display/editor separation live in pure helpers in the same directory and are called directly by production sections. Current boundaries include:
 
-- `custom-agent-helpers.js`: import field allowlisting, trusted IDs, numeric bounds, and exact `data-id` comparison.
+- `custom-agent-helpers.js`: UI numeric bounds and exact `data-id` comparison; the system validator owns the import contract.
 - `execution-trace-helpers.js`: trace summarization and safe stage HTML encoding.
 - `profile-summary-helpers.js`: separation of composite profile display text from the raw editor value.
 
@@ -634,6 +634,10 @@ SillyTavern-GroupDirector/
 │   ├── world-book-scanner.js  # World book scanning
 │   ├── chat-summary-system.js # Context summarization
 │   ├── critique-system.js     # AI critique
+│   ├── custom-agent-validation.js # Shared Custom Agent/import/profile contract
+│   ├── custom-agent-system.js # CRUD, import/export, result storage, Provider lifecycle
+│   ├── custom-agent-execution.js # Serial execution, deduplication, stale checks, result transaction
+│   ├── custom-agent-auto-coordinator.js # Pure auto-trigger scheduling policy
 │   ├── story-blueprint-system.js  # Story Blueprint system
 │   ├── story-blueprint-library-system.js # Story Blueprint reusable library
 │   ├── summary-export-system.js
@@ -878,13 +882,16 @@ User-defined lightweight LLM Agents that auto-trigger every N rounds or execute 
 
 ### 14.1 Design Highlights
 
-- **No custom orchestration** — Each instance runs on GROUP_WRAPPER_FINISHED, independent of other systems
+- **Thin entry orchestration** — `index.js` only consumes pure scheduling actions; execution, counters, and persistence stay in the system layer
 - **Shared API config** — `agentConfigs['custom-agent']`, not split per instance
 - **Independent per-instance counters** — `_autoCAG_{id}` in chat_metadata, no cross-interference
 - **Ordering** — User fills in an order number; execute serially in ascending order
 - **Dynamic Provider registration** — `providerName` field → `{{providerName}}` → DSL queries
 - **Disabled = Provider deactivated** — enabled=false returns '' from render()
 - **No proactive data cleanup** — Deleting an instance unregisters the Provider; data silently remains in chat_metadata
+- **Single write boundary** — The UI never mutates settings or chat results directly; CRUD, imports, and result edits use `customAgentSystem`
+- **Execution isolation** — Concurrent calls for one instance are deduplicated and all jobs are serialized; chat changes, deletions, or config changes invalidate old results
+- **Transactional commit** — Auto-run result and `_autoCAG_{id}` checkpoint are saved together and rolled back together on failure
 
 ### 14.2 Data Model
 
@@ -919,11 +926,23 @@ chat_metadata[EXT_KEY]._caData = {
 
 ### 14.3 Auto-Trigger
 
-Executes within GROUP_WRAPPER_FINISHED, after Critique. Sorted by order, each instance checks `chat.length - checkpoint >= interval`, and if met, calls `customAgentSystem.execute()`.
+Executes within GROUP_WRAPPER_FINISHED, after Critique. `custom-agent-auto-coordinator.js` is a pure policy that sorts by order and emits `execute`, `checkpoint`, or `reset` actions; the entry point only consumes those actions.
 
 Each instance's independent checkpoint is stored as `chat_metadata[EXT_KEY]._autoCAG_{id}`, with a three-way branch (first-enable / deletion / normal) following the same pattern as Summary/Critique.
 
-### 14.4 Provider Rendering
+### 14.4 Module Boundaries
+
+| Module | Sole responsibility |
+|--------|---------------------|
+| `custom-agent-validation.js` | Fields, Schema, ID/providerName uniqueness, and safe disabled imports |
+| `custom-agent-system.js` | Validate-then-commit CRUD, Provider rollback, import conflicts, and result editing |
+| `custom-agent-execution.js` | Request snapshots, serial queue, same-ID deduplication, stale checks, and chat-save transaction |
+| `custom-agent-auto-coordinator.js` | Compute auto-trigger actions without side effects |
+| `ui/sections/customAgents.js` | DOM rendering, event collection, and user feedback without owning business state |
+
+Config Profile imports reuse the same validator, replace external IDs, and disable imported agents. Profile apply validates Provider conflicts on a detached copy and restores settings and registrations on failure.
+
+### 14.5 Provider Rendering
 
 The Provider render closure captures the instance's `id`. Each call checks `settings.customAgents.find(a => a.id === capturedId && a.enabled)` to confirm the instance still exists and is enabled. Returns `''` when not found or disabled.
 

@@ -552,7 +552,7 @@ UI section 通过 `registerSection(name, initFn)` 注册，`initAllSections(ctx)
 
 UI section 保留事件绑定和 DOM 修改；输入归一化、输出编码、展示/编辑值分离等安全敏感规则放在同目录纯 helper 中，并由生产 section 直接调用。当前包括：
 
-- `custom-agent-helpers.js`：导入字段白名单、可信 ID、数值边界与 `data-id` 精确比较。
+- `custom-agent-helpers.js`：UI 数值输入边界与 `data-id` 精确比较；导入契约由系统层 validator 统一负责。
 - `execution-trace-helpers.js`：Trace 汇总及阶段 HTML 安全编码。
 - `profile-summary-helpers.js`：档案摘要的复合展示文本与原始编辑值分离。
 
@@ -633,6 +633,10 @@ SillyTavern-GroupDirector/
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
 │   ├── critique-system.js     # AI 批判
+│   ├── custom-agent-validation.js # Custom Agent / 导入 / 配置档共享数据契约
+│   ├── custom-agent-system.js # CRUD、导入导出、结果存储与 Provider 生命周期
+│   ├── custom-agent-execution.js # 串行执行、去重、stale 检测与结果事务
+│   ├── custom-agent-auto-coordinator.js # 自动触发纯调度策略
 │   ├── story-blueprint-system.js  # 故事蓝图系统
 │   ├── story-blueprint-library-system.js # 故事蓝图可复用库
 │   ├── summary-export-system.js
@@ -879,13 +883,16 @@ decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {.
 
 ### 14.1 设计要点
 
-- **不自创编排** — 每个实例跑在 GROUP_WRAPPER_FINISHED，不依赖其他系统
+- **薄入口编排** — `index.js` 只消费纯调度动作；执行、计数器和持久化由系统层负责
 - **共用一个 API 配置** — `agentConfigs['custom-agent']`，不按实例拆分
 - **每个实例独立计数器** — `_autoCAG_{id}` 在 chat_metadata，互不影响
 - **排序** — 用户填 order 数字，按升序串行执行
 - **Provider 动态注册** — `providerName` 字段 → `{{providerName}}` → DSL 查询
 - **禁用 = Provider 停用** — enabled=false 时 render() 返回 ''
 - **数据不主动清理** — 删实例时 Provider 反注册，数据静默留在 chat_metadata
+- **单一写入口** — UI 不直接修改设置或聊天结果；CRUD、导入、编辑结果均走 `customAgentSystem`
+- **执行隔离** — 同一实例并发请求合并，全局按 order 串行；聊天切换、删消息或配置变化会使旧结果失效
+- **事务提交** — 自动执行的结果和 `_autoCAG_{id}` checkpoint 一次保存；保存失败同时回滚
 
 ### 14.2 数据模型
 
@@ -920,11 +927,23 @@ chat_metadata[EXT_KEY]._caData = {
 
 ### 14.3 自动触发
 
-在 GROUP_WRAPPER_FINISHED 中，Critique 之后执行。按 order 排序，逐实例检查 `chat.length - checkpoint >= interval`，满足则调用 `customAgentSystem.execute()`。
+在 GROUP_WRAPPER_FINISHED 中，Critique 之后执行。`custom-agent-auto-coordinator.js` 以纯函数按 order 生成 `execute`、`checkpoint`、`reset` 动作，入口只负责逐项消费。
 
 每个实例独立的 checkpoint 存为 `chat_metadata[EXT_KEY]._autoCAG_{id}`，三路分支（first-enable / deletion / normal）复用 Summary/Critique 同一模式。
 
-### 14.4 Provider 渲染
+### 14.4 模块边界
+
+| 模块 | 唯一职责 |
+|------|----------|
+| `custom-agent-validation.js` | 字段、Schema、ID/providerName 唯一性和外部导入禁用策略 |
+| `custom-agent-system.js` | 候选副本校验后提交、Provider 注册/回滚、导入冲突和结果编辑 |
+| `custom-agent-execution.js` | 请求快照、串行队列、同 ID 去重、stale 判定与聊天保存事务 |
+| `custom-agent-auto-coordinator.js` | 无副作用地计算自动触发动作 |
+| `ui/sections/customAgents.js` | DOM 渲染、事件采集和用户反馈，不拥有业务状态 |
+
+配置档导入复用同一 validator，外部 ID 会替换且 Agent 默认禁用；配置档应用先在副本中验证 Provider 冲突，失败时恢复设置和注册表。
+
+### 14.5 Provider 渲染
 
 Provider render 闭包捕获 `instance.id`，每次调用检查 `settings.customAgents.find(a => a.id === capturedId && a.enabled)` 确认实例还存在且已启用。不存在或禁用时返回 `''`。
 

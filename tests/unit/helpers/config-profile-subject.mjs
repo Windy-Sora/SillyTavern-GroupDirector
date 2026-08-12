@@ -26,6 +26,7 @@ export function createConfigProfileSubject(initial = {}, variableResult = { ok: 
             if (options.saveError) throw options.saveError;
         },
         variableSystem,
+        customAgentSystem: options.customAgentSystem,
         log: message => calls.logs.push(message),
     });
     return { subject, settings, extensionSettings, calls };

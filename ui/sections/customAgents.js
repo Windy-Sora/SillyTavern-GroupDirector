@@ -1,9 +1,9 @@
 import { registerSection } from './registry.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
-import { matchesDataId, normalizeImportedAgent, toBoundedInt } from './custom-agent-helpers.js';
+import { matchesDataId, toBoundedInt } from './custom-agent-helpers.js';
 
 registerSection('customAgents', function (ctx) {
-    const { settings, $c, saveSettings, saveChatConditional, toastr, customAgentSystem } = ctx;
+    const { settings, $c, toastr, customAgentSystem } = ctx;
     if (!customAgentSystem) return;
 
     const isZh = () => (settings.lang || 'zh') === 'zh';
@@ -12,11 +12,7 @@ registerSection('customAgents', function (ctx) {
     const $list = $('#gd-ca-list');
 
     function getList() {
-        return settings.customAgents || [];
-    }
-
-    function save() {
-        saveSettings();
+        return customAgentSystem.getList();
     }
 
     function escHtml(s) {
@@ -133,17 +129,12 @@ registerSection('customAgents', function (ctx) {
         // Toggle enable
         $list.find('.gd-ca-toggle-btn').off('click').on('click', function () {
             const id = $(this).data('id');
-            const list = getList();
-            const inst = list.find(a => a.id === id);
-            if (!inst) return;
-            inst.enabled = !inst.enabled;
-            // Auto-disable auto when disabling
-            if (!inst.enabled) {
-                inst.autoEnabled = false;
+            try {
+                customAgentSystem.toggle(id);
+                renderList();
+            } catch (error) {
+                toastr.error(L(`切换失败: ${error.message}`, `Toggle failed: ${error.message}`));
             }
-            save();
-            customAgentSystem.refreshProviders();
-            renderList();
         });
 
         // ─── Unsaved changes tracking ─────────────────────
@@ -185,17 +176,20 @@ registerSection('customAgents', function (ctx) {
             const otherWithSamePN = list.find(a => a.id !== id && a.providerName === providerName);
             if (otherWithSamePN) return false;
 
-            const wasPNChanged = inst.providerName !== providerName;
-            inst.name = name;
-            inst.providerName = providerName;
-            inst.prompt = $byId('.gd-ca-edit-prompt', id).val() || '';
-            inst.schema = $byId('.gd-ca-edit-schema', id).val() || '';
-            inst.order = toBoundedInt($byId('.gd-ca-edit-order', id).val(), 0, 0, 999);
-            inst.autoInterval = toBoundedInt($byId('.gd-ca-edit-interval', id).val(), 10, 1, 200);
-            inst.autoEnabled = inst.enabled && $byId('.gd-ca-edit-auto', id).prop('checked');
-
-            save();
-            if (wasPNChanged) customAgentSystem.refreshProviders();
+            try {
+                customAgentSystem.update(id, {
+                    name,
+                    providerName,
+                    prompt: $byId('.gd-ca-edit-prompt', id).val() || '',
+                    schema: $byId('.gd-ca-edit-schema', id).val() || '',
+                    order: toBoundedInt($byId('.gd-ca-edit-order', id).val(), 0, 0, 999),
+                    autoInterval: toBoundedInt($byId('.gd-ca-edit-interval', id).val(), 10, 1, 200),
+                    autoEnabled: inst.enabled && $byId('.gd-ca-edit-auto', id).prop('checked'),
+                });
+            } catch (error) {
+                toastr.error(L(`保存失败: ${error.message}`, `Save failed: ${error.message}`));
+                return false;
+            }
             renderList();
             if (showToast) toastr.success(L(`"${name}" 已保存`, `"${name}" saved`));
             return true;
@@ -216,15 +210,13 @@ registerSection('customAgents', function (ctx) {
         $list.find('.gd-ca-result-save').off('click').on('click', async function (e) {
             e.stopPropagation();
             const id = $(this).data('id');
-            const store = customAgentSystem.getData(id);
-            if (!store) return;
             const newContent = $byId('.gd-ca-edit-result', id).val() || '';
-            let newData;
-            try { newData = JSON.parse(newContent); } catch (_) { newData = newContent; }
-            store.content = newContent;
-            store.data = newData;
-            await saveChatConditional();
-            toastr.success(L('结果已保存', 'Result saved'));
+            try {
+                if (!await customAgentSystem.updateResult(id, newContent)) return;
+                toastr.success(L('结果已保存', 'Result saved'));
+            } catch (error) {
+                toastr.error(L(`结果保存失败: ${error.message}`, `Result save failed: ${error.message}`));
+            }
         });
 
         // Save button
@@ -257,13 +249,13 @@ registerSection('customAgents', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             )) return;
 
-            const idx = list.findIndex(a => a.id === id);
-            if (idx === -1) return;
-            list.splice(idx, 1);
-            save();
-            customAgentSystem.refreshProviders();
-            renderList();
-            toastr.success(L(`"${name}" 已删除`, `"${name}" deleted`));
+            try {
+                customAgentSystem.remove(id);
+                renderList();
+                toastr.success(L(`"${name}" 已删除`, `"${name}" deleted`));
+            } catch (error) {
+                toastr.error(L(`删除失败: ${error.message}`, `Delete failed: ${error.message}`));
+            }
         });
 
         // Execute
@@ -300,11 +292,7 @@ registerSection('customAgents', function (ctx) {
     $c('ca-export-btn').on('click', function () {
         const list = getList();
         if (!list.length) { toastr.info(L('无自定义 Agent 可导出', 'No agents to export')); return; }
-        const data = list.map(a => ({
-            name: a.name, providerName: a.providerName, prompt: a.prompt, schema: a.schema,
-            enabled: a.enabled, autoEnabled: a.autoEnabled, autoInterval: a.autoInterval, order: a.order,
-        }));
-        const blob = new Blob([JSON.stringify({ version: 1, type: 'custom-agent-export', agents: data, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(customAgentSystem.createExportData(), null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = 'custom-agents.json'; a.click();
@@ -321,36 +309,14 @@ registerSection('customAgents', function (ctx) {
         try {
             const text = await file.text();
             const data = JSON.parse(text);
-            if (data.type !== 'custom-agent-export') throw new Error('Invalid file type');
-            if (!Array.isArray(data.agents)) throw new Error('No agents array');
-
-            const list = getList();
-            let imported = 0;
-            for (const a of data.agents) {
-                if (!a || typeof a !== 'object' || typeof a.name !== 'string' || typeof a.providerName !== 'string') continue;
-                const name = a.name.trim();
-                const providerNameValue = a.providerName.trim();
-                if (!name || !providerNameValue) continue;
-                const conflict = list.find(x => x.providerName === providerNameValue);
-                if (conflict) {
-                    const providerName = escHtml(providerNameValue);
-                    if (!await callGenericPopup(
-                        L(`providerName "${providerName}" 已存在，是否覆盖？`, `Provider "${providerName}" exists. Overwrite?`),
-                        POPUP_TYPE.CONFIRM,
-                    )) continue;
-                    const old = list.find(x => x.id === conflict.id);
-                    if (old) Object.assign(old, normalizeImportedAgent({ ...a, name, providerName: providerNameValue }, old.id));
-                    imported++;
-                    continue;
-                }
-                const id = `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-                list.push(normalizeImportedAgent({ ...a, name, providerName: providerNameValue }, id));
-                imported++;
-            }
-            save();
-            customAgentSystem.refreshProviders();
+            const result = await customAgentSystem.importAgents(data, {
+                resolveConflict: async ({ incoming }) => await callGenericPopup(
+                    L(`providerName "${escHtml(incoming.providerName)}" 已存在，是否覆盖？`, `Provider "${escHtml(incoming.providerName)}" exists. Overwrite?`),
+                    POPUP_TYPE.CONFIRM,
+                ) ? 'overwrite' : 'skip',
+            });
             renderList();
-            toastr.success(L(`已导入 ${imported} 个自定义 Agent`, `Imported ${imported} agents`));
+            toastr.success(L(`已导入 ${result.imported} 个自定义 Agent`, `Imported ${result.imported} agents`));
         } catch (e) {
             toastr.error(L(`导入失败: ${e.message}`, `Import failed: ${e.message}`));
         } finally {
@@ -360,24 +326,19 @@ registerSection('customAgents', function (ctx) {
 
     $c('ca-add-btn').on('click', function () {
         const list = getList();
-        const id = `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        const providerName = customAgentSystem.suggestProviderName();
         const name = L('新 Agent', 'New Agent');
-        list.push({
-            id,
-            name,
-            providerName: '',
-            prompt: '',
-            schema: '',
-            enabled: false,
-            autoEnabled: false,
-            autoInterval: 10,
-            order: list.length + 1,
-        });
-        save();
-        renderList();
-        // Auto-open edit for new entry
-        $byId('.gd-ca-edit', id).show();
-        toastr.info(L(`已创建 "${name}"，请编辑配置`, `"${name}" created, edit config`));
+        try {
+            const created = customAgentSystem.add({
+                name, providerName, prompt: '', schema: '', enabled: false,
+                autoEnabled: false, autoInterval: 10, order: Math.min(list.length + 1, 999),
+            });
+            renderList();
+            $byId('.gd-ca-edit', created.id).show();
+            toastr.info(L(`已创建 "${name}"，请编辑配置`, `"${name}" created, edit config`));
+        } catch (error) {
+            toastr.error(L(`创建失败: ${error.message}`, `Create failed: ${error.message}`));
+        }
     });
 
     renderList();

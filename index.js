@@ -54,6 +54,7 @@ import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
 import { createCustomAgentSystem } from './systems/custom-agent-system.js';
+import { planCustomAgentAutoRuns } from './systems/custom-agent-auto-coordinator.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
 import { createProfileExportSystem } from './systems/profile-export-system.js';
 import { createProfileLibrarySystem } from './systems/profile-library-system.js';
@@ -312,6 +313,7 @@ const critiqueSystem = createCritiqueSystem({
 
 const customAgentSystem = createCustomAgentSystem({
     settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    saveSettings: saveSettingsDebounced,
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     createCaller,
     log,
@@ -443,7 +445,8 @@ const memoryExportSystem = createMemoryExportSystem({
 
 // ─── Config Profile System ──────────────────────────────────────────
 const configProfileSystem = createConfigProfileSystem({
-    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log,
+    settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault,
+    variableSystem, customAgentSystem, log,
 });
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 
@@ -1644,51 +1647,30 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 
             // ─── Auto Custom Agents ────────────────────────
             const caInstances = (settings.customAgents || []).filter(a => a.enabled && a.autoEnabled);
-            console.log('[GD-auto-ca] instances found:', caInstances.length, 'total in settings:', (settings.customAgents || []).length);
-            if (caInstances.length) {
-                const sorted = [...caInstances].sort((a, b) => (a.order || 0) - (b.order || 0));
-                for (const inst of sorted) {
-                    const caKey = `_autoCAG_${inst.id}`;
-                    let caLen = chat_metadata[EXT_KEY][caKey];
-                    if (caLen === undefined) {
-                        const store = customAgentSystem.getData(inst.id);
-                        caLen = store?.rangeEnd ?? 0;
-                    }
-                    const interval = inst.autoInterval || 10;
-
-                    if (caLen === 0 && chat_metadata[EXT_KEY][caKey] === undefined && legacyLen === undefined) {
-                        if (currentLen >= interval) {
-                            try {
-                                log(`[GD-auto-ca] "${inst.name}": first-enable, ${currentLen} msgs`);
-                                toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${currentLen} 条现有消息）...` : `"${inst.name}" auto (${currentLen} msgs)...`, '', { timeOut: 3000 });
-                                const result = await customAgentSystem.execute(inst);
-                                if (!result) throw new Error('Custom agent returned no result');
-                                chat_metadata[EXT_KEY][caKey] = currentLen;
-                                await saveChatConditional();
-                                toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
-                            } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
-                        } else {
-                            chat_metadata[EXT_KEY][caKey] = currentLen;
-                            await saveChatConditional();
-                        }
-                    } else if (currentLen < caLen) {
-                        chat_metadata[EXT_KEY][caKey] = currentLen;
-                        await saveChatConditional();
-                        toastr?.warning?.(lang === 'zh' ? `检测到消息被删除，"${inst.name}" 计数器已重置。` : `Msgs deleted. "${inst.name}" counter reset.`, '', { timeOut: 8000 });
+            const caActions = planCustomAgentAutoRuns({
+                instances: caInstances,
+                currentLength: currentLen,
+                counters: chat_metadata[EXT_KEY],
+                getLatestRangeEnd: id => customAgentSystem.getData(id)?.rangeEnd ?? 0,
+                legacyLength: legacyLen,
+            });
+            for (const action of caActions) {
+                const inst = action.instance;
+                try {
+                    if (action.type === 'execute') {
+                        log(`[GD-auto-ca] "${inst.name}" triggered (${action.newMessages} msgs)`);
+                        toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${action.newMessages} 条消息）...` : `"${inst.name}" auto (${action.newMessages} msgs)...`, '', { timeOut: 3000 });
+                        const result = await customAgentSystem.executeAuto(inst, action.currentLength);
+                        if (!result) throw new Error('Custom agent returned no result');
+                        toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
                     } else {
-                        const newMsgs = currentLen - caLen;
-                        if (newMsgs >= interval) {
-                            try {
-                                log(`[GD-auto-ca] "${inst.name}" triggered (${newMsgs} msgs)`);
-                                toastr?.info?.(lang === 'zh' ? `"${inst.name}" 自动触发（${newMsgs} 条新消息）...` : `"${inst.name}" auto (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                                const result = await customAgentSystem.execute(inst);
-                                if (!result) throw new Error('Custom agent returned no result');
-                                chat_metadata[EXT_KEY][caKey] = currentLen;
-                                await saveChatConditional();
-                                toastr?.success?.(lang === 'zh' ? `"${inst.name}" 完成` : `${inst.name} done`, '', { timeOut: 2000 });
-                            } catch (e) { log(`[GD-auto-ca] "${inst.name}" failed:`, e.message); }
+                        await customAgentSystem.setAutoCounter(inst.id, action.currentLength);
+                        if (action.type === 'reset') {
+                            toastr?.warning?.(lang === 'zh' ? `检测到消息被删除，"${inst.name}" 计数器已重置。` : `Msgs deleted. "${inst.name}" counter reset.`, '', { timeOut: 8000 });
                         }
                     }
+                } catch (e) {
+                    log(`[GD-auto-ca] "${inst.name}" failed:`, e.message);
                 }
             }
 
@@ -1882,6 +1864,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 // ───
 
 eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
+    customAgentSystem.invalidateExecutions();
     roundScores = {};
     roundSpeakerCount = 0;
     roundTriggeredAvatars.clear();
@@ -1908,6 +1891,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    customAgentSystem.invalidateExecutions();
     profileLibrarySystem.resetAutoLoadDedup?.();
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();

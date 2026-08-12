@@ -3,6 +3,11 @@ import {
     normalizeScriptExecutor,
     normalizeScriptExecutorList,
 } from './script-executor-validation.js';
+import {
+    generateCustomAgentId,
+    normalizeCustomAgent,
+    normalizeCustomAgentList,
+} from './custom-agent-validation.js';
 
 const CONFIG_PROFILE_VERSION = 1;
 
@@ -63,12 +68,14 @@ export function validateConfigProfileManifest(manifest, { source = 'json' } = {}
         'customPrompts',
         'userProviders',
         'userCapabilities',
-        'customAgents',
     ]) {
         validateNamedEntries(manifest.settings, key);
     }
     if (manifest.settings.scriptExecutors !== undefined) {
         normalizeScriptExecutorList(manifest.settings.scriptExecutors, { path: 'scriptExecutors' });
+    }
+    if (manifest.settings.customAgents !== undefined) {
+        normalizeCustomAgentList(manifest.settings.customAgents, { path: 'customAgents' });
     }
     return manifest;
 }
@@ -84,6 +91,13 @@ export function sanitizeImportedSettings(settings, { source = 'json' } = {}) {
         sanitized.scriptExecutors = sanitized.scriptExecutors.map((entry, index) => normalizeScriptExecutor(entry, {
             path: `scriptExecutors[${index}]`,
             id: generateScriptExecutorId(),
+        }));
+    }
+    if (Array.isArray(sanitized.customAgents)) {
+        sanitized.customAgents = sanitized.customAgents.map((entry, index) => normalizeCustomAgent(entry, {
+            path: `customAgents[${index}]`,
+            id: generateCustomAgentId(),
+            forceDisabled: true,
         }));
     }
     return sanitized;

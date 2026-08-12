@@ -143,7 +143,7 @@ function stripApiKeys(configs) {
 // ─── Factory ─────────────────────────────────────────────────────────
 
 export function createConfigProfileSystem(deps) {
-    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, log } = deps;
+    const { settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault, variableSystem, customAgentSystem, log } = deps;
 
     function getProfiles() {
         if (!settings.configProfiles) settings.configProfiles = [];
@@ -259,6 +259,7 @@ export function createConfigProfileSystem(deps) {
         const previousVariables = importsVariables && variableSystem.getExportData
             ? variableSystem.getExportData({ includeLog: true })
             : null;
+        customAgentSystem?.validateList(nextSettings.customAgents || []);
         try {
             if (importsVariables) {
                 const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
@@ -266,9 +267,11 @@ export function createConfigProfileSystem(deps) {
                 changed.push('variables');
             }
             replaceObject(settings, nextSettings);
+            customAgentSystem?.refreshProviders();
             saveAll();
         } catch (error) {
             replaceObject(settings, previousSettings);
+            try { customAgentSystem?.refreshProviders(); } catch (_) { /* preserve the transaction error */ }
             if (setProviderTimeoutDefault) setProviderTimeoutDefault(previousSettings.providerTimeoutMs);
             if (importsVariables && previousVariables) {
                 try {

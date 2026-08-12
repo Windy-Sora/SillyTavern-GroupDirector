@@ -171,14 +171,23 @@ turn state. The UI contract verifies that import/export handlers delegate to the
 system instead of performing incremental `add`/`remove` mutations. Config Profile
 imports reuse the validator and replace external executor IDs before storage.
 
+Custom Agent coverage uses the same layered contract: the validator owns field,
+Schema, duplicate-ID/provider, and disabled-import rules; the system suite owns
+transactional CRUD/import, Provider lifecycle, request deduplication, stale chat
+and config rejection, and result/checkpoint rollback. The pure auto coordinator
+tests first-enable, normal interval, ordering, and deletion-reset decisions. UI
+tests should verify delegation only—the section must not mutate `customAgents`,
+`_caData`, or `_autoCAG_*` directly.
+
 ## UI safety coverage
 
 DOM-heavy sections keep event wiring and element mutation in the section module,
 while security-sensitive transformations live in small pure helpers imported by
 that same production module. Current contracts cover:
 
-- Custom Agent field allowlisting, trusted internal IDs, disabled import defaults,
-  bounded numeric fields, and treating selector syntax as plain `data-id` text;
+- Custom Agent UI numeric bounds and treating selector syntax as plain `data-id`
+  text; field allowlisting, trusted IDs, and disabled imports live in the shared
+  system validator tests;
 - Execution Trace stage rendering with encoded names, errors, and output keys;
 - Dashboard profile summary display formatting kept separate from the raw editor
   value, so tags, motivation labels, and `<br>` markup are never persisted.
