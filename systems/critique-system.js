@@ -125,6 +125,13 @@ export function createCritiqueSystem({
         throw error;
     }
 
+    function assertCurrentCritique(metadata, entry, revision) {
+        if (repository.getLatestActive(metadata) === entry && repository.getRevision(entry) === revision) return;
+        const error = new Error('Critique execution became stale after the active critique changed');
+        error.name = 'StaleExecutionError';
+        throw error;
+    }
+
     async function generateCritique() {
         const metadata = getChatMetadata();
         const chat = getChat();
@@ -173,6 +180,7 @@ export function createCritiqueSystem({
         const last = repository.getLatestActive(metadata);
         if (!last) throw new Error('No active critique to regenerate');
         const chat = getChat();
+        const revision = repository.getRevision(last);
         const rangeEnd = last.rangeEnd;
         const coverageSnapshot = formatMessages(chat.slice(0, rangeEnd));
         const promptUsed = last.promptUsed || settings.critiquePrompt || '';
@@ -187,6 +195,7 @@ export function createCritiqueSystem({
         const response = await execution.execute(buildPrompt(inputText, promptUsed));
         assertCurrentContext(metadata, chat);
         assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
+        assertCurrentCritique(metadata, last, revision);
         return await repository.update(last, {
             content: response || '',
             data: parseResponseData(response),

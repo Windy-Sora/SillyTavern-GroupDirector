@@ -141,6 +141,42 @@ test('regeneration rejects covered edits and records the prompt actually sent', 
     assert.equal(edited.saves(), 1);
 });
 
+test('a saved manual edit wins over an older in-flight regeneration', async () => {
+    const h = harness();
+    h.chat = [{ name: 'User', mes: 'unchanged chat' }];
+    await h.system.generateCritique();
+    const pending = deferred();
+    h.response = () => pending.promise;
+    const regeneration = h.system.regenerateLastCritique();
+    await Promise.resolve();
+
+    await h.system.updateActiveContent('{"directorCritique":{"pacing":"manual edit"},"characterCritiques":{}}');
+    pending.resolve('{"directorCritique":{"pacing":"regenerated stale"},"characterCritiques":{}}');
+
+    await assert.rejects(regeneration, { name: 'StaleExecutionError' });
+    assert.equal(h.system.getLatestActive().data.directorCritique.pacing, 'manual edit');
+    assert.equal(h.saves(), 2);
+});
+
+test('reverting the active critique invalidates its in-flight regeneration', async () => {
+    const h = harness();
+    h.chat = [{ name: 'User', mes: 'one' }];
+    const first = await h.system.generateCritique();
+    h.chat.push({ name: 'Alice', mes: 'two' });
+    await h.system.generateCritique();
+    const pending = deferred();
+    h.response = () => pending.promise;
+    const regeneration = h.system.regenerateLastCritique();
+    await Promise.resolve();
+
+    await h.system.revertLastCritique();
+    pending.resolve('{"directorCritique":{"pacing":"regenerated stale"},"characterCritiques":{}}');
+
+    await assert.rejects(regeneration, { name: 'StaleExecutionError' });
+    assert.equal(h.system.getLatestActive(), first);
+    assert.equal(h.saves(), 3);
+});
+
 test('critique result editing is validated and persisted through the system boundary', async () => {
     const h = harness();
     h.chat = [{ name: 'User', mes: 'hello' }];
