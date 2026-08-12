@@ -118,6 +118,31 @@ test('ordinary generation records and reuses the prompt actually sent', async ()
     assert.match(sentPrompts[1], /^prompt A/);
 });
 
+test('ordinary generation records and reuses the resolved default prompt', async () => {
+    const h = harness();
+    h.settings.critiquePrompt = '';
+    h.settings.lang = 'en';
+    h.chat = [{ name: 'User', mes: 'one' }];
+    const pending = deferred();
+    const sentPrompts = [];
+    h.response = prompt => {
+        sentPrompts.push(prompt);
+        return sentPrompts.length === 1
+            ? pending.promise
+            : '{"directorCritique":{"pacing":"regenerated"},"characterCritiques":{}}';
+    };
+    const generation = h.system.generateCritique();
+    await Promise.resolve();
+    h.settings.critiquePrompt = 'prompt B';
+    pending.resolve('{"directorCritique":{"pacing":"generated"},"characterCritiques":{}}');
+
+    const entry = await generation;
+    await h.system.regenerateLastCritique();
+    assert.match(sentPrompts[0], /^You are an objective group-chat critique system\./);
+    assert.match(entry.promptUsed, /^You are an objective group-chat critique system\./);
+    assert.match(sentPrompts[1], /^You are an objective group-chat critique system\./);
+});
+
 test('regeneration updates the active predecessor after a revert', async () => {
     const h = harness();
     h.chat = [{ name: 'User', mes: 'one' }];

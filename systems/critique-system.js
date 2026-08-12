@@ -156,7 +156,8 @@ export function createCritiqueSystem({
             inputText = formatMessages(chat);
         }
 
-        const promptUsed = settings.critiquePrompt || '';
+        const promptUsed = settings.critiquePrompt
+            || (settings.lang === 'zh' ? DEFAULT_PROMPT.zh : DEFAULT_PROMPT.en);
         const prompt = buildPrompt(inputText, promptUsed);
         log?.(`[critique] generate: prompt length=${prompt.length}`);
         const response = await execution.execute(prompt);
