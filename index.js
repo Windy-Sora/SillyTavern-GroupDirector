@@ -583,7 +583,7 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 
 // ─── NPC System ──────────────────────────────────────────────────────
 const npcSystem = createNpcSystem({
-    settings, EXT_KEY, getChatMetadata, saveChatConditional, getCharacters, log,
+    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional, getCharacters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
 });
 

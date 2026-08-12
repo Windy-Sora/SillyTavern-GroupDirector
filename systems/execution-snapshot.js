@@ -14,6 +14,7 @@ export function captureExecutionSnapshot({ getChatMetadata, getChat, getResource
     return {
         metadata,
         chat,
+        chatState: getChat ? snapshotValue(chat) : undefined,
         resource: snapshotValue(getResource?.(metadata, chat)),
     };
 }
@@ -25,7 +26,10 @@ export function assertExecutionSnapshot(snapshot, {
     message,
 }) {
     if (getChatMetadata() !== snapshot.metadata) throw staleExecutionError(message);
-    if (getChat && getChat() !== snapshot.chat) throw staleExecutionError(message);
+    if (getChat) {
+        const chat = getChat();
+        if (chat !== snapshot.chat || snapshotValue(chat) !== snapshot.chatState) throw staleExecutionError(message);
+    }
     if (getResource && snapshotValue(getResource(snapshot.metadata, snapshot.chat)) !== snapshot.resource) {
         throw staleExecutionError(message);
     }

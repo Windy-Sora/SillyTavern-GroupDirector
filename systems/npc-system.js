@@ -14,6 +14,7 @@ export function createNpcSystem({
     settings,
     EXT_KEY,
     getChatMetadata,
+    getChat,
     saveChatConditional,
     characters,
     getCharacters = () => characters,
@@ -69,6 +70,7 @@ export function createNpcSystem({
 
         const executionSnapshot = captureExecutionSnapshot({
             getChatMetadata,
+            getChat,
             getResource: metadata => getNpcs(metadata),
         });
         const existingNpcs = structuredClone(getNpcs(executionSnapshot.metadata));
@@ -115,6 +117,7 @@ export function createNpcSystem({
 
         assertExecutionSnapshot(executionSnapshot, {
             getChatMetadata,
+            getChat,
             getResource: metadata => getNpcs(metadata),
             message: 'NPC generation became stale',
         });
@@ -177,11 +180,17 @@ export function createNpcSystem({
         };
 
         try {
+            const csrfToken = (await getCsrfToken()) ?? '';
+            assertExecutionSnapshot(executionSnapshot, {
+                getChatMetadata,
+                getResource: metadata => getNpcs(metadata),
+                message: 'NPC import became stale',
+            });
             const resp = await fetch('/api/characters/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-Token': (await getCsrfToken()) ?? '',
+                    'X-CSRF-Token': csrfToken,
                 },
                 body: JSON.stringify({
                     ch_name: charData.name,
@@ -199,15 +208,32 @@ export function createNpcSystem({
             }
 
             const avatarName = await resp.text();
-            assertExecutionSnapshot(executionSnapshot, {
-                getChatMetadata,
-                getResource: metadata => getNpcs(metadata),
-                message: 'NPC import became stale',
-            });
             // avatarName is something like "张铁柱.png"
-            const next = structuredClone(npcs);
-            next[index] = { ...next[index], imported: true, importedAvatar: avatarName };
-            await replaceNpcs(next, executionSnapshot.metadata);
+            if (getChatMetadata() === executionSnapshot.metadata) {
+                const current = getNpcs(executionSnapshot.metadata);
+                let currentIndex = npc.createdAt == null ? -1 : current.findIndex(candidate => (
+                    candidate.createdAt === npc.createdAt && candidate.name === npc.name
+                ));
+                if (currentIndex < 0 && npc.createdAt != null) {
+                    const createdAtMatches = current
+                        .map((candidate, candidateIndex) => candidate.createdAt === npc.createdAt ? candidateIndex : -1)
+                        .filter(candidateIndex => candidateIndex >= 0);
+                    if (createdAtMatches.length === 1) currentIndex = createdAtMatches[0];
+                }
+                if (currentIndex < 0) {
+                    currentIndex = current.findIndex(candidate => candidate.name === npc.name);
+                }
+                if (currentIndex >= 0) {
+                    const next = structuredClone(current);
+                    next[currentIndex] = { ...next[currentIndex], imported: true, importedAvatar: avatarName };
+                    try {
+                        await replaceNpcs(next, executionSnapshot.metadata);
+                    } catch (saveError) {
+                        executionSnapshot.metadata[EXT_KEY].npcs = next;
+                        log('NPC import tracking save failed after character creation:', saveError.message);
+                    }
+                }
+            }
 
             return avatarName;
         } catch (e) {

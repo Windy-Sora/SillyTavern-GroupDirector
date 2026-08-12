@@ -213,6 +213,101 @@ test('NPC generation preserves edits saved while the LLM is pending', async () =
     assert.equal(system.getNpcs().length, 1);
 });
 
+test('NPC generation rejects an in-place chat append while the LLM is pending', async () => {
+    const gate = deferred();
+    const metadata = {};
+    const chat = [{ mes: 'old context' }];
+    const system = createNpcSystem({
+        settings: { agentConfigs: {}, npcMaxCount: 10, npcBatchSize: 1, lang: 'en' },
+        EXT_KEY: 'gd',
+        getChatMetadata: () => metadata,
+        getChat: () => chat,
+        saveChatConditional: async () => {},
+        getCharacters: () => [],
+        log: () => {},
+        AgentRegistry: { get: () => ({ id: 'npc' }) },
+        execute: () => gate.promise,
+        buildContextPool: () => ({}),
+        getCurrentGroup: () => ({ members: [] }),
+        createCaller: () => ({}),
+        getContext: () => ({ generateRaw: async () => '', stopGeneration: () => {} }),
+    });
+    const request = system.generateNpcs();
+    await settle();
+    chat.push({ mes: 'new context' });
+    gate.resolve([{ name: 'Stale NPC' }]);
+    await assert.rejects(request, { name: 'StaleExecutionError' });
+    assert.equal(system.getNpcs().length, 0);
+});
+
+test('NPC import reconciles a successful remote create with a concurrent edit', async () => {
+    const gate = deferred();
+    const metadata = { gd: { npcs: [
+        { name: 'Alice', description: 'other', createdAt: 1 },
+        { name: 'Bob', description: 'old', createdAt: 1 },
+    ] } };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async url => {
+        if (url === '/csrf-token') return { json: async () => ({ token: 'csrf' }) };
+        await gate.promise;
+        return { ok: true, text: async () => 'Bob.png' };
+    };
+    const system = createNpcSystem({
+        settings: { lang: 'en' },
+        EXT_KEY: 'gd',
+        getChatMetadata: () => metadata,
+        saveChatConditional: async () => {},
+        getCharacters: () => [],
+        log: () => {},
+    });
+    try {
+        const request = system.importNpcAsCharacter(1);
+        await settle();
+        await system.updateNpc(1, { description: 'manual edit' });
+        gate.resolve();
+        assert.equal(await request, 'Bob.png');
+        assert.equal(system.getNpcs()[0].imported, undefined);
+        assert.equal(system.getNpcs()[1].description, 'manual edit');
+        assert.equal(system.getNpcs()[1].imported, true);
+        assert.equal(system.getNpcs()[1].importedAvatar, 'Bob.png');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('NPC import checks staleness before creating a remote character', async () => {
+    const csrfGate = deferred();
+    const metadata = { gd: { npcs: [{ name: 'Alice', description: 'old', createdAt: 1 }] } };
+    let createCalls = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async url => {
+        if (url === '/csrf-token') {
+            await csrfGate.promise;
+            return { json: async () => ({ token: 'csrf' }) };
+        }
+        createCalls++;
+        return { ok: true, text: async () => 'Alice.png' };
+    };
+    const system = createNpcSystem({
+        settings: { lang: 'en' },
+        EXT_KEY: 'gd',
+        getChatMetadata: () => metadata,
+        saveChatConditional: async () => {},
+        getCharacters: () => [],
+        log: () => {},
+    });
+    try {
+        const request = system.importNpcAsCharacter(0);
+        await settle();
+        await system.updateNpc(0, { description: 'manual edit' });
+        csrfGate.resolve();
+        await assert.rejects(request, { name: 'StaleExecutionError' });
+        assert.equal(createCalls, 0);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
 test('profile generation preserves a newer manually saved profile', async () => {
     globalThis.$ = () => ({ length: 0 });
     const gate = deferred();
@@ -327,4 +422,29 @@ test('Story Blueprint generation preserves a same-chat manual replacement', asyn
     gate.resolve({ nodes: [{ id: 'stale', title: 'Stale', content: {} }] });
     await assert.rejects(request, { name: 'StaleExecutionError' });
     assert.equal(system.getBlueprint().nodes[0].id, 'manual');
+});
+
+test('Story Blueprint generation rejects an in-place chat append', async () => {
+    const gate = deferred();
+    const metadata = {};
+    const chat = [{ is_user: true, mes: 'old direction' }];
+    const system = createStoryBlueprintSystem({
+        settings: { lang: 'en', agentConfigs: {}, storyBlueprintMaxNodes: 8 },
+        getChatMetadata: () => metadata,
+        getChat: () => chat,
+        EXT_KEY: 'gd',
+        saveChatConditional: async () => {},
+        renderPrompt: async prompt => prompt,
+        generateRaw: async () => '',
+        createCaller: () => ({ generate: () => gate.promise }),
+        parseJson: value => value,
+        variableSystem: {},
+        getCurrentGroup: () => ({ members: [] }),
+    });
+    const request = system.generateBlueprint('new');
+    await settle();
+    chat.push({ is_user: true, mes: 'new direction' });
+    gate.resolve({ nodes: [{ id: 'stale', title: 'Stale', content: {} }] });
+    await assert.rejects(request, { name: 'StaleExecutionError' });
+    assert.equal(system.getBlueprint(), null);
 });
