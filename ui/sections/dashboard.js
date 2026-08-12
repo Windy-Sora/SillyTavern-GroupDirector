@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { formatProfileSummary, getProfileSummaryEditValue } from './profile-summary-helpers.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
 registerSection('dashboard', function (ctx) {
@@ -459,11 +460,11 @@ registerSection('dashboard', function (ctx) {
             const state = p.state || 'unknown';
             const color = { ready: '#4caf50', pending: '#ff9800', failed: '#f44336' }[state] || '';
             const profile = p.profile || {};
-            const summarize = () => [esc(profile.summary), profile.tags && (lang === 'zh' ? '标签：' : 'Tags: ') + esc([].concat(profile.tags).join(', ')), profile.motivation && (lang === 'zh' ? '动机：' : 'Motivation: ') + esc(profile.motivation)].filter(Boolean).join('<br>');
+            const summarize = () => formatProfileSummary(profile, lang, esc);
             const $row = $(`<div class="gd-list-item gd-list-expandable"><span class="gd-list-name">${esc(name)} ▸</span><span class="gd-list-meta" style="color:${color}">${state}</span></div>`);
             const $detail = $(`<div class="gd-list-detail" style="display:none;padding:4px 8px;font-size:0.9em;color:var(--grey70a);"><div class="gd-edit-field" data-field="profile-summary">${summarize() || (lang === 'zh' ? '(空)' : '(empty)')}</div></div>`);
             makeEditable($detail, 'profile-summary',
-                () => profile.summary || '',
+                () => getProfileSummaryEditValue(profile),
                 (v) => { profile.summary = v; },
                 () => saveChatConditional(),
                 () => summarize()

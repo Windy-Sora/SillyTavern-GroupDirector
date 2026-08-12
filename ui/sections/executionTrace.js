@@ -1,5 +1,5 @@
 import { registerSection } from './registry.js';
-import { summarizeTrace } from './execution-trace-helpers.js';
+import { escapeTraceHtml, renderTraceStageHtml, summarizeTrace } from './execution-trace-helpers.js';
 
 registerSection('executionTrace', function (ctx) {
     const { settings, $c, saveSettings, AgentTrace } = ctx;
@@ -49,7 +49,11 @@ registerSection('executionTrace', function (ctx) {
                         </span>
                     </div>
                     <div class="gd-trace-detail" data-idx="${i}" style="display:none;margin-top:6px;border-top:1px solid var(--SmartThemeBorderColor);padding-top:4px;">
-                        ${realStages.map(s => renderStage(s)).join('')}
+                        ${realStages.map(s => renderTraceStageHtml(s, {
+                            retries: L('重试', 'retries'),
+                            prompt: L('prompt长度', 'prompt'),
+                            output: L('输出', 'out'),
+                        })).join('')}
                     </div>
                 </div>`;
         }
@@ -65,32 +69,8 @@ registerSection('executionTrace', function (ctx) {
         });
     }
 
-    function renderStage(s) {
-        const name = s.stage || s.name || s.id || '';
-        const duration = s.duration ?? s.elapsed;
-        const dur = duration != null ? `${duration.toFixed(0)}ms` : '';
-        let meta = '';
-        if (s.retries > 0) meta += ` ${L('重试', 'retries')}: ${s.retries}`;
-        if (s.promptLength) meta += ` ${L('prompt长度', 'prompt')}: ${s.promptLength}chars`;
-        if (s.error) meta += ` <span style="color:#ff5555;">${esc(s.error)}</span>`;
-        if (s.outputSummary) {
-            const o = s.outputSummary;
-            if (o.type === 'text') meta += ` ${L('输出', 'out')}: ${o.length}chars`;
-            if (o.type === 'object') meta += ` ${L('输出', 'out')}: {${(o.keys || []).map(esc).join(', ')}}`;
-            if (o.type === 'array') meta += ` ${L('输出', 'out')}: [${o.length}]`;
-        }
-
-        return `<div style="font-size:0.82em;padding:2px 0;display:flex;justify-content:space-between;">
-            <span><b>${esc(name)}</b></span>
-            <span style="color:var(--grey70a);">${dur}${meta}</span>
-        </div>`;
-    }
-
     function esc(s) {
-        if (!s) return '';
-        const div = document.createElement('div');
-        div.textContent = String(s);
-        return div.innerHTML;
+        return escapeTraceHtml(s);
     }
 
     // ── Events ──

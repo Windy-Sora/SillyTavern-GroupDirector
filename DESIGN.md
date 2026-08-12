@@ -540,13 +540,23 @@ UI section 通过 `registerSection(name, initFn)` 注册，`initAllSections(ctx)
 | 执行总结 | 触发 `#gd-summary-execute`，未启用则自动开启 | 始终（群聊中） |
 | 配置档下拉 | 内置预设 + 用户配置档（optgroup 分组），选择后点应用 | 始终 |
 
-### 9.5 配置档同步
+### 9.8 配置档同步
 
 仪表盘和工具抽屉各有一个配置档下拉框（`#gd-dash-cfg-preset` 和 `#gd-cfg-preset`），通过 `refreshPresetSelector()` 同时更新。选项以 `<optgroup>` 分组：
 - **内置配置档**：从 `getConfigPresetNames()` 读取，选择后需先 `loadConfigPreset` 再 `applyProfile`
 - **我的配置档**：从 `configProfileSystem.getProfiles()` 读取，value 前缀 `__prof__:id`，选择后直接 `applyProfile`
 
 保存/删除/导入操作后自动刷新两个下拉框和配置档列表。
+
+### 9.9 可测试的 UI 安全边界
+
+UI section 保留事件绑定和 DOM 修改；输入归一化、输出编码、展示/编辑值分离等安全敏感规则放在同目录纯 helper 中，并由生产 section 直接调用。当前包括：
+
+- `custom-agent-helpers.js`：导入字段白名单、可信 ID、数值边界与 `data-id` 精确比较。
+- `execution-trace-helpers.js`：Trace 汇总及阶段 HTML 安全编码。
+- `profile-summary-helpers.js`：档案摘要的复合展示文本与原始编辑值分离。
+
+这些 helper 使用零 DOM 的 `node:test` 行为契约；只有事件传播、焦点、布局或 SillyTavern 自有控件行为才需要浏览器级测试。
 
 ---
 

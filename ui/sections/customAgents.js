@@ -1,5 +1,6 @@
 import { registerSection } from './registry.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
+import { matchesDataId, normalizeImportedAgent, toBoundedInt } from './custom-agent-helpers.js';
 
 registerSection('customAgents', function (ctx) {
     const { settings, $c, saveSettings, saveChatConditional, toastr, customAgentSystem } = ctx;
@@ -26,25 +27,8 @@ registerSection('customAgents', function (ctx) {
         if (s === null || s === undefined) return '';
         return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
     }
-    function toBoundedInt(value, fallback, min, max) {
-        const parsed = Number.parseInt(value, 10);
-        return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
-    }
     function $byId(selector, id) {
-        return $list.find(selector).filter((_, element) => String($(element).attr('data-id')) === String(id));
-    }
-    function normalizeImportedAgent(agent, id) {
-        return {
-            id,
-            name: String(agent.name).trim(),
-            providerName: String(agent.providerName).trim(),
-            prompt: typeof agent.prompt === 'string' ? agent.prompt : '',
-            schema: typeof agent.schema === 'string' ? agent.schema : '',
-            enabled: false,
-            autoEnabled: false,
-            autoInterval: toBoundedInt(agent.autoInterval, 10, 1, 200),
-            order: toBoundedInt(agent.order, 0, 0, 999),
-        };
+        return $list.find(selector).filter((_, element) => matchesDataId($(element).attr('data-id'), id));
     }
 
     function renderList() {

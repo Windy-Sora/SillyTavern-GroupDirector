@@ -7,12 +7,12 @@ readable reports.
 
 Current verified baseline (2026-08-12):
 
-- 181 JavaScript source files pass static validation;
-- 81 behavior tests are discovered, with 80 passing and one optional real-host
+- 187 JavaScript source files pass static validation;
+- 91 behavior tests are discovered, with 90 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
-- entry-point reachability is 133/141 production modules, while tests directly or
-  transitively reach 29/141 production modules.
+- entry-point reachability is 135/143 production modules, while tests directly or
+  transitively reach 34/143 production modules.
 
 The reachability numbers are diagnostics, not success targets. A module can be
 entry-reachable without being safe, and test reachability is not line coverage.
@@ -120,6 +120,22 @@ Import validators should be tested with malformed values at every nesting level,
 including `null`, arrays where objects are expected, primitives, missing strings,
 and invalid array elements. Validation failures must return structured results and
 must not escape into UI event handlers as exceptions.
+
+## UI safety coverage
+
+DOM-heavy sections keep event wiring and element mutation in the section module,
+while security-sensitive transformations live in small pure helpers imported by
+that same production module. Current contracts cover:
+
+- Custom Agent field allowlisting, trusted internal IDs, disabled import defaults,
+  bounded numeric fields, and treating selector syntax as plain `data-id` text;
+- Execution Trace stage rendering with encoded names, errors, and output keys;
+- Dashboard profile summary display formatting kept separate from the raw editor
+  value, so tags, motivation labels, and `<br>` markup are never persisted.
+
+Prefer this boundary over copying UI logic into tests or building a broad fake DOM.
+Use a browser-level contract only when the behavior depends on event propagation,
+focus, layout, or a SillyTavern-owned widget.
 
 ## Writing behavior tests
 

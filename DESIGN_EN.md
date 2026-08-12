@@ -549,6 +549,16 @@ The dashboard and Tools drawer each have a config profile dropdown (`#gd-dash-cf
 
 Save/delete/import operations auto-refresh both dropdowns and the config profile list.
 
+### 9.9 Testable UI Security Boundaries
+
+UI sections retain event binding and DOM mutation, while security-sensitive rules such as input normalization, output encoding, and display/editor separation live in pure helpers in the same directory and are called directly by production sections. Current boundaries include:
+
+- `custom-agent-helpers.js`: import field allowlisting, trusted IDs, numeric bounds, and exact `data-id` comparison.
+- `execution-trace-helpers.js`: trace summarization and safe stage HTML encoding.
+- `profile-summary-helpers.js`: separation of composite profile display text from the raw editor value.
+
+These helpers use DOM-free `node:test` behavior contracts. Browser-level tests are reserved for event propagation, focus, layout, or SillyTavern-owned widget behavior.
+
 ---
 
 ## 10. Directory Structure
