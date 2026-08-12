@@ -158,6 +158,50 @@ test('a saved manual edit wins over an older in-flight regeneration', async () =
     assert.equal(h.saves(), 2);
 });
 
+test('a saved manual edit invalidates ordinary generation from the older critique', async () => {
+    const h = harness();
+    h.chat = [{ name: 'User', mes: 'one' }];
+    const original = await h.system.generateCritique();
+    h.chat.push({ name: 'Alice', mes: 'two' });
+    const pending = deferred();
+    h.response = () => pending.promise;
+    const generation = h.system.generateCritique();
+    await Promise.resolve();
+
+    await h.system.updateActiveContent('{"directorCritique":{"pacing":"manual edit"},"characterCritiques":{}}');
+    pending.resolve('{"directorCritique":{"pacing":"stale generation"},"characterCritiques":{}}');
+
+    await assert.rejects(generation, { name: 'StaleExecutionError' });
+    assert.equal(h.system.getLatestActive(), original);
+    assert.equal(original.data.directorCritique.pacing, 'manual edit');
+    assert.equal(h.system.getCritiques().length, 1);
+    assert.equal(h.saves(), 2);
+});
+
+test('revert and reset invalidate ordinary generation from an obsolete active critique', async () => {
+    for (const mutation of ['revert', 'reset']) {
+        const h = harness();
+        h.chat = [{ name: 'User', mes: 'one' }];
+        const first = await h.system.generateCritique();
+        h.chat.push({ name: 'Alice', mes: 'two' });
+        await h.system.generateCritique();
+        h.chat.push({ name: 'Bob', mes: 'three' });
+        const pending = deferred();
+        h.response = () => pending.promise;
+        const generation = h.system.generateCritique();
+        await Promise.resolve();
+
+        if (mutation === 'revert') await h.system.revertLastCritique();
+        else await h.system.resetAll();
+        pending.resolve('{"directorCritique":{"pacing":"stale generation"},"characterCritiques":{}}');
+
+        await assert.rejects(generation, { name: 'StaleExecutionError' });
+        assert.equal(h.system.getCritiques().length, 2);
+        assert.equal(h.system.getLatestActive(), mutation === 'revert' ? first : null);
+        assert.equal(h.saves(), 3);
+    }
+});
+
 test('reverting the active critique invalidates its in-flight regeneration', async () => {
     const h = harness();
     h.chat = [{ name: 'User', mes: 'one' }];

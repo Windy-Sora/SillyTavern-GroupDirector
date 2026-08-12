@@ -140,6 +140,7 @@ export function createCritiqueSystem({
         const coverageSnapshot = formatMessages(chat.slice(0, rangeEnd));
 
         const latestActive = repository.getLatestActive(metadata);
+        const activeRevision = repository.getRevision(latestActive);
         if (latestActive && latestActive.rangeEnd === chat.length) {
             throw new Error('Latest critique already covers current chat — no new messages');
         }
@@ -160,6 +161,7 @@ export function createCritiqueSystem({
         const response = await execution.execute(prompt);
         assertCurrentContext(metadata, chat);
         assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
+        assertCurrentCritique(metadata, latestActive, activeRevision);
         const entry = {
             rangeEnd,
             content: response || '',
@@ -171,6 +173,7 @@ export function createCritiqueSystem({
         };
         assertCurrentContext(metadata, chat);
         assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
+        assertCurrentCritique(metadata, latestActive, activeRevision);
         return await repository.add(entry, metadata);
     }
 
