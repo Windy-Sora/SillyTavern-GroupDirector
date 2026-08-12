@@ -317,3 +317,20 @@ test('a late auto join checkpoints after an in-progress manual save', async () =
     assert.equal(h.metadata.gd[`_autoCAG_${agent.id}`], 9);
     assert.equal(saves, 2);
 });
+
+test('a saved result edit invalidates an older in-flight execution', async () => {
+    const h = createHarness();
+    const agent = h.system.add(valid());
+    await h.system.execute(agent);
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const gate = deferred();
+    h.response = () => gate.promise;
+    const request = h.system.execute(agent);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await h.system.updateResult(agent.id, 'manual edit');
+    gate.resolve('stale execution');
+
+    await assert.rejects(request, { name: 'StaleExecutionError' });
+    assert.equal(h.system.getData(agent.id).content, 'manual edit');
+});

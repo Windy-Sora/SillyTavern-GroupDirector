@@ -1,3 +1,8 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+} from './execution-snapshot.js';
+
 const DEFAULT_COMPLETION_VARIABLE = 'gd_story_chapter_done';
 
 export const DEFAULT_STORY_BLUEPRINT_SCHEMA = `Reply with ONLY a JSON object, no prose, no code fences:
@@ -412,8 +417,8 @@ export function createStoryBlueprintSystem({
     function lang() { return getLang?.() || settings.lang || 'zh'; }
     function completionVariable() { return variableId(settings.storyBlueprintCompletionVariable); }
 
-    function root() {
-        const meta = getChatMetadata();
+    function root(metadata = getChatMetadata()) {
+        const meta = metadata;
         if (!meta[EXT_KEY]) meta[EXT_KEY] = {};
         if (!meta[EXT_KEY].storyBlueprint) {
             meta[EXT_KEY].storyBlueprint = {
@@ -821,9 +826,27 @@ ${schema}`;
         if (mode === 'continue' && !getBlueprint()) {
             throw new Error(lang() === 'zh' ? '没有可续写的故事蓝图，请先生成蓝图。' : 'No Story Blueprint to continue. Generate one first.');
         }
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const state = root(metadata);
+                return { blueprint: state.blueprint, doneSignals: state.doneSignals };
+            },
+        });
+        const executionState = root(executionSnapshot.metadata);
+        const assertCurrent = () => assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const state = root(metadata);
+                return { blueprint: state.blueprint, doneSignals: state.doneSignals };
+            },
+            message: 'Story Blueprint generation became stale',
+        });
         generating = true;
         try {
-            root().continuePending = mode === 'continue';
+            executionState.continuePending = mode === 'continue';
             saveChatConditional?.();
             const agentConfig = settings.agentConfigs?.['story-blueprint'] || {};
             const caller = createCaller(agentConfig, (opts) => generateRaw(opts));
@@ -833,7 +856,9 @@ ${schema}`;
                 debugPlaceholders: settings.templateDebugPlaceholders,
                 locals: buildGenerationLocals(),
             });
+            assertCurrent();
             const raw = await caller.generate(prompt);
+            assertCurrent();
             const parsed = parseJson(raw);
             if (!parsed) throw new Error('LLM returned no valid JSON blueprint');
             if (mode === 'continue' && getBlueprint()) {
@@ -861,13 +886,18 @@ ${schema}`;
             }
             return getBlueprint();
         } catch (e) {
-            root().lastError = e.message || String(e);
-            saveChatConditional?.();
-            throw e;
+            let failure = e;
+            try { assertCurrent(); }
+            catch (staleError) { failure = staleError; }
+            if (failure === e) {
+                executionState.lastError = e.message || String(e);
+                saveChatConditional?.();
+            }
+            throw failure;
         } finally {
             generating = false;
-            root().continuePending = false;
-            saveChatConditional?.();
+            executionState.continuePending = false;
+            if (getChatMetadata() === executionSnapshot.metadata) saveChatConditional?.();
         }
     }
 

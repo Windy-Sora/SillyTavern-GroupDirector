@@ -1,3 +1,9 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+    snapshotValue,
+} from './execution-snapshot.js';
+
 export function createChatSummarySystem({ settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional, renderPrompt, generateRaw, inject_ids, extension_prompt_types, setExtensionPrompt, log, createCaller }) {
     const cm = () => getChatMetadata();
     let summarizing = false;
@@ -13,15 +19,15 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
         en: 'Summarize the following content concisely. Keep key plot points, character interactions, and important details. Output plain text, maximum 300 words.',
     };
 
-    function getSummaries() {
-        const meta = cm();
+    function getSummaries(metadata = cm()) {
+        const meta = metadata;
         if (!meta[EXT_KEY]) meta[EXT_KEY] = {};
         if (!meta[EXT_KEY].summaries) meta[EXT_KEY].summaries = [];
         return meta[EXT_KEY].summaries;
     }
 
-    function getLatestActive() {
-        const summaries = getSummaries();
+    function getLatestActive(metadata = cm()) {
+        const summaries = getSummaries(metadata);
         for (let i = summaries.length - 1; i >= 0; i--) {
             if (summaries[i].active) return summaries[i];
         }
@@ -36,12 +42,21 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
 
     async function generateSummary() {
         if (summarizing) throw new Error('Summary already in progress');
-        const chat = getChat();
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: (metadata, chat) => ({
+                summaries: getSummaries(metadata),
+                chat: chat.map(message => [message.name, message.mes, message.is_user, message.is_system]),
+            }),
+        });
+        const { metadata, chat } = executionSnapshot;
         if (!chat.length) throw new Error('No messages to summarize');
 
-        const summaries = getSummaries();
+        const summaries = getSummaries(metadata);
         const reusePrev = settings.summaryReusePrevious;
-        const prevSummary = getLatestActive();
+        const prevSummary = getLatestActive(metadata);
+        const rangeEnd = chat.length;
 
         let inputText = '';
         let startFrom = 0;
@@ -58,27 +73,43 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
             inputText = chat.map(m => `${m.name || (m.is_user ? 'User' : 'System')}: ${m.mes}`).join('\n');
         }
 
-        const prompt = (settings.summaryPrompt || (settings.lang === 'zh' ? DEFAULT_PROMPT.zh : DEFAULT_PROMPT.en)) + '\n\n' + inputText;
+        const promptUsed = settings.summaryPrompt || (settings.lang === 'zh' ? DEFAULT_PROMPT.zh : DEFAULT_PROMPT.en);
+        const prompt = promptUsed + '\n\n' + inputText;
 
         summarizing = true;
         try {
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
             const response = await getCaller().generate(prompt);
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+            assertExecutionSnapshot(executionSnapshot, {
+                getChatMetadata,
+                getChat,
+                getResource: (currentMetadata, currentChat) => ({
+                    summaries: getSummaries(currentMetadata),
+                    chat: currentChat.map(message => [message.name, message.mes, message.is_user, message.is_system]),
+                }),
+                message: 'Summary generation became stale',
+            });
 
             const entry = {
-                rangeEnd: chat.length,
+                rangeEnd,
                 content: response || '',
                 active: true,
                 basedOn: reusePrev && prevSummary ? summaries.indexOf(prevSummary) : null,
-                promptUsed: settings.summaryPrompt || '',
+                promptUsed,
                 timestamp: Date.now(),
             };
 
+            const previousState = structuredClone(summaries);
             // Deactivate previous active summaries
             for (const s of summaries) s.active = false;
             summaries.push(entry);
-            await saveChatConditional();
+            const appliedState = snapshotValue(summaries);
+            try { await saveChatConditional(); }
+            catch (error) {
+                if (snapshotValue(summaries) === appliedState) summaries.splice(0, summaries.length, ...previousState);
+                throw error;
+            }
             return entry;
         } finally {
             summarizing = false;
@@ -86,11 +117,20 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
     }
 
     async function regenerateLastSummary() {
-        const summaries = getSummaries();
-        if (!summaries.length) throw new Error('No summary to regenerate');
+        if (summarizing) throw new Error('Summary already in progress');
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: (metadata, chat) => ({
+                summaries: getSummaries(metadata),
+                chat: chat.map(message => [message.name, message.mes, message.is_user, message.is_system]),
+            }),
+        });
+        const { metadata, chat } = executionSnapshot;
+        const summaries = getSummaries(metadata);
 
-        const last = summaries[summaries.length - 1];
-        const chat = getChat();
+        const last = getLatestActive(metadata);
+        if (!last) throw new Error('No active summary to regenerate');
 
         let inputText = '';
         if (last.basedOn !== null && last.basedOn >= 0 && summaries[last.basedOn]) {
@@ -103,18 +143,34 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
                 .map(m => `${m.name || (m.is_user ? 'User' : 'System')}: ${m.mes}`).join('\n');
         }
 
-        const prompt = (last.promptUsed || settings.summaryPrompt || (settings.lang === 'zh' ? DEFAULT_PROMPT.zh : DEFAULT_PROMPT.en)) + '\n\n' + inputText;
+        const promptUsed = last.promptUsed || settings.summaryPrompt || (settings.lang === 'zh' ? DEFAULT_PROMPT.zh : DEFAULT_PROMPT.en);
+        const prompt = promptUsed + '\n\n' + inputText;
 
         summarizing = true;
         try {
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
             const response = await getCaller().generate(prompt);
             setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true);
+            assertExecutionSnapshot(executionSnapshot, {
+                getChatMetadata,
+                getChat,
+                getResource: (currentMetadata, currentChat) => ({
+                    summaries: getSummaries(currentMetadata),
+                    chat: currentChat.map(message => [message.name, message.mes, message.is_user, message.is_system]),
+                }),
+                message: 'Summary regeneration became stale',
+            });
 
+            const previous = { content: last.content, promptUsed: last.promptUsed, timestamp: last.timestamp };
             last.content = response || '';
-            last.promptUsed = settings.summaryPrompt || '';
+            last.promptUsed = promptUsed;
             last.timestamp = Date.now();
-            await saveChatConditional();
+            const appliedState = snapshotValue(last);
+            try { await saveChatConditional(); }
+            catch (error) {
+                if (snapshotValue(last) === appliedState) Object.assign(last, previous);
+                throw error;
+            }
             return last;
         } finally {
             summarizing = false;

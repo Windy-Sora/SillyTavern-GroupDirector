@@ -31,6 +31,7 @@ export function createCustomAgentSystem({
     log,
 }) {
     const revisions = new Map();
+    const resultRevisions = new WeakMap();
     let knownEntries = Array.isArray(settings.customAgents)
         ? structuredClone(settings.customAgents)
         : [];
@@ -49,6 +50,19 @@ export function createCustomAgentSystem({
 
     function getData(id) {
         return getStore()[id] || null;
+    }
+
+    function getResultRevision(metadata, id) {
+        return resultRevisions.get(metadata)?.get(id) || 0;
+    }
+
+    function setResultRevision(metadata, id, revision) {
+        let revisionsForMetadata = resultRevisions.get(metadata);
+        if (!revisionsForMetadata) {
+            revisionsForMetadata = new Map();
+            resultRevisions.set(metadata, revisionsForMetadata);
+        }
+        revisionsForMetadata.set(id, revision);
     }
 
     function normalizeProviderEntries(list, { strict }) {
@@ -247,15 +261,25 @@ export function createCustomAgentSystem({
     }
 
     async function updateResult(id, content) {
-        const store = getStore();
+        const metadata = getChatMetadata();
+        const store = getStore(metadata);
         const previous = store[id];
         if (!previous) return undefined;
+        const previousRevision = getResultRevision(metadata, id);
+        const committedRevision = previousRevision + 1;
         const nextContent = String(content ?? '');
         let data;
         try { data = JSON.parse(nextContent); } catch (_) { data = nextContent; }
+        setResultRevision(metadata, id, committedRevision);
         store[id] = { ...previous, content: nextContent, data };
         try { await saveChatConditional(); }
-        catch (error) { store[id] = previous; throw error; }
+        catch (error) {
+            if (getResultRevision(metadata, id) === committedRevision) {
+                store[id] = previous;
+                setResultRevision(metadata, id, previousRevision);
+            }
+            throw error;
+        }
         return store[id];
     }
 
@@ -282,6 +306,8 @@ export function createCustomAgentSystem({
         getChatMetadata,
         getChat,
         getRevision: id => revisions.get(id) || 0,
+        getResultRevision,
+        setResultRevision,
         renderPrompt,
         generate: prompt => createCaller(
             settings.agentConfigs?.['custom-agent'] || {},

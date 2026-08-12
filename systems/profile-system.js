@@ -1,3 +1,9 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+    snapshotValue,
+} from './execution-snapshot.js';
+
 export function createProfileSystem(deps) {
     const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt, createCaller } = deps;
     const cm = () => getChatMetadata();
@@ -22,9 +28,9 @@ function computeProfileSchemaHash() {
     return djb2Hash(schema);
 }
 
-function getProfileContainer() {
-    if (!cm()[EXT_KEY]) cm()[EXT_KEY] = {};
-    const meta = cm()[EXT_KEY];
+function getProfileContainer(metadata = cm()) {
+    if (!metadata[EXT_KEY]) metadata[EXT_KEY] = {};
+    const meta = metadata[EXT_KEY];
     if (!meta.characterProfiles) meta.characterProfiles = {};
     if (!meta.archivedProfiles) meta.archivedProfiles = {};
     if (meta.profileVersion === undefined) meta.profileVersion = 1;
@@ -44,18 +50,28 @@ function migrateProfileData(container) {
     container.profileSchemaHash = currentHash;
 }
 
-function getProfiles() {
-    return getProfileContainer().characterProfiles;
+function getProfiles(metadata = cm()) {
+    return getProfileContainer(metadata).characterProfiles;
 }
 
-function getArchivedProfiles() {
-    return getProfileContainer().archivedProfiles;
+function getArchivedProfiles(metadata = cm()) {
+    return getProfileContainer(metadata).archivedProfiles;
 }
 
-async function saveProfile(avatar, profileObj) {
-    const profiles = getProfiles();
+async function saveProfile(avatar, profileObj, metadata = cm()) {
+    const profiles = getProfiles(metadata);
+    const hadPrevious = Object.prototype.hasOwnProperty.call(profiles, avatar);
+    const previous = profiles[avatar];
     profiles[avatar] = profileObj;
-    await saveChatConditional();
+    const appliedState = snapshotValue(profileObj);
+    try { await saveChatConditional(); }
+    catch (error) {
+        if (snapshotValue(profiles[avatar]) === appliedState) {
+            if (hadPrevious) profiles[avatar] = previous;
+            else delete profiles[avatar];
+        }
+        throw error;
+    }
 }
 
 function diffProfiles(enabledMembers) {
@@ -196,9 +212,32 @@ async function generateProfilesBatch(avatars) {
     const buildTask = (avatar) => async () => {
         const char = getCharacters().find(c => c.avatar === avatar);
         if (!char) return;
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const liveChar = getCharacters().find(candidate => candidate.avatar === avatar);
+                return {
+                    profile: getProfiles(metadata)[avatar] ?? null,
+                    character: liveChar ? [liveChar.name, liveChar.description, liveChar.personality, liveChar.scenario] : null,
+                };
+            },
+        });
+        const assertCurrent = () => assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getChat,
+            getResource: metadata => {
+                const liveChar = getCharacters().find(candidate => candidate.avatar === avatar);
+                return {
+                    profile: getProfiles(metadata)[avatar] ?? null,
+                    character: liveChar ? [liveChar.name, liveChar.description, liveChar.personality, liveChar.scenario] : null,
+                };
+            },
+            message: 'Profile generation became stale',
+        });
 
         const currentHash = hashChar(char.description, char.personality, char.scenario);
-        const existing = getProfiles()[avatar];
+        const existing = getProfiles(executionSnapshot.metadata)[avatar];
 
         // Preserve existing ready data as base; only overwrite on success
         const base = (existing && existing.state === 'ready')
@@ -209,32 +248,31 @@ async function generateProfilesBatch(avatars) {
                 state: 'pending', manualEdited: false,
             };
         base.updatedAt = Date.now();
-        await saveProfile(avatar, base);
 
         try {
             const result = await generateSingleProfile(avatar);
+            assertCurrent();
             if (result) {
                 base.profile = result;
                 base.state = 'ready';
                 base.hash = currentHash;
             } else {
-                // Null means skipped (e.g. round active) — restore previous ready state
-                if (existing && existing.state === 'ready') {
-                    base.state = 'ready';
-                    base.profile = existing.profile;
-                }
+                // Null means skipped (e.g. round active) — leave stored state unchanged.
+                return;
             }
         } catch (e) {
+            if (e?.name === 'StaleExecutionError') throw e;
+            assertCurrent();
             console.error(`[GroupDirector] Profile generation failed for ${char.name}:`, e.message);
             base.state = 'failed';
         }
         base.updatedAt = Date.now();
         // Avoid overwriting a ready profile with a failed one from a concurrent run
-        const currentProfile = getProfiles()[avatar];
+        const currentProfile = getProfiles(executionSnapshot.metadata)[avatar];
         if (base.state === 'failed' && currentProfile?.state === 'ready') {
             console.warn(`[GroupDirector] Profile generation failed for ${char.name}, keeping existing ready profile`);
         } else {
-            await saveProfile(avatar, base);
+            await saveProfile(avatar, base, executionSnapshot.metadata);
         }
     };
 
@@ -688,19 +726,19 @@ function bindProfileCardActions() {
         e.stopPropagation();
         const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
         const $edit = $(document.getElementById('gd-profile-edit-' + CSS.escape(avatar || '')));
-        const profiles = getProfiles();
-        const prof = profiles[avatar];
+        const prof = getProfiles()[avatar];
         if (!prof) return;
 
-        prof.profile.summary = $edit.find('[data-field="summary"]').val();
-        prof.profile.tags = ($edit.find('[data-field="tags"]').val() || '').split(',').map(s => s.trim()).filter(Boolean);
-        prof.profile.motivation = $edit.find('[data-field="motivation"]').val();
-        prof.profile.relationships = $edit.find('[data-field="relationships"]').val();
-        prof.manualEdited = true;
-        prof.updatedAt = Date.now();
-        prof.state = 'ready';
+        const next = structuredClone(prof);
+        next.profile.summary = $edit.find('[data-field="summary"]').val();
+        next.profile.tags = ($edit.find('[data-field="tags"]').val() || '').split(',').map(s => s.trim()).filter(Boolean);
+        next.profile.motivation = $edit.find('[data-field="motivation"]').val();
+        next.profile.relationships = $edit.find('[data-field="relationships"]').val();
+        next.manualEdited = true;
+        next.updatedAt = Date.now();
+        next.state = 'ready';
 
-        await saveProfile(avatar, prof);
+        await saveProfile(avatar, next);
         $edit.hide();
         toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
     });

@@ -1,3 +1,9 @@
+import {
+    assertExecutionSnapshot,
+    captureExecutionSnapshot,
+    snapshotValue,
+} from './execution-snapshot.js';
+
 /**
  * NPC System — generate, store, edit, and import NPCs as character cards.
  *
@@ -24,8 +30,8 @@ export function createNpcSystem({
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
-    function getNpcs() {
-        const cm = getChatMetadata();
+    function getNpcs(metadata = getChatMetadata()) {
+        const cm = metadata;
         if (!cm[EXT_KEY]) cm[EXT_KEY] = {};
         if (!cm[EXT_KEY].npcs) cm[EXT_KEY].npcs = [];
         return cm[EXT_KEY].npcs;
@@ -33,6 +39,18 @@ export function createNpcSystem({
 
     async function saveNpcs() {
         await saveChatConditional();
+    }
+
+    async function replaceNpcs(npcs, metadata = getChatMetadata()) {
+        const root = metadata[EXT_KEY] || (metadata[EXT_KEY] = {});
+        const previous = root.npcs;
+        root.npcs = npcs;
+        const appliedState = snapshotValue(npcs);
+        try { await saveNpcs(); }
+        catch (error) {
+            if (snapshotValue(root.npcs) === appliedState) root.npcs = previous;
+            throw error;
+        }
     }
 
     /** Check if a name conflicts with existing NPCs or characters. */
@@ -49,7 +67,11 @@ export function createNpcSystem({
         const agent = AgentRegistry.get('npc');
         if (!agent) throw new Error('NPC agent not registered');
 
-        const existingNpcs = getNpcs();
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getResource: metadata => getNpcs(metadata),
+        });
+        const existingNpcs = structuredClone(getNpcs(executionSnapshot.metadata));
         const maxCount = settings.npcMaxCount ?? 10;
         const remaining = maxCount - existingNpcs.length;
         if (remaining <= 0) {
@@ -91,17 +113,25 @@ export function createNpcSystem({
             throw new Error(L('NPC 生成失败：LLM 未返回有效结果', 'NPC generation failed: no valid result'));
         }
 
+        assertExecutionSnapshot(executionSnapshot, {
+            getChatMetadata,
+            getResource: metadata => getNpcs(metadata),
+            message: 'NPC generation became stale',
+        });
+
         // Add to storage
-        const npcs = getNpcs();
+        const npcs = [...getNpcs(executionSnapshot.metadata)];
         for (const npc of result) {
             if (npcs.length >= maxCount) break;
-            if (nameExists(npc.name)) {
+            const lower = npc.name.toLowerCase();
+            if (npcs.some(existing => existing.name.toLowerCase() === lower)
+                || (getCharacters() || []).some(char => char.name.toLowerCase() === lower)) {
                 log(`NPC dedup skipped: "${npc.name}" (already exists)`);
                 continue;
             }
             npcs.push(npc);
         }
-        await saveNpcs();
+        await replaceNpcs(npcs, executionSnapshot.metadata);
 
         return result;
     }
@@ -109,15 +139,17 @@ export function createNpcSystem({
     async function updateNpc(index, updates) {
         const npcs = getNpcs();
         if (index < 0 || index >= npcs.length) return;
-        Object.assign(npcs[index], updates);
-        await saveNpcs();
+        const next = structuredClone(npcs);
+        Object.assign(next[index], updates);
+        await replaceNpcs(next);
     }
 
     async function deleteNpc(index) {
         const npcs = getNpcs();
         if (index < 0 || index >= npcs.length) return;
-        npcs.splice(index, 1);
-        await saveNpcs();
+        const next = [...npcs];
+        next.splice(index, 1);
+        await replaceNpcs(next);
     }
 
     /**
@@ -126,7 +158,11 @@ export function createNpcSystem({
      * and creates a PNG card from DEFAULT_AVATAR_PATH.
      */
     async function importNpcAsCharacter(index) {
-        const npcs = getNpcs();
+        const executionSnapshot = captureExecutionSnapshot({
+            getChatMetadata,
+            getResource: metadata => getNpcs(metadata),
+        });
+        const npcs = getNpcs(executionSnapshot.metadata);
         const npc = npcs[index];
         if (!npc) throw new Error('NPC not found');
 
@@ -163,10 +199,15 @@ export function createNpcSystem({
             }
 
             const avatarName = await resp.text();
+            assertExecutionSnapshot(executionSnapshot, {
+                getChatMetadata,
+                getResource: metadata => getNpcs(metadata),
+                message: 'NPC import became stale',
+            });
             // avatarName is something like "张铁柱.png"
-            npc.imported = true;
-            npc.importedAvatar = avatarName;
-            await saveNpcs();
+            const next = structuredClone(npcs);
+            next[index] = { ...next[index], imported: true, importedAvatar: avatarName };
+            await replaceNpcs(next, executionSnapshot.metadata);
 
             return avatarName;
         } catch (e) {

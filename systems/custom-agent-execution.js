@@ -39,6 +39,8 @@ export function createCustomAgentExecution({
     getChatMetadata,
     getChat,
     getRevision,
+    getResultRevision,
+    setResultRevision,
     renderPrompt,
     generate,
     saveChatConditional,
@@ -56,7 +58,7 @@ export function createCustomAgentExecution({
 
     async function run(instance, options, context) {
         states.set(instance.id, 'running');
-        const { metadata, chat, startEpoch, revision } = context;
+        const { metadata, chat, startEpoch, revision, resultRevision } = context;
         const rangeEnd = chat.length;
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
         if (getRevision(instance.id) !== revision) throw staleExecutionError();
@@ -73,6 +75,7 @@ export function createCustomAgentExecution({
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
         const live = getList().find(agent => agent.id === instance.id);
         if (!live || getRevision(instance.id) !== revision) throw staleExecutionError();
+        if (getResultRevision(metadata, instance.id) !== resultRevision) throw staleExecutionError();
 
         const result = {
             rangeEnd,
@@ -89,13 +92,19 @@ export function createCustomAgentExecution({
         const committedCounterValue = options.counterValue;
         const hadCounter = hasCounter && Object.prototype.hasOwnProperty.call(root, options.counterKey);
         const previousCounter = hasCounter ? root[options.counterKey] : undefined;
+        const committedResultRevision = resultRevision + 1;
+        setResultRevision(metadata, instance.id, committedResultRevision);
+        context.resultRevision = committedResultRevision;
         store[instance.id] = result;
         if (hasCounter) root[options.counterKey] = options.counterValue;
         try {
             await saveChatConditional();
         } catch (error) {
-            if (hadPrevious) store[instance.id] = previous;
-            else delete store[instance.id];
+            if (getResultRevision(metadata, instance.id) === committedResultRevision) {
+                if (hadPrevious) store[instance.id] = previous;
+                else delete store[instance.id];
+                setResultRevision(metadata, instance.id, resultRevision);
+            }
             if (hasCounter) {
                 if (hadCounter) root[options.counterKey] = previousCounter;
                 else delete root[options.counterKey];
@@ -129,18 +138,21 @@ export function createCustomAgentExecution({
         const live = getList().find(agent => agent.id === instance.id);
         if (!live) return Promise.reject(staleExecutionError());
         if (!live.prompt) return Promise.resolve(null);
+        const metadata = getChatMetadata();
         const context = {
-            metadata: getChatMetadata(),
+            metadata,
             chat: getChat(),
             startEpoch: epoch,
             revision: getRevision(live.id),
+            resultRevision: getResultRevision(metadata, live.id),
         };
         if (inFlight.has(live.id)) {
             const current = inFlight.get(live.id);
             const sameContext = current.context.startEpoch === context.startEpoch
                 && current.context.metadata === context.metadata
                 && current.context.chat === context.chat
-                && current.context.revision === context.revision;
+                && current.context.revision === context.revision
+                && current.context.resultRevision === context.resultRevision;
             if (sameContext && typeof options.counterKey === 'string') {
                 current.options.counterKey = options.counterKey;
                 current.options.counterValue = options.counterValue;
