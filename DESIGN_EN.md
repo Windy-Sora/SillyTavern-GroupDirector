@@ -1020,6 +1020,16 @@ Select `.js` → FileReader → store in `extension_settings` → Blob URL → `
 | User import extension | Tools → User Extensions → select `.js` file |
 | Modify interceptor event wiring | `index.js` → `groupDirector_Interceptor` / wrapper event listeners |
 | Modify takeover state rules | Prefer `round-state.js` / `takeover-scheduler.js` / `round-finalization.js`, composed by `round-orchestrator.js` |
+| Add a static checker | Create `tools/gd-test/checks/*.check.mjs` plus its unit test; no CLI/runner edits |
+
+### 19.1 GD Test Lab Module Boundaries
+
+- `core/project-index.mjs` only builds facts such as files, sources, JSON, the import graph, and reachability; it produces no rule verdicts.
+- `checks/*.check.mjs` owns one rule domain per file, is auto-discovered, and never calls another checker.
+- `core/check-runner.mjs` only validates contracts, orders deterministically, provides hard Worker isolation, and aggregates results; checker loading and execution stay off the main thread, and timeouts await `worker.terminate()` before advancing.
+- `core/test-runner.mjs` only invokes Node `node:test`; behavior tests remain auto-discovered from `tests/**/*.test.mjs`.
+- `reporters/*` only consume structured results; the CLI only wires components and sets the exit code.
+- The complete Checker v1 standard lives in `tools/gd-test/checks/README.md`.
 
 ---
 

@@ -7,8 +7,8 @@ readable reports.
 
 Current verified baseline (2026-08-12):
 
-- 187 JavaScript source files pass static validation;
-- 91 behavior tests are discovered, with 90 passing and one optional real-host
+- 217 JavaScript source files pass static validation;
+- 101 behavior tests are discovered, with 100 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 135/143 production modules, while tests directly or
@@ -69,9 +69,39 @@ Alternatively set `GD_TEST_ST_ROOT`.
 | `quick` | Static + unit + regression |
 | `full` | Every available check and test |
 
+## Test platform architecture
+
+GD Test Lab separates four responsibilities:
+
+```text
+cli.mjs
+  -> core/options + core/runner + core/test-runner
+  -> core/project-index
+  -> checks/**/*.check.mjs (automatic discovery)
+  -> reporters/console + reporters/json
+```
+
+`project-index.mjs` builds shared project facts once. Each static checker owns one
+rule domain and returns structured counts/issues without printing or writing.
+`check-runner.mjs` validates contracts, applies deterministic `order -> id`
+ordering, runs checker loading and execution in terminable Worker Threads,
+isolates crashes/timeouts, and aggregates results. A timeout waits for
+`worker.terminate()` before the next checker starts, so timed-out code cannot keep
+running or retain event-loop handles. The compatibility
+entry at `lib/checks.mjs` contains no concrete rules.
+
+To add a static checker, create one `tools/gd-test/checks/*.check.mjs` file and its
+tests. Do not add branches to the CLI or runner. The complete Checker v1 contract
+is documented in `tools/gd-test/checks/README.md`.
+
+Behavior tests remain native Node `node:test` files discovered from
+`tests/**/*.test.mjs`; checker plugins are not a replacement test framework.
+
 Tests are discovered automatically from `tests/**/*.test.mjs`; no central list
 needs to be maintained. Tests that mutate singleton registries must clean up with
-`t.after()`. Tests that manipulate browser-like globals should remain serial.
+`t.after()`. Test files run with concurrency 2; each file must therefore own its
+fixtures and must not depend on execution order. Tests that manipulate browser-like
+globals must restore them before completion.
 
 When the `quick` or `full` profile runs without a filter, GD Test Lab also checks
 that all 17 confirmed historical bug IDs appear in executed test names. The
@@ -90,6 +120,11 @@ The current historical contracts cover:
 - ledger text safety, scope persistence, variable collision protection, trace
   normalization, localized world-book source labels, native timeout isolation,
   and listener deduplication (BUG-12 through BUG-18).
+
+Regression files are organized by business feature (`memory-provider`,
+`capability-scope`, `execution-trace`, etc.), not collected into a growing
+`historical-*` module. BUG IDs identify durable contracts but do not determine
+file ownership.
 
 Static module smoke tests are also discovered automatically under `agents/`,
 `systems/`, and `utils/`. Modules that transitively import SillyTavern browser

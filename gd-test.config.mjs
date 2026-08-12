@@ -33,7 +33,7 @@ export default {
         moduleSmokeConcurrency: 8,
     },
     test: {
-        concurrency: 1,
+        concurrency: 2,
         timeoutMs: 120_000,
     },
     regression: {
