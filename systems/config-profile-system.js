@@ -12,6 +12,7 @@
 
 import { configPresets } from '../assets/profiles/manifest.js';
 import { DEFAULT_SETTINGS } from '../settings.js';
+import { sanitizeImportedSettings, validateConfigProfileManifest } from './config-profile-validation.js';
 
 const CONFIG_PROFILE_VERSION = 1;
 const INTENTIONALLY_UNCOVERED_KEYS = new Set([
@@ -124,6 +125,11 @@ function applySnapshot(settings, snap, options = {}) {
     return changed;
 }
 
+function replaceObject(target, source) {
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, source);
+}
+
 /** Strip API keys from agentConfigs. */
 function stripApiKeys(configs) {
     if (!configs || typeof configs !== 'object') return configs;
@@ -194,31 +200,33 @@ export function createConfigProfileSystem(deps) {
         const list = getProfiles();
         const profile = list.find(p => p.id === id);
         if (!profile) return { changed: [], customPromptConflicts: [] };
+        validateConfigProfileManifest({
+            type: 'config-profile',
+            version: CONFIG_PROFILE_VERSION,
+            settings: profile.settings,
+            drawers: profile.drawers || {},
+            variables: profile.variables,
+        }, { source: 'zip' });
+        if (!['replace', 'keep', 'skip'].includes(customPromptMerge)) throw new Error('Invalid custom prompt merge mode');
+        const previousSettings = structuredClone(settings);
+        const nextSettings = structuredClone(settings);
 
         // ── Custom prompts conflict detection ──
         let customPromptConflicts = [];
         const incoming = profile.settings.customPrompts;
         if (incoming && Array.isArray(incoming) && incoming.length > 0) {
-            const existing = settings.customPrompts || [];
+            const existing = Array.isArray(nextSettings.customPrompts) ? nextSettings.customPrompts : [];
             const existingNames = new Set(existing.map(e => e.name));
             customPromptConflicts = incoming.filter(e => existingNames.has(e.name)).map(e => e.name);
         }
 
-        let variablesChanged = false;
-        if (profile.drawers?.contextLedger && profile.variables && variableSystem) {
-            const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
-            if (!result.ok) throw new Error(`Variable import failed: ${result.error}`);
-            variablesChanged = true;
-        }
-
         // ── Apply snapshot ──
-        const changed = applySnapshot(settings, profile.settings);
-        if (variablesChanged) changed.push('variables');
+        const changed = applySnapshot(nextSettings, profile.settings);
 
         // ── Merge custom prompts ──
         if (incoming && Array.isArray(incoming) && incoming.length > 0) {
-            if (!settings.customPrompts) settings.customPrompts = [];
-            const existing = settings.customPrompts;
+            if (!Array.isArray(nextSettings.customPrompts)) nextSettings.customPrompts = [];
+            const existing = nextSettings.customPrompts;
             const existingNames = new Set(existing.map(e => e.name));
 
             if (customPromptMerge === 'replace') {
@@ -241,13 +249,34 @@ export function createConfigProfileSystem(deps) {
 
         // Restore userProviders/userCapabilities
         if (profile.settings.userProviders && Array.isArray(profile.settings.userProviders)) {
-            settings.userProviders = JSON.parse(JSON.stringify(profile.settings.userProviders));
+            nextSettings.userProviders = structuredClone(profile.settings.userProviders);
         }
         if (profile.settings.userCapabilities && Array.isArray(profile.settings.userCapabilities)) {
-            settings.userCapabilities = JSON.parse(JSON.stringify(profile.settings.userCapabilities));
+            nextSettings.userCapabilities = structuredClone(profile.settings.userCapabilities);
         }
 
-        saveAll();
+        const importsVariables = !!(profile.drawers?.contextLedger && profile.variables && variableSystem);
+        const previousVariables = importsVariables && variableSystem.getExportData
+            ? variableSystem.getExportData({ includeLog: true })
+            : null;
+        try {
+            if (importsVariables) {
+                const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
+                if (!result.ok) throw new Error(`Variable import failed: ${result.error}`);
+                changed.push('variables');
+            }
+            replaceObject(settings, nextSettings);
+            saveAll();
+        } catch (error) {
+            replaceObject(settings, previousSettings);
+            if (setProviderTimeoutDefault) setProviderTimeoutDefault(previousSettings.providerTimeoutMs);
+            if (importsVariables && previousVariables) {
+                try {
+                    variableSystem.applyImportData({ variables: previousVariables }, { mode: 'replace', includeLog: true });
+                } catch (_) { /* preserve the original transaction failure */ }
+            }
+            throw error;
+        }
         log(`Config profile applied: "${profile.name}", ${changed.length} key(s) changed, ${customPromptConflicts.length} custom prompt conflict(s)`);
         return { changed, customPromptConflicts };
     }
@@ -509,9 +538,7 @@ export function createConfigProfileSystem(deps) {
             throw new Error('Invalid manifest.json: ' + e.message);
         }
 
-        if (manifest.type !== 'config-profile') throw new Error('Not a config profile zip');
-        if (!manifest.version || manifest.version < 1) throw new Error(`Unsupported version: ${manifest.version}`);
-        if (manifest.settings && typeof manifest.settings !== 'object') throw new Error('Invalid manifest: settings must be an object');
+        validateConfigProfileManifest(manifest, { source: 'zip' });
 
         // Read user-providers from zip
         const upFolder = zip.folder('user-providers');
@@ -539,9 +566,7 @@ export function createConfigProfileSystem(deps) {
         }
 
         // Strip agentConfigs from imported zip to prevent endpoint hijacking
-        if (manifest.settings?.agentConfigs) {
-            manifest.settings = { ...manifest.settings, agentConfigs: undefined };
-        }
+        manifest.settings = sanitizeImportedSettings(manifest.settings, { source: 'zip' });
 
         // Add to list
         const profile = {
@@ -568,29 +593,12 @@ export function createConfigProfileSystem(deps) {
             throw new Error('Invalid JSON: ' + e.message);
         }
 
-        if (manifest.type !== 'config-profile-manifest' && manifest.type !== 'config-profile') {
-            throw new Error('Not a valid config profile manifest');
-        }
-        if (!manifest.version || manifest.version < 1) {
-            throw new Error(`Unsupported version: ${manifest.version}`);
-        }
-        if (manifest.settings && typeof manifest.settings !== 'object') {
-            throw new Error('Invalid manifest: settings must be an object');
-        }
+        validateConfigProfileManifest(manifest, { source: 'json' });
 
         // Strip agentConfigs — prevent endpoint hijacking
-        if (manifest.settings?.agentConfigs) {
-            manifest.settings = { ...manifest.settings, agentConfigs: undefined };
-        }
+        manifest.settings = sanitizeImportedSettings(manifest.settings, { source: 'json' });
         // Strip userProviders/userCapabilities — JSON manifest only has name stubs.
         // Applying them would overwrite real source code with {name, displayName} shells.
-        if (manifest.settings?.userProviders || manifest.settings?.userCapabilities) {
-            manifest.settings = {
-                ...manifest.settings,
-                userProviders: undefined,
-                userCapabilities: undefined,
-            };
-        }
 
         const profile = {
             id: genId(),
@@ -636,7 +644,7 @@ export function createConfigProfileSystem(deps) {
             }
             if (!resp?.ok) throw new Error(`HTTP ${resp?.status ?? 'network error'}`);
             const manifest = await resp.json();
-            if (manifest.type !== 'config-profile') throw new Error('Not a config profile preset');
+            validateConfigProfileManifest(manifest, { source: 'zip' });
             const profile = {
                 id: genId(),
                 name: manifest.name || name,

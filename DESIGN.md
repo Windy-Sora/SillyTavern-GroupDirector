@@ -796,7 +796,7 @@ GROUP_WRAPPER_FINISHED → round 钩子 (fire-and-forget, 去重)
 
 ### 12.4 共享状态 (turnShared)
 
-模块闭包变量，不持久化到 settings：
+系统实例闭包变量，不持久化到 settings；不同执行器系统实例之间不会共享轮次状态：
 
 - **创建**：`GROUP_WRAPPER_STARTED` 时 `resetTurnShared()` 重置为 `{}`
 - **写入**：脚本设置 `returnMode: 'shared'` 且返回 object → `Object.assign(turnShared, result)`
@@ -838,7 +838,9 @@ decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {.
 
 导出格式：`{ version: 1, type: 'script-executor-export', exportedAt, executors: [...], migrations: [] }`
 
-导入时同名弹窗确认是否覆盖。配置档管理 (Config Profile) 同步包含 scriptExecutors。
+导入由 UI 与系统层分工：UI 只读取文件、展示安全警告并收集同名覆盖选择；`script-executor-system` 通过 `script-executor-validation` 先校验完整文件和所有条目，再在候选列表中解决冲突，最后一次替换设置并保存一次。任何条目非法、取消事务或保存失败时，现有列表保持不变。覆盖条目保留现有内部 ID，新条目生成可信 ID，外部 ID 不会被采用。
+
+共享数据契约限制触发枚举、返回模式、`-100..100` 整数优先级、布尔字段和参数类型；参数键必须非空且唯一，并拒绝 `__proto__`、`prototype`、`constructor`。系统 CRUD、独立导入和配置档案导入复用同一契约。配置档管理 (Config Profile) 同步包含 `scriptExecutors`。
 
 ---
 
@@ -943,6 +945,8 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 **存储**：`settings.configProfiles = [{ id, name, description, drawers, settings }]`
 
 **导出格式**：`.zip` = `manifest.json` + 可选的 `user-providers/*.js` + `user-capabilities/*.js`
+
+**导入与应用边界**：JSON、ZIP 和内置预设共用 `config-profile-validation.js`，统一校验根对象、版本、settings/drawers/variables 结构及 Prompt、Provider、Capability 数组元素。JSON 导入会剥离 `agentConfigs` 和仅含名称的 Provider/Capability 桩；ZIP 可从匹配的 `.js` 文件恢复源码。应用配置档时先在 settings 副本上完成默认值合并和 Prompt 冲突处理，再导入变量并一次性提交；任何阶段失败都会恢复原 settings/变量，UI 只显示失败提示而不执行成功刷新。
 
 **JSZip 加载**：使用 `ensureJSZip()` 含 script 标签 fallback — 先尝试 `import()`，失败后注入 `<script>` 标签加载，兼容非模块环境。
 

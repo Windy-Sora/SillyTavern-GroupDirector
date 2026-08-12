@@ -7,12 +7,12 @@ readable reports.
 
 Current verified baseline (2026-08-12):
 
-- 217 JavaScript source files pass static validation;
-- 101 behavior tests are discovered, with 100 passing and one optional real-host
+- 222 JavaScript source files pass static validation;
+- 111 behavior tests are discovered, with 110 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
-- entry-point reachability is 135/143 production modules, while tests directly or
-  transitively reach 34/143 production modules.
+- entry-point reachability is 136/144 production modules, while tests directly or
+  transitively reach 38/144 production modules.
 
 The reachability numbers are diagnostics, not success targets. A module can be
 entry-reachable without being safe, and test reachability is not line coverage.
@@ -155,6 +155,21 @@ Import validators should be tested with malformed values at every nesting level,
 including `null`, arrays where objects are expected, primitives, missing strings,
 and invalid array elements. Validation failures must return structured results and
 must not escape into UI event handlers as exceptions.
+
+Config Profile JSON, ZIP, and built-in preset manifests share one validation
+boundary. Applying a profile prepares settings on a detached copy, imports
+variables only after preparation succeeds, and rolls live settings/variables back
+when the transaction fails. JSON imports discard endpoint configuration and
+name-only Provider/Capability stubs; ZIP imports may restore matching script
+sources. The UI apply handler reports failures without running success refreshes.
+
+Script Executor tests follow the same boundary rule. The pure validator owns the
+version-1 file and entry contract, while system tests cover candidate validation,
+single-save batch import, conflict overwrite/skip/cancel behavior, persistence
+rollback, execution ordering, trigger filtering, error isolation, and per-instance
+turn state. The UI contract verifies that import/export handlers delegate to the
+system instead of performing incremental `add`/`remove` mutations. Config Profile
+imports reuse the validator and replace external executor IDs before storage.
 
 ## UI safety coverage
 

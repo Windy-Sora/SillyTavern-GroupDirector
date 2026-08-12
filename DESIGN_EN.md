@@ -797,7 +797,7 @@ The three phases have different `ctx` shapes, providing phase-appropriate fields
 
 ### 12.4 Shared State (turnShared)
 
-Module closure variable, not persisted to settings:
+System-instance closure state, not persisted to settings; separate executor system instances never share turn state:
 
 - **Creation**: `resetTurnShared()` resets to `{}` on `GROUP_WRAPPER_STARTED`
 - **Write**: Script sets `returnMode: 'shared'` and returns an object → `Object.assign(turnShared, result)`
@@ -839,7 +839,9 @@ Filter enabled && triggerOn match → sort by priority ascending →
 
 Export format: `{ version: 1, type: 'script-executor-export', exportedAt, executors: [...], migrations: [] }`
 
-Import prompts confirmation for same-name overwrite. Config profile management includes scriptExecutors.
+Import is split between UI and system layers: the UI only reads the file, shows the security warning, and collects same-name overwrite choices. `script-executor-system` uses `script-executor-validation` to validate the complete file and every entry, resolve conflicts on a candidate list, then replace settings once and save once. An invalid entry, transaction cancellation, or persistence failure leaves the existing list unchanged. Overwrites retain the trusted existing ID, new entries receive trusted IDs, and external IDs are ignored.
+
+The shared contract bounds trigger and return-mode enums, integer priority (`-100..100`), boolean fields, and parameter types. Parameter keys must be non-empty and unique; `__proto__`, `prototype`, and `constructor` are rejected. System CRUD, standalone import, and config-profile import reuse this contract. Config profile management includes `scriptExecutors`.
 
 ---
 
@@ -942,6 +944,8 @@ Group Director provides full export/import capability for five data types:
 **Storage**: `settings.configProfiles = [{ id, name, description, drawers, settings }]`
 
 **Export format**: `.zip` = `manifest.json` + optional `user-providers/*.js` + `user-capabilities/*.js`
+
+**Import and apply boundary**: JSON, ZIP, and built-in presets share `config-profile-validation.js`, which validates the root object, version, settings/drawers/variables shapes, and every Prompt, Provider, and Capability array entry. JSON imports strip `agentConfigs` and name-only Provider/Capability stubs; ZIP imports may restore source from matching `.js` files. Applying a profile first prepares default merging and Prompt conflict handling on a detached settings copy, then imports variables and commits once; any failure restores the previous settings/variables, and the UI reports the failure without running success refreshes.
 
 **JSZip loading**: Uses `ensureJSZip()` with script tag fallback — tries `import()` first, then injects `<script>` tag on failure, compatible with non-module environments.
 

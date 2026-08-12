@@ -931,6 +931,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             reason: directorLastReason || '',
             scripts: { ...(directorScripts || {}) },
         };
+        const scriptTurnId = scriptExecutorSystem.getTurnId();
         try {
             await scriptExecutorSystem.executeAllDecision({
                 decision: decisionObj,
@@ -942,6 +943,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         } catch (e) {
             log('Script executor (decision): unexpected error', e);
         }
+        if (scriptExecutorSystem.getTurnId() !== scriptTurnId) return;
         // Sync mutations back — decisionObj was mutated by reference
         if (decisionObj.speakers.length > 0) {
             const newAvatars = decisionObj.speakers.filter(a => characters.some(c => c.avatar === a));

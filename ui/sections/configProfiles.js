@@ -77,6 +77,7 @@ registerSection('configProfiles', function (ctx) {
                 ? `应用配置档「${profileName}」？当前设置将被覆盖。`
                 : `Apply config profile "${profileName}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
 
+            try {
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
             let mergeMode = 'keep';
@@ -97,11 +98,19 @@ registerSection('configProfiles', function (ctx) {
             }
 
             const result = sys.applyProfile(id, mergeMode);
+            } catch (e) {
+                toastr.error((isZh() ? '应用失败: ' : 'Apply failed: ') + e.message);
+                return;
+            }
             try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[configProfiles] reload after apply failed:', e); }
-            window.__gdRefreshDashboard?.();
-            window.__gdRefreshProfileLibrary?.();
-            window.__gdRefreshStoryBlueprint?.();
-            window.__gdRefreshSummaryStatus?.();
+            for (const refresh of [
+                () => window.__gdRefreshDashboard?.(),
+                () => window.__gdRefreshProfileLibrary?.(),
+                () => window.__gdRefreshStoryBlueprint?.(),
+                () => window.__gdRefreshSummaryStatus?.(),
+            ]) {
+                try { refresh(); } catch (e) { console.error('[configProfiles] refresh after apply failed:', e); }
+            }
             let msg = isZh()
                 ? `已应用「${profile.name}」，${result.changed.length} 项设置已更新。`
                 : `Applied "${profile.name}", ${result.changed.length} setting(s) updated.`;
