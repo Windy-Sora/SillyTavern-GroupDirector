@@ -173,6 +173,9 @@ export function createCritiqueSystem({
         const last = repository.getLatestActive(metadata);
         if (!last) throw new Error('No active critique to regenerate');
         const chat = getChat();
+        const rangeEnd = last.rangeEnd;
+        const coverageSnapshot = formatMessages(chat.slice(0, rangeEnd));
+        const promptUsed = last.promptUsed || settings.critiquePrompt || '';
         let inputText;
         if (Number.isInteger(last.basedOn) && last.basedOn >= 0 && critiques[last.basedOn]) {
             const previous = critiques[last.basedOn];
@@ -181,12 +184,13 @@ export function createCritiqueSystem({
             inputText = formatMessages(chat.slice(0, last.rangeEnd));
         }
 
-        const response = await execution.execute(buildPrompt(inputText, last.promptUsed));
+        const response = await execution.execute(buildPrompt(inputText, promptUsed));
         assertCurrentContext(metadata, chat);
+        assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
         return await repository.update(last, {
             content: response || '',
             data: parseResponseData(response),
-            promptUsed: settings.critiquePrompt || '',
+            promptUsed,
             timestamp: Date.now(),
         });
     }
