@@ -156,7 +156,8 @@ export function createCritiqueSystem({
             inputText = formatMessages(chat);
         }
 
-        const prompt = buildPrompt(inputText);
+        const promptUsed = settings.critiquePrompt || '';
+        const prompt = buildPrompt(inputText, promptUsed);
         log?.(`[critique] generate: prompt length=${prompt.length}`);
         const response = await execution.execute(prompt);
         assertCurrentContext(metadata, chat);
@@ -168,7 +169,7 @@ export function createCritiqueSystem({
             data: parseResponseData(response),
             active: true,
             basedOn: reusePrevious && latestActive ? critiques.indexOf(latestActive) : null,
-            promptUsed: settings.critiquePrompt || '',
+            promptUsed,
             timestamp: Date.now(),
         };
         assertCurrentContext(metadata, chat);

@@ -94,6 +94,30 @@ test('critique generation keeps start coverage on append and rejects covered mes
     assert.equal(edited.saves(), 0);
 });
 
+test('ordinary generation records and reuses the prompt actually sent', async () => {
+    const h = harness();
+    h.settings.critiquePrompt = 'prompt A';
+    h.chat = [{ name: 'User', mes: 'one' }];
+    const pending = deferred();
+    const sentPrompts = [];
+    h.response = prompt => {
+        sentPrompts.push(prompt);
+        return sentPrompts.length === 1
+            ? pending.promise
+            : '{"directorCritique":{"pacing":"regenerated"},"characterCritiques":{}}';
+    };
+    const generation = h.system.generateCritique();
+    await Promise.resolve();
+    h.settings.critiquePrompt = 'prompt B';
+    pending.resolve('{"directorCritique":{"pacing":"generated"},"characterCritiques":{}}');
+
+    const entry = await generation;
+    await h.system.regenerateLastCritique();
+    assert.match(sentPrompts[0], /^prompt A/);
+    assert.equal(entry.promptUsed, 'prompt A');
+    assert.match(sentPrompts[1], /^prompt A/);
+});
+
 test('regeneration updates the active predecessor after a revert', async () => {
     const h = harness();
     h.chat = [{ name: 'User', mes: 'one' }];
