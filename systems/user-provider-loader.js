@@ -25,6 +25,8 @@ const DANGEROUS_PATTERNS = [
     { pattern: /\bwindow\.top\b|\bwindow\.parent\b/g, label: 'window.top/parent — frame manipulation' },
 ];
 
+const USER_PROVIDER_OWNER = 'group-director/user-provider';
+
 function scanSource(source) {
     const found = [];
     for (const { pattern, label } of DANGEROUS_PATTERNS) {
@@ -47,6 +49,27 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
 
     async function saveStore() {
         if (typeof saveSettings === 'function') saveSettings();
+    }
+
+    function getAssetDeps(type, name, deps) {
+        if (type !== 'provider' || typeof deps.registerProvider !== 'function') return deps;
+        return {
+            ...deps,
+            registerProvider: provider => deps.registerProvider({
+                ...provider,
+                _gdOwner: USER_PROVIDER_OWNER,
+                _gdOwnerId: name,
+            }),
+        };
+    }
+
+    function rollbackAddedProviders(before, name) {
+        if (!before || !getRegisteredProviderIds || !unregisterProvider) return;
+        for (const id of getRegisteredProviderIds()) {
+            if (!before.has(id)) {
+                unregisterProvider(id, { owner: USER_PROVIDER_OWNER, ownerId: name });
+            }
+        }
     }
 
     /**
@@ -99,6 +122,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         }
 
         let blobUrl = '';
+        let providerIdsBefore = null;
         try {
             const source = await readFileAsText(file);
 
@@ -133,7 +157,8 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                     : (registry?.list().map(c => c.id) ?? [])
                 )
                 : null;
-            mod.register(deps);
+            if (type === 'provider') providerIdsBefore = before;
+            mod.register(getAssetDeps(type, name, deps));
             const after = before
                 ? (type === 'provider'
                     ? (getRegisteredProviderIds?.() ?? [])
@@ -151,6 +176,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             log(`User ${type} "${name}" imported and registered`);
             return { ok: true, name };
         } catch (e) {
+            if (type === 'provider') rollbackAddedProviders(providerIdsBefore, name);
             log(`User ${type} "${name}" import failed:`, e.message);
             return { ok: false, name, error: e.message };
         } finally {
@@ -168,7 +194,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         const entry = store[idx];
         if (type === 'provider' && unregisterProvider) {
             for (const id of (entry.ids || [])) {
-                unregisterProvider(id);
+                unregisterProvider(id, { owner: USER_PROVIDER_OWNER, ownerId: name });
             }
         } else if (type === 'capability' && CapabilityRegistry) {
             for (const id of (entry.ids || [])) {
@@ -194,6 +220,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
 
         for (const p of store) {
             let blobUrl = '';
+            let providerIdsBefore = null;
             try {
                 const findings = scanSource(p.source);
                 if (findings.length > 0) {
@@ -202,12 +229,16 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                 blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
                 const mod = await import(blobUrl);
                 if (typeof mod.register === 'function') {
-                    mod.register(deps);
+                    if (type === 'provider' && getRegisteredProviderIds) {
+                        providerIdsBefore = new Set(getRegisteredProviderIds());
+                    }
+                    mod.register(getAssetDeps(type, p.name, deps));
                     loaded.push(p.name);
                 } else {
                     failed.push({ name: p.name, error: 'no register() export' });
                 }
             } catch (e) {
+                if (type === 'provider') rollbackAddedProviders(providerIdsBefore, p.name);
                 failed.push({ name: p.name, error: e.message });
             } finally {
                 if (blobUrl) URL.revokeObjectURL(blobUrl);

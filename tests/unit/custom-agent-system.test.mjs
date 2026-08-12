@@ -196,6 +196,24 @@ test('custom agent execution rejects stale chat and stale configuration results'
     assert.equal(h.counts().chatSaves, 0);
 });
 
+test('captured agent references resolve live configuration and reject deleted agents', async () => {
+    const h = createHarness();
+    const captured = h.system.add(valid());
+    h.response = prompt => prompt;
+
+    h.system.update(captured.id, { prompt: 'current prompt' });
+    const result = await h.system.executeAuto(captured, 4);
+    assert.equal(result.content, 'current prompt');
+    assert.equal(h.metadata.gd[`_autoCAG_${captured.id}`], 4);
+
+    const removed = h.settings.customAgents[0];
+    h.system.remove(removed.id);
+    const savesBefore = h.counts().chatSaves;
+    await assert.rejects(h.system.executeAuto(removed, 5), { name: 'StaleExecutionError' });
+    assert.equal(h.counts().chatSaves, savesBefore);
+    assert.equal(h.metadata.gd[`_autoCAG_${removed.id}`], 4);
+});
+
 test('queued work captures its original chat and config context at enqueue time', async () => {
     const h = createHarness();
     const firstAgent = h.system.add(valid('first'));

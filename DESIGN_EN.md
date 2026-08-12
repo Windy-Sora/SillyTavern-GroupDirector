@@ -633,7 +633,12 @@ SillyTavern-GroupDirector/
 │   ├── variable-system.js      # Variable system (defs/values/validation/log/rollback/stale detection)
 │   ├── world-book-scanner.js  # World book scanning
 │   ├── chat-summary-system.js # Context summarization
-│   ├── critique-system.js     # AI critique
+│   ├── critique-validation.js # Shared critique/import data contract
+│   ├── critique-parser.js     # Balanced LLM JSON extraction and normalization
+│   ├── critique-repository.js # History, activation chain, revert, transactions
+│   ├── critique-execution.js  # LLM lock and quiet-prompt cleanup
+│   ├── critique-auto-coordinator.js # Auto-critique checkpoint policy
+│   ├── critique-system.js     # AI critique business facade
 │   ├── custom-agent-validation.js # Shared Custom Agent/import/profile contract
 │   ├── custom-agent-system.js # CRUD, import/export, result storage, Provider lifecycle
 │   ├── custom-agent-execution.js # Serial execution, deduplication, stale checks, result transaction
@@ -873,6 +878,23 @@ Register: CapabilityRegistry.register({ id, displayName, description, promptHint
 Query: CapabilityRegistry.get(id) / list() / listEnabled()
 Toggle: CapabilityRegistry.setEnabled(id, true/false)
 ```
+
+---
+
+### 13.3 Critique Module Boundaries
+
+Critique separates the data contract, parsing, persistence, LLM side effects, and automatic scheduling. `critique-system.js` only orchestrates these boundaries and exposes a stable API to the UI, providers, and entry point.
+
+| Module | Sole responsibility |
+|--------|---------------------|
+| `critique-validation.js` | Validate core containers, character entries, and JSON-compatible values for both LLM and import data |
+| `critique-parser.js` | Extract balanced JSON from Markdown/noisy output, remove trailing commas, and invoke validation |
+| `critique-repository.js` | Maintain one active record, basedOn revert, pruning, and persistence rollback |
+| `critique-execution.js` | Share the run lock, call the LLM, and clear the quiet prompt after success or failure |
+| `critique-auto-coordinator.js` | Compute first-enable, interval, and rollback actions and persist checkpoints transactionally |
+| `ui/sections/critique.js` | DOM state and feedback; edited results must pass through the system facade |
+
+A generation captures its starting chat and metadata references. If the chat changes before completion, it rejects with `StaleExecutionError` and cannot write into the new chat. Export/import reuses the same validator, and CRUD restores in-memory state when persistence fails.
 
 ---
 

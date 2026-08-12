@@ -56,10 +56,10 @@ export function createCustomAgentExecution({
 
     async function run(instance, options, context) {
         states.set(instance.id, 'running');
-        const { metadata, chat, startEpoch, revision, managed } = context;
+        const { metadata, chat, startEpoch, revision } = context;
         const rangeEnd = chat.length;
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
-        if (managed && getRevision(instance.id) !== revision) throw staleExecutionError();
+        if (getRevision(instance.id) !== revision) throw staleExecutionError();
         const rawPrompt = instance.prompt + (instance.schema
             ? '\n\nOutput format must strictly follow this JSON schema:\n' + instance.schema
             : '');
@@ -71,10 +71,8 @@ export function createCustomAgentExecution({
         const response = await generate(prompt);
         if (!response) return null;
         if (isStale(startEpoch, metadata, chat)) throw staleExecutionError();
-        if (managed) {
-            const live = getList().find(agent => agent.id === instance.id);
-            if (!live || getRevision(instance.id) !== revision) throw staleExecutionError();
-        }
+        const live = getList().find(agent => agent.id === instance.id);
+        if (!live || getRevision(instance.id) !== revision) throw staleExecutionError();
 
         const result = {
             rangeEnd,
@@ -127,16 +125,18 @@ export function createCustomAgentExecution({
     }
 
     function execute(instance, options = {}) {
-        if (!instance?.id || !instance.prompt) return Promise.resolve(null);
+        if (!instance?.id) return Promise.resolve(null);
+        const live = getList().find(agent => agent.id === instance.id);
+        if (!live) return Promise.reject(staleExecutionError());
+        if (!live.prompt) return Promise.resolve(null);
         const context = {
             metadata: getChatMetadata(),
             chat: getChat(),
             startEpoch: epoch,
-            revision: getRevision(instance.id),
-            managed: getList().some(agent => agent.id === instance.id),
+            revision: getRevision(live.id),
         };
-        if (inFlight.has(instance.id)) {
-            const current = inFlight.get(instance.id);
+        if (inFlight.has(live.id)) {
+            const current = inFlight.get(live.id);
             const sameContext = current.context.startEpoch === context.startEpoch
                 && current.context.metadata === context.metadata
                 && current.context.chat === context.chat
@@ -147,7 +147,7 @@ export function createCustomAgentExecution({
             }
             if (sameContext) return current.task;
         }
-        const snapshot = normalizeCustomAgent(instance, { path: 'agent', id: instance.id });
+        const snapshot = normalizeCustomAgent(live, { path: 'agent', id: live.id });
         states.set(snapshot.id, 'queued');
         const mergedOptions = { ...options };
         const task = queueTail.catch(() => {}).then(() => run(snapshot, mergedOptions, context));

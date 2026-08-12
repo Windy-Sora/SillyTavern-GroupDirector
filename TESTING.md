@@ -179,6 +179,15 @@ tests first-enable, normal interval, ordering, and deletion-reset decisions. UI
 tests should verify delegation only—the section must not mutate `customAgents`,
 `_caData`, or `_autoCAG_*` directly.
 
+Critique coverage follows five independent boundaries: parser tests own balanced
+JSON extraction and noisy model output; validation tests own nested critique and
+export contracts; repository tests own activation, `basedOn` revert, pruning, and
+persistence rollback; execution tests own the shared lock and quiet-prompt cleanup;
+and the auto coordinator tests first-enable, interval, deletion reset, and
+checkpoint rollback. System tests cover prompt reuse, raw-text fallback, stale-chat
+rejection, and edited-result persistence. The UI contract forbids direct history
+mutation, JSON parsing, and chat persistence from the section module.
+
 ## UI safety coverage
 
 DOM-heavy sections keep event wiring and element mutation in the section module,

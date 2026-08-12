@@ -632,7 +632,12 @@ SillyTavern-GroupDirector/
 │   ├── variable-system.js      # 变量系统（定义/值/校验/日志/回滚/stale 检测）
 │   ├── world-book-scanner.js  # 世界书扫描
 │   ├── chat-summary-system.js # 上下文总结
-│   ├── critique-system.js     # AI 批判
+│   ├── critique-validation.js # 批判数据与导入文件共享契约
+│   ├── critique-parser.js     # LLM JSON 平衡提取与规范化
+│   ├── critique-repository.js # 历史、激活链、回退与保存事务
+│   ├── critique-execution.js  # LLM 运行锁与静默 Prompt 清理
+│   ├── critique-auto-coordinator.js # 自动批判 checkpoint 策略
+│   ├── critique-system.js     # AI 批判业务门面
 │   ├── custom-agent-validation.js # Custom Agent / 导入 / 配置档共享数据契约
 │   ├── custom-agent-system.js # CRUD、导入导出、结果存储与 Provider 生命周期
 │   ├── custom-agent-execution.js # 串行执行、去重、stale 检测与结果事务
@@ -874,6 +879,21 @@ decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {.
 ```
 
 ---
+
+### 13.3 Critique 模块边界
+
+Critique 按数据契约、解析、持久化、LLM 副作用和自动调度拆分。`critique-system.js` 只编排这些边界并向 UI、Provider 和入口提供稳定 API。
+
+| 模块 | 唯一职责 |
+|------|----------|
+| `critique-validation.js` | 校验核心容器、角色条目和 JSON 兼容值，并供 LLM 与导入文件共用 |
+| `critique-parser.js` | 从 Markdown/杂乱输出提取平衡 JSON，清理尾随逗号并交给 validator |
+| `critique-repository.js` | 维护单一活动记录、basedOn 回退、裁剪和失败回滚 |
+| `critique-execution.js` | 共享运行锁、调用 LLM，并在成功或异常后清理静默 Prompt |
+| `critique-auto-coordinator.js` | 计算 first-enable、interval、rollback 动作并事务化 checkpoint |
+| `ui/sections/critique.js` | DOM、按钮状态和反馈；结果编辑必须调用系统门面 |
+
+生成请求捕获开始时的 chat 与 metadata 引用。请求结束时若会话已切换，结果以 `StaleExecutionError` 拒绝，不写入新会话。导入导出复用相同 validator，CRUD 保存失败时恢复内存状态。
 
 ---
 

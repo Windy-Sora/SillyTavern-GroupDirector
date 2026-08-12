@@ -53,6 +53,7 @@ import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
+import { createCritiqueAutoCoordinator } from './systems/critique-auto-coordinator.js';
 import { createCustomAgentSystem } from './systems/custom-agent-system.js';
 import { planCustomAgentAutoRuns } from './systems/custom-agent-auto-coordinator.js';
 import { createExportImportSystem } from './systems/export-import-system.js';
@@ -448,6 +449,15 @@ const configProfileSystem = createConfigProfileSystem({
     settings, EXT_KEY, extension_settings, saveSettingsDebounced, setProviderTimeoutDefault,
     variableSystem, customAgentSystem, log,
 });
+
+const critiqueAutoCoordinator = createCritiqueAutoCoordinator({
+    getChatMetadata,
+    getChat,
+    getLatestActive: () => critiqueSystem.getLatestActive(),
+    generateCritique: () => critiqueSystem.generateCritique(),
+    saveChatConditional,
+    EXT_KEY,
+});
 const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = configProfileSystem;
 
 // ─── Custom Prompts System ──────────────────────────────────────────
@@ -618,7 +628,7 @@ const postSpeechExecutor = createExecutor({
 const userProviderLoader = createUserProviderLoader({
     extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
     getRegisteredProviderIds: () => [...getProviders().map(p => p.id)],
-    unregisterProvider: (id) => unregisterProvider(id),
+    unregisterProvider: (id, owner) => unregisterProvider(id, owner),
     CapabilityRegistry,
     confirmImport: html => callGenericPopup(html, POPUP_TYPE.CONFIRM),
 });
@@ -1606,42 +1616,25 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             // Check Auto Critique
             if (settings.autoCritiqueEnabled && settings.critiqueEnabled) {
                 const interval = settings.autoCritiqueInterval || 10;
-                let criLen = chat_metadata[EXT_KEY]._autoCritiqueLen;
-                if (criLen === undefined) criLen = critiqueSystem.getLatestActive?.()?.rangeEnd ?? 0;
-
-                if (criLen === 0 && chat_metadata[EXT_KEY]._autoCritiqueLen === undefined && legacyLen === undefined) {
-                    console.log('[GD-auto-cri] path: first-enable currentLen=', currentLen);
-                    if (currentLen >= interval) {
-                        try {
-                            log(`Auto-critique: first enable, ${currentLen} existing msgs`);
-                            toastr?.info?.(lang === 'zh' ? `自动批判触发（检测到 ${currentLen} 条现有消息）...` : `Auto-critique (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
-                            await critiqueSystem.generateCritique();
-                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                            await saveChatConditional();
-                            toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-critique failed:', e.message); }
-                    } else {
-                        chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                        await saveChatConditional();
+                try {
+                    const action = await critiqueAutoCoordinator.run({
+                        interval,
+                        legacyLength: legacyLen,
+                        beforeExecute: ({ newMessages, firstEnable }) => {
+                            const detail = firstEnable ? `${currentLen} existing msgs` : `${newMessages} msgs`;
+                            log(`Auto-critique triggered (${detail})`);
+                            toastr?.info?.(lang === 'zh'
+                                ? `自动批判触发（${firstEnable ? `${currentLen} 条现有消息` : `${newMessages} 条新消息`}）...`
+                                : `Auto-critique (${detail})...`, '', { timeOut: 3000 });
+                        },
+                    });
+                    if (action.type === 'execute') {
+                        toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
+                    } else if (action.type === 'reset') {
+                        toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动批判计数器已重置。' : 'Messages deleted. Auto-critique counter reset.', '', { timeOut: 8000 });
                     }
-                } else if (currentLen < criLen) {
-                    console.log('[GD-auto-cri] path: deletion');
-                    chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                    await saveChatConditional();
-                    toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动批判计数器已重置。' : 'Messages deleted. Auto-critique counter reset.', '', { timeOut: 8000 });
-                } else {
-                    const newMsgs = currentLen - criLen;
-                    console.log('[GD-auto-cri] path: normal newMsgs=', newMsgs, 'interval=', interval);
-                    if (newMsgs >= interval) {
-                        try {
-                            log(`Auto-critique triggered (${newMsgs} msgs)`);
-                            toastr?.info?.(lang === 'zh' ? `自动批判触发（${newMsgs} 条新消息）...` : `Auto-critique (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                            await critiqueSystem.generateCritique();
-                            chat_metadata[EXT_KEY]._autoCritiqueLen = currentLen;
-                            await saveChatConditional();
-                            toastr?.success?.(lang === 'zh' ? '自动批判完成' : 'Auto-critique done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-critique failed:', e.message); }
-                    }
+                } catch (e) {
+                    log('Auto-critique failed:', e.message);
                 }
             }
 
