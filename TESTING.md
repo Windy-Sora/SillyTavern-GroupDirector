@@ -95,10 +95,13 @@ tests. Do not add branches to the CLI or runner. The complete Checker v1 contrac
 is documented in `tools/gd-test/checks/README.md`.
 
 Behavior tests remain native Node `node:test` files discovered from
-`tests/**/*.test.mjs`; checker plugins are not a replacement test framework.
+`tests/**/*.test.js` and `tests/**/*.test.mjs`; checker plugins are not a
+replacement test framework.
+The normative Behavior Test v1 development standard is documented in
+[`tests/README.md`](tests/README.md).
 
-Tests are discovered automatically from `tests/**/*.test.mjs`; no central list
-needs to be maintained. Tests that mutate singleton registries must clean up with
+Tests are discovered automatically from `tests/**/*.test.js` and
+`tests/**/*.test.mjs`; no central list needs to be maintained. Tests that mutate singleton registries must clean up with
 `t.after()`. Test files run with concurrency 2; each file must therefore own its
 fixtures and must not depend on execution order. Tests that manipulate browser-like
 globals must restore them before completion.
@@ -221,6 +224,10 @@ Use a browser-level contract only when the behavior depends on event propagation
 focus, layout, or a SillyTavern-owned widget.
 
 ## Writing behavior tests
+
+This section is a quick-start summary. File ownership, naming, isolation,
+concurrency, regression, and review requirements are normative in
+[`tests/README.md`](tests/README.md).
 
 Use `node:test` directly for pure modules:
 

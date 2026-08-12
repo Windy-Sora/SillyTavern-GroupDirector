@@ -1074,15 +1074,17 @@ Summary、Critique、Memory、NPC、Profile、Story Blueprint 和 Custom Agent �
 | 改拦截器事件接线 | `index.js` → `groupDirector_Interceptor` / wrapper 事件监听 |
 | 改 takeover 状态规则 | 优先修改 `round-state.js` / `takeover-scheduler.js` / `round-finalization.js`，由 `round-orchestrator.js` 组合 |
 | 加静态检查器 | 新建 `tools/gd-test/checks/*.check.mjs` + 对应 unit test；无需修改 CLI/runner |
+| 加行为测试 | 按业务所有权放入 `tests/{unit,regression,integration,contract}`；遵循 `tests/README.md`，无需修改 CLI/runner |
 
 ### 19.1 GD Test Lab 模块边界
 
 - `core/project-index.mjs` 只建立文件、源码、JSON、import graph 和可达性等事实，不产生规则结论。
 - `checks/*.check.mjs` 一个文件一个规则域，自动发现，彼此不调用。
 - `core/check-runner.mjs` 只负责契约校验、稳定排序、Worker 硬隔离和结果聚合；checker 的加载与执行均不进入主线程，超时会等待 `worker.terminate()` 后再继续。
-- `core/test-runner.mjs` 只负责调用 Node `node:test`；行为测试继续由 `tests/**/*.test.mjs` 自动发现。
+- `core/test-runner.mjs` 只负责调用 Node `node:test`；行为测试继续由 `tests/**/*.test.js` / `tests/**/*.test.mjs` 自动发现。
 - `reporters/*` 只消费结构化结果；CLI 只负责接线和退出码。
 - Checker v1 的完整开发标准见 `tools/gd-test/checks/README.md`。
+- Behavior Test v1 的目录职责、命名、并发隔离、回归契约和规模门槛见 `tests/README.md`。
 
 ---
 

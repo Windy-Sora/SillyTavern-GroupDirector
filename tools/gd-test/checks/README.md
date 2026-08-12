@@ -62,4 +62,4 @@ export default {
 - Checker 级隔离由平台 Worker 提供；checker 内需要隔离 import 或不可信执行时仍应使用子进程，普通纯检查不要为每个被检查文件启动 Worker/进程。
 - 新增 checker 的正常改动范围应只有 checker 文件、对应测试和可选配置/文档。
 
-行为测试继续使用 `tests/**/*.test.mjs` 和 Node `node:test`，不使用本协议。
+行为测试继续使用 `tests/**/*.test.js` / `tests/**/*.test.mjs` 和 Node `node:test`，不使用本协议；完整规范见 [`tests/README.md`](../../../tests/README.md)。
