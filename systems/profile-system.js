@@ -35,6 +35,7 @@ function getProfileContainer(metadata = cm()) {
     if (!meta.archivedProfiles) meta.archivedProfiles = {};
     if (meta.profileVersion === undefined) meta.profileVersion = 1;
     if (meta.profileSchemaHash === undefined) meta.profileSchemaHash = '';
+    migrateProfileData(meta);
     return meta;
 }
 
