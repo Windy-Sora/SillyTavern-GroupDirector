@@ -14,6 +14,71 @@ import { djb2Hash } from '../utils/string-utils.js';
 
 const MEMORY_EXPORT_VERSION = 1;
 
+function sameJsonValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function findMatchingEntries(left, right) {
+    const leftKeys = left.map(entry => JSON.stringify(entry));
+    const rightKeys = right.map(entry => JSON.stringify(entry));
+    const table = Array.from({ length: left.length + 1 }, () => new Uint16Array(right.length + 1));
+    for (let i = left.length - 1; i >= 0; i--) {
+        for (let j = right.length - 1; j >= 0; j--) {
+            table[i][j] = leftKeys[i] === rightKeys[j]
+                ? table[i + 1][j + 1] + 1
+                : Math.max(table[i + 1][j], table[i][j + 1]);
+        }
+    }
+    const matches = [];
+    for (let i = 0, j = 0; i < left.length && j < right.length;) {
+        if (leftKeys[i] === rightKeys[j]) {
+            matches.push([i++, j++]);
+        } else if (table[i + 1][j] >= table[i][j + 1]) {
+            i++;
+        } else {
+            j++;
+        }
+    }
+    return matches;
+}
+
+function rollbackMemoryEntries(previous = [], applied = [], current = [], maxEntries = 200) {
+    if (sameJsonValue(current, applied)) return structuredClone(previous);
+    const appliedToPrevious = new Map(findMatchingEntries(previous, applied).map(([before, after]) => [after, before]));
+    const matches = [[-1, -1], ...findMatchingEntries(applied, current), [applied.length, current.length]];
+    const result = structuredClone(previous);
+    for (let gap = matches.length - 2; gap >= 0; gap--) {
+        const [leftApplied, leftCurrent] = matches[gap];
+        const [rightApplied, rightCurrent] = matches[gap + 1];
+        const removedIndexes = [];
+        for (let index = leftApplied + 1; index < rightApplied; index++) {
+            if (appliedToPrevious.has(index)) removedIndexes.push(appliedToPrevious.get(index));
+        }
+        const inserted = current.slice(leftCurrent + 1, rightCurrent);
+        if (!removedIndexes.length && !inserted.length) continue;
+
+        let insertAt;
+        if (removedIndexes.length) {
+            insertAt = Math.min(...removedIndexes);
+            for (const index of removedIndexes.sort((a, b) => b - a)) result.splice(index, 1);
+        } else {
+            let anchor = leftApplied;
+            while (anchor >= 0 && !appliedToPrevious.has(anchor)) anchor--;
+            if (anchor >= 0) {
+                insertAt = appliedToPrevious.get(anchor) + 1;
+            } else {
+                anchor = rightApplied;
+                while (anchor < applied.length && !appliedToPrevious.has(anchor)) anchor++;
+                insertAt = anchor < applied.length ? appliedToPrevious.get(anchor) : result.length;
+            }
+        }
+        result.splice(insertAt, 0, ...structuredClone(inserted));
+    }
+
+    while (result.length > maxEntries) result.shift();
+    return result;
+}
+
 // ── Validation ──────────────────────────────────────────────────────
 
 function validateExportFormat(obj) {
@@ -187,8 +252,8 @@ async function applyImport(importData, decisions, options, deps) {
         await saveChatConditional();
     } catch (error) {
         for (const [avatar, state] of rollback) {
-            if (JSON.stringify(memoryStore[avatar]) !== JSON.stringify(state.applied)) continue;
-            if (state.existed) memoryStore[avatar] = state.previous;
+            const restored = rollbackMemoryEntries(state.previous || [], state.applied || [], memoryStore[avatar] || [], maxEntries);
+            if (state.existed || restored.length) memoryStore[avatar] = restored;
             else delete memoryStore[avatar];
         }
         throw error;

@@ -227,6 +227,62 @@ test('memory import rollback preserves concurrent edits to unrelated characters'
     assert.deepEqual(metadata.gd.charMemories['bob-new.png'], [{ event: 'Concurrent Bob edit', round: 2 }]);
 });
 
+test('memory import rollback removes imported entries while preserving same-character additions', async () => {
+    const metadata = { gd: { charMemories: {
+        'alice.png': [{ event: 'Original Alice', round: 1 }],
+    } } };
+    let rejectSave;
+    const { system } = createFixture({
+        getChatMetadata: () => metadata,
+        saveChatConditional: () => new Promise((_, reject) => { rejectSave = reject; }),
+    });
+
+    const importing = system.applyMemoryImport({
+        template: {}, memories: { imported: { entries: [{ event: 'Replacement Alice' }] } },
+    }, { imported: { enabled: true, targetAvatar: 'alice.png', mode: 'replace' } });
+    metadata.gd.charMemories['alice.png'] = [
+        ...metadata.gd.charMemories['alice.png'],
+        { event: 'Concurrent Alice addition', round: 2 },
+    ];
+    rejectSave(new Error('save failed'));
+
+    await assert.rejects(importing, /save failed/);
+    assert.deepEqual(metadata.gd.charMemories['alice.png'], [
+        { event: 'Original Alice', round: 1 },
+        { event: 'Concurrent Alice addition', round: 2 },
+    ]);
+});
+
+test('memory import rollback replays same-character edits over the original entries', async () => {
+    const metadata = { gd: { charMemories: {
+        'alice.png': [
+            { event: 'Original Alice', round: 1 },
+            { event: 'Second memory', round: 2 },
+        ],
+    } } };
+    let rejectSave;
+    const { system } = createFixture({
+        getChatMetadata: () => metadata,
+        saveChatConditional: () => new Promise((_, reject) => { rejectSave = reject; }),
+    });
+
+    const importing = system.applyMemoryImport({
+        template: {}, memories: { imported: { entries: [{ event: 'Imported memory' }] } },
+    }, { imported: { enabled: true, targetAvatar: 'alice.png', mode: 'append' } });
+    const concurrentlyEdited = structuredClone(metadata.gd.charMemories['alice.png']);
+    concurrentlyEdited[0].event = 'Concurrent Alice edit';
+    concurrentlyEdited.push({ event: 'Concurrent Alice addition', round: 3 });
+    metadata.gd.charMemories['alice.png'] = concurrentlyEdited;
+    rejectSave(new Error('save failed'));
+
+    await assert.rejects(importing, /save failed/);
+    assert.deepEqual(metadata.gd.charMemories['alice.png'], [
+        { event: 'Concurrent Alice edit', round: 1 },
+        { event: 'Second memory', round: 2 },
+        { event: 'Concurrent Alice addition', round: 3 },
+    ]);
+});
+
 test('memory import rejects malformed envelopes before matching', () => {
     const { system } = createFixture();
     for (const text of ['{', '{}', '{"type":"memory-export","version":0,"template":{},"memories":{}}']) {
