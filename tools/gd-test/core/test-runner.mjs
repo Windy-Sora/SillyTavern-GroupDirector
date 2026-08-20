@@ -26,16 +26,30 @@ export function parseBugCoverage(output, requiredIds = []) {
     };
 }
 
+export function parseCoverageSummary(output) {
+    const match = /(?:^|\n)[^\n]*\ball files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|/i.exec(output);
+    if (!match) return null;
+    return {
+        lines: Number(match[1]),
+        branches: Number(match[2]),
+        functions: Number(match[3]),
+    };
+}
+
 export async function runNodeTests({ root, config, testEntries, options, requiredBugIds = [] }) {
     const files = testEntries.map(entry => entry.file);
     const args = ['--test', `--test-concurrency=${config.test.concurrency}`, '--test-reporter=spec'];
+    const coverageIncludes = config.test.coverageIncludes || [
+        '*.js',
+        'agents/**/*.js',
+        'assets/**/*.js',
+        'systems/**/*.js',
+        'ui/**/*.js',
+        'utils/**/*.js',
+    ];
     if (options.coverage) {
-        args.push(
-            '--experimental-test-coverage',
-            '--test-coverage-include=agents/**/*.js',
-            '--test-coverage-include=systems/**/*.js',
-            '--test-coverage-include=utils/**/*.js',
-        );
+        args.push('--experimental-test-coverage');
+        args.push(...coverageIncludes.map(pattern => `--test-coverage-include=${pattern}`));
     }
     if (options.filter && !files.some(file => relativePath(root, file).toLowerCase().includes(options.filter.toLowerCase()))) {
         args.push(`--test-name-pattern=${options.filter}`);
@@ -58,6 +72,10 @@ export async function runNodeTests({ root, config, testEntries, options, require
         timedOut: result.timedOut,
         files: testEntries.map(entry => ({ suite: entry.suite, file: relativePath(root, entry.file) })),
         bugCoverage,
+        coverage: options.coverage ? {
+            includes: coverageIncludes,
+            summary: parseCoverageSummary(output),
+        } : null,
         output,
     };
 }

@@ -5,14 +5,20 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Current verified baseline (2026-08-12):
+Current verified baseline (2026-08-20):
 
-- 251 JavaScript source files and 10 JSON files pass static validation;
-- 201 behavior tests are discovered, with 200 passing and one optional real-host
+- 261 JavaScript source files and 10 JSON files pass static validation;
+- 243 behavior tests are discovered, with 242 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 146/154 production modules, while tests directly or
-  transitively reach 54/154 production modules.
+  transitively reach 65/154 production modules;
+- 89 production modules are currently not test-reachable. The full JSON report
+  preserves their paths, while the console groups them by top-level area;
+- the full loaded-module coverage snapshot is 74.52% lines, 74.26% branches, and
+  74.05% functions. All eight built-in Agent modules are now test-reachable;
+  `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
+  independently reach 92.86%, 96.91%, and 91.98% lines.
 
 The reachability numbers are diagnostics, not success targets. A module can be
 entry-reachable without being safe, and test reachability is not line coverage.
@@ -136,9 +142,12 @@ files are classified as host-dependent and left to integration tests.
 The static summary reports module reachability from both the extension entry point
 and the test suite. Test reachability is not line coverage, but it immediately
 shows which production modules have never been loaded by any automated test.
-Node's percentage coverage only describes modules loaded during that run; use it
-together with test reachability instead of treating the percentage as whole-project
-coverage.
+Node's percentage coverage only describes modules loaded during that run. Coverage
+collection includes root production JavaScript plus `agents/`, `assets/`, `systems/`,
+`ui/`, and `utils/`, but Node omits matching modules that were never loaded. GD Test
+Lab therefore stores `moduleReachability.productionModules`, `testReachableModules`,
+and `testUnreachableModules` in the static report. Use those lists together with the
+percentage instead of treating loaded-module coverage as whole-project coverage.
 
 ## Round lifecycle coverage
 

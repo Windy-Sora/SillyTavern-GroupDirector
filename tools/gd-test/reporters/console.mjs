@@ -21,6 +21,16 @@ function printStatic(stage) {
     console.log(`         imports: ${c.internalImports} internal, ${c.hostImports} host, ${c.packageImports} package`);
     console.log(`         module smoke: ${c.moduleSmokeChecked} checked, ${c.moduleSmokeSkipped} host-dependent skipped`);
     console.log(`         reachability: entry ${c.entryReachableModules}/${c.productionModules}, tests ${c.testReachableModules}/${c.productionModules} modules`);
+    const unreachable = stage.moduleReachability?.testUnreachableModules || [];
+    if (unreachable.length) {
+        const areas = new Map();
+        for (const file of unreachable) {
+            const area = file.includes('/') ? file.split('/')[0] : '(root)';
+            areas.set(area, (areas.get(area) || 0) + 1);
+        }
+        const summary = [...areas].map(([area, count]) => `${area} ${count}`).join(', ');
+        console.log(`         not test-reachable: ${unreachable.length} modules (${summary})`);
+    }
     for (const item of stage.issues) {
         const where = item.line ? `${item.file}:${item.line}` : item.file;
         console.log(`  ${item.severity === 'error' ? 'ERROR' : 'WARN '} ${item.code} ${where} — ${item.message}`);
@@ -28,6 +38,10 @@ function printStatic(stage) {
 }
 
 function printTests(stage, options) {
+    if (stage.coverage?.summary) {
+        const { lines, branches, functions } = stage.coverage.summary;
+        console.log(`\n[coverage] loaded modules only: lines ${lines}%, branches ${branches}%, functions ${functions}%`);
+    }
     if (!options.verbose && stage.output?.trim()) console.log(`\n${stage.output.trim()}`);
     const coverage = stage.bugCoverage;
     if (coverage?.missing.length) console.error(`\n[regression-contracts] FAIL — missing scenario IDs: ${coverage.missing.join(', ')}`);

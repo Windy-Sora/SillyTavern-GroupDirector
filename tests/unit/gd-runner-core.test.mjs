@@ -3,8 +3,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import baseConfig from '../../gd-test.config.mjs';
 import { parseOptions } from '../../tools/gd-test/core/options.mjs';
-import { parseBugCoverage, parseTestSummary } from '../../tools/gd-test/core/test-runner.mjs';
+import { parseBugCoverage, parseCoverageSummary, parseTestSummary } from '../../tools/gd-test/core/test-runner.mjs';
 import { writeJsonReport } from '../../tools/gd-test/reporters/json.mjs';
 
 test('runner options preserve profile defaults and support both option forms', () => {
@@ -42,6 +43,28 @@ test('test output parsing keeps summary and historical contract semantics', () =
         found: ['BUG-2'],
         missing: ['BUG-3'],
     });
+});
+
+test('coverage configuration spans every production area and parses Node summaries', () => {
+    assert.deepEqual(baseConfig.test.coverageIncludes, [
+        '*.js',
+        'agents/**/*.js',
+        'assets/**/*.js',
+        'systems/**/*.js',
+        'ui/**/*.js',
+        'utils/**/*.js',
+    ]);
+    const output = [
+        'start of coverage report',
+        'all files | 67.35 | 72.89 | 68.61 |',
+        'end of coverage report',
+    ].join('\n');
+    assert.deepEqual(parseCoverageSummary(output), {
+        lines: 67.35,
+        branches: 72.89,
+        functions: 68.61,
+    });
+    assert.equal(parseCoverageSummary('coverage unavailable'), null);
 });
 
 test('JSON reporter writes the unchanged schema payload', async t => {

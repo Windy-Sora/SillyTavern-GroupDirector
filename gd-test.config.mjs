@@ -35,6 +35,14 @@ export default {
     test: {
         concurrency: 2,
         timeoutMs: 120_000,
+        coverageIncludes: [
+            '*.js',
+            'agents/**/*.js',
+            'assets/**/*.js',
+            'systems/**/*.js',
+            'ui/**/*.js',
+            'utils/**/*.js',
+        ],
     },
     regression: {
         // Every confirmed historical finding must remain represented by a
