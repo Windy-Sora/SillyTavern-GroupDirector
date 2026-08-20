@@ -10,8 +10,16 @@ test('config profile apply handler reports failures before success refreshes', a
     );
 
     assert.match(handler, /try\s*\{/);
-    assert.match(handler, /sys\.applyProfile\(id, mergeMode\)/);
+    assert.match(handler, /await\s+sys\.applyProfile\(id, mergeMode\)/);
     assert.match(handler, /catch\s*\(e\)\s*\{[\s\S]*toastr\.error/);
     assert.ok(handler.indexOf('sys.applyProfile') < handler.indexOf('__gdRefreshDashboard'));
     assert.ok(handler.indexOf('__gdRefreshDashboard') < handler.indexOf('toastr.success'));
+});
+
+test('dashboard profile handlers await application before reporting success', async () => {
+    for (const relativePath of ['../../ui/sections/dashboard.js', '../../dashboard.js']) {
+        const source = await readFile(new URL(relativePath, import.meta.url), 'utf8');
+        assert.match(source, /await\s+ctx\.configProfileSystem\?\.applyProfile\(id\)/);
+        assert.match(source, /await\s+ctx\.configProfileSystem\?\.applyProfile\(profile\.id\)/);
+    }
 });
