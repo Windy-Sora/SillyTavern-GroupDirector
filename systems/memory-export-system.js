@@ -118,6 +118,8 @@ async function applyImport(importData, decisions, options, deps) {
     const maxEntries = settings.memoryMaxEntries ?? 200;
     let totalApplied = 0;
     let totalSkipped = 0;
+    const memoryStore = store();
+    const originalStore = structuredClone(memoryStore);
 
     for (const [importedAvatar, decision] of Object.entries(decisions)) {
         if (!decision.enabled) { totalSkipped++; continue; }
@@ -141,7 +143,7 @@ async function applyImport(importData, decisions, options, deps) {
         }));
 
         const targetAvatar = decision.targetAvatar;
-        const existing = store()[targetAvatar] || [];
+        const existing = memoryStore[targetAvatar] || [];
 
         let merged;
         let appliedHere = 0;
@@ -153,9 +155,13 @@ async function applyImport(importData, decisions, options, deps) {
             const existingEvents = new Set(
                 existing.map(e => (e.event || '').toLowerCase().trim())
             );
-            const newEntries = entries.filter(e =>
-                !existingEvents.has((e.event || '').toLowerCase().trim())
-            );
+            const newEntries = [];
+            for (const entry of entries) {
+                const eventKey = (entry.event || '').toLowerCase().trim();
+                if (existingEvents.has(eventKey)) continue;
+                existingEvents.add(eventKey);
+                newEntries.push(entry);
+            }
             merged = [...existing, ...newEntries];
             appliedHere = newEntries.length;
         }
@@ -165,11 +171,17 @@ async function applyImport(importData, decisions, options, deps) {
             merged.shift();
         }
 
-        store()[targetAvatar] = merged;
+        memoryStore[targetAvatar] = merged;
         totalApplied += appliedHere;
     }
 
-    await saveChatConditional();
+    try {
+        await saveChatConditional();
+    } catch (error) {
+        for (const key of Object.keys(memoryStore)) delete memoryStore[key];
+        Object.assign(memoryStore, originalStore);
+        throw error;
+    }
 
     // Optionally import template
     let templateImported = false;

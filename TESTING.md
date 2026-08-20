@@ -7,18 +7,19 @@ readable reports.
 
 Current verified baseline (2026-08-20):
 
-- 275 JavaScript source files and 10 JSON files pass static validation;
-- 282 behavior tests are discovered, with 281 passing and one optional real-host
+- 280 JavaScript source files and 10 JSON files pass static validation;
+- 323 behavior tests are discovered, with 322 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 146/154 production modules, while tests directly or
   transitively reach 76/154 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 77.97% lines, 72.63% branches, and
-  77.78% functions. All eight built-in Agent modules are test-reachable; the
-  History and World Info systems now reach 100% lines, while Asset Loader,
-  NPC Export, and Summary Export also reach 100% lines;
+- the full loaded-module coverage snapshot is 84.17% lines, 74.84% branches, and
+  83.82% functions. All eight built-in Agent modules are test-reachable; Memory
+  Export and Story Blueprint now reach 99.45% and 98.70% lines respectively,
+  while Profile System reaches 54.10% lines, 82.53% branches, and 81.82% functions;
+  History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
 
