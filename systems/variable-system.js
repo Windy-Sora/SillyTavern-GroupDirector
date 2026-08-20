@@ -497,6 +497,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         const incoming = valid.variables;
         const mode = options.mode || 'merge';
         const vars = store();
+        const previous = clone(vars);
 
         if (mode === 'replace') {
             vars.defs = clone(incoming.defs || []);
@@ -519,7 +520,12 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                 while (vars.log.length > DEFAULT_LOG_LIMIT) vars.log.shift();
             }
         }
-        saveChatConditional?.();
+        try { saveChatConditional?.(); }
+        catch (error) {
+            for (const key of Object.keys(vars)) delete vars[key];
+            Object.assign(vars, previous);
+            throw error;
+        }
         return { ok: true, count: (incoming.defs || []).length };
     }
 
