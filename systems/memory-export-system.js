@@ -119,7 +119,7 @@ async function applyImport(importData, decisions, options, deps) {
     let totalApplied = 0;
     let totalSkipped = 0;
     const memoryStore = store();
-    const originalStore = structuredClone(memoryStore);
+    const rollback = new Map();
 
     for (const [importedAvatar, decision] of Object.entries(decisions)) {
         if (!decision.enabled) { totalSkipped++; continue; }
@@ -144,6 +144,13 @@ async function applyImport(importData, decisions, options, deps) {
 
         const targetAvatar = decision.targetAvatar;
         const existing = memoryStore[targetAvatar] || [];
+        if (!rollback.has(targetAvatar)) {
+            rollback.set(targetAvatar, {
+                existed: Object.prototype.hasOwnProperty.call(memoryStore, targetAvatar),
+                previous: structuredClone(memoryStore[targetAvatar]),
+                applied: null,
+            });
+        }
 
         let merged;
         let appliedHere = 0;
@@ -172,14 +179,18 @@ async function applyImport(importData, decisions, options, deps) {
         }
 
         memoryStore[targetAvatar] = merged;
+        rollback.get(targetAvatar).applied = structuredClone(merged);
         totalApplied += appliedHere;
     }
 
     try {
         await saveChatConditional();
     } catch (error) {
-        for (const key of Object.keys(memoryStore)) delete memoryStore[key];
-        Object.assign(memoryStore, originalStore);
+        for (const [avatar, state] of rollback) {
+            if (JSON.stringify(memoryStore[avatar]) !== JSON.stringify(state.applied)) continue;
+            if (state.existed) memoryStore[avatar] = state.previous;
+            else delete memoryStore[avatar];
+        }
         throw error;
     }
 

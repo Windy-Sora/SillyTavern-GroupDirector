@@ -205,6 +205,28 @@ test('memory import rolls live memory state back when chat persistence fails', a
     assert.deepEqual(metadata.gd.charMemories['alice.png'], [{ event: 'Original', round: 1 }]);
 });
 
+test('memory import rollback preserves concurrent edits to unrelated characters', async () => {
+    const metadata = { gd: { charMemories: {
+        'alice.png': [{ event: 'Original Alice', round: 1 }],
+        'bob-new.png': [{ event: 'Original Bob', round: 1 }],
+    } } };
+    let rejectSave;
+    const { system } = createFixture({
+        getChatMetadata: () => metadata,
+        saveChatConditional: () => new Promise((_, reject) => { rejectSave = reject; }),
+    });
+
+    const importing = system.applyMemoryImport({
+        template: {}, memories: { imported: { entries: [{ event: 'Replacement Alice' }] } },
+    }, { imported: { enabled: true, targetAvatar: 'alice.png', mode: 'replace' } });
+    metadata.gd.charMemories['bob-new.png'] = [{ event: 'Concurrent Bob edit', round: 2 }];
+    rejectSave(new Error('save failed'));
+
+    await assert.rejects(importing, /save failed/);
+    assert.deepEqual(metadata.gd.charMemories['alice.png'], [{ event: 'Original Alice', round: 1 }]);
+    assert.deepEqual(metadata.gd.charMemories['bob-new.png'], [{ event: 'Concurrent Bob edit', round: 2 }]);
+});
+
 test('memory import rejects malformed envelopes before matching', () => {
     const { system } = createFixture();
     for (const text of ['{', '{}', '{"type":"memory-export","version":0,"template":{},"memories":{}}']) {
