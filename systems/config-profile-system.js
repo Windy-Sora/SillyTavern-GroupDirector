@@ -196,7 +196,7 @@ export function createConfigProfileSystem(deps) {
         saveAll();
     }
 
-    function applyProfile(id, customPromptMerge = 'replace') {
+    async function applyProfile(id, customPromptMerge = 'replace') {
         const list = getProfiles();
         const profile = list.find(p => p.id === id);
         if (!profile) return { changed: [], customPromptConflicts: [] };
@@ -262,7 +262,7 @@ export function createConfigProfileSystem(deps) {
         customAgentSystem?.validateList(nextSettings.customAgents || []);
         try {
             if (importsVariables) {
-                const result = variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
+                const result = await variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
                 if (!result.ok) throw new Error(`Variable import failed: ${result.error}`);
                 changed.push('variables');
             }
@@ -275,7 +275,7 @@ export function createConfigProfileSystem(deps) {
             if (setProviderTimeoutDefault) setProviderTimeoutDefault(previousSettings.providerTimeoutMs);
             if (importsVariables && previousVariables) {
                 try {
-                    variableSystem.applyImportData({ variables: previousVariables }, { mode: 'replace', includeLog: true });
+                    await variableSystem.applyImportData({ variables: previousVariables }, { mode: 'replace', includeLog: true });
                 } catch (_) { /* preserve the original transaction failure */ }
             }
             throw error;

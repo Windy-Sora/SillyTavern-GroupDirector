@@ -77,6 +77,7 @@ registerSection('configProfiles', function (ctx) {
                 ? `应用配置档「${profileName}」？当前设置将被覆盖。`
                 : `Apply config profile "${profileName}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
 
+            let result;
             try {
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
@@ -97,7 +98,7 @@ registerSection('configProfiles', function (ctx) {
                 }
             }
 
-            const result = sys.applyProfile(id, mergeMode);
+            result = await sys.applyProfile(id, mergeMode);
             } catch (e) {
                 toastr.error((isZh() ? '应用失败: ' : 'Apply failed: ') + e.message);
                 return;

@@ -66,7 +66,7 @@ test('variable system refuses automatic updates to locked or manual variables wi
     assert.equal(subject.getValue(subject.getDefinition('manual_note')), 'keep');
 });
 
-test('variable exports and imports preserve definitions and isolate imported data', () => {
+test('variable exports and imports preserve definitions and isolate imported data', async () => {
     const { subject } = createSubject();
     subject.upsertDefinition({ id: 'inventory', type: 'array', updateMode: 'append', value: [] });
     subject.setValue('inventory', ['key']);
@@ -76,8 +76,8 @@ test('variable exports and imports preserve definitions and isolate imported dat
     assert.deepEqual(subject.getValue(subject.getDefinition('inventory')), ['key']);
 
     const { subject: target } = createSubject();
-    const imported = target.applyImportData(subject.buildExportFile(), { mode: 'replace' });
+    const imported = await target.applyImportData(subject.buildExportFile(), { mode: 'replace' });
     assert.deepEqual(imported, { ok: true, count: 1 });
     assert.deepEqual(target.getValue(target.getDefinition('inventory')), ['key']);
-    assert.deepEqual(target.applyImportData({ type: 'wrong' }), { ok: false, error: 'Not a variables export file' });
+    assert.deepEqual(await target.applyImportData({ type: 'wrong' }), { ok: false, error: 'Not a variables export file' });
 });

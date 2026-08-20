@@ -491,7 +491,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         };
     }
 
-    function applyImportData(data, options = {}) {
+    async function applyImportData(data, options = {}) {
         const valid = validateImportData(data);
         if (!valid.ok) return valid;
         const incoming = valid.variables;
@@ -520,10 +520,13 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                 while (vars.log.length > DEFAULT_LOG_LIMIT) vars.log.shift();
             }
         }
-        try { saveChatConditional?.(); }
+        const applied = clone(vars);
+        try { await saveChatConditional?.(); }
         catch (error) {
-            for (const key of Object.keys(vars)) delete vars[key];
-            Object.assign(vars, previous);
+            if (JSON.stringify(vars) === JSON.stringify(applied)) {
+                for (const key of Object.keys(vars)) delete vars[key];
+                Object.assign(vars, previous);
+            }
             throw error;
         }
         return { ok: true, count: (incoming.defs || []).length };
@@ -550,7 +553,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         try { json = JSON.parse(text); } catch (e) {
             return { ok: false, error: `Invalid JSON: ${e.message}` };
         }
-        return applyImportData(json, options);
+        return await applyImportData(json, options);
     }
 
     function renderGlobalVars() {

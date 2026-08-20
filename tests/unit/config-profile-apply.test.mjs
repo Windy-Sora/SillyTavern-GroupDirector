@@ -12,7 +12,7 @@ function profile(settings, extra = {}) {
     };
 }
 
-test('applying a profile merges defaults and preserves per-user agent credentials', () => {
+test('applying a profile merges defaults and preserves per-user agent credentials', async () => {
     const { subject, settings, calls, extensionSettings } = createConfigProfileSubject({
         profileLibraryAutoLoad: { enabled: false, fixedId: 'old' },
         configProfiles: [profile({
@@ -24,7 +24,7 @@ test('applying a profile merges defaults and preserves per-user agent credential
         })],
     });
 
-    const result = subject.applyProfile('profile-1');
+    const result = await subject.applyProfile('profile-1');
 
     assert.equal(settings.llmMaxSpeakers, 4);
     assert.equal(settings.profileLibraryAutoLoad.enabled, true);
@@ -37,7 +37,7 @@ test('applying a profile merges defaults and preserves per-user agent credential
     assert.equal(extensionSettings.gd, settings);
 });
 
-test('custom prompt merge modes have isolated replace, keep, and skip semantics', () => {
+test('custom prompt merge modes have isolated replace, keep, and skip semantics', async () => {
     for (const [mode, expected] of [
         ['replace', ['new existing', 'new extra']],
         ['keep', ['old existing', 'new extra']],
@@ -50,13 +50,13 @@ test('custom prompt merge modes have isolated replace, keep, and skip semantics'
                 { name: 'extra', content: 'new extra' },
             ] })],
         });
-        const result = subject.applyProfile('profile-1', mode);
+        const result = await subject.applyProfile('profile-1', mode);
         assert.deepEqual(settings.customPrompts.map(item => item.content), expected);
         assert.deepEqual(result.customPromptConflicts, ['same']);
     }
 });
 
-test('variable rejection leaves settings unchanged and does not save', () => {
+test('variable rejection leaves settings unchanged and does not save', async () => {
     const { subject, settings, calls } = createConfigProfileSubject({
         llmMaxSpeakers: 1,
         configProfiles: [profile({ llmMaxSpeakers: 5 }, {
@@ -66,37 +66,53 @@ test('variable rejection leaves settings unchanged and does not save', () => {
     }, { ok: false, error: 'invalid variables' });
     const before = structuredClone(settings);
 
-    assert.throws(() => subject.applyProfile('profile-1'), /Variable import failed/);
+    await assert.rejects(subject.applyProfile('profile-1'), /Variable import failed/);
     assert.deepEqual(settings, before);
     assert.equal(calls.saves, 0);
     assert.equal(calls.logs.length, 0);
 });
 
-test('malformed stored profiles fail before any live state mutation', () => {
+test('asynchronous variable persistence rejection aborts profile application', async () => {
+    const { subject, settings, calls } = createConfigProfileSubject({
+        llmMaxSpeakers: 1,
+        configProfiles: [profile({ llmMaxSpeakers: 5 }, {
+            drawers: { contextLedger: true },
+            variables: { defs: [], values: { global: {}, character: {} } },
+        })],
+    }, async () => { throw new Error('variable save failed'); });
+    const before = structuredClone(settings);
+
+    await assert.rejects(subject.applyProfile('profile-1'), /variable save failed/);
+    assert.deepEqual(settings, before);
+    assert.equal(calls.saves, 0);
+    assert.equal(calls.logs.length, 0);
+});
+
+test('malformed stored profiles fail before any live state mutation', async () => {
     const { subject, settings, calls } = createConfigProfileSubject({
         configProfiles: [profile({ customPrompts: [null] })],
     });
     const before = structuredClone(settings);
 
-    assert.throws(() => subject.applyProfile('profile-1'), /customPrompts\[0\]/);
+    await assert.rejects(subject.applyProfile('profile-1'), /customPrompts\[0\]/);
     assert.deepEqual(settings, before);
     assert.equal(calls.saves, 0);
 });
 
-test('save failure rolls live settings back to their previous values', () => {
+test('save failure rolls live settings back to their previous values', async () => {
     const { subject, settings, calls } = createConfigProfileSubject({
         llmMaxSpeakers: 1,
         configProfiles: [profile({ llmMaxSpeakers: 5 })],
     }, { ok: true }, { saveError: new Error('disk unavailable') });
     const before = structuredClone(settings);
 
-    assert.throws(() => subject.applyProfile('profile-1'), /disk unavailable/);
+    await assert.rejects(subject.applyProfile('profile-1'), /disk unavailable/);
     assert.deepEqual(settings, before);
     assert.equal(calls.saves, 1);
     assert.equal(calls.logs.length, 0);
 });
 
-test('custom agent provider refresh failure rolls profile settings back', () => {
+test('custom agent provider refresh failure rolls profile settings back', async () => {
     let refreshes = 0;
     const customAgentSystem = {
         validateList: () => {},
@@ -113,7 +129,7 @@ test('custom agent provider refresh failure rolls profile settings back', () => 
     }, { ok: true }, { customAgentSystem });
     const before = structuredClone(settings);
 
-    assert.throws(() => subject.applyProfile('profile-1'), /provider collision/);
+    await assert.rejects(subject.applyProfile('profile-1'), /provider collision/);
     assert.deepEqual(settings, before);
     assert.equal(refreshes, 2);
     assert.equal(calls.saves, 0);

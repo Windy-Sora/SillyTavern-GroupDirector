@@ -68,7 +68,7 @@ test('variable renderers format global, character, object, and maintenance views
     assert.doesNotMatch(maintenance, /global\.locked/);
 });
 
-test('variable merge import combines definitions, values, character buckets, and optional logs', () => {
+test('variable merge import combines definitions, values, character buckets, and optional logs', async () => {
     const { system } = fixture();
     system.upsertDefinition({ id: 'phase', type: 'string', value: 'old' });
     system.setValue('phase', 'current');
@@ -80,19 +80,19 @@ test('variable merge import combines definitions, values, character buckets, and
             log: [{ id: 'phase', newValue: 'imported', source: 'import' }],
         },
     };
-    assert.deepEqual(system.applyImportData(incoming, { mode: 'merge', includeLog: true }), { ok: true, count: 2 });
+    assert.deepEqual(await system.applyImportData(incoming, { mode: 'merge', includeLog: true }), { ok: true, count: 2 });
     assert.equal(system.getDefinition('phase').label, 'Imported Phase');
     assert.equal(system.getValue('phase'), 'imported');
     assert.equal(system.getValue('trust', 'Alice'), 80);
     assert.equal(system.getLog().at(-1).source, 'import');
 });
 
-test('variable replace import replaces state and defaults missing logs to the existing history', () => {
+test('variable replace import replaces state and defaults missing logs to the existing history', async () => {
     const { system } = fixture();
     system.upsertDefinition({ id: 'old', type: 'string', value: 'old' });
     system.setValue('old', 'logged');
     const previousLog = system.getLog();
-    const result = system.applyImportData({
+    const result = await system.applyImportData({
         defs: [{ id: 'new', type: 'boolean', value: false }],
         values: { global: { new: true }, character: {} },
     }, { mode: 'replace' });
@@ -102,19 +102,19 @@ test('variable replace import replaces state and defaults missing logs to the ex
     assert.deepEqual(system.getLog(), previousLog);
 });
 
-test('variable import validates envelopes and rolls back synchronous persistence failures', () => {
+test('variable import validates envelopes and rolls back persistence failures', async () => {
     const { system } = fixture();
     for (const invalid of [null, [], { type: 'wrong' }, { defs: [], values: null }]) {
-        assert.equal(system.applyImportData(invalid).ok, false);
+        assert.equal((await system.applyImportData(invalid)).ok, false);
     }
 
     const metadata = {};
     const failed = fixture({
         getChatMetadata: () => metadata,
         chat_metadata: metadata,
-        saveChatConditional: () => { throw new Error('save failed'); },
+        saveChatConditional: async () => { throw new Error('save failed'); },
     }).system;
-    assert.throws(() => failed.applyImportData({
+    await assert.rejects(failed.applyImportData({
         defs: [{ id: 'new', type: 'string' }],
         values: { global: { new: 'value' }, character: {} },
     }, { mode: 'replace' }), /save failed/);

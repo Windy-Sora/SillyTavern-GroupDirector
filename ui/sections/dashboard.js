@@ -947,7 +947,7 @@ registerSection('dashboard', function (ctx) {
             if (rawValue.startsWith(PROF_PREFIX)) {
                 // User profile — apply directly by ID
                 const id = rawValue.slice(PROF_PREFIX.length);
-                ctx.configProfileSystem?.applyProfile(id);
+                await ctx.configProfileSystem?.applyProfile(id);
                 try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
                 window.__gdRefreshProfileLibrary?.();
                 window.__gdRefreshStoryBlueprint?.();
@@ -959,7 +959,7 @@ registerSection('dashboard', function (ctx) {
             } else {
                 // System preset — load then apply
                 const profile = await loadConfigPreset(rawValue);
-                ctx.configProfileSystem?.applyProfile(profile.id);
+                await ctx.configProfileSystem?.applyProfile(profile.id);
                 try { await window.__gdReloadExtension?.(); } catch (e) { console.error('[dashboard] reload after apply failed:', e); }
                 window.__gdRefreshProfileLibrary?.();
                 window.__gdRefreshStoryBlueprint?.();
