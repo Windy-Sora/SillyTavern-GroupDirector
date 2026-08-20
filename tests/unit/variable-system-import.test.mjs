@@ -157,6 +157,30 @@ test('variable import rollback removes imported paths while preserving concurren
     assert.equal(system.getLog().some(entry => entry.source === 'import'), false);
 });
 
+test('variable import rollback removes imported array entries while preserving a concurrent append', async () => {
+    let deferNextSave = false;
+    let rejectImport;
+    const { system } = fixture({
+        saveChatConditional: () => {
+            if (!deferNextSave) return Promise.resolve();
+            deferNextSave = false;
+            return new Promise((_, reject) => { rejectImport = reject; });
+        },
+    });
+    system.upsertDefinition({ id: 'items', type: 'array', value: ['before'], updateMode: 'append' });
+
+    deferNextSave = true;
+    const importing = system.applyImportData({
+        defs: [{ id: 'items', type: 'array', value: ['imported'], updateMode: 'append' }],
+        values: { global: { items: ['imported'] }, character: {} },
+    }, { mode: 'replace' });
+    system.setValue('items', 'concurrent');
+    rejectImport(new Error('save failed'));
+
+    await assert.rejects(importing, /save failed/);
+    assert.deepEqual(system.getValue('items'), ['before', 'concurrent']);
+});
+
 test('variable file export and import preserve JSON contracts', async () => {
     const dom = installDownloadDom();
     try {
