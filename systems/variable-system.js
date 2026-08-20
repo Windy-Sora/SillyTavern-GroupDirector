@@ -41,6 +41,62 @@ function clone(value) {
     try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
 }
 
+function sameJsonValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function isJsonObject(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function rollbackJsonValue(previous, applied, current) {
+    if (sameJsonValue(current, applied)) return clone(previous);
+    if (sameJsonValue(previous, applied)) return clone(current);
+    if (!isJsonObject(applied) || !isJsonObject(current)) return clone(current);
+
+    const result = {};
+    const keys = new Set([
+        ...Object.keys(isJsonObject(previous) ? previous : {}),
+        ...Object.keys(applied),
+        ...Object.keys(current),
+    ]);
+    for (const key of keys) {
+        const value = rollbackJsonValue(previous?.[key], applied[key], current[key]);
+        if (value !== undefined) result[key] = value;
+    }
+    return result;
+}
+
+function rollbackDefinitions(previous = [], applied = [], current = []) {
+    const previousById = new Map(previous.map(def => [def.id, def]));
+    const appliedById = new Map(applied.map(def => [def.id, def]));
+    const currentById = new Map(current.map(def => [def.id, def]));
+    const order = [...previousById.keys(), ...[...currentById.keys()].filter(id => !previousById.has(id))];
+    const result = [];
+    for (const id of order) {
+        const before = previousById.get(id);
+        const imported = appliedById.get(id);
+        const now = currentById.get(id);
+        if (before === undefined && imported !== undefined && !sameJsonValue(now, imported)) {
+            if (now !== undefined) result.push(clone(now));
+            continue;
+        }
+        const rolledBack = rollbackJsonValue(before, imported, now);
+        if (rolledBack !== undefined) result.push(rolledBack);
+    }
+    return result;
+}
+
+function rollbackLog(previous = [], applied = [], current = []) {
+    if (sameJsonValue(current, applied)) return clone(previous);
+    let overlap = Math.min(applied.length, current.length);
+    while (overlap > 0 && !sameJsonValue(applied.slice(-overlap), current.slice(0, overlap))) overlap--;
+    if (overlap > 0 || applied.length === 0) {
+        return [...clone(previous), ...clone(current.slice(overlap))].slice(-DEFAULT_LOG_LIMIT);
+    }
+    return clone(current);
+}
+
 function validateImportData(obj) {
     if (!obj || typeof obj !== 'object') return { ok: false, error: 'Not a valid JSON object' };
     if (obj.type && obj.type !== 'group-director-variables') return { ok: false, error: 'Not a variables export file' };
@@ -523,10 +579,13 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         const applied = clone(vars);
         try { await saveChatConditional?.(); }
         catch (error) {
-            if (JSON.stringify(vars) === JSON.stringify(applied)) {
-                for (const key of Object.keys(vars)) delete vars[key];
-                Object.assign(vars, previous);
-            }
+            const rolledBack = {
+                defs: rollbackDefinitions(previous.defs, applied.defs, vars.defs),
+                values: rollbackJsonValue(previous.values, applied.values, vars.values),
+                log: rollbackLog(previous.log, applied.log, vars.log),
+            };
+            for (const key of Object.keys(vars)) delete vars[key];
+            Object.assign(vars, rolledBack);
             throw error;
         }
         return { ok: true, count: (incoming.defs || []).length };

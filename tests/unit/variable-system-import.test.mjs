@@ -121,6 +121,42 @@ test('variable import validates envelopes and rolls back persistence failures', 
     assert.deepEqual(metadata.gd.variables, { defs: [], values: { global: {}, character: {} }, log: [] });
 });
 
+test('variable import rollback removes imported paths while preserving concurrent updates', async () => {
+    let deferNextSave = false;
+    let rejectImport;
+    const { system } = fixture({
+        saveChatConditional: () => {
+            if (!deferNextSave) return Promise.resolve();
+            deferNextSave = false;
+            return new Promise((_, reject) => { rejectImport = reject; });
+        },
+    });
+    system.upsertDefinition({ id: 'phase', label: 'Original Phase', type: 'string', value: 'start' });
+    system.upsertDefinition({ id: 'other', label: 'Other', type: 'string', value: 'old' });
+    system.setValue('phase', 'before import');
+    const previousLog = system.getLog();
+
+    deferNextSave = true;
+    const importing = system.applyImportData({
+        defs: [
+            { id: 'phase', label: 'Imported Phase', type: 'string', value: 'imported' },
+            { id: 'other', label: 'Other', type: 'string', value: 'old' },
+        ],
+        values: { global: { phase: 'imported', other: 'old' }, character: {} },
+        log: [{ id: 'phase', newValue: 'imported', source: 'import' }],
+    }, { mode: 'replace', includeLog: true });
+    system.setValue('other', 'concurrent');
+    const concurrentLog = system.getLog().at(-1);
+    rejectImport(new Error('save failed'));
+
+    await assert.rejects(importing, /save failed/);
+    assert.equal(system.getDefinition('phase').label, 'Original Phase');
+    assert.equal(system.getValue('phase'), 'before import');
+    assert.equal(system.getValue('other'), 'concurrent');
+    assert.deepEqual(system.getLog(), [...previousLog, concurrentLog]);
+    assert.equal(system.getLog().some(entry => entry.source === 'import'), false);
+});
+
 test('variable file export and import preserve JSON contracts', async () => {
     const dom = installDownloadDom();
     try {
