@@ -283,12 +283,15 @@ The variable system provides structured, long-term state tracking for Group Dire
 - **Change log** — last 100 operations, with messageId/hash for stale detection
 - **Stale detection** — variables marked as "possibly stale" when messages are deleted or modified
 - **Rollback support** — revert to the previous non-ignored record
+- **Transactional import** — success is returned only after asynchronous chat-metadata persistence succeeds; on failure, a `before / applied / current` three-way rollback removes imported writes while preserving concurrent edits made during the save
 - **Locking** — locked=true records LLM updates but does not write values
 - **Config profile integration** — variable data syncs with config profile export/import
 
 **LLM interaction:** `{{variableMaintenance}}` injected into Director system prompt → LLM returns `variable_update` field in JSON response → `applyUpdates()` parses and writes to `chat_metadata`.
 
 **Storage:** `chat_metadata[EXT_KEY].variables = { defs: [...], values: { global: {...}, character: {...} }, log: [...] }`
+
+**Import rollback:** definitions and values use path-aware three-way rollback. Arrays use a longest-common-subsequence match to derive the `applied → current` sequence delta and replay concurrent additions/removals over the pre-import array. Logs remove only the imported segment and retain records appended while persistence was pending. A failed save therefore leaves neither imported data behind nor overwrites unrelated edits or same-array concurrent sequence additions/removals with an old snapshot.
 
 **UI:** Tools drawer → Variables card (list + editor + templates + import/export); Dashboard → Variables panel (click "Variables" button to expand, real-time view/edit/rollback/lock).
 

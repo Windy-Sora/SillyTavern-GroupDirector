@@ -172,6 +172,14 @@ including `null`, arrays where objects are expected, primitives, missing strings
 and invalid array elements. Validation failures must return structured results and
 must not escape into UI event handlers as exceptions.
 
+Variable import transaction coverage belongs in
+`tests/unit/variable-system-import.test.mjs`. Tests must use a deferred persistence
+promise and cover both synchronous/asynchronous rejection. On failure they must
+assert that imported definitions, values, and log entries are removed while
+concurrent work is retained. This includes an unrelated variable update and an
+append to the same array variable; the latter must restore the pre-import sequence
+and replay only the concurrent array delta.
+
 Config Profile JSON, ZIP, and built-in preset manifests share one validation
 boundary. Applying a profile prepares settings on a detached copy, imports
 variables only after preparation succeeds, and rolls live settings/variables back

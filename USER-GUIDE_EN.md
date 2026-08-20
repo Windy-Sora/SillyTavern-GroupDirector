@@ -485,6 +485,8 @@ Manages Group Director's variable tracking system. 22 built-in templates (story_
 | Maintenance preview | View the actual {{variableMaintenance}} content injected into the Director Prompt |
 | Export/Import | Export variable definitions + data as JSON, reusable across group chats |
 
+A variable import reports success only after chat persistence completes. If persistence fails, the import is rolled back while other edits completed during the pending save are retained, including concurrent appends to the same array variable.
+
 > **Dashboard Variable Panel**: Click the "Variables" button on the dashboard action bar to expand. Includes index quick-jump, template dropdown, new variable creation, and export/import. Variable values are grouped by global/character with inline editing, rollback to previous record, and variable locking. Check "Hide unchanged character vars" to filter inactive rows.
 
 #### Script Executor (Card)
