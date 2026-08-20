@@ -109,41 +109,6 @@ export function createDirectorAgent({
                     matchCharacterByName,
                     log,
                 });
-
-                // Legacy implementation retained temporarily while the pure
-                // normalizer is characterized by tests.
-                if (!parsed || !Array.isArray(parsed.speakers) || parsed.speakers.length === 0) {
-                    return null;
-                }
-
-                // Map names → avatars, keeping names in lockstep
-                const orderedAvatars = [];
-                const orderedNames = [];
-                const seen = new Set();
-                for (const name of parsed.speakers) {
-                    const c = matchCharacterByName(name, ctx.enabledMembers);
-                    if (c && !seen.has(c.avatar)) {
-                        seen.add(c.avatar);
-                        orderedAvatars.push(c.avatar);
-                        orderedNames.push(c.name);
-                    } else if (!c) {
-                        log(`LLM returned unrecognized name: "${name}" — skipped`);
-                    }
-                }
-
-                const maxSpeakers = ctx.runtimeContext?.maxSpeakers ?? 3;
-                const capped = orderedAvatars.slice(0, maxSpeakers);
-                const cappedNames = orderedNames.slice(0, maxSpeakers);
-
-                const { speakers: _s, reason: _r, scripts: _sc, loreAssignments: _la, ...extra } = parsed;
-                return {
-                    ...extra,
-                    speakers: capped,
-                    names: cappedNames,
-                    reason: parsed.reason ?? '',
-                    scripts: parsed.scripts ?? null,
-                    loreAssignments: parsed.loreAssignments ?? null,
-                };
             },
 
             validate(parsed, ctx) {

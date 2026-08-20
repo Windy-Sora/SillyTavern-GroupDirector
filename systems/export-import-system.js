@@ -245,7 +245,8 @@ export function createExportImportSystem({
             for (const file of charFiles) {
                 try {
                     const blob = await file.async('blob');
-                    const originalName = file.name;
+                    const archivePath = file.name;
+                    const originalName = archivePath.split('/').pop() || archivePath;
                     const baseName = originalName.replace(/\.(png|webp)$/i, '');
 
                     const formData = new FormData();
@@ -264,11 +265,13 @@ export function createExportImportSystem({
                             const actualAvatar = result.file_name + '.png';
                             avatarNameMap.set(originalName, actualAvatar);
                             avatarNameMap.set(baseName, actualAvatar); // also map without extension
+                            avatarNameMap.set(archivePath, actualAvatar); // support full paths returned by JSZip
                             log(`Imported character: ${originalName} → ${actualAvatar}`);
                             charOk++;
                         } else {
                             avatarNameMap.set(originalName, originalName); // assume preserved
                             avatarNameMap.set(baseName, originalName);
+                            avatarNameMap.set(archivePath, originalName);
                             charOk++;
                         }
                     } else {
@@ -290,7 +293,7 @@ export function createExportImportSystem({
             for (const file of worldFiles) {
                 try {
                     const blob = await file.async('blob');
-                    const originalName = file.name;
+                    const originalName = file.name.split('/').pop() || file.name;
 
                     const formData = new FormData();
                     formData.append('avatar', blob, originalName);
