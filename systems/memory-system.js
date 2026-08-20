@@ -209,8 +209,19 @@ export function createMemorySystem({
     /** Reset all memories for all characters. */
     async function resetAll() {
         const cm = getChatMetadata();
-        if (cm[EXT_KEY]) cm[EXT_KEY].charMemories = {};
-        await saveStore();
+        const meta = cm[EXT_KEY];
+        if (!meta) {
+            await saveStore();
+            return;
+        }
+        const previous = meta.charMemories;
+        const applied = {};
+        meta.charMemories = applied;
+        try { await saveStore(); }
+        catch (error) {
+            if (meta.charMemories === applied) meta.charMemories = previous;
+            throw error;
+        }
     }
 
     let _pruning = false;
@@ -223,13 +234,26 @@ export function createMemorySystem({
             const max = settings.memoryMaxEntries ?? 200;
             const store = getStore();
             let changed = false;
+            const changes = [];
             for (const [avatar, memories] of Object.entries(store)) {
                 if (memories.length > max) {
+                    const previous = structuredClone(memories);
                     while (memories.length > max) memories.shift();
+                    changes.push({ avatar, previous, appliedState: snapshotValue(memories) });
                     changed = true;
                 }
             }
-            if (changed) await saveStore();
+            if (changed) {
+                try { await saveStore(); }
+                catch (error) {
+                    for (const change of changes) {
+                        if (snapshotValue(store[change.avatar]) === change.appliedState) {
+                            store[change.avatar] = change.previous;
+                        }
+                    }
+                    throw error;
+                }
+            }
         } finally {
             _pruning = false;
         }
