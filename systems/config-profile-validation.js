@@ -8,6 +8,11 @@ import {
     normalizeCustomAgent,
     normalizeCustomAgentList,
 } from './custom-agent-validation.js';
+import {
+    generateCustomPromptId,
+    normalizeCustomPrompt,
+    normalizeCustomPromptList,
+} from './custom-prompt-validation.js';
 
 const CONFIG_PROFILE_VERSION = 1;
 
@@ -65,11 +70,13 @@ export function validateConfigProfileManifest(manifest, { source = 'json' } = {}
         validateVariables(manifest.variables);
     }
     for (const key of [
-        'customPrompts',
         'userProviders',
         'userCapabilities',
     ]) {
         validateNamedEntries(manifest.settings, key);
+    }
+    if (manifest.settings.customPrompts !== undefined) {
+        normalizeCustomPromptList(manifest.settings.customPrompts, { path: 'customPrompts' });
     }
     if (manifest.settings.scriptExecutors !== undefined) {
         normalizeScriptExecutorList(manifest.settings.scriptExecutors, { path: 'scriptExecutors' });
@@ -98,6 +105,12 @@ export function sanitizeImportedSettings(settings, { source = 'json' } = {}) {
             path: `customAgents[${index}]`,
             id: generateCustomAgentId(),
             forceDisabled: true,
+        }));
+    }
+    if (Array.isArray(sanitized.customPrompts)) {
+        sanitized.customPrompts = sanitized.customPrompts.map((entry, index) => normalizeCustomPrompt(entry, {
+            path: `customPrompts[${index}]`,
+            id: generateCustomPromptId(),
         }));
     }
     return sanitized;

@@ -635,6 +635,7 @@ SillyTavern-GroupDirector/
 │   ├── memory-export-system.js
 │   ├── post-speech-system.js  # PostSpeech 决策持久化
 │   ├── config-profile-system.js # 配置档管理（含 JSZip fallback 加载）
+│   ├── custom-prompt-validation.js # 自定义 Prompt 共享导入/字段契约
 │   ├── custom-prompts-system.js # 自定义 Prompt 模板
 │   ├── variable-system.js      # 变量系统（定义/值/校验/日志/回滚/stale 检测）
 │   ├── world-book-scanner.js  # 世界书扫描
@@ -1018,11 +1019,13 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 用户创建自定义占位符，自动注册为 `{{name}}` Provider。
 
-**存储**：`settings.customPrompts = [{ id, name, content, enabled }]`
+**存储**：`settings.customPrompts = [{ id, name, content, dataJson, scope, enabled }]`
 
 **命名规则**：仅限 `\w+`，自动检测与内置 Provider 的命名冲突。
 
 **两级控制**：总开关 `customPromptsEnabled` + 每条独立 `enabled`。
+
+**边界与事务**：`custom-prompt-validation.js` 是 CRUD、独立导入和配置档导入共享的结构契约。所有变更在系统层串行执行并等待 `saveSettings`；失败时只补偿本操作仍未被并发改写的字段。Provider 使用稳定 Owner/条目 ID 注册，热重载通过已管理台账清理配置档中已移除的旧占位符，禁止跨模块覆盖或删除同名 Provider。
 
 ---
 

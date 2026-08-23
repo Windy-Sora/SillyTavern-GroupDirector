@@ -636,6 +636,7 @@ SillyTavern-GroupDirector/
 │   ├── memory-export-system.js
 │   ├── post-speech-system.js  # PostSpeech decision persistence
 │   ├── config-profile-system.js # Config profile management (with JSZip fallback loading)
+│   ├── custom-prompt-validation.js # Shared Custom Prompt import/field contract
 │   ├── custom-prompts-system.js # Custom Prompt templates
 │   ├── variable-system.js      # Variable system (defs/values/validation/log/rollback/stale detection)
 │   ├── world-book-scanner.js  # World book scanning
@@ -1019,11 +1020,13 @@ Library entries are content data, explicitly excluded by `INTENTIONALLY_UNCOVERE
 
 Users create custom placeholders, auto-registered as `{{name}}` Providers.
 
-**Storage**: `settings.customPrompts = [{ id, name, content, enabled }]`
+**Storage**: `settings.customPrompts = [{ id, name, content, dataJson, scope, enabled }]`
 
 **Naming rules**: Only `\w+` allowed; auto-detects naming conflicts with built-in Providers.
 
 **Two-level control**: Master switch `customPromptsEnabled` + per-item `enabled`.
+
+**Boundary and transactions**: `custom-prompt-validation.js` is the shared structural contract for CRUD, standalone imports, and config-profile imports. Every mutation is serialized in the system layer and awaits `saveSettings`; failure compensates only fields that have not since been changed concurrently. Providers are registered with a stable owner/entry ID, and hot reload reconciles a managed ledger so removed placeholders are cleaned up without replacing or deleting another subsystem's Provider.
 
 ---
 

@@ -20,6 +20,8 @@ test('config profile JSON import rejects malformed manifests without saving', as
         [manifest({ variables: {} }), /variables.defs must be an array/],
         [manifest({ variables: { defs: [null], values: {} } }), /variables.defs\[0\] must be an object/],
         [manifest({ settings: { customPrompts: [null] } }), /customPrompts\[0\] must be an object/],
+        [manifest({ settings: { customPrompts: [{ name: 'broken', dataJson: '{' }] } }), /valid JSON/],
+        [manifest({ settings: { customPrompts: [{ name: 'broken', scope: 'unknown' }] } }), /scope is invalid/],
         [manifest({ settings: { userProviders: [{ name: '' }] } }), /name must be a non-empty string/],
         [manifest({ settings: { userCapabilities: 'bad' } }), /must be an array/],
         [manifest({ settings: { scriptExecutors: [null] } }), /scriptExecutors\[0\] must be an object/],
@@ -61,6 +63,21 @@ test('config profile import validates and disables custom agents with fresh ids'
     assert.notEqual(imported.id, 'external');
     assert.equal(imported.enabled, false);
     assert.equal(imported.autoEnabled, false);
+});
+
+test('config profile import validates custom prompts and replaces external ids', async () => {
+    const { subject } = createConfigProfileSubject();
+    const profile = await subject.importProfileFromJson(jsonFile(manifest({
+        settings: { customPrompts: [{
+            id: 'external', name: 'note', content: 'safe', dataJson: '{"kind":"note"}',
+            scope: 'mixed', enabled: true,
+        }] },
+    })));
+    const imported = profile.settings.customPrompts[0];
+    assert.match(imported.id, /^cp_/);
+    assert.notEqual(imported.id, 'external');
+    assert.equal(imported.name, 'note');
+    assert.equal(imported.scope, 'mixed');
 });
 
 test('JSON import strips credentials and executable asset stubs before storage', async () => {

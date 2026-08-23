@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCustomPromptsSystem } from '../../systems/custom-prompts-system.js';
 
-test('BUG-3: overwrite import updates the existing custom prompt in place', () => {
+test('BUG-3: overwrite import updates the existing custom prompt in place', async () => {
     const registered = new Map();
     const settings = {
         customPromptsEnabled: true,
@@ -16,7 +16,7 @@ test('BUG-3: overwrite import updates the existing custom prompt in place', () =
         getProviders: () => [...registered.values()],
         log: () => {},
     });
-    const result = system.importPrompts({
+    const result = await system.importPrompts({
         prompts: [{ name: 'scene', content: 'new', dataJson: '{"version":2}', scope: 'character', enabled: false }],
     }, true);
     assert.deepEqual(result, { added: 0, overwritten: 1, conflicts: [] });

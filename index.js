@@ -464,7 +464,7 @@ const { getPresetNames: getConfigPresetNames, loadPreset: loadConfigPreset } = c
 const customPromptsSystem = createCustomPromptsSystem({
     settings, saveSettings,
     registerProvider: (p) => registerProvider(p),
-    unregisterProvider: (id) => unregisterProvider(id),
+    unregisterProvider: (id, owner) => unregisterProvider(id, owner),
     getProviders: () => getProviders(),
     log,
 });

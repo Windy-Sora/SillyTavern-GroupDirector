@@ -17,9 +17,9 @@ function createSubject(initial = {}) {
     return { subject, settings, providers, getSaves: () => saves };
 }
 
-test('custom prompts register a renderable provider and replace its old name on update', () => {
+test('custom prompts register a renderable provider and replace its old name on update', async () => {
     const { subject, providers, getSaves } = createSubject();
-    const { entry } = subject.add('scene_note', 'Scene: {{char}}', true, { dataJson: '{"phase":1}' });
+    const { entry } = await subject.add('scene_note', 'Scene: {{char}}', true, { dataJson: '{"phase":1}' });
 
     assert.equal(providers.has('scene_note'), true);
     assert.deepEqual(providers.get('scene_note').render(), {
@@ -27,7 +27,7 @@ test('custom prompts register a renderable provider and replace its old name on 
         data: { phase: 1 },
     });
 
-    subject.update(entry.id, { name: 'chapter_note', content: 'Chapter two' });
+    await subject.update(entry.id, { name: 'chapter_note', content: 'Chapter two' });
     assert.equal(providers.has('scene_note'), false);
     assert.deepEqual(providers.get('chapter_note').render(), {
         content: 'Chapter two',
@@ -36,23 +36,23 @@ test('custom prompts register a renderable provider and replace its old name on 
     assert.equal(getSaves(), 2);
 });
 
-test('custom prompts master switch unregisters all providers and restores enabled entries only', () => {
+test('custom prompts master switch unregisters all providers and restores enabled entries only', async () => {
     const { subject, providers } = createSubject();
-    subject.add('enabled_prompt', 'on');
-    subject.add('disabled_prompt', 'off', false);
+    await subject.add('enabled_prompt', 'on');
+    await subject.add('disabled_prompt', 'off', false);
     assert.deepEqual([...providers.keys()], ['enabled_prompt']);
 
-    subject.setMasterEnabled(false);
+    await subject.setMasterEnabled(false);
     assert.equal(providers.size, 0);
-    subject.setMasterEnabled(true);
+    await subject.setMasterEnabled(true);
     assert.deepEqual([...providers.keys()], ['enabled_prompt']);
 });
 
-test('custom prompts reject macro collisions and invalid JSON without changing settings', () => {
+test('custom prompts reject macro collisions and invalid JSON without changing settings', async () => {
     const { subject, settings, providers } = createSubject();
 
-    assert.throws(() => subject.add('user', 'bad'), /ST/);
-    assert.throws(() => subject.add('good_name', 'bad', true, { dataJson: '{' }), /JSON/);
+    await assert.rejects(subject.add('user', 'bad'), /ST/);
+    await assert.rejects(subject.add('good_name', 'bad', true, { dataJson: '{' }), /JSON/);
     assert.deepEqual(settings.customPrompts, []);
     assert.equal(providers.size, 0);
     assert.deepEqual(subject.validateDataJson('[]'), { ok: true });
