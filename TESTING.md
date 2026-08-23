@@ -7,19 +7,20 @@ readable reports.
 
 Current verified baseline (2026-08-23):
 
-- 291 JavaScript source files and 10 JSON files pass static validation;
-- 388 behavior tests are discovered, with 387 passing and one optional real-host
+- 292 JavaScript source files and 10 JSON files pass static validation;
+- 399 behavior tests are discovered, with 398 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 146/154 production modules, while tests directly or
   transitively reach 76/154 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 91.08% lines, 75.86% branches, and
-  88.79% functions. All eight built-in Agent modules are test-reachable; Memory
+- the full loaded-module coverage snapshot is 91.83% lines, 76.35% branches, and
+  88.86% functions. All eight built-in Agent modules are test-reachable; Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
   96.44%, 99.32%, and 98.70% lines respectively, while Profile System reaches
-  92.03% lines, 70.10% branches, and 87.18% functions;
+  92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
+  reaches 95.82% lines and 77.78% branches;
   History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
@@ -186,6 +187,17 @@ only the mutation that is still present when persistence rejects. Deferred-save
 tests cover restoration of prior active/archive values plus concurrent changes to
 the same avatar and unrelated profiles. Generation staleness remains covered by
 `tests/unit/similar-agent-concurrency.test.mjs`.
+
+User Provider/Capability lifecycle coverage belongs in
+`tests/unit/user-provider-loader.test.mjs`. Modules must be exercised through real
+dynamic import semantics, including asynchronous `register()` rejection, partial
+registry mutation, and Blob URL cleanup. Deferred-save cases assert operation-local
+rollback for import, delete, restored-ID persistence, and capability toggles while
+preserving unrelated concurrent edits. Restore tests also own actual-ID refresh,
+same-owner definition compensation, hot-reload ghost cleanup, and cross-owner
+collision protection. `tests/unit/capability-registry.test.mjs` owns the registry's
+same-owner refresh and owner-checked unregister contract; the UI contract verifies
+that rejected persistence is reported and controls are released in `finally`.
 
 Config Profile JSON, ZIP, and built-in preset manifests share one validation
 boundary. Applying a profile prepares settings on a detached copy, imports

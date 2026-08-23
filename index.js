@@ -628,6 +628,7 @@ const postSpeechExecutor = createExecutor({
 const userProviderLoader = createUserProviderLoader({
     extension_settings, EXT_KEY, saveSettings: () => extension_settings[EXT_KEY] && saveSettingsDebounced(), log,
     getRegisteredProviderIds: () => [...getProviders().map(p => p.id)],
+    getRegisteredProvider: id => getProviders().find(p => p.id === id),
     unregisterProvider: (id, owner) => unregisterProvider(id, owner),
     CapabilityRegistry,
     confirmImport: html => callGenericPopup(html, POPUP_TYPE.CONFIRM),
@@ -2665,8 +2666,8 @@ eventSource.on(event_types.APP_READY, async () => {
     // Inject window.GroupDirector so user modules don't need relative imports.
     CapabilityRegistry._scopeOverrides = settings._capabilityScopes || {};
     const userDeps = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
-    userProviderLoader.restoreAll('provider', userDeps);
-    userProviderLoader.restoreAll('capability', userDeps);
+    await userProviderLoader.restoreAll('provider', userDeps);
+    await userProviderLoader.restoreAll('capability', userDeps);
 
     // Hook capability toggle to persist enabled state.
     // Always replace the monkey-patch so closure captures current settings/saveSettingsDebounced on hot reload.
@@ -2675,7 +2676,7 @@ eventSource.on(event_types.APP_READY, async () => {
     }
     CapabilityRegistry.setEnabled = function (id, enabled) {
         CapabilityRegistry._gdOrigSetEnabled(id, enabled);
-        try { userProviderLoader.persistCapabilityEnabled(); } catch (_) { }
+        userProviderLoader.persistCapabilityEnabled().catch(e => console.warn('[GroupDirector] Capability state save failed:', e.message || e));
         try {
             if (!settings._builtinCapEnabled) settings._builtinCapEnabled = {};
             settings._builtinCapEnabled[id] = enabled;
@@ -2719,7 +2720,7 @@ eventSource.on(event_types.APP_READY, async () => {
         setProviderTimeoutDefault(extension_settings[EXT_KEY]?.providerTimeoutMs ?? 10000);
         customPromptsSystem.initAll();
         const ud = { log, CapabilityRegistry, registerProvider: (p) => registerProvider(p) };
-        userProviderLoader.restoreAll('provider', ud);
-        userProviderLoader.restoreAll('capability', ud);
+        await userProviderLoader.restoreAll('provider', ud);
+        await userProviderLoader.restoreAll('capability', ud);
     };
 });

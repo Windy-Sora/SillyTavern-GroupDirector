@@ -1159,6 +1159,8 @@ Group Director 允许用户导入和编写自定义代码（用户 Provider、�
 |------|------|------|
 | 用户 Provider/Capability 导入 | 静态扫描 `DANGEROUS_PATTERNS` | 检测 `eval`、`Function`、`fetch`、`XMLHttpRequest`、`WebSocket`、`import(` 等危险 API，匹配后展示红色安全警告 |
 | 用户 Provider/Capability 导入 | GUI 安全警告条 | 导入时在文件列表上方的醒目位置展示检测到的危险 API |
+| 用户 Provider/Capability 生命周期 | 所有权隔离 | 导入项按文件名标记所有权；拒绝覆盖内置或其他导入项的 ID，删除和失败回滚也只能移除自身注册项 |
+| 用户 Provider/Capability 生命周期 | 异步事务与恢复对账 | 等待异步 `register()` 和设置保存；失败时按本次变更补偿。启动/热重载会刷新实际 ID，并清理已从设置移除的旧注册项 |
 | 脚本执行器导入 | GUI 安全警告条 | 同样展示检测到的危险 API |
 | 配置档导入 | 确认弹窗 | 导入配置档会同时导入 userProviders、userCapabilities，点击导入按钮时弹出 ST 原生确认框提醒用户检查 |
 | 配置档导出 | API Key 剥离 | `agentConfigs` 中的 `apiKey` 在导出时自动清空 |

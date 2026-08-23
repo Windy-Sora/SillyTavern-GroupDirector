@@ -1160,6 +1160,8 @@ Group Director allows users to import and write custom code (User Providers, Use
 |------|------|------|
 | User Provider/Capability import | Static scan `DANGEROUS_PATTERNS` | Detects `eval`, `Function`, `fetch`, `XMLHttpRequest`, `WebSocket`, `import(`, and other dangerous APIs; displays red security warning on match |
 | User Provider/Capability import | GUI security warning banner | Displays detected dangerous APIs prominently above the file list during import |
+| User Provider/Capability lifecycle | Ownership isolation | Imported entries are owned by file name; ID replacement across built-ins or other imports is rejected, and delete/failure rollback can remove only registrations owned by that entry |
+| User Provider/Capability lifecycle | Async transactions and restore reconciliation | Async `register()` and settings persistence are awaited and compensated on failure. Startup/hot reload refreshes actual IDs and removes registrations omitted from current settings |
 | Script Executor import | GUI security warning banner | Similarly displays detected dangerous APIs |
 | Config profile import | Confirmation popup | Importing config profiles also imports userProviders/userCapabilities; ST native confirmation popup reminds users to check when clicking import |
 | Config profile export | API Key stripping | `apiKey` in `agentConfigs` is automatically cleared on export |
