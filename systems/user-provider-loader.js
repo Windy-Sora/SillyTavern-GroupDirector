@@ -27,6 +27,7 @@ const DANGEROUS_PATTERNS = [
 
 const USER_PROVIDER_OWNER = 'group-director/user-provider';
 const USER_CAPABILITY_OWNER = 'group-director/user-capability';
+const DEFAULT_REGISTRATION_TIMEOUT_MS = 10000;
 
 function scanSource(source) {
     const found = [];
@@ -38,10 +39,30 @@ function scanSource(source) {
     return found;
 }
 
-export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, getRegisteredProvider, unregisterProvider, CapabilityRegistry, confirmImport }) {
+export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSettings, log, getRegisteredProviderIds, getRegisteredProvider, unregisterProvider, CapabilityRegistry, confirmImport, registrationTimeoutMs = DEFAULT_REGISTRATION_TIMEOUT_MS }) {
     const STORE_KEYS = { provider: 'userProviders', capability: 'userCapabilities' };
     const managedIds = { provider: new Map(), capability: new Map() };
     const managedInitialized = { provider: false, capability: false };
+    const timeoutMs = Number.isFinite(registrationTimeoutMs) && registrationTimeoutMs > 0
+        ? registrationTimeoutMs
+        : DEFAULT_REGISTRATION_TIMEOUT_MS;
+
+    async function withTimeout(promise, label, onTimeout = () => {}) {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                onTimeout();
+                const error = new Error(`${label} timed out after ${timeoutMs}ms`);
+                error.name = 'TimeoutError';
+                reject(error);
+            }, timeoutMs);
+        });
+        try {
+            return await Promise.race([promise, timeout]);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
 
     function getStore(type) {
         const key = STORE_KEYS[type];
@@ -55,11 +76,15 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         if (typeof saveSettings === 'function') await saveSettings();
     }
 
-    function getAssetDeps(type, name, deps, registeredIds, previousEntries) {
+    function getAssetDeps(type, name, deps, registeredIds, previousEntries, lifecycle) {
+        const assertActive = () => {
+            if (!lifecycle.active) throw new Error(`User ${type} "${name}" registration is no longer active`);
+        };
         if (type === 'provider' && typeof deps.registerProvider === 'function') {
             return {
                 ...deps,
                 registerProvider: provider => {
+                    assertActive();
                     if (provider?.id && !previousEntries.has(provider.id)) {
                         previousEntries.set(provider.id, getRegisteredProvider?.(provider.id));
                     }
@@ -78,6 +103,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             if (!registry) return deps;
             const ownedRegistry = Object.create(registry);
             ownedRegistry.register = cap => {
+                assertActive();
                 if (cap?.id && !previousEntries.has(cap.id)) {
                     previousEntries.set(cap.id, registry.get?.(cap.id));
                 }
@@ -225,14 +251,23 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             }
 
             blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
-            const mod = await import(blobUrl);
+            const mod = await withTimeout(import(blobUrl), `User ${type} "${name}" module load`);
 
             if (typeof mod.register !== 'function') {
                 return { ok: false, name, error: 'Module must export function register(deps)' };
             }
 
             // Snapshot → register → diff to find added IDs
-            await Promise.resolve(mod.register(getAssetDeps(type, name, deps, registeredIds, previousEntries)));
+            const lifecycle = { active: true };
+            try {
+                await withTimeout(
+                    Promise.resolve().then(() => mod.register(getAssetDeps(type, name, deps, registeredIds, previousEntries, lifecycle))),
+                    `User ${type} "${name}" register()`,
+                    () => { lifecycle.active = false; },
+                );
+            } finally {
+                lifecycle.active = false;
+            }
             const liveIds = new Set(getRegistryIds(type, deps));
             const addedIds = [...registeredIds].filter(id => liveIds.has(id));
             log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
@@ -309,9 +344,18 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                     log(`Security: persisted ${type} "${p.name}" contains: ${findings.map(f => f.label).join(', ')}`);
                 }
                 blobUrl = URL.createObjectURL(new Blob([p.source], { type: 'application/javascript' }));
-                const mod = await import(blobUrl);
+                const mod = await withTimeout(import(blobUrl), `User ${type} "${p.name}" module load`);
                 if (typeof mod.register === 'function') {
-                    await Promise.resolve(mod.register(getAssetDeps(type, p.name, deps, registeredIds, previousEntries)));
+                    const lifecycle = { active: true };
+                    try {
+                        await withTimeout(
+                            Promise.resolve().then(() => mod.register(getAssetDeps(type, p.name, deps, registeredIds, previousEntries, lifecycle))),
+                            `User ${type} "${p.name}" register()`,
+                            () => { lifecycle.active = false; },
+                        );
+                    } finally {
+                        lifecycle.active = false;
+                    }
                     const liveIds = new Set(getRegistryIds(type, deps));
                     const actualIds = [...registeredIds].filter(id => liveIds.has(id));
                     metadataBefore.set(p, p.ids || []);

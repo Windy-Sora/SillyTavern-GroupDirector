@@ -1038,7 +1038,7 @@ Unified loading of extension modules under `assets/`. Each subdirectory has a `m
 
 ### User Import System
 
-Select `.js` → FileReader → store in `extension_settings` → Blob URL → `import(url)` → `register(deps)`. Auto-restored on restart. Core API injected via `register(deps)` parameter or `window.GroupDirector` global.
+Select `.js` → FileReader → store in `extension_settings` → Blob URL → `import(url)` → `register(deps)`. Auto-restored on restart. Core API injected via `register(deps)` parameter or `window.GroupDirector` global. Module evaluation and asynchronous `register()` each have a 10-second lifecycle bound. The operation token closes on success, failure, or timeout, rejecting late Provider/Capability writes while rolling back registrations already made by that owner.
 
 ---
 

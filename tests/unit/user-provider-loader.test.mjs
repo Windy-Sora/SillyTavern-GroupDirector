@@ -48,7 +48,7 @@ async function withAssetRuntime(run) {
     }
 }
 
-function createProviderHarness(settings, saveSettings = () => {}) {
+function createProviderHarness(settings, saveSettings = () => {}, loaderOptions = {}) {
     const providers = new Map();
     const deps = {
         registerProvider(provider) {
@@ -74,11 +74,12 @@ function createProviderHarness(settings, saveSettings = () => {}) {
             if (owner && (current._gdOwner !== owner.owner || current._gdOwnerId !== owner.ownerId)) return false;
             return providers.delete(id);
         },
+        ...loaderOptions,
     });
     return { loader, providers, deps };
 }
 
-function createCapabilityHarness(settings, saveSettings = () => {}) {
+function createCapabilityHarness(settings, saveSettings = () => {}, loaderOptions = {}) {
     const capabilities = new Map();
     const registry = {
         register(cap) {
@@ -108,6 +109,7 @@ function createCapabilityHarness(settings, saveSettings = () => {}) {
         saveSettings,
         log: () => {},
         CapabilityRegistry: registry,
+        ...loaderOptions,
     });
     return { loader, registry, capabilities, deps: { CapabilityRegistry: registry } };
 }
@@ -126,6 +128,50 @@ test('user asset import awaits async registration and rolls back partial provide
         assert.deepEqual([...providers.keys()], []);
         assert.deepEqual(settings.gd.userProviders, []);
         assert.equal(revoked.length, 1);
+    });
+});
+
+test('user asset import times out registration, rolls back partial state, and blocks late providers', async () => {
+    await withAssetRuntime(async revoked => {
+        const settings = { gd: { userProviders: [] } };
+        const { loader, providers, deps } = createProviderHarness(settings, () => {}, { registrationTimeoutMs: 10 });
+        const result = await loader.importAsset({
+            name: 'timeout.js',
+            source: `export async function register(deps) {
+                deps.registerProvider({ id: "partial", placeholder: "{{partial}}" });
+                await new Promise(resolve => setTimeout(resolve, 40));
+                deps.registerProvider({ id: "late", placeholder: "{{late}}" });
+            }`,
+        }, 'provider', deps);
+
+        assert.equal(result.ok, false);
+        assert.match(result.error, /register\(\) timed out/);
+        assert.deepEqual(settings.gd.userProviders, []);
+        assert.deepEqual([...providers.keys()], []);
+        await new Promise(resolve => setTimeout(resolve, 60));
+        assert.deepEqual([...providers.keys()], []);
+        assert.equal(revoked.length, 1);
+    });
+});
+
+test('user capability timeout blocks late registry writes', async () => {
+    await withAssetRuntime(async () => {
+        const settings = { gd: { userCapabilities: [] } };
+        const { loader, capabilities, deps } = createCapabilityHarness(settings, () => {}, { registrationTimeoutMs: 10 });
+        const result = await loader.importAsset({
+            name: 'timeout-cap.js',
+            source: `export async function register(deps) {
+                deps.CapabilityRegistry.register({ id: "partial.cap", executor() {} });
+                await new Promise(resolve => setTimeout(resolve, 40));
+                deps.CapabilityRegistry.register({ id: "late.cap", executor() {} });
+            }`,
+        }, 'capability', deps);
+
+        assert.equal(result.ok, false);
+        assert.match(result.error, /register\(\) timed out/);
+        assert.deepEqual([...capabilities.keys()], []);
+        await new Promise(resolve => setTimeout(resolve, 60));
+        assert.deepEqual([...capabilities.keys()], []);
     });
 });
 
@@ -223,6 +269,32 @@ test('restore refreshes actual IDs and hot reload removes omitted managed assets
         settings.gd.userProviders = [];
         assert.deepEqual(await loader.restoreAll('provider', deps), { loaded: [], failed: [] });
         assert.equal(providers.has('restored.actual'), false);
+    });
+});
+
+test('restore times out stalled module evaluation and continues with later assets', async () => {
+    await withAssetRuntime(async revoked => {
+        const stalled = {
+            name: 'stalled',
+            source: 'await new Promise(() => {}); export function register() {}',
+            ids: [], enabled: true,
+        };
+        const healthy = {
+            name: 'healthy',
+            source: 'export function register(deps) { deps.registerProvider({ id: "healthy.id", placeholder: "{{healthy}}" }); }',
+            ids: [], enabled: true,
+        };
+        const settings = { gd: { userProviders: [stalled, healthy] } };
+        const { loader, providers, deps } = createProviderHarness(settings, () => {}, { registrationTimeoutMs: 10 });
+
+        const result = await loader.restoreAll('provider', deps);
+
+        assert.deepEqual(result.loaded, ['healthy']);
+        assert.equal(result.failed.length, 1);
+        assert.equal(result.failed[0].name, 'stalled');
+        assert.match(result.failed[0].error, /module load timed out/);
+        assert.equal(providers.has('healthy.id'), true);
+        assert.equal(revoked.length, 2);
     });
 });
 

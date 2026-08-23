@@ -1037,7 +1037,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ### 用户导入系统
 
-选 `.js` → FileReader → 存 `extension_settings` → Blob URL → `import(url)` → `register(deps)`。重启自动恢复。核心 API 通过 `register(deps)` 参数或 `window.GroupDirector` 全局注入。
+选 `.js` → FileReader → 存 `extension_settings` → Blob URL → `import(url)` → `register(deps)`。重启自动恢复。核心 API 通过 `register(deps)` 参数或 `window.GroupDirector` 全局注入。模块求值和异步 `register()` 均有 10 秒生命周期上限；完成、失败或超时后关闭本次注册令牌，迟到的 Provider/Capability 写入会被拒绝，已产生的同 Owner 注册则按操作回滚。
 
 ---
 
