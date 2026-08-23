@@ -145,7 +145,12 @@ registerSection('configProfiles', function (ctx) {
             if (!profile) return;
             const profileName = escHtml(profile.name);
             if (!await callGenericPopup(isZh() ? `删除配置档「${profileName}」？` : `Delete config profile "${profileName}"?`, POPUP_TYPE.CONFIRM)) return;
-            sys.deleteProfile(id);
+            try {
+                sys.deleteProfile(id);
+            } catch (e) {
+                toastr.error((isZh() ? '删除失败: ' : 'Delete failed: ') + e.message);
+                return;
+            }
             renderList();
             populatePresetDropdown();
             window.__gdRefreshDashboard?.();
@@ -167,7 +172,12 @@ registerSection('configProfiles', function (ctx) {
             toastr.warning(isZh() ? '请至少选择一个抽屉' : 'Select at least one drawer');
             return;
         }
-        sys.saveCurrentAsProfile(name, desc, drawers);
+        try {
+            sys.saveCurrentAsProfile(name, desc, drawers);
+        } catch (e) {
+            toastr.error((isZh() ? '保存失败: ' : 'Save failed: ') + e.message);
+            return;
+        }
         $c('cfg-save-name').val('');
         $c('cfg-save-desc').val('');
         renderList();

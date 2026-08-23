@@ -185,7 +185,12 @@ boundary. Applying a profile prepares settings on a detached copy, imports
 variables only after preparation succeeds, and rolls live settings/variables back
 when the transaction fails. JSON imports discard endpoint configuration and
 name-only Provider/Capability stubs; ZIP imports may restore matching script
-sources. The UI apply handler reports failures without running success refreshes.
+sources. Tests must also cover concurrent unrelated setting edits while variable
+persistence is pending, concurrency-safe compensation after a later settings
+failure, and list rollback when save/delete/import/preset persistence throws.
+JSON/ZIP export tests own credential stripping, executable-source isolation, asset
+packaging, variables, and download cleanup. UI handlers report apply/save/delete
+failures without running success refreshes.
 
 Script Executor tests follow the same boundary rule. The pure validator owns the
 version-1 file and entry contract, while system tests cover candidate validation,

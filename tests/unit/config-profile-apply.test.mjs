@@ -134,3 +134,97 @@ test('custom agent provider refresh failure rolls profile settings back', async 
     assert.equal(refreshes, 2);
     assert.equal(calls.saves, 0);
 });
+
+test('profile application preserves unrelated settings changed while variable import is pending', async () => {
+    let finishImport;
+    const variableResult = () => new Promise(resolve => { finishImport = resolve; });
+    const { subject, settings } = createConfigProfileSubject({
+        llmMaxSpeakers: 1,
+        memoryEnabled: false,
+        configProfiles: [profile({ llmMaxSpeakers: 2 }, {
+            drawers: { contextLedger: true },
+            variables: { defs: [], values: { global: {}, character: {} } },
+        })],
+    }, variableResult);
+
+    const applying = subject.applyProfile('profile-1');
+    settings.memoryEnabled = true;
+    finishImport({ ok: true });
+    await applying;
+
+    assert.equal(settings.llmMaxSpeakers, 2);
+    assert.equal(settings.memoryEnabled, true);
+});
+
+test('failed variable import does not roll back unrelated concurrent setting changes', async () => {
+    let failImport;
+    let importCount = 0;
+    const variableResult = () => {
+        importCount++;
+        if (importCount > 1) return { ok: true };
+        return new Promise((resolve, reject) => { failImport = reject; });
+    };
+    const { subject, settings, calls } = createConfigProfileSubject({
+        llmMaxSpeakers: 1,
+        memoryEnabled: false,
+        configProfiles: [profile({ llmMaxSpeakers: 2 }, {
+            drawers: { contextLedger: true },
+            variables: { defs: [], values: { global: {}, character: {} } },
+        })],
+    }, variableResult);
+
+    const applying = subject.applyProfile('profile-1');
+    settings.memoryEnabled = true;
+    failImport(new Error('disk full'));
+    await assert.rejects(applying, /disk full/);
+
+    assert.equal(settings.llmMaxSpeakers, 1);
+    assert.equal(settings.memoryEnabled, true);
+    assert.equal(calls.variableImports.length, 1);
+});
+
+test('later settings failure uses concurrency-safe variable import compensation', async () => {
+    const transaction = { previous: { marker: 'before' }, applied: { marker: 'imported' } };
+    const rollbacks = [];
+    const variableSystem = {
+        getExportData: () => ({ defs: [], values: { global: {}, character: {} } }),
+        applyImportData: async () => ({ ok: true, transaction }),
+        rollbackImportTransaction: async value => { rollbacks.push(value); },
+    };
+    const { subject, settings } = createConfigProfileSubject({
+        llmMaxSpeakers: 1,
+        configProfiles: [profile({ llmMaxSpeakers: 2 }, {
+            drawers: { contextLedger: true },
+            variables: { defs: [], values: { global: {}, character: {} } },
+        })],
+    }, { ok: true }, {
+        variableSystem,
+        saveError: new Error('settings save failed'),
+    });
+
+    await assert.rejects(subject.applyProfile('profile-1'), /settings save failed/);
+
+    assert.equal(settings.llmMaxSpeakers, 1);
+    assert.deepEqual(rollbacks, [transaction]);
+});
+
+test('variable compensation failure preserves the original settings transaction error', async () => {
+    const variableSystem = {
+        getExportData: () => ({ defs: [], values: { global: {}, character: {} } }),
+        applyImportData: async () => ({ ok: true, transaction: { previous: {}, applied: {} } }),
+        rollbackImportTransaction: async () => { throw new Error('rollback failed'); },
+    };
+    const { subject, settings } = createConfigProfileSubject({
+        llmMaxSpeakers: 1,
+        configProfiles: [profile({ llmMaxSpeakers: 2 }, {
+            drawers: { contextLedger: true },
+            variables: { defs: [], values: { global: {}, character: {} } },
+        })],
+    }, { ok: true }, {
+        variableSystem,
+        saveError: new Error('settings save failed'),
+    });
+
+    await assert.rejects(subject.applyProfile('profile-1'), /settings save failed/);
+    assert.equal(settings.llmMaxSpeakers, 1);
+});

@@ -23,3 +23,25 @@ test('dashboard profile handlers await application before reporting success', as
         assert.match(source, /await\s+ctx\.configProfileSystem\?\.applyProfile\(profile\.id\)/);
     }
 });
+
+test('config profile save and delete handlers report persistence failures before refreshing', async () => {
+    const source = await readFile(new URL('../../ui/sections/configProfiles.js', import.meta.url), 'utf8');
+    const deleting = source.slice(
+        source.indexOf("$list.find('.gd-cfg-delete-btn')"),
+        source.indexOf('// Save current'),
+    );
+    const saving = source.slice(
+        source.indexOf("$c('cfg-save-btn')"),
+        source.indexOf('// Import .zip'),
+    );
+
+    for (const [handler, operation] of [
+        [deleting, 'sys.deleteProfile'],
+        [saving, 'sys.saveCurrentAsProfile'],
+    ]) {
+        assert.match(handler, /try\s*\{/);
+        assert.match(handler, /catch\s*\(e\)\s*\{[\s\S]*toastr\.error/);
+        assert.ok(handler.indexOf(operation) < handler.indexOf('renderList'));
+        assert.ok(handler.indexOf('toastr.error') < handler.indexOf('renderList'));
+    }
+});

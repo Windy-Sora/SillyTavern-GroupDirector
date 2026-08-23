@@ -649,7 +649,37 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             Object.assign(vars, rolledBack);
             throw error;
         }
-        return { ok: true, count: (incoming.defs || []).length };
+        const result = { ok: true, count: (incoming.defs || []).length };
+        if (options.returnTransaction) result.transaction = { previous, applied };
+        return result;
+    }
+
+    async function rollbackImportTransaction(transaction) {
+        if (!transaction?.previous || !transaction?.applied) {
+            throw new Error('Invalid variable import transaction');
+        }
+        const vars = store();
+        const current = clone(vars);
+        const rolledBack = {
+            defs: rollbackDefinitions(transaction.previous.defs, transaction.applied.defs, vars.defs),
+            values: rollbackJsonValue(transaction.previous.values, transaction.applied.values, vars.values),
+            log: rollbackLog(transaction.previous.log, transaction.applied.log, vars.log),
+        };
+        for (const key of Object.keys(vars)) delete vars[key];
+        Object.assign(vars, rolledBack);
+        const appliedRollback = clone(vars);
+        try { await saveChatConditional?.(); }
+        catch (error) {
+            const restored = {
+                defs: rollbackDefinitions(current.defs, appliedRollback.defs, vars.defs),
+                values: rollbackJsonValue(current.values, appliedRollback.values, vars.values),
+                log: rollbackLog(current.log, appliedRollback.log, vars.log),
+            };
+            for (const key of Object.keys(vars)) delete vars[key];
+            Object.assign(vars, restored);
+            throw error;
+        }
+        return { ok: true };
     }
 
     function exportToFile(options = {}) {
@@ -743,6 +773,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         getExportData,
         buildExportFile,
         applyImportData,
+        rollbackImportTransaction,
         exportToFile,
         importFromFile,
         getSnapshot,

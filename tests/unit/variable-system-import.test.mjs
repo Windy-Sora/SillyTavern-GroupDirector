@@ -181,6 +181,22 @@ test('variable import rollback removes imported array entries while preserving a
     assert.deepEqual(system.getValue('items'), ['before', 'concurrent']);
 });
 
+test('explicit import compensation preserves array updates made after a successful import', async () => {
+    const { system } = fixture();
+    system.upsertDefinition({ id: 'items', type: 'array', value: ['before'] });
+    system.setValue('items', ['before']);
+
+    const result = await system.applyImportData({
+        defs: [{ id: 'items', type: 'array', value: ['imported'] }],
+        values: { global: { items: ['imported'] }, character: {} },
+    }, { mode: 'replace', returnTransaction: true });
+    system.setValue('items', ['imported', 'concurrent']);
+
+    await system.rollbackImportTransaction(result.transaction);
+
+    assert.deepEqual(system.getValue('items'), ['before', 'concurrent']);
+});
+
 test('variable file export and import preserve JSON contracts', async () => {
     const dom = installDownloadDom();
     try {

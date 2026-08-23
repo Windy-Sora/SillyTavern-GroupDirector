@@ -130,6 +130,15 @@ function replaceObject(target, source) {
     Object.assign(target, source);
 }
 
+function rebaseUnchangedSettings(requestStart, candidate, liveSettings) {
+    const keys = new Set([...Object.keys(requestStart), ...Object.keys(candidate), ...Object.keys(liveSettings)]);
+    for (const key of keys) {
+        if (JSON.stringify(candidate[key]) !== JSON.stringify(requestStart[key])) continue;
+        if (Object.hasOwn(liveSettings, key)) candidate[key] = structuredClone(liveSettings[key]);
+        else delete candidate[key];
+    }
+}
+
 /** Strip API keys from agentConfigs. */
 function stripApiKeys(configs) {
     if (!configs || typeof configs !== 'object') return configs;
@@ -154,6 +163,19 @@ export function createConfigProfileSystem(deps) {
         extension_settings[EXT_KEY] = settings;
         if (setProviderTimeoutDefault) setProviderTimeoutDefault(settings.providerTimeoutMs);
         saveSettingsDebounced();
+    }
+
+    function addProfile(profile) {
+        const list = getProfiles();
+        list.push(profile);
+        try {
+            saveAll();
+        } catch (error) {
+            const index = list.indexOf(profile);
+            if (index >= 0) list.splice(index, 1);
+            throw error;
+        }
+        return profile;
     }
 
     let _idCounter = 0;
@@ -182,8 +204,7 @@ export function createConfigProfileSystem(deps) {
         if (drawers.contextLedger && variableSystem) {
             profile.variables = variableSystem.getExportData({ includeLog: true });
         }
-        getProfiles().push(profile);
-        saveAll();
+        addProfile(profile);
         log(`Config profile saved: "${name}"`);
         return profile;
     }
@@ -192,8 +213,13 @@ export function createConfigProfileSystem(deps) {
         const list = getProfiles();
         const idx = list.findIndex(p => p.id === id);
         if (idx < 0) return;
-        list.splice(idx, 1);
-        saveAll();
+        const [removed] = list.splice(idx, 1);
+        try {
+            saveAll();
+        } catch (error) {
+            list.splice(Math.min(idx, list.length), 0, removed);
+            throw error;
+        }
     }
 
     async function applyProfile(id, customPromptMerge = 'replace') {
@@ -260,22 +286,40 @@ export function createConfigProfileSystem(deps) {
             ? variableSystem.getExportData({ includeLog: true })
             : null;
         customAgentSystem?.validateList(nextSettings.customAgents || []);
+        let settingsBeforeCommit = null;
+        let settingsCommitted = false;
+        let variablesApplied = false;
+        let variableTransaction = null;
         try {
             if (importsVariables) {
-                const result = await variableSystem.applyImportData({ variables: profile.variables }, { mode: 'replace', includeLog: true });
+                const result = await variableSystem.applyImportData(
+                    { variables: profile.variables },
+                    { mode: 'replace', includeLog: true, returnTransaction: true },
+                );
                 if (!result.ok) throw new Error(`Variable import failed: ${result.error}`);
+                variablesApplied = true;
+                variableTransaction = result.transaction || null;
                 changed.push('variables');
             }
+            rebaseUnchangedSettings(previousSettings, nextSettings, settings);
+            settingsBeforeCommit = structuredClone(settings);
             replaceObject(settings, nextSettings);
+            settingsCommitted = true;
             customAgentSystem?.refreshProviders();
             saveAll();
         } catch (error) {
-            replaceObject(settings, previousSettings);
-            try { customAgentSystem?.refreshProviders(); } catch (_) { /* preserve the transaction error */ }
-            if (setProviderTimeoutDefault) setProviderTimeoutDefault(previousSettings.providerTimeoutMs);
-            if (importsVariables && previousVariables) {
+            if (settingsCommitted) {
+                replaceObject(settings, settingsBeforeCommit);
+                try { customAgentSystem?.refreshProviders(); } catch (_) { /* preserve the transaction error */ }
+                if (setProviderTimeoutDefault) setProviderTimeoutDefault(settingsBeforeCommit.providerTimeoutMs);
+            }
+            if (variablesApplied && previousVariables) {
                 try {
-                    await variableSystem.applyImportData({ variables: previousVariables }, { mode: 'replace', includeLog: true });
+                    if (variableTransaction && variableSystem.rollbackImportTransaction) {
+                        await variableSystem.rollbackImportTransaction(variableTransaction);
+                    } else {
+                        await variableSystem.applyImportData({ variables: previousVariables }, { mode: 'replace', includeLog: true });
+                    }
                 } catch (_) { /* preserve the original transaction failure */ }
             }
             throw error;
@@ -581,10 +625,7 @@ export function createConfigProfileSystem(deps) {
             settings: manifest.settings || {},
             variables: manifest.variables || null,
         };
-        getProfiles().push(profile);
-        saveAll();
-
-        return profile;
+        return addProfile(profile);
     }
 
     // ── Import from .json manifest ───────────────────────────────
@@ -612,10 +653,7 @@ export function createConfigProfileSystem(deps) {
             settings: manifest.settings || {},
             variables: manifest.variables || null,
         };
-        getProfiles().push(profile);
-        saveAll();
-
-        return profile;
+        return addProfile(profile);
     }
 
     return {
@@ -657,9 +695,7 @@ export function createConfigProfileSystem(deps) {
                 settings: manifest.settings || {},
                 variables: manifest.variables || null,
             };
-            getProfiles().push(profile);
-            saveAll();
-            return profile;
+            return addProfile(profile);
         },
     };
 }

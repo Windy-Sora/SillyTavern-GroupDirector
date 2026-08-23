@@ -10,7 +10,7 @@ export function createConfigProfileSubject(initial = {}, variableResult = { ok: 
     });
     const extensionSettings = {};
     const calls = { saves: 0, logs: [], variableImports: [] };
-    const variableSystem = {
+    const variableSystem = options.variableSystem || {
         getExportData: () => ({ defs: [], values: { global: {}, character: {} } }),
         applyImportData(data, options) {
             calls.variableImports.push({ data: structuredClone(data), options });
