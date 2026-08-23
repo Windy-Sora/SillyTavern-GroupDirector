@@ -111,6 +111,47 @@ test('profile saves commit atomically and roll back failed persistence', async (
     assert.equal(failed.system.getProfiles()['new.png'], undefined);
 });
 
+test('profile archives commit atomically and restore both stores after failed persistence', async () => {
+    const failed = fixture({ saveChatConditional: async () => { throw new Error('disk failed'); } });
+    const active = { avatar: 'alice.png', state: 'ready', profile: { summary: 'active' } };
+    const archived = { avatar: 'alice.png', state: 'ready', profile: { summary: 'older' } };
+    failed.system.getProfiles()['alice.png'] = active;
+    failed.system.getArchivedProfiles()['alice.png'] = archived;
+
+    await assert.rejects(failed.system.archiveProfiles(['alice.png']), /disk failed/);
+
+    assert.equal(failed.system.getProfiles()['alice.png'], active);
+    assert.equal(failed.system.getArchivedProfiles()['alice.png'], archived);
+});
+
+test('failed profile archive preserves concurrent changes to the target and unrelated profiles', async () => {
+    let rejectSave;
+    const saveStarted = Promise.withResolvers();
+    const failed = fixture({
+        saveChatConditional: () => {
+            saveStarted.resolve();
+            return new Promise((_, reject) => { rejectSave = reject; });
+        },
+    });
+    const active = { avatar: 'alice.png', state: 'ready', profile: { summary: 'active' } };
+    const concurrentAlice = { avatar: 'alice.png', state: 'ready', profile: { summary: 'concurrent active' } };
+    const concurrentArchive = { avatar: 'alice.png', state: 'ready', profile: { summary: 'concurrent archive' } };
+    const concurrentBob = { avatar: 'bob.png', state: 'ready', profile: { summary: 'concurrent bob' } };
+    failed.system.getProfiles()['alice.png'] = active;
+
+    const archiving = failed.system.archiveProfiles(['alice.png']);
+    await saveStarted.promise;
+    failed.system.getProfiles()['alice.png'] = concurrentAlice;
+    failed.system.getProfiles()['bob.png'] = concurrentBob;
+    failed.system.getArchivedProfiles()['alice.png'] = concurrentArchive;
+    rejectSave(new Error('disk failed'));
+
+    await assert.rejects(archiving, /disk failed/);
+    assert.equal(failed.system.getProfiles()['alice.png'], concurrentAlice);
+    assert.equal(failed.system.getProfiles()['bob.png'], concurrentBob);
+    assert.equal(failed.system.getArchivedProfiles()['alice.png'], concurrentArchive);
+});
+
 test('profile normalization preserves custom fields and repairs core field types', () => {
     const { system } = fixture();
     assert.deepEqual(system.normalizeProfileFields(null), {
@@ -132,4 +173,15 @@ test('profile synchronization archives removed members and reports hash mismatch
     assert.equal(system.getArchivedProfiles()['removed.png'].name, 'Removed');
     assert.equal(calls.saved, 1);
     assert.match(calls.logs[0][0], /Alice/);
+});
+
+test('profile synchronization rolls back removed profiles when persistence fails', async () => {
+    const failed = fixture({ saveChatConditional: async () => { throw new Error('disk failed'); } });
+    const removed = { avatar: 'removed.png', name: 'Removed', hash: 'old', state: 'ready', profile: {} };
+    failed.system.getProfiles()['removed.png'] = removed;
+
+    await assert.rejects(failed.system.syncProfiles([]), /disk failed/);
+
+    assert.equal(failed.system.getProfiles()['removed.png'], removed);
+    assert.equal(failed.system.getArchivedProfiles()['removed.png'], undefined);
 });

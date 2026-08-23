@@ -5,21 +5,21 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Current verified baseline (2026-08-20):
+Current verified baseline (2026-08-23):
 
-- 287 JavaScript source files and 10 JSON files pass static validation;
-- 363 behavior tests are discovered, with 362 passing and one optional real-host
+- 291 JavaScript source files and 10 JSON files pass static validation;
+- 388 behavior tests are discovered, with 387 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 146/154 production modules, while tests directly or
   transitively reach 76/154 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 86.87% lines, 76.92% branches, and
-  87.74% functions. All eight built-in Agent modules are test-reachable; Memory
+- the full loaded-module coverage snapshot is 91.08% lines, 75.86% branches, and
+  88.79% functions. All eight built-in Agent modules are test-reachable; Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
-  97.75%, 99.32%, and 98.70% lines respectively, while Profile System reaches
-  54.10% lines, 82.53% branches, and 81.82% functions;
+  96.44%, 99.32%, and 98.70% lines respectively, while Profile System reaches
+  92.03% lines, 70.10% branches, and 87.18% functions;
   History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
@@ -180,6 +180,13 @@ concurrent work is retained. This includes an unrelated variable update and an
 append to the same array variable; the latter must restore the pre-import sequence
 and replay only the concurrent array delta.
 
+Profile persistence coverage belongs in `tests/unit/profile-system-data.test.mjs`.
+Both direct saves and active-to-archive moves must await chat persistence and undo
+only the mutation that is still present when persistence rejects. Deferred-save
+tests cover restoration of prior active/archive values plus concurrent changes to
+the same avatar and unrelated profiles. Generation staleness remains covered by
+`tests/unit/similar-agent-concurrency.test.mjs`.
+
 Config Profile JSON, ZIP, and built-in preset manifests share one validation
 boundary. Applying a profile prepares settings on a detached copy, imports
 variables only after preparation succeeds, and rolls live settings/variables back
@@ -243,7 +250,11 @@ that same production module. Current contracts cover:
   system validator tests;
 - Execution Trace stage rendering with encoded names, errors, and output keys;
 - Dashboard profile summary display formatting kept separate from the raw editor
-  value, so tags, motivation labels, and `<br>` markup are never persisted.
+  value, so tags, motivation labels, and `<br>` markup are never persisted;
+- Profile management HTML-encodes avatar attributes and locates edit panels by DOM
+  ancestry rather than interpolating imported avatar strings into element IDs.
+  Loader/card failure paths must catch rejected promises, report an error, and
+  restore disabled buttons in `finally`.
 
 Prefer this boundary over copying UI logic into tests or building a broad fake DOM.
 Use a browser-level contract only when the behavior depends on event propagation,

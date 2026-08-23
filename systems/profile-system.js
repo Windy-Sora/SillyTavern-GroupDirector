@@ -75,6 +75,43 @@ async function saveProfile(avatar, profileObj, metadata = cm()) {
     }
 }
 
+async function archiveProfiles(avatars, metadata = cm()) {
+    const profiles = getProfiles(metadata);
+    const archivedProfiles = getArchivedProfiles(metadata);
+    const changes = [];
+
+    for (const avatar of avatars) {
+        if (!Object.prototype.hasOwnProperty.call(profiles, avatar)) continue;
+        const profile = profiles[avatar];
+        changes.push({
+            avatar,
+            profile,
+            appliedArchive: snapshotValue(profile),
+            hadArchived: Object.prototype.hasOwnProperty.call(archivedProfiles, avatar),
+            previousArchived: archivedProfiles[avatar],
+        });
+        archivedProfiles[avatar] = profile;
+        delete profiles[avatar];
+    }
+
+    if (changes.length === 0) return 0;
+    try {
+        await saveChatConditional();
+    } catch (error) {
+        for (const change of changes) {
+            if (!Object.prototype.hasOwnProperty.call(profiles, change.avatar)) {
+                profiles[change.avatar] = change.profile;
+            }
+            if (snapshotValue(archivedProfiles[change.avatar]) === change.appliedArchive) {
+                if (change.hadArchived) archivedProfiles[change.avatar] = change.previousArchived;
+                else delete archivedProfiles[change.avatar];
+            }
+        }
+        throw error;
+    }
+    return changes.length;
+}
+
 function diffProfiles(enabledMembers) {
     if (!settings.profileEnabled) return { newChars: [], removedChars: [], existingChars: [], hashMismatches: [] };
     const profiles = getProfiles();
@@ -412,21 +449,14 @@ async function syncProfiles(enabledMembers) {
     getProfileContainer(); // ensure migration
     const { newChars, removedChars, hashMismatches } = diffProfiles(enabledMembers);
 
-    // Archive removed characters
-    for (const avatar of removedChars) {
-        const profile = getProfiles()[avatar];
-        if (profile) {
-            getArchivedProfiles()[avatar] = profile;
-            delete getProfiles()[avatar];
-        }
-    }
-
     if (hashMismatches.length > 0) {
         const names = hashMismatches.map(a => getCharacters().find(c => c.avatar === a)?.name || a).join(', ');
         log(`Profile hash mismatch for: ${names} — use Regenerate button to update`);
     }
 
-    if (removedChars.length || hashMismatches.length) {
+    if (removedChars.length) {
+        await archiveProfiles(removedChars);
+    } else if (hashMismatches.length) {
         await saveChatConditional();
     }
 
@@ -527,6 +557,9 @@ function buildProfileLoaderPanel() {
                 $('#gd-profile-loader').remove();
                 refreshProfileManagementUI();
                 toastr.success(isZh ? '档案已更新' : 'Profiles updated');
+            }).catch(error => {
+                console.error('[GroupDirector] Profile generation failed:', error);
+                toastr.error(isZh ? '档案生成失败' : 'Profile generation failed');
             }).finally(() => btn.prop('disabled', false));
         } else {
             $('#gd-profile-loader').remove();
@@ -543,6 +576,9 @@ function buildProfileLoaderPanel() {
             $('#gd-profile-loader').remove();
             refreshProfileManagementUI();
             toastr.success(isZh ? '全部档案已更新' : 'All profiles updated');
+        }).catch(error => {
+            console.error('[GroupDirector] Profile generation failed:', error);
+            toastr.error(isZh ? '档案生成失败' : 'Profile generation failed');
         }).finally(() => btn.prop('disabled', false));
     });
 }
@@ -609,41 +645,38 @@ function detectCharacterChanges() {
     $('.gd-changes-btn-apply').off('click').on('click', async function () {
         const btn = $(this);
         btn.prop('disabled', true);
-        const toGenerate = [];
-        const toArchive = [];
+        try {
+            const toGenerate = [];
+            const toArchive = [];
 
-        $('.gd-change-row').each(function () {
-            const $row = $(this);
-            if (!$row.find('.gd-change-check').prop('checked')) return;
-            const action = $row.data('action');
-            const avatar = $row.data('avatar');
-            if (action === 'add') toGenerate.push(avatar);
-            else if (action === 'remove') toArchive.push(avatar);
-        });
+            $('.gd-change-row').each(function () {
+                const $row = $(this);
+                if (!$row.find('.gd-change-check').prop('checked')) return;
+                const action = $row.data('action');
+                const avatar = $row.data('avatar');
+                if (action === 'add') toGenerate.push(avatar);
+                else if (action === 'remove') toArchive.push(avatar);
+            });
 
-        // Archive removed characters
-        for (const avatar of toArchive) {
-            const prof = profiles[avatar];
-            if (prof) {
-                getArchivedProfiles()[avatar] = prof;
-                delete profiles[avatar];
+            if (toArchive.length > 0) {
+                await archiveProfiles(toArchive);
+                toastr.info(isZh ? `已归档 ${toArchive.length} 个档案` : `Archived ${toArchive.length} profile(s)`);
             }
-        }
-        if (toArchive.length > 0) {
-            await saveChatConditional();
-            toastr.info(isZh ? `已归档 ${toArchive.length} 个档案` : `Archived ${toArchive.length} profile(s)`);
-        }
 
-        // Generate new profiles
-        if (toGenerate.length > 0) {
-            toastr.info(isZh ? `正在生成 ${toGenerate.length} 个新角色档案...` : `Generating ${toGenerate.length} new profile(s)...`);
-            await generateProfilesBatch(toGenerate);
-        }
+            if (toGenerate.length > 0) {
+                toastr.info(isZh ? `正在生成 ${toGenerate.length} 个新角色档案...` : `Generating ${toGenerate.length} new profile(s)...`);
+                await generateProfilesBatch(toGenerate);
+            }
 
-        $('#gd-profile-changes').remove();
-        refreshProfileManagementUI();
-        toastr.success(isZh ? '变动已处理' : 'Changes processed');
-        btn.prop('disabled', false);
+            $('#gd-profile-changes').remove();
+            refreshProfileManagementUI();
+            toastr.success(isZh ? '变动已处理' : 'Changes processed');
+        } catch (error) {
+            console.error('[GroupDirector] Failed to process profile changes:', error);
+            toastr.error(isZh ? '处理角色变动失败' : 'Failed to process character changes');
+        } finally {
+            btn.prop('disabled', false);
+        }
     });
 }
 
@@ -670,8 +703,6 @@ function refreshProfileManagementUI() {
         const stateLabels = isZh ? { ready: '就绪', pending: '生成中', failed: '失败' } : { ready: 'Ready', pending: 'Generating', failed: 'Failed' };
         const stateLabel = stateLabels[prof.state] || prof.state;
         const stateClass = { ready: 'gd-profile-state-ready', pending: 'gd-profile-state-pending', failed: 'gd-profile-state-failed' }[prof.state] || '';
-        const safeId = CSS.escape(avatar);
-
         const card = $(`
             <div class="gd-profile-card" data-avatar="${esc(avatar)}">
                 <div class="gd-profile-card-header">
@@ -689,7 +720,7 @@ function refreshProfileManagementUI() {
                         <button class="gd-profile-btn-delete" data-avatar="${esc(avatar)}">${isZh ? '删除' : 'Delete'}</button>
                     </div>
                 </div>
-                <div class="gd-profile-card-edit" id="gd-profile-edit-${safeId}" style="display:none;">
+                <div class="gd-profile-card-edit" style="display:none;">
                     <label>Summary <textarea class="gd-profile-edit-field" data-field="summary" rows="2">${esc(prof.profile.summary || '')}</textarea></label>
                     <label>Tags <input class="gd-profile-edit-field" data-field="tags" value="${esc((prof.profile.tags || []).join(', '))}"></label>
                     <label>Motivation <textarea class="gd-profile-edit-field" data-field="motivation" rows="2">${esc(prof.profile.motivation || '')}</textarea></label>
@@ -711,22 +742,20 @@ function bindProfileCardActions() {
 
     $container.off('click', '.gd-profile-btn-edit').on('click', '.gd-profile-btn-edit', function (e) {
         e.stopPropagation();
-        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
-        const el = document.getElementById('gd-profile-edit-' + CSS.escape(avatar || ''));
+        const el = $(this).closest('.gd-profile-card').find('.gd-profile-card-edit')[0];
         if (el) { el.style.display = el.style.display === 'none' ? '' : 'none'; }
     });
 
     $container.off('click', '.gd-profile-btn-cancel').on('click', '.gd-profile-btn-cancel', function (e) {
         e.stopPropagation();
-        const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
-        const el = document.getElementById('gd-profile-edit-' + CSS.escape(avatar || ''));
+        const el = $(this).closest('.gd-profile-card').find('.gd-profile-card-edit')[0];
         if (el) el.style.display = 'none';
     });
 
     $container.off('click', '.gd-profile-btn-save').on('click', '.gd-profile-btn-save', async function (e) {
         e.stopPropagation();
         const avatar = $(this).closest('.gd-profile-card').attr('data-avatar') || $(this).attr('data-avatar');
-        const $edit = $(document.getElementById('gd-profile-edit-' + CSS.escape(avatar || '')));
+        const $edit = $(this).closest('.gd-profile-card').find('.gd-profile-card-edit');
         const prof = getProfiles()[avatar];
         if (!prof) return;
 
@@ -739,9 +768,14 @@ function bindProfileCardActions() {
         next.updatedAt = Date.now();
         next.state = 'ready';
 
-        await saveProfile(avatar, next);
-        $edit.hide();
-        toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
+        try {
+            await saveProfile(avatar, next);
+            $edit.hide();
+            toastr.info(settings.lang === 'zh' ? '档案已保存' : 'Profile saved');
+        } catch (error) {
+            console.error('[GroupDirector] Failed to save profile:', error);
+            toastr.error(settings.lang === 'zh' ? '档案保存失败' : 'Failed to save profile');
+        }
     });
 
     $container.off('click', '.gd-profile-btn-regen').on('click', '.gd-profile-btn-regen', async function () {
@@ -750,6 +784,9 @@ function bindProfileCardActions() {
         btn.prop('disabled', true);
         try {
             await generateProfilesBatch([avatar]);
+        } catch (error) {
+            console.error('[GroupDirector] Failed to regenerate profile:', error);
+            toastr.error(settings.lang === 'zh' ? '档案重生成失败' : 'Failed to regenerate profile');
         } finally {
             btn.prop('disabled', false);
         }
@@ -757,19 +794,18 @@ function bindProfileCardActions() {
 
     $container.off('click', '.gd-profile-btn-delete').on('click', '.gd-profile-btn-delete', async function () {
         const avatar = $(this).data('avatar');
-        const profiles = getProfiles();
-        const prof = profiles[avatar];
-        if (prof) {
-            getArchivedProfiles()[avatar] = prof;
-            delete profiles[avatar];
+        try {
+            await archiveProfiles([avatar]);
+            refreshProfileManagementUI();
+        } catch (error) {
+            console.error('[GroupDirector] Failed to delete profile:', error);
+            toastr.error(settings.lang === 'zh' ? '档案删除失败' : 'Failed to delete profile');
         }
-        await saveChatConditional();
-        refreshProfileManagementUI();
     });
 }
 
     return {
-        computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, diffProfiles,
+        computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         normalizeProfileFields, generateSingleProfile, generateProfilesBatch,
         buildCharacterProfilesText,

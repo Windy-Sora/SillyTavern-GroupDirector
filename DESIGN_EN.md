@@ -342,6 +342,10 @@ Three library systems (`profile-library-system` / `npc-library-system` / `story-
 
 **Relationship to config profiles**: library entries are "reusable content data", explicitly excluded by `INTENTIONALLY_UNCOVERED_KEYS` in `config-profile-system` and not saved/restored with config profiles.
 
+**Profile persistence transaction boundary**: `saveProfile()` owns single-profile writes and `archiveProfiles()` owns active-to-archive moves; both must `await saveChatConditional()`. On persistence failure, compensation is applied per avatar and only to slots that still equal this operation's applied state, so a whole-store snapshot never overwrites concurrent edits to the same or another character. Synchronization, change detection, and card deletion all delegate to this transaction API instead of mutating both maps in the UI.
+
+**Profile management UI safety boundary**: every asynchronous load, generation, save, and delete handler catches rejection, displays failure feedback, and restores disabled controls in `finally`. Imported avatar values enter markup only through HTML attribute encoding; edit panels are located through card DOM ancestry rather than avatar-derived HTML IDs or CSS selectors.
+
 ### 3.7 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip

@@ -341,6 +341,10 @@ Story Blueprint 是连续性层的故事结构系统。框架只维护结构化�
 
 **与配置档案的关系**：库条目是"可复用内容数据"，在 `config-profile-system` 中被 `INTENTIONALLY_UNCOVERED_KEYS` 显式排除，不随配置档保存/还原。
 
+**Profile 持久化事务边界**：`saveProfile()` 负责单角色写入，`archiveProfiles()` 负责活动档案到归档区的移动；两者都必须 `await saveChatConditional()`。保存失败时按头像分别补偿，只恢复仍等于本次应用状态的槽位，因此不会用整仓快照覆盖等待期间同角色或其他角色的并发编辑。同步、角色变动检测和卡片删除统一调用该事务 API，UI 不再直接改写两个存储映射。
+
+**Profile 管理 UI 安全边界**：所有异步加载、生成、保存和删除处理器必须捕获拒绝、显示失败提示，并在 `finally` 恢复按钮。导入头像值只通过 HTML 属性编码进入标记；编辑面板通过卡片 DOM 层级查找，不从头像拼接 HTML `id` 或 CSS 选择器。
+
 ### 3.7 编码规则
 
 - Provider 有开关时在 `render()` 内返回空字符串，不用 `enabled` 跳过
