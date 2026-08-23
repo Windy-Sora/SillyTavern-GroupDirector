@@ -993,7 +993,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 **导出格式**：`.zip` = `manifest.json` + 可选的 `user-providers/*.js` + `user-capabilities/*.js`
 
-**导入与应用边界**：JSON、ZIP 和内置预设共用 `config-profile-validation.js`，统一校验根对象、版本、settings/drawers/variables 结构及 Prompt、Provider、Capability 数组元素。JSON 导入会剥离 `agentConfigs` 和仅含名称的 Provider/Capability 桩；ZIP 可从匹配的 `.js` 文件恢复源码。应用配置档时先在 settings 副本上完成默认值合并和 Prompt 冲突处理，再导入变量并一次性提交；等待变量持久化期间发生的无关 settings 编辑会在提交时重放。后续 settings 提交失败时，通过变量导入事务执行三方补偿，保留同一变量上的并发更新。保存、删除、JSON/ZIP 导入和预设加载只有在持久化成功后才保留列表变更；失败时 UI 显示错误且不执行成功刷新。
+**导入与应用边界**：JSON、ZIP 和内置预设共用 `config-profile-validation.js`，统一校验根对象、版本、settings/drawers/variables 结构及 Prompt、Provider、Capability 数组元素。JSON 导入会剥离 `agentConfigs` 和仅含名称的 Provider/Capability 桩；ZIP 可从匹配的 `.js` 文件恢复源码。应用配置档时先在 settings 副本上完成默认值合并和 Prompt 冲突处理，再导入变量并一次性提交；等待变量持久化期间发生的无关 settings 编辑会在提交时重放。后续 settings 提交失败时，通过变量导入事务执行三方补偿，保留同一变量上的并发更新。保存、删除、JSON/ZIP 导入和预设加载只有在持久化成功后才保留列表变更；失败时 UI 显示错误且不执行成功刷新。工具抽屉的应用处理器会在整个异步成功路径中保留 Prompt 合并模式，使刷新完成后仍可安全生成 `keep`/`skip` 结果提示。
 
 **JSZip 加载**：使用 `ensureJSZip()` 含 script 标签 fallback — 先尝试 `import()`，失败后注入 `<script>` 标签加载，兼容非模块环境。
 

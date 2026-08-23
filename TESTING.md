@@ -224,7 +224,9 @@ persistence is pending, concurrency-safe compensation after a later settings
 failure, and list rollback when save/delete/import/preset persistence throws.
 JSON/ZIP export tests own credential stripping, executable-source isolation, asset
 packaging, variables, and download cleanup. UI handlers report apply/save/delete
-failures without running success refreshes.
+failures without running success refreshes. The apply-handler contract also keeps
+the Prompt merge-mode declaration outside its `try` block because the
+post-refresh success message reads that mode after the block completes.
 
 Script Executor tests follow the same boundary rule. The pure validator owns the
 version-1 file and entry contract, while system tests cover candidate validation,
