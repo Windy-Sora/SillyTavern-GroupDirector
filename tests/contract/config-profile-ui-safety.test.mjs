@@ -12,6 +12,7 @@ test('config profile apply handler reports failures before success refreshes', a
     assert.match(handler, /try\s*\{/);
     assert.match(handler, /await\s+sys\.applyProfile\(id, mergeMode\)/);
     assert.match(handler, /catch\s*\(e\)\s*\{[\s\S]*toastr\.error/);
+    assert.ok(handler.indexOf("let mergeMode = 'keep'") < handler.indexOf('try {'));
     assert.ok(handler.indexOf('sys.applyProfile') < handler.indexOf('__gdRefreshDashboard'));
     assert.ok(handler.indexOf('__gdRefreshDashboard') < handler.indexOf('toastr.success'));
 });

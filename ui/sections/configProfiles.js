@@ -78,10 +78,10 @@ registerSection('configProfiles', function (ctx) {
                 : `Apply config profile "${profileName}"? Current settings will be overwritten.`, POPUP_TYPE.CONFIRM)) return;
 
             let result;
+            let mergeMode = 'keep';
             try {
             // Check for customPrompt conflicts before applying
             const incoming = profile.settings?.customPrompts;
-            let mergeMode = 'keep';
             if (incoming && Array.isArray(incoming) && incoming.length > 0) {
                 const existing = (settings.customPrompts || []);
                 const existingNames = new Set(existing.map(e => e.name));
