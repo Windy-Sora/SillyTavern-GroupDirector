@@ -49,12 +49,30 @@ export function createCritiqueExportSystem(deps) {
     } = deps;
 
     const critiqueSystem = deps.critiqueSystem;
+    const fieldRevisions = new WeakMap();
 
-    function getImportedCritiques() {
-        const cm = getChatMetadata();
+    function getImportedCritiques(cm = getChatMetadata()) {
         if (!cm[EXT_KEY]) cm[EXT_KEY] = {};
         if (!Array.isArray(cm[EXT_KEY].importedCritiques)) cm[EXT_KEY].importedCritiques = [];
         return cm[EXT_KEY].importedCritiques;
+    }
+
+    function bumpFieldRevision(entry, key) {
+        let fields = fieldRevisions.get(entry);
+        if (!fields) {
+            fields = new Map();
+            fieldRevisions.set(entry, fields);
+        }
+        const revision = (fields.get(key) || 0) + 1;
+        fields.set(key, revision);
+        return revision;
+    }
+
+    function assertCurrentChat(metadata) {
+        if (getChatMetadata() === metadata) return;
+        const error = new Error('Imported critique became stale after the chat changed');
+        error.name = 'StaleExecutionError';
+        throw error;
     }
 
     async function save() {
@@ -83,16 +101,22 @@ export function createCritiqueExportSystem(deps) {
         });
         const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const dateStr = new Date().toISOString().slice(0, 10);
-        const sourceName = json.source.groupNote || json.source.groupName || 'critique';
-        const safeName = sourceName.replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
-        a.download = `critique-${safeName}-${dateStr}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        let a;
+        let appended = false;
+        try {
+            a = document.createElement('a');
+            a.href = url;
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const sourceName = json.source.groupNote || json.source.groupName || 'critique';
+            const safeName = sourceName.replace(/[^a-zA-Z0-9一-鿿\-_]/g, '_').substring(0, 40);
+            a.download = `critique-${safeName}-${dateStr}.json`;
+            document.body.appendChild(a);
+            appended = true;
+            a.click();
+        } finally {
+            try { if (appended) document.body.removeChild(a); }
+            finally { URL.revokeObjectURL(url); }
+        }
         log(`Exported active critique`);
         return json;
     }
@@ -122,16 +146,23 @@ export function createCritiqueExportSystem(deps) {
             sourcePrompt: data.template?.critiquePrompt || '',
             createdAt: Date.now(),
         };
-        const list = getImportedCritiques();
+        const metadata = getChatMetadata();
+        const list = getImportedCritiques(metadata);
         list.push(entry);
         try { await save(); }
-        catch (error) { list.pop(); throw error; }
+        catch (error) {
+            const index = list.indexOf(entry);
+            if (index >= 0) list.splice(index, 1);
+            throw error;
+        }
+        assertCurrentChat(metadata);
         log(`Added imported critique: "${entry.name}"`);
         return entry;
     }
 
     async function updateImportedCritique(id, updates) {
-        const list = getImportedCritiques();
+        const metadata = getChatMetadata();
+        const list = getImportedCritiques(metadata);
         const entry = list.find(item => item?.id === id);
         if (!entry) return;
         const allowed = {};
@@ -142,20 +173,42 @@ export function createCritiqueExportSystem(deps) {
         }
         if (Object.prototype.hasOwnProperty.call(updates, 'enabled')) allowed.enabled = !!updates.enabled;
         if (Object.prototype.hasOwnProperty.call(updates, 'data')) allowed.data = normalizeCritiqueData(updates.data);
-        const previous = Object.fromEntries(Object.keys(allowed).map(key => [key, entry[key]]));
+        const previous = new Map(Object.keys(allowed).map(key => [key, { value: entry[key], present: Object.hasOwn(entry, key) }]));
+        const revisions = new Map(Object.keys(allowed).map(key => [key, bumpFieldRevision(entry, key)]));
         Object.assign(entry, allowed);
         try { await save(); }
-        catch (error) { Object.assign(entry, previous); throw error; }
+        catch (error) {
+            for (const [key, before] of previous) {
+                if (fieldRevisions.get(entry)?.get(key) !== revisions.get(key) || !Object.is(entry[key], allowed[key])) continue;
+                if (before.present) entry[key] = before.value;
+                else delete entry[key];
+                bumpFieldRevision(entry, key);
+            }
+            throw error;
+        }
+        assertCurrentChat(metadata);
         return entry;
     }
 
     async function deleteImportedCritique(id) {
-        const list = getImportedCritiques();
+        const metadata = getChatMetadata();
+        const list = getImportedCritiques(metadata);
         const idx = list.findIndex(item => item?.id === id);
         if (idx < 0) return;
+        const before = list[idx - 1];
+        const after = list[idx + 1];
         const [removed] = list.splice(idx, 1);
         try { await save(); }
-        catch (error) { list.splice(idx, 0, removed); throw error; }
+        catch (error) {
+            if (!list.includes(removed)) {
+                const afterIndex = after ? list.indexOf(after) : -1;
+                const beforeIndex = before ? list.indexOf(before) : -1;
+                const restoreIndex = afterIndex >= 0 ? afterIndex : beforeIndex >= 0 ? beforeIndex + 1 : Math.min(idx, list.length);
+                list.splice(restoreIndex, 0, removed);
+            }
+            throw error;
+        }
+        assertCurrentChat(metadata);
         return removed;
     }
 

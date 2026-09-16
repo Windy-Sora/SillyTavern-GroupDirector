@@ -280,6 +280,13 @@ during `beforeExecute` or counter save. System tests require stale rejection whe
 the chat switches during generation or regeneration result save; an already
 successful old-chat save is not rolled back.
 
+Imported Critique tests use deferred saves to interleave failed add, update,
+and delete with newer mutations, including same-value field writes and changed
+neighbor positions. They check save-time chat switches and old-chat-only
+compensation. Export tests verify Blob URL and temporary anchor cleanup on
+success and thrown download steps; UI tests require failed import/export to
+show only an error notification.
+
 ## Asynchronous result consistency coverage
 
 `tests/unit/similar-agent-concurrency.test.mjs` owns the shared concurrency contract

@@ -909,6 +909,8 @@ A generation captures its starting chat and metadata references. If the chat cha
 
 On a failed save, repository add/update/revert/reset/prune compensates only its own writes by entry identity and field revision; an older rollback must not overwrite a newer concurrent edit. The auto counter uses a checkpoint revision for the same reason. Auto execution checks chat identity after `beforeExecute`, generation, and counter save; generation and regeneration check again after result save. A successful save followed by a chat switch reports stale without undoing the result already stored in the old chat. Result and counter saves are separate steps.
 
+Imported critiques are stored independently of the live critique history. A failed add removes its own entry by identity, a failed update compensates only fields still owned by that write, and a failed delete restores order relative to surviving neighbors. Mutations check metadata identity after saving and report `StaleExecutionError` on a chat switch without writing to the new chat. Export releases its temporary anchor and Blob URL on success or failure; UI handlers report failed imports, deletes, toggles, and downloads without showing success.
+
 ---
 
 ## 14. Custom Agent — User-Defined LLM Agent
