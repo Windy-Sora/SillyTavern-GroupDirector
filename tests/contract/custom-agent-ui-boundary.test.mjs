@@ -10,6 +10,10 @@ test('custom agent UI delegates every business mutation to the system boundary',
     ]) {
         assert.match(source, new RegExp(`customAgentSystem\\.${method}\\(`));
     }
+    for (const method of ['add', 'update', 'toggle', 'remove', 'importAgents', 'updateResult']) {
+        assert.match(source, new RegExp(`await customAgentSystem\\.${method}\\(`));
+    }
+    assert.match(source, /await saveFromEditPanel\(id, true\)/);
     assert.doesNotMatch(source, /settings\.customAgents/);
     assert.doesNotMatch(source, /saveSettings|saveChatConditional/);
     assert.doesNotMatch(source, /_caData|_autoCAG_/);

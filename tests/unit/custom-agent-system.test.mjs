@@ -55,31 +55,31 @@ const valid = (providerName = 'audit') => ({
     name: 'Audit', providerName, prompt: 'inspect', enabled: true,
 });
 
-test('custom agent CRUD owns validation, persistence, and provider lifecycle', () => {
+test('custom agent CRUD owns validation, persistence, and provider lifecycle', async () => {
     const h = createHarness();
-    const added = h.system.add(valid());
+    const added = await h.system.add(valid());
     assert.ok(added.id);
     assert.equal(h.providers.get('audit')._gdOwner, 'group-director/custom-agent');
     assert.equal(h.counts().settingsSaves, 1);
 
-    h.system.update(added.id, { providerName: 'review' });
+    await h.system.update(added.id, { providerName: 'review' });
     assert.equal(h.providers.has('audit'), false);
     assert.equal(h.providers.has('review'), true);
-    assert.throws(() => h.system.add(valid('review')), /duplicate providerName/);
+    await assert.rejects(h.system.add(valid('review')), /duplicate providerName/);
     assert.equal(h.settings.customAgents.length, 1);
 
-    h.system.toggle(added.id);
+    await h.system.toggle(added.id);
     assert.equal(h.providers.size, 0);
     assert.equal(h.settings.customAgents[0].enabled, false);
-    h.system.remove(added.id);
+    await h.system.remove(added.id);
     assert.deepEqual(h.settings.customAgents, []);
 });
 
-test('custom agent changes reject provider collisions and roll back failed persistence', () => {
+test('custom agent changes reject provider collisions and roll back failed persistence', async () => {
     const builtIn = { id: 'reserved' };
     const h = createHarness();
     h.providers.set(builtIn.id, builtIn);
-    assert.throws(() => h.system.add(valid('reserved')), /already registered/);
+    await assert.rejects(h.system.add(valid('reserved')), /already registered/);
     assert.deepEqual(h.settings.customAgents, []);
 
     const providers = new Map();
@@ -98,12 +98,12 @@ test('custom agent changes reject provider collisions and roll back failed persi
         unregisterProvider: id => providers.delete(id),
         getProviders: () => [...providers.values()],
     });
-    assert.throws(() => system.add(valid()), /disk unavailable/);
+    await assert.rejects(system.add(valid()), /disk unavailable/);
     assert.deepEqual(settings.customAgents, []);
     assert.equal(providers.size, 0);
 });
 
-test('disabled provider collisions survive refresh but are rejected when enabled', () => {
+test('disabled provider collisions survive refresh but are rejected when enabled', async () => {
     const providers = new Map([['reserved', { id: 'reserved', placeholder: '{{reserved}}' }]]);
     const settings = {
         customAgents: [{
@@ -128,14 +128,14 @@ test('disabled provider collisions survive refresh but are rejected when enabled
     });
 
     assert.doesNotThrow(() => system.refreshProviders());
-    assert.throws(() => system.toggle('ca_legacy'), /already registered/);
+    await assert.rejects(system.toggle('ca_legacy'), /already registered/);
     assert.equal(settings.customAgents[0].enabled, false);
     assert.equal(providers.get('reserved')._gdOwner, undefined);
 });
 
 test('custom agent import validates atomically and forces imported agents disabled', async () => {
     const h = createHarness();
-    const original = h.system.add(valid());
+    const original = await h.system.add(valid());
     const beforeSaves = h.counts().settingsSaves;
     const data = {
         version: 1,
@@ -160,7 +160,7 @@ test('custom agent execution deduplicates requests and stores the request-start 
     h.chat = [{}, {}];
     const gate = deferred();
     h.response = () => gate.promise;
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     const first = h.system.execute(agent);
     const second = h.system.execute(agent);
     assert.equal(first, second);
@@ -176,7 +176,7 @@ test('custom agent execution deduplicates requests and stores the request-start 
 
 test('custom agent execution rejects stale chat and stale configuration results', async () => {
     const h = createHarness();
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     let gate = deferred();
     h.response = () => gate.promise;
     const staleChat = h.system.execute(agent);
@@ -190,7 +190,7 @@ test('custom agent execution rejects stale chat and stale configuration results'
     const live = h.settings.customAgents[0];
     const staleConfig = h.system.execute(live);
     await new Promise(resolve => setTimeout(resolve, 0));
-    h.system.update(live.id, { prompt: 'changed' });
+    await h.system.update(live.id, { prompt: 'changed' });
     gate.resolve('old config');
     await assert.rejects(staleConfig, { name: 'StaleExecutionError' });
     assert.equal(h.counts().chatSaves, 0);
@@ -198,16 +198,16 @@ test('custom agent execution rejects stale chat and stale configuration results'
 
 test('captured agent references resolve live configuration and reject deleted agents', async () => {
     const h = createHarness();
-    const captured = h.system.add(valid());
+    const captured = await h.system.add(valid());
     h.response = prompt => prompt;
 
-    h.system.update(captured.id, { prompt: 'current prompt' });
+    await h.system.update(captured.id, { prompt: 'current prompt' });
     const result = await h.system.executeAuto(captured, 4);
     assert.equal(result.content, 'current prompt');
     assert.equal(h.metadata.gd[`_autoCAG_${captured.id}`], 4);
 
     const removed = h.settings.customAgents[0];
-    h.system.remove(removed.id);
+    await h.system.remove(removed.id);
     const savesBefore = h.counts().chatSaves;
     await assert.rejects(h.system.executeAuto(removed, 5), { name: 'StaleExecutionError' });
     assert.equal(h.counts().chatSaves, savesBefore);
@@ -216,8 +216,8 @@ test('captured agent references resolve live configuration and reject deleted ag
 
 test('queued work captures its original chat and config context at enqueue time', async () => {
     const h = createHarness();
-    const firstAgent = h.system.add(valid('first'));
-    const queuedAgent = h.system.add({ ...valid('queued'), name: 'Queued' });
+    const firstAgent = await h.system.add(valid('first'));
+    const queuedAgent = await h.system.add({ ...valid('queued'), name: 'Queued' });
     const gate = deferred();
     let calls = 0;
     h.response = () => (++calls === 1 ? gate.promise : 'queued result');
@@ -236,7 +236,7 @@ test('queued work captures its original chat and config context at enqueue time'
 
 test('a current request does not deduplicate onto stale same-id work', async () => {
     const h = createHarness();
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     const gate = deferred();
     let calls = 0;
     h.response = () => (++calls === 1 ? gate.promise : 'fresh result');
@@ -255,7 +255,7 @@ test('a current request does not deduplicate onto stale same-id work', async () 
 
 test('provider refresh invalidates execution after an external profile replacement', async () => {
     const h = createHarness();
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     const gate = deferred();
     h.response = () => gate.promise;
     const request = h.system.execute(agent);
@@ -269,7 +269,7 @@ test('provider refresh invalidates execution after an external profile replaceme
 
 test('automatic execution saves result and counter in one transaction', async () => {
     const h = createHarness();
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     await h.system.executeAuto(agent, 12);
     assert.equal(h.system.getData(agent.id).rangeEnd, 0);
     assert.equal(h.metadata.gd[`_autoCAG_${agent.id}`], 12);
@@ -280,7 +280,7 @@ test('automatic execution saves result and counter in one transaction', async ()
 
 test('an automatic trigger joins a manual in-flight request and still commits its counter', async () => {
     const h = createHarness();
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     const gate = deferred();
     h.response = () => gate.promise;
     const manual = h.system.execute(agent);
@@ -307,7 +307,7 @@ test('a late auto join checkpoints after an in-progress manual save', async () =
             }
         },
     });
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     const manual = h.system.execute(agent);
     await saveStarted.promise;
     const automatic = h.system.executeAuto(agent, 9);
@@ -320,7 +320,7 @@ test('a late auto join checkpoints after an in-progress manual save', async () =
 
 test('a saved result edit invalidates an older in-flight execution', async () => {
     const h = createHarness();
-    const agent = h.system.add(valid());
+    const agent = await h.system.add(valid());
     await h.system.execute(agent);
     await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -333,4 +333,169 @@ test('a saved result edit invalidates an older in-flight execution', async () =>
 
     await assert.rejects(request, { name: 'StaleExecutionError' });
     assert.equal(h.system.getData(agent.id).content, 'manual edit');
+});
+
+test('configuration creation waits for an asynchronous save and rolls back its provider on failure', async () => {
+    const gate = deferred();
+    gate.promise.catch(() => {});
+    const h = createHarness({ saveSettings: () => gate.promise });
+    const pending = h.system.add(valid());
+    assert.equal(typeof pending?.then, 'function');
+    await Promise.resolve();
+    assert.equal(h.settings.customAgents.length, 1);
+    assert.equal(h.providers.has('audit'), true);
+    gate.reject(new Error('async settings failure'));
+    await assert.rejects(pending, /async settings failure/);
+    assert.deepEqual(h.settings.customAgents, []);
+    assert.equal(h.providers.has('audit'), false);
+});
+
+test('asynchronous save failure rolls back update, toggle, remove, and import', async () => {
+    for (const operation of [
+        h => h.system.update(h.settings.customAgents[0].id, { providerName: 'changed' }),
+        h => h.system.toggle(h.settings.customAgents[0].id),
+        h => h.system.remove(h.settings.customAgents[0].id),
+        h => h.system.importAgents({ version: 1, type: 'custom-agent-export', agents: [valid('newAgent')] }),
+    ]) {
+        let fail = false;
+        const h = createHarness({ saveSettings: () => fail ? Promise.reject(new Error('async settings failure')) : undefined });
+        await h.system.add(valid());
+        const before = structuredClone(h.settings.customAgents);
+        fail = true;
+        await assert.rejects(operation(h), /async settings failure/);
+        assert.deepEqual(h.settings.customAgents, before);
+        assert.deepEqual([...h.providers.keys()], ['audit']);
+    }
+});
+
+test('failed configuration save preserves an unrelated edit made while waiting', async () => {
+    let saveGate;
+    const h = createHarness({ saveSettings: () => saveGate?.promise });
+    const first = await h.system.add(valid('first'));
+    const second = await h.system.add(valid('second'));
+    saveGate = deferred();
+    const pending = h.system.update(first.id, { name: 'Failed' });
+    await Promise.resolve();
+    h.settings.customAgents.find(agent => agent.id === second.id).name = 'Concurrent';
+    saveGate.reject(new Error('disk unavailable'));
+    await assert.rejects(pending, /disk unavailable/);
+    assert.equal(h.settings.customAgents.find(agent => agent.id === first.id).name, 'Audit');
+    assert.equal(h.settings.customAgents.find(agent => agent.id === second.id).name, 'Concurrent');
+});
+
+test('failed configuration save reverts its field but preserves another field edited during the wait', async () => {
+    let saveGate;
+    const h = createHarness({ saveSettings: () => saveGate?.promise });
+    const agent = await h.system.add(valid());
+    saveGate = deferred();
+    const pending = h.system.update(agent.id, { name: 'Failed' });
+    await Promise.resolve();
+    h.settings.customAgents[0].order = 7;
+    saveGate.reject(new Error('disk unavailable'));
+    await assert.rejects(pending, /disk unavailable/);
+    assert.equal(h.settings.customAgents[0].name, 'Audit');
+    assert.equal(h.settings.customAgents[0].order, 7);
+});
+
+test('overlapping configuration saves serialize and a failed edit cannot undo a later edit', async () => {
+    let firstFailure;
+    let saves = 0;
+    const h = createHarness({ saveSettings: () => {
+        saves++;
+        return saves === 2 ? new Promise((_, reject) => { firstFailure = reject; }) : undefined;
+    } });
+    const agent = await h.system.add(valid());
+    const first = h.system.update(agent.id, { name: 'Failed' });
+    const later = h.system.update(agent.id, { name: 'Later' });
+    await Promise.resolve();
+    assert.equal(saves, 2);
+    firstFailure(new Error('first save failed'));
+    await assert.rejects(first, /first save failed/);
+    await later;
+    assert.equal(h.settings.customAgents[0].name, 'Later');
+    assert.equal(saves, 3);
+});
+
+test('failed automatic execution preserves a newer counter written during its save', async () => {
+    const saveStarted = deferred();
+    const firstSave = deferred();
+    let saves = 0;
+    const h = createHarness({ saveChatConditional: () => {
+        saves++;
+        if (saves === 1) { saveStarted.resolve(); return firstSave.promise; }
+    } });
+    const agent = await h.system.add(valid());
+    const pending = h.system.executeAuto(agent, 7);
+    await saveStarted.promise;
+    await h.system.setAutoCounter(agent.id, 9);
+    firstSave.reject(new Error('save failed'));
+    await assert.rejects(pending, /save failed/);
+    assert.equal(h.metadata.gd[`_autoCAG_${agent.id}`], 9);
+    assert.equal(h.system.getData(agent.id), null);
+});
+
+test('failed counter save does not erase a newer same-value counter write', async () => {
+    const saveStarted = deferred();
+    const firstSave = deferred();
+    let saves = 0;
+    const h = createHarness({ saveChatConditional: () => {
+        saves++;
+        if (saves === 1) { saveStarted.resolve(); return firstSave.promise; }
+    } });
+    const pending = h.system.setAutoCounter('agent', 9);
+    await saveStarted.promise;
+    await h.system.setAutoCounter('agent', 9);
+    firstSave.reject(new Error('save failed'));
+    await assert.rejects(pending, /save failed/);
+    assert.equal(h.metadata.gd._autoCAG_agent, 9);
+});
+
+test('a result edit made during an older save survives that save failing', async () => {
+    const saveStarted = deferred();
+    const olderSave = deferred();
+    let saves = 0;
+    const h = createHarness({ saveChatConditional: () => {
+        saves++;
+        if (saves === 2) { saveStarted.resolve(); return olderSave.promise; }
+    } });
+    const agent = await h.system.add(valid());
+    await h.system.execute(agent);
+    const pending = h.system.execute(agent);
+    await saveStarted.promise;
+    await h.system.updateResult(agent.id, 'manual edit');
+    olderSave.reject(new Error('older save failed'));
+    await assert.rejects(pending, /older save failed/);
+    assert.equal(h.system.getData(agent.id).content, 'manual edit');
+});
+
+test('chat switch during a pending result save does not report the old run as current', async () => {
+    const saveStarted = deferred();
+    const releaseSave = deferred();
+    const h = createHarness({ saveChatConditional: () => {
+        saveStarted.resolve();
+        return releaseSave.promise;
+    } });
+    const agent = await h.system.add(valid());
+    const pending = h.system.execute(agent);
+    await saveStarted.promise;
+    h.metadata = {};
+    h.chat = [];
+    releaseSave.resolve();
+    await assert.rejects(pending, { name: 'StaleExecutionError' });
+    assert.equal(h.system.getData(agent.id), null);
+});
+
+test('configuration change during a pending result save invalidates the old run', async () => {
+    const saveStarted = deferred();
+    const releaseSave = deferred();
+    const h = createHarness({ saveChatConditional: () => {
+        saveStarted.resolve();
+        return releaseSave.promise;
+    } });
+    const agent = await h.system.add(valid());
+    const pending = h.system.execute(agent);
+    await saveStarted.promise;
+    await h.system.update(agent.id, { prompt: 'changed' });
+    releaseSave.resolve();
+    await assert.rejects(pending, { name: 'StaleExecutionError' });
 });

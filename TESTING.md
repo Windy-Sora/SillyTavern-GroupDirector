@@ -256,6 +256,13 @@ and config rejection, and result/checkpoint rollback. The pure auto coordinator
 tests first-enable, normal interval, ordering, and deletion-reset decisions. UI
 tests should verify delegation only—the section must not mutate `customAgents`,
 `_caData`, or `_autoCAG_*` directly.
+Configuration tests also inject asynchronous settings-save rejection across CRUD
+and import, verify serialized saves and operation-local rollback under concurrent
+edits, and require the UI to await mutations. Execution tests interleave failed
+chat saves with newer result or counter writes (including the same counter value)
+and switch chat/configuration during a pending save. These tests verify the
+observable save-callback contract; SillyTavern's debounced settings save does not
+expose a guaranteed network commit result.
 
 Critique coverage follows five independent boundaries: parser tests own balanced
 JSON extraction and noisy model output; validation tests own nested critique and

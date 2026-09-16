@@ -922,9 +922,10 @@ User-defined lightweight LLM Agents that auto-trigger every N rounds or execute 
 - **Dynamic Provider registration** — `providerName` field → `{{providerName}}` → DSL queries
 - **Disabled = Provider deactivated** — enabled=false returns '' from render()
 - **No proactive data cleanup** — Deleting an instance unregisters the Provider; data silently remains in chat_metadata
-- **Single write boundary** — The UI never mutates settings or chat results directly; CRUD, imports, and result edits use `customAgentSystem`
-- **Execution isolation** — Concurrent calls for one instance are deduplicated and all jobs are serialized; chat changes, deletions, or config changes invalidate old results
-- **Transactional commit** — Auto-run result and `_autoCAG_{id}` checkpoint are saved together and rolled back together on failure
+- **Single write boundary** — The UI never mutates settings or chat results directly; CRUD, imports, and result edits use `customAgentSystem`, and the UI waits for persistence before refreshing or reporting success
+- **Configuration transactions** — CRUD and imports commit serially and await `saveSettings`; failures compensate this operation's list and Provider changes without erasing unrelated edits made while saving
+- **Execution isolation** — Concurrent calls for one instance are deduplicated and all jobs are serialized; chat changes, deletions, or config changes invalidate old results, including changes during a pending chat save
+- **Transactional commit** — Auto-run result and `_autoCAG_{id}` checkpoint are saved together; on failure, result and counter revisions roll back only writes still owned by that transaction, preserving newer edits
 
 ### 14.2 Data Model
 

@@ -32,6 +32,8 @@ export function createCustomAgentSystem({
 }) {
     const revisions = new Map();
     const resultRevisions = new WeakMap();
+    const counterRevisions = new WeakMap();
+    let mutationQueue = Promise.resolve();
     let knownEntries = Array.isArray(settings.customAgents)
         ? structuredClone(settings.customAgents)
         : [];
@@ -63,6 +65,19 @@ export function createCustomAgentSystem({
             resultRevisions.set(metadata, revisionsForMetadata);
         }
         revisionsForMetadata.set(id, revision);
+    }
+
+    function getCounterRevision(metadata, key) {
+        return counterRevisions.get(metadata)?.get(key) || 0;
+    }
+
+    function setCounterRevision(metadata, key, revision) {
+        let revisionsForMetadata = counterRevisions.get(metadata);
+        if (!revisionsForMetadata) {
+            revisionsForMetadata = new Map();
+            counterRevisions.set(metadata, revisionsForMetadata);
+        }
+        revisionsForMetadata.set(key, revision);
     }
 
     function normalizeProviderEntries(list, { strict }) {
@@ -169,29 +184,65 @@ export function createCustomAgentSystem({
         knownEntries = structuredClone(next);
     }
 
-    function commitList(candidate) {
+    function enqueueMutation(work) {
+        const task = mutationQueue.then(work, work);
+        mutationQueue = task.catch(() => {});
+        return task;
+    }
+
+    function rollbackList(previous, applied) {
+        const current = getList();
+        const before = new Map(previous.map(entry => [entry.id, entry]));
+        const after = new Map(applied.map(entry => [entry.id, entry]));
+        const restored = [];
+        for (const entry of current) {
+            const old = before.get(entry.id);
+            const attempted = after.get(entry.id);
+            if (!old && attempted && JSON.stringify(entry) === JSON.stringify(attempted)) continue;
+            if (old && attempted) {
+                for (const key of Object.keys(attempted)) {
+                    if (JSON.stringify(old[key]) !== JSON.stringify(attempted[key])
+                        && JSON.stringify(entry[key]) === JSON.stringify(attempted[key])) {
+                        entry[key] = old[key];
+                    }
+                }
+            }
+            restored.push(entry);
+        }
+        for (const [index, old] of previous.entries()) {
+            if (!after.has(old.id) && !restored.some(entry => entry.id === old.id)) {
+                restored.splice(Math.min(index, restored.length), 0, old);
+            }
+        }
+        settings.customAgents = restored;
+        return restored;
+    }
+
+    async function commitList(candidate) {
         const normalized = validateList(candidate);
-        const previous = getList();
+        const previous = structuredClone(getList());
+        const applied = structuredClone(normalized);
         settings.customAgents = normalized;
         try {
             syncProviders(normalized, { strict: true });
-            saveSettings();
+            recordChangedRevisions(normalized);
+            await saveSettings();
         } catch (error) {
-            settings.customAgents = previous;
-            try { syncProviders(previous); } catch (_) { /* best-effort restoration */ }
+            const restored = rollbackList(previous, applied);
+            try { syncProviders(restored); } catch (_) { /* best-effort restoration */ }
+            recordChangedRevisions(restored);
             throw error;
         }
-        recordChangedRevisions(normalized);
         return normalized;
     }
 
-    function add(partial) {
+    async function add(partial) {
         const entry = normalizeCustomAgent(partial, { path: 'agent', id: generateCustomAgentId() });
-        commitList([...getList(), entry]);
+        await commitList([...getList(), entry]);
         return entry;
     }
 
-    function update(id, updates) {
+    async function update(id, updates) {
         if (updates === null || typeof updates !== 'object' || Array.isArray(updates)) {
             throw new Error('updates must be an object');
         }
@@ -206,24 +257,24 @@ export function createCustomAgentSystem({
         const entry = normalizeCustomAgent(candidate, { path: 'agent', id });
         const next = [...list];
         next[index] = entry;
-        commitList(next);
+        await commitList(next);
         return entry;
     }
 
-    function toggle(id) {
+    async function toggle(id) {
         const entry = getList().find(agent => agent.id === id);
         if (!entry) return undefined;
-        return update(id, {
+        return await update(id, {
             enabled: !entry.enabled,
             autoEnabled: entry.enabled ? false : entry.autoEnabled,
         });
     }
 
-    function remove(id) {
+    async function remove(id) {
         const list = getList();
         const entry = list.find(agent => agent.id === id);
         if (!entry) return undefined;
-        commitList(list.filter(agent => agent.id !== id));
+        await commitList(list.filter(agent => agent.id !== id));
         return entry;
     }
 
@@ -256,7 +307,7 @@ export function createCustomAgentSystem({
             }
             imported++;
         }
-        if (imported > 0) commitList(candidate);
+        if (imported > 0) await commitList(candidate);
         return { imported, skipped, cancelled: false };
     }
 
@@ -290,11 +341,17 @@ export function createCustomAgentSystem({
         const key = `_autoCAG_${id}`;
         const hadPrevious = Object.prototype.hasOwnProperty.call(root, key);
         const previous = root[key];
+        const previousRevision = getCounterRevision(metadata, key);
+        const committedRevision = previousRevision + 1;
+        setCounterRevision(metadata, key, committedRevision);
         root[key] = value;
         try { await saveChatConditional(); }
         catch (error) {
-            if (hadPrevious) root[key] = previous;
-            else delete root[key];
+            if (getCounterRevision(metadata, key) === committedRevision) {
+                if (hadPrevious) root[key] = previous;
+                else delete root[key];
+                setCounterRevision(metadata, key, previousRevision);
+            }
             throw error;
         }
         return value;
@@ -308,6 +365,8 @@ export function createCustomAgentSystem({
         getRevision: id => revisions.get(id) || 0,
         getResultRevision,
         setResultRevision,
+        getCounterRevision,
+        setCounterRevision,
         renderPrompt,
         generate: prompt => createCaller(
             settings.agentConfigs?.['custom-agent'] || {},
@@ -323,12 +382,12 @@ export function createCustomAgentSystem({
         getData,
         validateList,
         suggestProviderName,
-        add,
-        update,
-        toggle,
-        remove,
+        add: (...args) => enqueueMutation(() => add(...args)),
+        update: (...args) => enqueueMutation(() => update(...args)),
+        toggle: (...args) => enqueueMutation(() => toggle(...args)),
+        remove: (...args) => enqueueMutation(() => remove(...args)),
         createExportData,
-        importAgents,
+        importAgents: (...args) => enqueueMutation(() => importAgents(...args)),
         updateResult,
         setAutoCounter,
         refreshProviders: () => {

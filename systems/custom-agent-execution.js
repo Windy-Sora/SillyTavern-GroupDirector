@@ -41,6 +41,8 @@ export function createCustomAgentExecution({
     getRevision,
     getResultRevision,
     setResultRevision,
+    getCounterRevision,
+    setCounterRevision,
     renderPrompt,
     generate,
     saveChatConditional,
@@ -92,11 +94,16 @@ export function createCustomAgentExecution({
         const committedCounterValue = options.counterValue;
         const hadCounter = hasCounter && Object.prototype.hasOwnProperty.call(root, options.counterKey);
         const previousCounter = hasCounter ? root[options.counterKey] : undefined;
+        const previousCounterRevision = hasCounter ? getCounterRevision(metadata, committedCounterKey) : 0;
+        const committedCounterRevision = previousCounterRevision + 1;
         const committedResultRevision = resultRevision + 1;
         setResultRevision(metadata, instance.id, committedResultRevision);
         context.resultRevision = committedResultRevision;
         store[instance.id] = result;
-        if (hasCounter) root[options.counterKey] = options.counterValue;
+        if (hasCounter) {
+            setCounterRevision(metadata, committedCounterKey, committedCounterRevision);
+            root[committedCounterKey] = committedCounterValue;
+        }
         try {
             await saveChatConditional();
         } catch (error) {
@@ -105,11 +112,17 @@ export function createCustomAgentExecution({
                 else delete store[instance.id];
                 setResultRevision(metadata, instance.id, resultRevision);
             }
-            if (hasCounter) {
-                if (hadCounter) root[options.counterKey] = previousCounter;
-                else delete root[options.counterKey];
+            if (hasCounter && getCounterRevision(metadata, committedCounterKey) === committedCounterRevision) {
+                if (hadCounter) root[committedCounterKey] = previousCounter;
+                else delete root[committedCounterKey];
+                setCounterRevision(metadata, committedCounterKey, previousCounterRevision);
             }
             throw error;
+        }
+        if (isStale(startEpoch, metadata, chat)
+            || getRevision(instance.id) !== revision
+            || getResultRevision(metadata, instance.id) !== committedResultRevision) {
+            throw staleExecutionError();
         }
         // A manual request can be joined by an auto trigger while the first
         // persistence call is already in progress. Preserve deduplication, then
@@ -119,15 +132,28 @@ export function createCustomAgentExecution({
             || options.counterKey !== committedCounterKey
             || options.counterValue !== committedCounterValue
         )) {
-            const lateHadCounter = Object.prototype.hasOwnProperty.call(root, options.counterKey);
-            const latePrevious = root[options.counterKey];
-            root[options.counterKey] = options.counterValue;
+            const lateCounterKey = options.counterKey;
+            const lateCounterValue = options.counterValue;
+            const lateHadCounter = Object.prototype.hasOwnProperty.call(root, lateCounterKey);
+            const latePrevious = root[lateCounterKey];
+            const latePreviousRevision = getCounterRevision(metadata, lateCounterKey);
+            const lateCommittedRevision = latePreviousRevision + 1;
+            setCounterRevision(metadata, lateCounterKey, lateCommittedRevision);
+            root[lateCounterKey] = lateCounterValue;
             try { await saveChatConditional(); }
             catch (error) {
-                if (lateHadCounter) root[options.counterKey] = latePrevious;
-                else delete root[options.counterKey];
+                if (getCounterRevision(metadata, lateCounterKey) === lateCommittedRevision) {
+                    if (lateHadCounter) root[lateCounterKey] = latePrevious;
+                    else delete root[lateCounterKey];
+                    setCounterRevision(metadata, lateCounterKey, latePreviousRevision);
+                }
                 throw error;
             }
+        }
+        if (isStale(startEpoch, metadata, chat)
+            || getRevision(instance.id) !== revision
+            || getResultRevision(metadata, instance.id) !== committedResultRevision) {
+            throw staleExecutionError();
         }
         log?.(`[CustomAgent] "${instance.name}" executed, rangeEnd=${rangeEnd}`);
         return result;

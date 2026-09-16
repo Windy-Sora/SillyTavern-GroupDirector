@@ -921,9 +921,10 @@ Critique 按数据契约、解析、持久化、LLM 副作用和自动调度拆�
 - **Provider 动态注册** — `providerName` 字段 → `{{providerName}}` → DSL 查询
 - **禁用 = Provider 停用** — enabled=false 时 render() 返回 ''
 - **数据不主动清理** — 删实例时 Provider 反注册，数据静默留在 chat_metadata
-- **单一写入口** — UI 不直接修改设置或聊天结果；CRUD、导入、编辑结果均走 `customAgentSystem`
-- **执行隔离** — 同一实例并发请求合并，全局按 order 串行；聊天切换、删消息或配置变化会使旧结果失效
-- **事务提交** — 自动执行的结果和 `_autoCAG_{id}` checkpoint 一次保存；保存失败同时回滚
+- **单一写入口** — UI 不直接修改设置或聊天结果；CRUD、导入、编辑结果均走 `customAgentSystem`，并等待保存成功后才刷新和提示成功
+- **配置事务** — CRUD 与导入串行提交、等待 `saveSettings`；失败时补偿本次列表和 Provider 变更，不覆盖保存等待期间的无关字段编辑
+- **执行隔离** — 同一实例并发请求合并，全局按 order 串行；聊天切换、删消息或配置变化会使旧结果失效，包括聊天保存等待期间发生的切换
+- **事务提交** — 自动执行的结果和 `_autoCAG_{id}` checkpoint 一次保存；保存失败时分别按结果/计数器版本回滚本次仍拥有的写入，不抹掉较新的编辑
 
 ### 14.2 数据模型
 

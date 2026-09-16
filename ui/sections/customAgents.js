@@ -109,8 +109,11 @@ registerSection('customAgents', function (ctx) {
                         POPUP_TYPE.CONFIRM,
                     );
                     if (ok) {
-                        const saved = saveFromEditPanel(id, true);
-                        if (!saved) toastr.warning(L('保存失败，请检查配置', 'Save failed, check config'));
+                        const saved = await saveFromEditPanel(id, true);
+                        if (!saved) {
+                            toastr.warning(L('保存失败，请检查配置', 'Save failed, check config'));
+                            return;
+                        }
                     }
                 }
                 $edit.hide();
@@ -127,10 +130,10 @@ registerSection('customAgents', function (ctx) {
         });
 
         // Toggle enable
-        $list.find('.gd-ca-toggle-btn').off('click').on('click', function () {
+        $list.find('.gd-ca-toggle-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             try {
-                customAgentSystem.toggle(id);
+                await customAgentSystem.toggle(id);
                 renderList();
             } catch (error) {
                 toastr.error(L(`切换失败: ${error.message}`, `Toggle failed: ${error.message}`));
@@ -164,7 +167,7 @@ registerSection('customAgents', function (ctx) {
                 || snap.autoInterval !== ($byId('.gd-ca-edit-interval', id).val() || '10');
         }
 
-        function saveFromEditPanel(id, showToast = false) {
+        async function saveFromEditPanel(id, showToast = false) {
             const list = getList();
             const inst = list.find(a => a.id === id);
             if (!inst) return false;
@@ -177,7 +180,7 @@ registerSection('customAgents', function (ctx) {
             if (otherWithSamePN) return false;
 
             try {
-                customAgentSystem.update(id, {
+                await customAgentSystem.update(id, {
                     name,
                     providerName,
                     prompt: $byId('.gd-ca-edit-prompt', id).val() || '',
@@ -220,9 +223,9 @@ registerSection('customAgents', function (ctx) {
         });
 
         // Save button
-        $list.find('.gd-ca-save-btn').off('click').on('click', function () {
+        $list.find('.gd-ca-save-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            const ok = saveFromEditPanel(id, true);
+            const ok = await saveFromEditPanel(id, true);
             if (!ok) {
                 toastr.warning(L('保存失败：名称或 providerName 无效或已被占用', 'Save failed: name or providerName invalid or taken'));
             }
@@ -250,7 +253,7 @@ registerSection('customAgents', function (ctx) {
             )) return;
 
             try {
-                customAgentSystem.remove(id);
+                await customAgentSystem.remove(id);
                 renderList();
                 toastr.success(L(`"${name}" 已删除`, `"${name}" deleted`));
             } catch (error) {
@@ -324,12 +327,12 @@ registerSection('customAgents', function (ctx) {
         }
     });
 
-    $c('ca-add-btn').on('click', function () {
+    $c('ca-add-btn').on('click', async function () {
         const list = getList();
         const providerName = customAgentSystem.suggestProviderName();
         const name = L('新 Agent', 'New Agent');
         try {
-            const created = customAgentSystem.add({
+            const created = await customAgentSystem.add({
                 name, providerName, prompt: '', schema: '', enabled: false,
                 autoEnabled: false, autoInterval: 10, order: Math.min(list.length + 1, 999),
             });
