@@ -243,6 +243,11 @@ the callback settles. The UI contract requires
 every CRUD call to be awaited before refresh. SillyTavern's current debounced
 settings save does not expose its network result, so these tests verify the
 observable callback contract, not a guaranteed server commit.
+Runtime tests use short injected timeouts and deferred Promises to verify that
+timed-out scripts cannot mutate nested shared state, retained return values and
+decision copies do not alias committed state, and an old message execution stops
+launching scripts after a turn reset. Error isolation still lets subsequent
+scripts run within the same live turn.
 
 Custom Agent coverage uses the same layered contract: the validator owns field,
 Schema, duplicate-ID/provider, and disabled-import rules; the system suite owns

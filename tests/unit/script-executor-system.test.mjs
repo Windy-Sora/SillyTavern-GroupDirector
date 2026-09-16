@@ -293,3 +293,107 @@ test('a stale decision execution cannot restore the previous turn snapshot', asy
     assert.equal(await pending, null);
     assert.equal(subject.getDecisionSnapshot(), null);
 });
+
+test('a timed-out message script cannot mutate nested shared state after the next script runs', async () => {
+    let release;
+    const wait = new Promise(resolve => { release = resolve; });
+    const entries = [
+        { id: 'seed', name: 'seed', triggerOn: 'message', priority: 0, code: 'return { nested: { value: "original" } };', enabled: true, params: [], renderParams: false, returnMode: 'shared' },
+        { id: 'late', name: 'late', triggerOn: 'message', priority: 1, code: 'return ctx.settings.wait.then(() => { ctx.shared.nested.value = "late"; });', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+        { id: 'next', name: 'next', triggerOn: 'message', priority: 2, code: 'return { observed: ctx.shared.nested.value };', enabled: true, params: [], renderParams: false, returnMode: 'shared' },
+    ];
+    const settings = { scriptExecutors: entries };
+    const traces = [];
+    const subject = createScriptExecutorSystem({
+        settings, saveSettings: () => {}, renderPrompt: async value => value,
+        AgentTrace: { push: trace => traces.push(trace) }, log: () => {},
+        phaseTimeoutMs: 20,
+    });
+
+    await subject.executeAll('message', { settings: { wait } });
+    assert.equal(subject.getTurnShared().observed, 'original');
+    assert.equal(traces[0].stages[1].ok, false);
+    release();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(subject.getTurnShared().nested.value, 'original');
+});
+
+test('a stale message execution does not start later scripts after a turn reset', async () => {
+    let release;
+    let markStarted;
+    const wait = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { markStarted = resolve; });
+    const entries = [
+        { id: 'slow', name: 'slow', triggerOn: 'message', priority: 0, code: 'ctx.settings.markStarted(); return ctx.settings.wait;', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+        { id: 'later', name: 'later', triggerOn: 'message', priority: 1, code: 'ctx.settings.ran.push("later");', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+    ];
+    const { subject } = createSubject(entries);
+    const ran = [];
+    const pending = subject.executeAll('message', { settings: { wait, markStarted, ran } });
+    await started;
+    subject.resetTurnShared();
+    release();
+    await pending;
+    assert.deepEqual(ran, []);
+});
+
+test('a script cannot mutate shared state by retaining its returned object', async () => {
+    let returned;
+    const entry = {
+        id: 'return', name: 'return', triggerOn: 'message', priority: 0,
+        code: 'const result = { nested: { value: "original" } }; ctx.settings.capture(result); return result;',
+        enabled: true, params: [], renderParams: false, returnMode: 'shared',
+    };
+    const { subject } = createSubject([entry]);
+    await subject.executeAll('message', { settings: { capture: value => { returned = value; } } });
+    returned.nested.value = 'late';
+    assert.equal(subject.getTurnShared().nested.value, 'original');
+});
+
+test('a turn reset during parameter rendering prevents the old message script from starting', async () => {
+    let release;
+    let markStarted;
+    const wait = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { markStarted = resolve; });
+    const ran = [];
+    const entry = {
+        id: 'rendered', name: 'rendered', triggerOn: 'message', priority: 0,
+        code: 'ctx.settings.ran.push("executed");', enabled: true,
+        params: [{ key: 'text', type: 'string', default: 'hello' }],
+        renderParams: true, returnMode: 'ignore',
+    };
+    const subject = createScriptExecutorSystem({
+        settings: { scriptExecutors: [entry] }, saveSettings: () => {},
+        renderPrompt: async () => { markStarted(); await wait; return 'rendered'; },
+        AgentTrace: null, log: () => {},
+    });
+    const pending = subject.executeAll('message', { settings: { ran } });
+    await started;
+    subject.resetTurnShared();
+    release();
+    await pending;
+    assert.deepEqual(ran, []);
+});
+
+test('a decision script cannot mutate the decision retained by the next script', async () => {
+    let release;
+    let markStarted;
+    const wait = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { markStarted = resolve; });
+    const entries = [
+        { id: 'first', name: 'first', triggerOn: 'decision', priority: 0, code: 'ctx.settings.capture(ctx.decision); ctx.decision.speaker = "First";', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+        { id: 'second', name: 'second', triggerOn: 'decision', priority: 1, code: 'ctx.settings.markStarted(); return ctx.settings.wait;', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+    ];
+    let retained;
+    const { subject } = createSubject(entries);
+    const decision = { speaker: 'Original' };
+    const pending = subject.executeAllDecision({ decision, settings: {
+        capture: value => { retained = value; }, markStarted, wait,
+    } });
+    await started;
+    retained.speaker = 'Late';
+    release();
+    await pending;
+    assert.equal(decision.speaker, 'First');
+    assert.equal(subject.getDecisionSnapshot().decision.speaker, 'First');
+});

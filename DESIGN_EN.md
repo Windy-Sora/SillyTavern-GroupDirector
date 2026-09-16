@@ -773,7 +773,7 @@ Director decision (LLM/Formula)
   ↓
 ┌─ decision hook (blocking, await all, 10s timeout) ──────────┐
 │  ctx.decision.speakers / .names / .reason / .scripts        │
-│  Scripts can directly modify ctx.decision (live reference)  │
+│  Scripts can modify ctx.decision (per-script isolated copy)  │
 │  Modified snapshot serves message/round stages as read-only │
 └─────────────────────────────────────────────────────────────┘
   ↓
@@ -790,7 +790,7 @@ Next round GROUP_WRAPPER_STARTED → turnShared reset
 |------|--------|----------|-------------|
 | `message` | CHARACTER_MESSAGE_RENDERED | fire-and-forget, 5s timeout | `ctx.message`, `ctx.character`, `ctx.decisionSnapshot` |
 | `round` | GROUP_WRAPPER_FINISHED | fire-and-forget, dedup, 5s timeout | `ctx.decisionSnapshot` |
-| `decision` | After Director decision | blocking await all, 10s timeout | `ctx.decision` (live, mutable) |
+| `decision` | After Director decision | blocking await all, 10s timeout | `ctx.decision` (isolated, mutable copy) |
 | `both` | message + round | same as respective modes | Phase-specific fields |
 | `all` | All three | same as respective modes | Phase-specific fields |
 
@@ -802,7 +802,7 @@ The three phases have different `ctx` shapes, providing phase-appropriate fields
 |------|:---:|:---:|:---:|
 | `ctx.params` | ✓ | ✓ | ✓ |
 | `ctx.shared` (turnShared) | ✓ | ✓ | ✓ |
-| `ctx.decision` (live) | ✓ | - | - |
+| `ctx.decision` (isolated copy) | ✓ | - | - |
 | `ctx.decisionSnapshot` (read-only) | - | ✓ | ✓ |
 | `ctx.message` | - | ✓ | - |
 | `ctx.character` | - | ✓ | - |
@@ -817,11 +817,11 @@ The three phases have different `ctx` shapes, providing phase-appropriate fields
 System-instance closure state, not persisted to settings; separate executor system instances never share turn state:
 
 - **Creation**: `resetTurnShared()` resets to `{}` on `GROUP_WRAPPER_STARTED`
-- **Write**: Script sets `returnMode: 'shared'` and returns an object → `Object.assign(turnShared, result)`
-- **Read**: All scripts read current snapshot via `ctx.shared`
+- **Write**: Script sets `returnMode: 'shared'` and returns a validated plain object → clone before merging into `turnShared`
+- **Read**: All scripts read an isolated `ctx.shared` copy; mutating that copy does not write back
 - **Lifetime**: decision → message → round throughout, reset next round
 
-After the decision phase completes, `decisionSnapshot = { decision: deepClone, shared: {...turnShared} }` is provided as read-only for message/round scripts.
+After the decision phase completes, `decisionSnapshot = deepFreeze({ decision: deepClone, shared: deepClone(turnShared) })` is provided as read-only for message/round scripts.
 
 ### 12.5 Data Structure
 
@@ -844,12 +844,13 @@ After the decision phase completes, `decisionSnapshot = { decision: deepClone, s
 ```
 Filter enabled && triggerOn match → sort by priority ascending →
   new Function('ctx', code) per script → Promise.race(script, timeout) →
-    success + returnMode='shared' → Object.assign(turnShared, result)
+    success + returnMode='shared' → validate and clone result, then merge into turnShared
     timeout/exception → trace record → continue to next
 ```
 
 - **decision**: Blocking, await all complete then return snapshot
 - **message/round**: Fire-and-forget, does not block character generation
+- A timeout does not cancel already-running asynchronous JS; its late result and retained `ctx.shared`/`ctx.decision` references cannot mutate executor-owned state. After a turn reset, the old execution chain will not start later scripts. Host objects passed to scripts and page globals remain accessible; this is not a sandbox.
 - Execution trace recorded via `AgentTrace` for per-stage duration and status
 
 ### 12.7 Import/Export
@@ -1174,7 +1175,7 @@ Group Director allows users to import and write custom code (User Providers, Use
 | Custom Agent import | Field allowlist and ID normalization | Ignores external IDs, bounds numeric fields, imports disabled, and avoids interpolating IDs into jQuery selectors |
 | Memory import | Nested structure validation | Validates character objects, names, the `entries` array, and every entry; malformed data returns a structured error |
 | Execution Trace | Output escaping | Escapes stage summaries and object keys before inserting them into the DOM |
-| Script Executor | Execution timeout | Each script has a 10-second timeout; skipped on timeout, continues execution |
+| Script Executor | Execution timeout | Decision scripts time out after 10 seconds; message/round scripts after 5 seconds. Execution continues, but the script's own asynchronous side effects are not cancelled. |
 | Script Executor | Exception isolation | Individual script exceptions don't affect other scripts or the Director flow |
 
 ### 22.3 Destructive Operation Confirmations

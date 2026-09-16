@@ -772,7 +772,7 @@ Director 决策 (LLM/Formula)
   ↓
 ┌─ decision 钩子 (阻塞，await 全部，10s 超时) ──────────┐
 │  ctx.decision.speakers / .names / .reason / .scripts  │
-│  脚本可直接修改 ctx.decision (live reference)          │
+│  脚本可修改 ctx.decision (逐脚本隔离副本)               │
 │  修改后 snapshot 供 message/round 阶段只读             │
 └───────────────────────────────────────────────────────┘
   ↓
@@ -789,7 +789,7 @@ GROUP_WRAPPER_FINISHED → round 钩子 (fire-and-forget, 去重)
 |------|--------|----------|-------------|
 | `message` | CHARACTER_MESSAGE_RENDERED | fire-and-forget, 5s 超时 | `ctx.message`, `ctx.character`, `ctx.decisionSnapshot` |
 | `round` | GROUP_WRAPPER_FINISHED | fire-and-forget, 去重, 5s 超时 | `ctx.decisionSnapshot` |
-| `decision` | Director 决策后 | 阻塞 await 全部, 10s 超时 | `ctx.decision` (live, 可修改) |
+| `decision` | Director 决策后 | 阻塞 await 全部, 10s 超时 | `ctx.decision` (隔离副本，可修改) |
 | `both` | message + round | 同各自模式 | 对应阶段字段 |
 | `all` | 全部三个 | 同各自模式 | 对应阶段字段 |
 
@@ -801,7 +801,7 @@ GROUP_WRAPPER_FINISHED → round 钩子 (fire-and-forget, 去重)
 |------|:---:|:---:|:---:|
 | `ctx.params` | ✓ | ✓ | ✓ |
 | `ctx.shared` (turnShared) | ✓ | ✓ | ✓ |
-| `ctx.decision` (live) | ✓ | - | - |
+| `ctx.decision` (隔离副本) | ✓ | - | - |
 | `ctx.decisionSnapshot` (read-only) | - | ✓ | ✓ |
 | `ctx.message` | - | ✓ | - |
 | `ctx.character` | - | ✓ | - |
@@ -816,11 +816,11 @@ GROUP_WRAPPER_FINISHED → round 钩子 (fire-and-forget, 去重)
 系统实例闭包变量，不持久化到 settings；不同执行器系统实例之间不会共享轮次状态：
 
 - **创建**：`GROUP_WRAPPER_STARTED` 时 `resetTurnShared()` 重置为 `{}`
-- **写入**：脚本设置 `returnMode: 'shared'` 且返回 object → `Object.assign(turnShared, result)`
-- **读取**：所有脚本通过 `ctx.shared` 读取当前快照
+- **写入**：脚本设置 `returnMode: 'shared'` 且返回可校验的普通 object → 克隆后合并到 `turnShared`
+- **读取**：所有脚本通过隔离的 `ctx.shared` 副本读取当前快照；直接改动副本不会写回
 - **生命周期**：decision → message → round 贯穿，下轮重置
 
-decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {...turnShared} }` 供 message/round 脚本只读。
+decision 阶段完成后，`decisionSnapshot = deepFreeze({ decision: deepClone, shared: deepClone(turnShared) })` 供 message/round 脚本只读。
 
 ### 12.5 数据结构
 
@@ -843,12 +843,13 @@ decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {.
 ```
 筛选 enabled && triggerOn 匹配 → 按 priority 升序 →
   逐个 new Function('ctx', code) → Promise.race(script, timeout) →
-    成功 + returnMode='shared' → Object.assign(turnShared, result)
+    成功 + returnMode='shared' → 校验并克隆结果，再合并到 turnShared
     超时/异常 → trace 记录 → 继续下一个
 ```
 
 - **decision**：阻塞，await 全部完成后返回 snapshot
 - **message/round**：fire-and-forget，不阻塞角色生成
+- 超时不会取消已经启动的异步 JS；其迟到结果和保留的 `ctx.shared`/`ctx.decision` 引用不能再改写执行器内部状态。轮次重置后，旧执行链也不会启动后续脚本。传入脚本的宿主对象及页面全局仍是可访问的，不构成沙箱。
 - 执行追踪通过 `AgentTrace` 记录每阶段耗时和状态
 
 ### 12.7 导入/导出
@@ -1173,7 +1174,7 @@ Group Director 允许用户导入和编写自定义代码（用户 Provider、�
 | 自定义 Agent 导入 | 字段白名单与 ID 归一化 | 忽略外部 ID，限制数值范围，导入后默认禁用，并避免把 ID 拼入 jQuery 选择器 |
 | 记忆导入 | 嵌套结构校验 | 校验角色对象、名称、`entries` 数组及每个条目，畸形数据返回结构化错误 |
 | Execution Trace | 输出转义 | stage 摘要和对象键在插入 DOM 前进行 HTML 转义 |
-| 脚本执行器 | 执行超时 | 每个脚本 10 秒超时，超时后跳过继续执行 |
+| 脚本执行器 | 执行超时 | decision 脚本 10 秒、message/round 脚本 5 秒超时；超时后跳过继续执行，但不会取消脚本自身的异步副作用 |
 | 脚本执行器 | 异常隔离 | 单个脚本异常不影响其他脚本和导演流程 |
 
 ### 22.3 破坏性操作确认

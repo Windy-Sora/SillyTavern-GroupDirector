@@ -6,7 +6,7 @@ import {
     validateScriptExecutorExport,
 } from './script-executor-validation.js';
 
-export function createScriptExecutorSystem({ settings, saveSettings, renderPrompt, AgentTrace, log }) {
+export function createScriptExecutorSystem({ settings, saveSettings, renderPrompt, AgentTrace, log, decisionTimeoutMs = 10000, phaseTimeoutMs = 5000 }) {
     // Turn state belongs to this system instance. Keeping it at module scope made
     // tests and multiple extension contexts contaminate one another.
     let turnShared = {};
@@ -307,7 +307,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
 
                 const ctx = {
                     params,
-                    shared: { ...turnShared },
+                    shared: safeClone(turnShared),
                     decision: decisionForScript,             // per-script clone — mutation-safe
                     chat: event.chat || null,
                     characters: event.characters || null,
@@ -318,8 +318,8 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 };
 
                 const fn = new Function('ctx', entry.code);
-                const result = await withTimeout(Promise.resolve(fn(ctx)), 10000).catch(e => {
-                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after 10s`); x.name = 'TimeoutError'; throw x; }
+                const result = await withTimeout(Promise.resolve(fn(ctx)), decisionTimeoutMs).catch(e => {
+                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after ${decisionTimeoutMs}ms`); x.name = 'TimeoutError'; throw x; }
                     throw e;
                 });
 
@@ -328,7 +328,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                         log?.(`[GD] Script executor (decision) "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
                     } else {
                         assertSnapshotValue(result);
-                        Object.assign(turnShared, result);
+                        Object.assign(turnShared, safeClone(result));
                     }
                 }
 
@@ -344,7 +344,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                             log?.(`[GD] Script executor (decision) "${entry.name}" replaced ctx.decision; lost keys: ${lostKeys.join(', ')}`);
                         }
                     }
-                    workingDecision = ctx.decision;
+                    workingDecision = safeClone(ctx.decision);
                 }
 
                 stage.ok = true;
@@ -404,13 +404,15 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         };
 
         for (const entry of sorted) {
+            if (turnId !== myTurnId) break;
             const stage = { id: entry.id, name: entry.name, trigger: mode, priority: entry.priority, startTime: Date.now() };
             try {
                 const params = await buildParams(entry);
+                if (turnId !== myTurnId) break;
 
                 const ctx = {
                     params,
-                    shared: { ...turnShared },
+                    shared: safeClone(turnShared),
                     decisionSnapshot: decisionSnapshot,    // read-only snapshot from decision phase
                     message: event.message || null,
                     character: event.character || null,
@@ -422,8 +424,8 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                 };
 
                 const fn = new Function('ctx', entry.code);
-                const result = await withTimeout(Promise.resolve(fn(ctx)), 5000).catch(e => {
-                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after 5s`); x.name = 'TimeoutError'; throw x; }
+                const result = await withTimeout(Promise.resolve(fn(ctx)), phaseTimeoutMs).catch(e => {
+                    if (e?.name === 'TimeoutError') { const x = new Error(`Script "${entry.name}" timed out after ${phaseTimeoutMs}ms`); x.name = 'TimeoutError'; throw x; }
                     throw e;
                 });
 
@@ -432,7 +434,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
                         log?.(`[GD] Script executor "${entry.name}" returned an array, which cannot be merged into shared state. Use an object instead.`);
                     } else {
                         assertSnapshotValue(result);
-                        Object.assign(turnShared, result);
+                        Object.assign(turnShared, safeClone(result));
                     }
                 }
 
@@ -445,6 +447,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
             }
             stage.elapsed = Date.now() - stage.startTime;
             traceEntry.stages.push(stage);
+            if (turnId !== myTurnId) break;
         }
 
         pushTrace(traceEntry);
