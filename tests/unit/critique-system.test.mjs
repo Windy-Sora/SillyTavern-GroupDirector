@@ -14,12 +14,13 @@ function harness() {
     let chat = [];
     let response = '{"directorCritique":{"pacing":"good"},"characterCritiques":{"Alice":{"consistency":"good"}}}';
     let saves = 0;
+    let save = async () => {};
     const system = createCritiqueSystem({
         settings,
         getChatMetadata: () => metadata,
         getChat: () => chat,
         EXT_KEY: 'gd',
-        saveChatConditional: async () => { saves++; },
+        saveChatConditional: async () => { saves++; await save(); },
         generateRaw: async () => '',
         inject_ids: { QUIET_PROMPT: 'quiet' },
         extension_prompt_types: { IN_PROMPT: 'prompt' },
@@ -32,6 +33,7 @@ function harness() {
         get metadata() { return metadata; }, set metadata(value) { metadata = value; },
         get chat() { return chat; }, set chat(value) { chat = value; },
         set response(value) { response = value; },
+        set save(value) { save = value; },
         saves: () => saves,
     };
 }
@@ -53,6 +55,37 @@ test('critique system generates validated history and reuses previous coverage',
     assert.equal(second.data.directorCritique.pacing, 'plain critique');
     await h.system.revertLastCritique();
     assert.equal(h.system.getLatestActive(), first);
+});
+
+test('generation reports stale when chat switches during result save', async () => {
+    const h = harness();
+    const gate = deferred();
+    h.chat = [{ name: 'User', mes: 'old' }];
+    h.save = () => gate.promise;
+    const oldMetadata = h.metadata;
+    const pending = h.system.generateCritique();
+    while (h.saves() === 0) await Promise.resolve();
+    h.metadata = {};
+    h.chat = [{ name: 'User', mes: 'new' }];
+    gate.resolve();
+    await assert.rejects(pending, { name: 'StaleExecutionError' });
+    assert.equal(oldMetadata.gd.critiques.length, 1);
+});
+
+test('regeneration reports stale when chat switches during result save', async () => {
+    const h = harness();
+    h.chat = [{ name: 'User', mes: 'old' }];
+    await h.system.generateCritique();
+    const gate = deferred();
+    h.save = () => gate.promise;
+    const oldMetadata = h.metadata;
+    const pending = h.system.regenerateLastCritique();
+    while (h.saves() < 2) await Promise.resolve();
+    h.metadata = {};
+    h.chat = [{ name: 'User', mes: 'new' }];
+    gate.resolve();
+    await assert.rejects(pending, { name: 'StaleExecutionError' });
+    assert.equal(oldMetadata.gd.critiques.length, 1);
 });
 
 test('critique system rejects stale generation results after a chat switch', async () => {

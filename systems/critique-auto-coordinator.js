@@ -28,16 +28,29 @@ export function createCritiqueAutoCoordinator({
     EXT_KEY,
 }) {
     const counterKey = '_autoCritiqueLen';
+    const counterRevisions = new WeakMap();
+
+    function assertCurrentContext(metadata, chat) {
+        if (getChatMetadata() === metadata && getChat() === chat) return;
+        const error = new Error('Auto critique became stale after the chat changed');
+        error.name = 'StaleExecutionError';
+        throw error;
+    }
 
     async function persistCounter(metadata, value) {
         const root = metadata[EXT_KEY] || (metadata[EXT_KEY] = {});
         const hadPrevious = Object.prototype.hasOwnProperty.call(root, counterKey);
         const previous = root[counterKey];
+        const revision = (counterRevisions.get(root) || 0) + 1;
+        counterRevisions.set(root, revision);
         root[counterKey] = value;
         try { await saveChatConditional(); }
         catch (error) {
-            if (hadPrevious) root[counterKey] = previous;
-            else delete root[counterKey];
+            if (counterRevisions.get(root) === revision && Object.is(root[counterKey], value)) {
+                if (hadPrevious) root[counterKey] = previous;
+                else delete root[counterKey];
+                counterRevisions.set(root, revision + 1);
+            }
             throw error;
         }
     }
@@ -57,14 +70,13 @@ export function createCritiqueAutoCoordinator({
         if (action.type === 'none') return action;
         if (action.type === 'execute') {
             await beforeExecute?.(action);
+            assertCurrentContext(metadata, chat);
             await generateCritique();
-            if (getChatMetadata() !== metadata || getChat() !== chat) {
-                const error = new Error('Auto critique became stale after the chat changed');
-                error.name = 'StaleExecutionError';
-                throw error;
-            }
+            assertCurrentContext(metadata, chat);
         }
+        assertCurrentContext(metadata, chat);
         await persistCounter(metadata, action.currentLength);
+        assertCurrentContext(metadata, chat);
         return action;
     }
 

@@ -273,6 +273,13 @@ checkpoint rollback. System tests cover prompt reuse, raw-text fallback, stale-c
 rejection, and edited-result persistence. The UI contract forbids direct history
 mutation, JSON parsing, and chat persistence from the section module.
 
+Deferred-save Critique tests also interleave failed add/update/revert/reset/prune
+with newer edits, including different fields on the same record. Auto-coordinator
+tests cover a newer checkpoint surviving an older failed save and chat switches
+during `beforeExecute` or counter save. System tests require stale rejection when
+the chat switches during generation or regeneration result save; an already
+successful old-chat save is not rolled back.
+
 ## Asynchronous result consistency coverage
 
 `tests/unit/similar-agent-concurrency.test.mjs` owns the shared concurrency contract

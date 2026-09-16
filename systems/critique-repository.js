@@ -1,12 +1,52 @@
 export function createCritiqueRepository({ getChatMetadata, EXT_KEY, saveChatConditional }) {
     const revisions = new WeakMap();
+    const fieldRevisions = new WeakMap();
 
     function getRevision(entry) {
         return entry && typeof entry === 'object' ? revisions.get(entry) || 0 : 0;
     }
 
     function bumpRevision(entry) {
-        if (entry && typeof entry === 'object') revisions.set(entry, getRevision(entry) + 1);
+        if (entry && typeof entry === 'object') {
+            const revision = getRevision(entry) + 1;
+            revisions.set(entry, revision);
+            return revision;
+        }
+        return 0;
+    }
+
+    function getFieldRevision(entry, key) {
+        return fieldRevisions.get(entry)?.get(key) || 0;
+    }
+
+    function bumpFieldRevision(entry, key) {
+        let fields = fieldRevisions.get(entry);
+        if (!fields) {
+            fields = new Map();
+            fieldRevisions.set(entry, fields);
+        }
+        const revision = getFieldRevision(entry, key) + 1;
+        fields.set(key, revision);
+        bumpRevision(entry);
+        return revision;
+    }
+
+    function setActive(changes, entry, active) {
+        if (!entry || typeof entry !== 'object') return;
+        const previous = changes.has(entry) ? changes.get(entry).previous : entry.active;
+        const hadPrevious = changes.has(entry) ? changes.get(entry).hadPrevious : Object.hasOwn(entry, 'active');
+        const revision = bumpFieldRevision(entry, 'active');
+        entry.active = active;
+        changes.set(entry, { previous, hadPrevious, active, revision });
+    }
+
+    function rollbackActive(changes) {
+        for (const [entry, change] of changes) {
+            if (getFieldRevision(entry, 'active') !== change.revision || !Object.is(entry.active, change.active)) continue;
+            if (change.hadPrevious) entry.active = change.previous;
+            else delete entry.active;
+            bumpFieldRevision(entry, 'active');
+        }
     }
 
     function getCritiques(metadata = getChatMetadata()) {
@@ -27,30 +67,35 @@ export function createCritiqueRepository({ getChatMetadata, EXT_KEY, saveChatCon
 
     async function add(entry, metadata = getChatMetadata()) {
         const critiques = getCritiques(metadata);
-        const previousFlags = critiques.map(item => item?.active);
+        const changes = new Map();
         for (const item of critiques) {
-            if (item && typeof item === 'object') {
-                if (item.active) bumpRevision(item);
-                item.active = false;
-            }
+            setActive(changes, item, false);
         }
         critiques.push(entry);
         try { await saveChatConditional(); }
         catch (error) {
-            critiques.pop();
-            critiques.forEach((item, index) => { if (item && typeof item === 'object') item.active = previousFlags[index]; });
+            const index = critiques.indexOf(entry);
+            if (index >= 0) critiques.splice(index, 1);
+            rollbackActive(changes);
             throw error;
         }
         return entry;
     }
 
     async function update(entry, updates) {
-        const previous = {};
-        for (const key of Object.keys(updates)) previous[key] = entry[key];
-        bumpRevision(entry);
+        const previous = new Map(Object.keys(updates).map(key => [key, { value: entry[key], present: Object.hasOwn(entry, key) }]));
+        const committed = new Map(Object.keys(updates).map(key => [key, bumpFieldRevision(entry, key)]));
         Object.assign(entry, updates);
         try { await saveChatConditional(); }
-        catch (error) { Object.assign(entry, previous); throw error; }
+        catch (error) {
+            for (const [key, before] of previous) {
+                if (getFieldRevision(entry, key) !== committed.get(key) || !Object.is(entry[key], updates[key])) continue;
+                if (before.present) entry[key] = before.value;
+                else delete entry[key];
+                bumpFieldRevision(entry, key);
+            }
+            throw error;
+        }
         return entry;
     }
 
@@ -61,17 +106,15 @@ export function createCritiqueRepository({ getChatMetadata, EXT_KEY, saveChatCon
             if (critiques[index]?.active) { foundIndex = index; break; }
         }
         if (foundIndex < 0) return false;
-        const previousFlags = critiques.map(item => item?.active);
+        const changes = new Map();
         const target = critiques[foundIndex];
-        bumpRevision(target);
-        target.active = false;
+        setActive(changes, target, false);
         if (Number.isInteger(target.basedOn) && target.basedOn >= 0 && target.basedOn < foundIndex && critiques[target.basedOn]) {
-            bumpRevision(critiques[target.basedOn]);
-            critiques[target.basedOn].active = true;
+            setActive(changes, critiques[target.basedOn], true);
         }
         try { await saveChatConditional(); }
         catch (error) {
-            critiques.forEach((item, index) => { if (item && typeof item === 'object') item.active = previousFlags[index]; });
+            rollbackActive(changes);
             throw error;
         }
         return true;
@@ -79,40 +122,35 @@ export function createCritiqueRepository({ getChatMetadata, EXT_KEY, saveChatCon
 
     async function reset(metadata = getChatMetadata()) {
         const critiques = getCritiques(metadata);
-        const previousFlags = critiques.map(item => item?.active);
+        const changes = new Map();
         for (const item of critiques) {
-            if (item && typeof item === 'object') {
-                if (item.active) bumpRevision(item);
-                item.active = false;
-            }
+            setActive(changes, item, false);
         }
         try { await saveChatConditional(); }
         catch (error) {
-            critiques.forEach((item, index) => { if (item && typeof item === 'object') item.active = previousFlags[index]; });
+            rollbackActive(changes);
             throw error;
         }
     }
 
     async function prune(chatLength, metadata = getChatMetadata()) {
         const critiques = getCritiques(metadata);
-        const previousFlags = critiques.map(item => item?.active);
+        const changes = new Map();
         let changed = false;
         for (let index = critiques.length - 1; index >= 0; index--) {
             const item = critiques[index];
             if (item?.active && Number(item.rangeEnd) > chatLength) {
-                bumpRevision(item);
-                item.active = false;
+                setActive(changes, item, false);
                 changed = true;
                 if (Number.isInteger(item.basedOn) && item.basedOn >= 0 && item.basedOn < index && critiques[item.basedOn]) {
-                    bumpRevision(critiques[item.basedOn]);
-                    critiques[item.basedOn].active = true;
+                    setActive(changes, critiques[item.basedOn], true);
                 }
             }
         }
         if (!changed) return false;
         try { await saveChatConditional(); }
         catch (error) {
-            critiques.forEach((item, index) => { if (item && typeof item === 'object') item.active = previousFlags[index]; });
+            rollbackActive(changes);
             throw error;
         }
         return true;

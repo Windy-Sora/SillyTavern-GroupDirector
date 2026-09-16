@@ -906,6 +906,8 @@ Critique 按数据契约、解析、持久化、LLM 副作用和自动调度拆�
 
 生成请求捕获开始时的 chat 与 metadata 引用。请求结束时若会话已切换，结果以 `StaleExecutionError` 拒绝，不写入新会话。导入导出复用相同 validator，CRUD 保存失败时恢复内存状态。
 
+Critique 仓库的 add/update/revert/reset/prune 保存失败时，仅按条目身份与字段版本撤销本次仍有效的写入；并发完成的较新修改不得被旧回滚覆盖。自动计数器同样按 checkpoint 版本回滚。自动执行在 `beforeExecute`、生成和计数器保存后检查会话引用；生成与重新生成在结果保存后再检查一次。若保存已成功但随后发现切换，会报告 stale，不撤销旧会话中已保存的结果；结果保存与自动计数器保存是两个独立步骤。
+
 ---
 
 ## 14. Custom Agent — 用户自定义 LLM Agent

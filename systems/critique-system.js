@@ -176,7 +176,10 @@ export function createCritiqueSystem({
         assertCurrentContext(metadata, chat);
         assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
         assertCurrentCritique(metadata, latestActive, activeRevision);
-        return await repository.add(entry, metadata);
+        const saved = await repository.add(entry, metadata);
+        assertCurrentContext(metadata, chat);
+        assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
+        return saved;
     }
 
     async function regenerateLastCritique() {
@@ -201,12 +204,15 @@ export function createCritiqueSystem({
         assertCurrentContext(metadata, chat);
         assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
         assertCurrentCritique(metadata, last, revision);
-        return await repository.update(last, {
+        const saved = await repository.update(last, {
             content: response || '',
             data: parseResponseData(response),
             promptUsed,
             timestamp: Date.now(),
         });
+        assertCurrentContext(metadata, chat);
+        assertCurrentCoverage(chat, rangeEnd, coverageSnapshot);
+        return saved;
     }
 
     async function updateActiveContent(content) {

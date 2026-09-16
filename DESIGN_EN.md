@@ -907,6 +907,8 @@ Critique separates the data contract, parsing, persistence, LLM side effects, an
 
 A generation captures its starting chat and metadata references. If the chat changes before completion, it rejects with `StaleExecutionError` and cannot write into the new chat. Export/import reuses the same validator, and CRUD restores in-memory state when persistence fails.
 
+On a failed save, repository add/update/revert/reset/prune compensates only its own writes by entry identity and field revision; an older rollback must not overwrite a newer concurrent edit. The auto counter uses a checkpoint revision for the same reason. Auto execution checks chat identity after `beforeExecute`, generation, and counter save; generation and regeneration check again after result save. A successful save followed by a chat switch reports stale without undoing the result already stored in the old chat. Result and counter saves are separate steps.
+
 ---
 
 ## 14. Custom Agent — User-Defined LLM Agent
