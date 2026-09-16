@@ -12,6 +12,13 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     let turnShared = {};
     let turnId = 0;
     let decisionSnapshot = null;
+    let mutationQueue = Promise.resolve();
+
+    function enqueueMutation(work) {
+        const result = mutationQueue.then(work, work);
+        mutationQueue = result.catch(() => {});
+        return result;
+    }
 
     function getList() {
         if (settings.scriptExecutors === undefined) settings.scriptExecutors = [];
@@ -27,7 +34,7 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         return generateScriptExecutorId();
     }
 
-    function add(partial) {
+    async function add(partial) {
         if (partial === undefined) partial = {};
         if (partial === null || typeof partial !== 'object' || Array.isArray(partial)) {
             throw new Error('executor must be an object');
@@ -40,15 +47,16 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         const list = getList();
         list.push(entry);
         try {
-            save();
+            await save();
         } catch (error) {
-            list.pop();
+            const index = list.indexOf(entry);
+            if (index !== -1) list.splice(index, 1);
             throw error;
         }
         return entry;
     }
 
-    function update(id, updates) {
+    async function update(id, updates) {
         const list = getList();
         const idx = list.findIndex(e => e.id === id);
         if (idx === -1) return undefined;
@@ -63,38 +71,53 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
         const entry = normalizeScriptExecutor(candidate, { path: 'executor', id });
         const previous = list[idx];
         list[idx] = entry;
+        const appliedSnapshot = structuredClone(entry);
         try {
-            save();
+            await save();
         } catch (error) {
-            list[idx] = previous;
+            const currentIndex = list.findIndex(e => e.id === id);
+            if (currentIndex !== -1) {
+                const current = list[currentIndex];
+                if (current === entry && JSON.stringify(current) === JSON.stringify(appliedSnapshot)) {
+                    list[currentIndex] = previous;
+                } else {
+                    for (const key of allowed) {
+                        if (Object.prototype.hasOwnProperty.call(updates, key)
+                            && JSON.stringify(appliedSnapshot[key]) !== JSON.stringify(previous[key])
+                            && JSON.stringify(current[key]) === JSON.stringify(appliedSnapshot[key])) {
+                            current[key] = previous[key];
+                        }
+                    }
+                }
+            }
             throw error;
         }
         return entry;
     }
 
-    function remove(id) {
+    async function remove(id) {
         const list = getList();
         const idx = list.findIndex(e => e.id === id);
         if (idx === -1) return;
         const [removed] = list.splice(idx, 1);
         try {
-            save();
+            await save();
         } catch (error) {
-            list.splice(idx, 0, removed);
+            if (!list.some(e => e.id === id)) list.splice(Math.min(idx, list.length), 0, removed);
             throw error;
         }
     }
 
-    function toggle(id) {
+    async function toggle(id) {
         const list = getList();
         const entry = list.find(e => e.id === id);
         if (!entry) return;
         const previous = entry.enabled;
         entry.enabled = !entry.enabled;
         try {
-            save();
+            await save();
         } catch (error) {
-            entry.enabled = previous;
+            if (entry.enabled === !previous) entry.enabled = previous;
             throw error;
         }
         return entry;
@@ -428,7 +451,11 @@ export function createScriptExecutorSystem({ settings, saveSettings, renderPromp
     }
 
     return {
-        getList, add, update, remove, toggle,
+        getList,
+        add: (...args) => enqueueMutation(() => add(...args)),
+        update: (...args) => enqueueMutation(() => update(...args)),
+        remove: (...args) => enqueueMutation(() => remove(...args)),
+        toggle: (...args) => enqueueMutation(() => toggle(...args)),
         createExportData, importExecutors,
         executeAll, executeAllDecision,
         resetTurnShared, getTurnShared, getTurnId, getDecisionSnapshot,

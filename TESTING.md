@@ -5,24 +5,25 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Current verified baseline (2026-08-23):
+Current verified baseline (2026-09-16):
 
 - 296 JavaScript source files and 10 JSON files pass static validation;
-- 416 behavior tests are discovered, with 415 passing and one optional real-host
+- 422 behavior tests are discovered, with 421 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 147/155 production modules, while tests directly or
   transitively reach 77/155 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 92.57% lines, 77.09% branches, and
-  89.62% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 92.58% lines, 77.15% branches, and
+  89.72% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.33% lines / 86.36% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
   96.57%, 99.32%, and 98.70% lines respectively, while Profile System reaches
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
-  reaches 96.26% lines, 80.63% branches, and 84.00% functions;
+  reaches 96.26% lines, 80.63% branches, and 84.00% functions; Script Executor
+  System reaches 86.85% lines, 72.93% branches, and 88.89% functions;
   History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
@@ -235,6 +236,13 @@ rollback, execution ordering, trigger filtering, error isolation, and per-instan
 turn state. The UI contract verifies that import/export handlers delegate to the
 system instead of performing incremental `add`/`remove` mutations. Config Profile
 imports reuse the validator and replace external executor IDs before storage.
+CRUD tests inject both synchronous throws and asynchronous save rejections,
+verify operation-local rollback and concurrent unrelated edits, require
+overlapping CRUD saves to serialize, and require Promises to settle only after
+the callback settles. The UI contract requires
+every CRUD call to be awaited before refresh. SillyTavern's current debounced
+settings save does not expose its network result, so these tests verify the
+observable callback contract, not a guaranteed server commit.
 
 Custom Agent coverage uses the same layered contract: the validator owns field,
 Schema, duplicate-ID/provider, and disabled-import rules; the system suite owns

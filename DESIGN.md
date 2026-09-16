@@ -859,6 +859,8 @@ decision 阶段完成后，`decisionSnapshot = { decision: deepClone, shared: {.
 
 共享数据契约限制触发枚举、返回模式、`-100..100` 整数优先级、布尔字段和参数类型；参数键必须非空且唯一，并拒绝 `__proto__`、`prototype`、`constructor`。系统 CRUD、独立导入和配置档案导入复用同一契约。配置档管理 (Config Profile) 同步包含 `scriptExecutors`。
 
+新增、更新、删除与开关操作都返回 Promise，在系统实例内串行执行并等待注入的 `saveSettings` 回调；该回调可观察到的失败会回滚本次操作，保留保存等待期间其他执行器的编辑。UI 在 Promise 完成后才刷新，失败时显示警告。当前 SillyTavern 的 `saveSettingsDebounced` 不返回实际保存 Promise，宿主的直接保存函数也会自行捕获网络错误，因此插件不能据此保证服务器落盘成功；上述回滚契约适用于回调实际抛错或拒绝的情形。
+
 ---
 
 ## 13. PostSpeech 多模态策略

@@ -21,16 +21,16 @@ function payload(executors) {
     return { version: 1, type: 'script-executor-export', executors, migrations: [] };
 }
 
-test('script executor CRUD validates candidates before changing or saving settings', () => {
+test('script executor CRUD validates candidates before changing or saving settings', async () => {
     const { subject, settings, getSaves } = createSubject();
-    const added = subject.add({ name: 'valid' });
+    const added = await subject.add({ name: 'valid' });
     assert.equal(getSaves(), 1);
 
-    assert.throws(() => subject.update(added.id, { priority: 1000 }), /priority/);
+    await assert.rejects(subject.update(added.id, { priority: 1000 }), /priority/);
     assert.equal(settings.scriptExecutors[0].priority, 0);
     assert.equal(getSaves(), 1);
 
-    assert.throws(() => subject.add(null), /must be an object/);
+    await assert.rejects(subject.add(null), /must be an object/);
     assert.equal(settings.scriptExecutors.length, 1);
     assert.equal(getSaves(), 1);
 });
@@ -97,7 +97,7 @@ test('batch import rolls settings back when persistence fails', async () => {
     assert.deepEqual(settings.scriptExecutors, original);
 });
 
-test('CRUD operations roll live settings back when persistence fails', () => {
+test('CRUD operations roll live settings back when persistence fails', async () => {
     const original = [{ id: 'old', name: 'Old', triggerOn: 'both', priority: 0, code: '', enabled: true, params: [], renderParams: false, returnMode: 'ignore' }];
     const operations = [
         subject => subject.add({ name: 'New' }),
@@ -116,9 +116,133 @@ test('CRUD operations roll live settings back when persistence fails', () => {
             log: () => {},
         });
 
-        assert.throws(() => operate(subject), /disk unavailable/);
+        await assert.rejects(operate(subject), /disk unavailable/);
         assert.deepEqual(settings.scriptExecutors, original);
     }
+});
+
+test('CRUD operations await rejected async persistence and roll back only their own mutations', async () => {
+    const original = [{ id: 'old', name: 'Old', triggerOn: 'both', priority: 0, code: '', enabled: true, params: [], renderParams: false, returnMode: 'ignore' }];
+    const operations = [
+        subject => subject.add({ name: 'New' }),
+        subject => subject.update('old', { name: 'Changed' }),
+        subject => subject.remove('old'),
+        subject => subject.toggle('old'),
+    ];
+
+    for (const operate of operations) {
+        const settings = { scriptExecutors: structuredClone(original) };
+        const subject = createScriptExecutorSystem({
+            settings,
+            saveSettings: async () => { await Promise.resolve(); throw new Error('async disk unavailable'); },
+            renderPrompt: async value => value,
+            AgentTrace: null,
+            log: () => {},
+        });
+        await assert.rejects(operate(subject), /async disk unavailable/);
+        assert.deepEqual(settings.scriptExecutors, original);
+    }
+});
+
+test('failed CRUD save preserves an unrelated executor edited during persistence', async () => {
+    const original = [
+        { id: 'old', name: 'Old', triggerOn: 'both', priority: 0, code: '', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+        { id: 'other', name: 'Other', triggerOn: 'both', priority: 0, code: '', enabled: true, params: [], renderParams: false, returnMode: 'ignore' },
+    ];
+    for (const operate of [
+        subject => subject.add({ name: 'New' }),
+        subject => subject.update('old', { name: 'Changed' }),
+        subject => subject.remove('old'),
+        subject => subject.toggle('old'),
+    ]) {
+        let rejectSave;
+        const settings = { scriptExecutors: structuredClone(original) };
+        const subject = createScriptExecutorSystem({
+            settings,
+            saveSettings: () => new Promise((_, reject) => { rejectSave = reject; }),
+            renderPrompt: async value => value,
+            AgentTrace: null,
+            log: () => {},
+        });
+        const pending = operate(subject);
+        await Promise.resolve();
+        settings.scriptExecutors.find(entry => entry.id === 'other').name = 'Concurrent';
+        rejectSave(new Error('disk unavailable'));
+        await assert.rejects(pending, /disk unavailable/);
+        assert.equal(settings.scriptExecutors.find(entry => entry.id === 'other').name, 'Concurrent');
+        assert.deepEqual(settings.scriptExecutors.filter(entry => entry.id !== 'other'), original.slice(0, 1));
+    }
+});
+
+test('failed update reverts its field without erasing a concurrent edit to the same executor', async () => {
+    let rejectSave;
+    const settings = { scriptExecutors: [{ id: 'old', name: 'Old', triggerOn: 'both', priority: 0, code: '', enabled: true, params: [], renderParams: false, returnMode: 'ignore' }] };
+    const subject = createScriptExecutorSystem({
+        settings,
+        saveSettings: () => new Promise((_, reject) => { rejectSave = reject; }),
+        renderPrompt: async value => value,
+        AgentTrace: null,
+        log: () => {},
+    });
+
+    const pending = subject.update('old', { name: 'Failed Name' });
+    await Promise.resolve();
+    settings.scriptExecutors[0].priority = 7;
+    rejectSave(new Error('disk unavailable'));
+    await assert.rejects(pending, /disk unavailable/);
+    assert.equal(settings.scriptExecutors[0].name, 'Old');
+    assert.equal(settings.scriptExecutors[0].priority, 7);
+});
+
+test('CRUD promises settle only after persistence settles', async () => {
+    let resolveSave;
+    const settings = { scriptExecutors: [] };
+    const subject = createScriptExecutorSystem({
+        settings,
+        saveSettings: () => new Promise(resolve => { resolveSave = resolve; }),
+        renderPrompt: async value => value,
+        AgentTrace: null,
+        log: () => {},
+    });
+    let settled = false;
+    const pending = subject.add({ name: 'New' }).then(entry => {
+        settled = true;
+        return entry;
+    });
+    await Promise.resolve();
+    assert.equal(settled, false);
+    resolveSave();
+    assert.equal((await pending).name, 'New');
+    assert.equal(settled, true);
+});
+
+test('overlapping CRUD saves serialize so a failed edit cannot roll back a later edit', async () => {
+    let rejectFirst;
+    let saveCalls = 0;
+    const settings = { scriptExecutors: [{ id: 'old', name: 'Old', triggerOn: 'both', priority: 0, code: '', enabled: true, params: [], renderParams: false, returnMode: 'ignore' }] };
+    const subject = createScriptExecutorSystem({
+        settings,
+        saveSettings: () => {
+            saveCalls++;
+            return saveCalls === 1
+                ? new Promise((_, reject) => { rejectFirst = reject; })
+                : Promise.resolve();
+        },
+        renderPrompt: async value => value,
+        AgentTrace: null,
+        log: () => {},
+    });
+
+    const first = subject.update('old', { name: 'Failed' });
+    const later = subject.update('old', { name: 'Later', priority: 7 });
+    await Promise.resolve();
+    assert.equal(saveCalls, 1);
+    rejectFirst(new Error('first save failed'));
+    await assert.rejects(first, /first save failed/);
+    await later;
+    assert.equal(saveCalls, 2);
+    assert.equal(settings.scriptExecutors[0].name, 'Later');
+    assert.equal(settings.scriptExecutors[0].priority, 7);
 });
 
 test('execution is ordered, trigger-filtered, and continues after a script error', async () => {

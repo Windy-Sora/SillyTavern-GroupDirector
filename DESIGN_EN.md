@@ -860,6 +860,8 @@ Import is split between UI and system layers: the UI only reads the file, shows 
 
 The shared contract bounds trigger and return-mode enums, integer priority (`-100..100`), boolean fields, and parameter types. Parameter keys must be non-empty and unique; `__proto__`, `prototype`, and `constructor` are rejected. System CRUD, standalone import, and config-profile import reuse this contract. Config profile management includes `scriptExecutors`.
 
+Add, update, remove, and toggle return Promises, execute serially within the system instance, and await the injected `saveSettings` callback. An observable callback failure compensates only that operation while preserving edits to other executors made during the wait. The UI refreshes after the Promise settles and reports rejection. SillyTavern's current `saveSettingsDebounced` does not return the actual save Promise, and its direct save function catches network failures internally; the plugin therefore cannot guarantee server persistence from these APIs. This rollback contract applies when the injected callback throws or rejects.
+
 ---
 
 ## 13. PostSpeech Multimodal Strategy

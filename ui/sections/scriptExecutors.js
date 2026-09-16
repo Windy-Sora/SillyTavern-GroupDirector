@@ -139,11 +139,15 @@ registerSection('scriptExecutors', function (ctx) {
 
     function bindEvents() {
         // Toggle
-        $list.find('.gd-se-toggle-btn').off('click').on('click', function () {
+        $list.find('.gd-se-toggle-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
-            if (!flushEditToModel()) return;
-            sys.toggle(id);
-            renderList();
+            if (!await flushEditToModel()) return;
+            try {
+                await sys.toggle(id);
+                renderList();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Edit toggle
@@ -157,7 +161,7 @@ registerSection('scriptExecutors', function (ctx) {
         });
 
         // Save
-        $list.find('.gd-se-save-btn').off('click').on('click', function () {
+        $list.find('.gd-se-save-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             const name = $(`.gd-se-edit-name[data-id="${id}"]`).val()?.trim();
             if (!name) { toastr.warning(L('名称不能为空', 'Name required')); return; }
@@ -171,7 +175,7 @@ registerSection('scriptExecutors', function (ctx) {
                 params: collectParams(id),
             };
             try {
-                sys.update(id, updates);
+                await sys.update(id, updates);
                 renderList();
             } catch (error) {
                 toastr.warning(error.message || String(error));
@@ -188,51 +192,64 @@ registerSection('scriptExecutors', function (ctx) {
         $list.find('.gd-se-del-btn').off('click').on('click', async function () {
             const id = $(this).data('id');
             if (!await callGenericPopup(L('确定删除此脚本执行器？', 'Delete this script executor?'), POPUP_TYPE.CONFIRM)) return;
-            if (!flushEditToModel()) return;
-            sys.remove(id);
-            renderList();
+            if (!await flushEditToModel()) return;
+            try {
+                await sys.remove(id);
+                renderList();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Param add
-        $list.find('.gd-se-param-add').off('click').on('click', function (e) {
+        $list.find('.gd-se-param-add').off('click').on('click', async function (e) {
             e.stopPropagation();
             const id = $(this).data('id');
-            if (!flushEditToModel()) return;
+            if (!await flushEditToModel()) return;
             const se = sys.getList().find(e => e.id === id);
             if (!se) return;
             const usedKeys = new Set((se.params || []).map(param => param.key));
             let key = 'param';
             let suffix = 2;
             while (usedKeys.has(key)) key = `param${suffix++}`;
-            sys.update(id, { params: [...(se.params || []), { key, label: key, type: 'string', default: '' }] });
-            renderList();
-            $(`.gd-se-edit[data-id="${id}"]`).show();
+            try {
+                await sys.update(id, { params: [...(se.params || []), { key, label: key, type: 'string', default: '' }] });
+                renderList();
+                $(`.gd-se-edit[data-id="${id}"]`).show();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
 
         // Param delete
-        $list.find('.gd-se-param-del').off('click').on('click', function (e) {
+        $list.find('.gd-se-param-del').off('click').on('click', async function (e) {
             e.stopPropagation();
             const id = $(this).data('id');
             const pi = parseInt($(this).data('pi'));
-            if (!flushEditToModel()) return;
+            if (!await flushEditToModel()) return;
             const se = sys.getList().find(e => e.id === id);
             if (!se || !se.params) return;
-            sys.update(id, { params: se.params.filter((_, index) => index !== pi) });
-            renderList();
-            $(`.gd-se-edit[data-id="${id}"]`).show();
+            try {
+                await sys.update(id, { params: se.params.filter((_, index) => index !== pi) });
+                renderList();
+                $(`.gd-se-edit[data-id="${id}"]`).show();
+            } catch (error) {
+                toastr.warning(error.message || String(error));
+            }
         });
     }
 
-    function flushEditToModel() {
+    async function flushEditToModel() {
         // Commit all open edit panel values to model before re-render
         try {
-            $('.gd-se-edit:visible').each(function () {
-                const eid = $(this).data('id');
+            for (const element of $('.gd-se-edit:visible').toArray()) {
+                const item = $(element);
+                const eid = item.data('id');
                 const entry = sys.getList().find(e => e.id === eid);
-                if (!entry) return;
+                if (!entry) continue;
                 const eName = $(`.gd-se-edit-name[data-id="${eid}"]`).val()?.trim();
                 const pv = parseInt($(`.gd-se-edit-priority[data-id="${eid}"]`).val(), 10);
-                sys.update(eid, {
+                await sys.update(eid, {
                     name: eName || entry.name,
                     triggerOn: $(`.gd-se-edit-trigger[data-id="${eid}"]`).val() || entry.triggerOn,
                     priority: Number.isFinite(pv) ? pv : entry.priority,
@@ -241,7 +258,7 @@ registerSection('scriptExecutors', function (ctx) {
                     returnMode: $(`.gd-se-edit-return[data-id="${eid}"]`).val() || entry.returnMode,
                     params: collectParams(eid),
                 });
-            });
+            }
             return true;
         } catch (error) {
             toastr.warning(error.message || String(error));
@@ -250,15 +267,19 @@ registerSection('scriptExecutors', function (ctx) {
     }
 
     // ── Add new ──
-    $c('se-add-btn').on('click', function () {
-        if (!flushEditToModel()) return;
+    $c('se-add-btn').on('click', async function () {
+        if (!await flushEditToModel()) return;
         // Close all edit panels first
         $('.gd-se-edit').hide();
         const name = L('新脚本', 'New Script');
-        const entry = sys.add({ name, triggerOn: 'both', code: '// ctx.params / ctx.shared / ctx.message' });
-        renderList();
-        // Auto-open edit for new entry
-        $(`.gd-se-edit[data-id="${escAttr(entry.id)}"]`).show();
+        try {
+            const entry = await sys.add({ name, triggerOn: 'both', code: '// ctx.params / ctx.shared / ctx.message' });
+            renderList();
+            // Auto-open edit for new entry
+            $(`.gd-se-edit[data-id="${escAttr(entry.id)}"]`).show();
+        } catch (error) {
+            toastr.warning(error.message || String(error));
+        }
     });
 
     // ── Export ──
