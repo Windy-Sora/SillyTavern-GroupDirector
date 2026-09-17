@@ -21,6 +21,41 @@ function payload(executors) {
     return { version: 1, type: 'script-executor-export', executors, migrations: [] };
 }
 
+test('script imports preserve CRUD requests made while a conflict dialog is pending', async () => {
+    const { subject, settings } = createSubject();
+    const original = await subject.add({ name: 'Existing', code: 'old' });
+    let resolveConflict;
+    const choice = new Promise(resolve => { resolveConflict = resolve; });
+    const importing = subject.importExecutors(payload([{ name: 'Existing', code: 'imported' }]), {
+        resolveConflict: () => choice,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    const adding = subject.add({ name: 'Concurrent' });
+    const updating = subject.update(original.id, { priority: 7 });
+    await new Promise(resolve => setImmediate(resolve));
+    resolveConflict('overwrite');
+    await Promise.all([importing, adding, updating]);
+    assert.deepEqual(settings.scriptExecutors.map(entry => entry.name), ['Existing', 'Concurrent']);
+    assert.equal(settings.scriptExecutors[0].code, 'imported');
+    assert.equal(settings.scriptExecutors[0].priority, 7);
+});
+
+test('failed script import persistence does not erase a queued addition', async () => {
+    const settings = { scriptExecutors: [] };
+    let rejectSave;
+    const pending = new Promise((_, reject) => { rejectSave = reject; });
+    let saves = 0;
+    const subject = createScriptExecutorSystem({ settings, saveSettings: () => ++saves === 1 ? pending : undefined });
+    const importing = subject.importExecutors(payload([{ name: 'Imported' }]));
+    const failed = assert.rejects(importing, /save failed/);
+    await new Promise(resolve => setImmediate(resolve));
+    const adding = subject.add({ name: 'Concurrent' });
+    await new Promise(resolve => setImmediate(resolve));
+    rejectSave(new Error('save failed'));
+    await Promise.all([failed, adding]);
+    assert.deepEqual(settings.scriptExecutors.map(entry => entry.name), ['Concurrent']);
+});
+
 test('script executor CRUD validates candidates before changing or saving settings', async () => {
     const { subject, settings, getSaves } = createSubject();
     const added = await subject.add({ name: 'valid' });
