@@ -8,22 +8,22 @@ readable reports.
 Current verified baseline (2026-09-17):
 
 - 298 JavaScript source files and 10 JSON files pass static validation;
-- 478 behavior tests are discovered, with 477 passing and one optional real-host
+- 485 behavior tests are discovered, with 484 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 147/155 production modules, while tests directly or
   transitively reach 77/155 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 93.38% lines, 78.04% branches, and
-  90.58% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 93.41% lines, 78.32% branches, and
+  90.62% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
-  System reaches 98.33% lines / 86.36% branches / 100% functions. Memory
+  System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
-  96.57%, 99.32%, and 98.70% lines respectively, while Profile System reaches
+  96.53%, 99.32%, and 98.70% lines respectively, while Profile System reaches
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
   reaches 96.26% lines, 80.63% branches, and 84.00% functions; Script Executor
-  System reaches 86.85% lines, 72.93% branches, and 88.89% functions;
+  System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
   History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
@@ -182,7 +182,10 @@ promise and cover both synchronous/asynchronous rejection. On failure they must
 assert that imported definitions, values, and log entries are removed while
 concurrent work is retained. This includes an unrelated variable update and an
 append to the same array variable; the latter must restore the pre-import sequence
-and replay only the concurrent array delta.
+and replay only the concurrent array delta. A separate save-success/chat-switch
+test must capture the old chat's persisted snapshot and assert it still matches
+memory when import or explicit compensation reports stale; the new chat must stay
+untouched.
 
 Profile persistence coverage belongs in `tests/unit/profile-system-data.test.mjs`.
 Both direct saves and active-to-archive moves must await chat persistence and undo

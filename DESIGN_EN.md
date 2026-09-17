@@ -857,7 +857,7 @@ Filter enabled && triggerOn match → sort by priority ascending →
 
 Export format: `{ version: 1, type: 'script-executor-export', exportedAt, executors: [...], migrations: [] }`
 
-Import is split between UI and system layers: the UI only reads the file, shows the security warning, and collects same-name overwrite choices. `script-executor-system` uses `script-executor-validation` to validate the complete file and every entry, resolve conflicts on a candidate list, then replace settings once and save once. An invalid entry, transaction cancellation, or persistence failure leaves the existing list unchanged. Overwrites retain the trusted existing ID, new entries receive trusted IDs, and external IDs are ignored.
+Import is split between UI and system layers: the UI only reads the file, shows the security warning, and collects same-name overwrite choices. `script-executor-system` uses `script-executor-validation` to validate the complete file and every entry, resolve conflicts on a candidate list, then replace settings once and save once. Import shares the mutation queue with add, update, remove, and toggle; another write cannot interleave while a conflict choice is pending. An invalid entry, transaction cancellation, or persistence failure leaves the existing list unchanged. Overwrites retain the trusted existing ID, new entries receive trusted IDs, and external IDs are ignored.
 
 The shared contract bounds trigger and return-mode enums, integer priority (`-100..100`), boolean fields, and parameter types. Parameter keys must be non-empty and unique; `__proto__`, `prototype`, and `constructor` are rejected. System CRUD, standalone import, and config-profile import reuse this contract. Config profile management includes `scriptExecutors`.
 
@@ -1010,6 +1010,8 @@ Imported files validate the root object, version, summary object, and content fi
 
 **JSZip loading**: Uses `ensureJSZip()` with script tag fallback — tries `import()` first, then injects `<script>` tag on failure, compatible with non-module environments.
 
+**Variable transaction chat boundary**: Import and later compensation retain the original chat and variable-store references and cannot write into a newly selected chat. Only a genuine save failure rolls back memory. A chat switch detected after a successful save reports stale but retains the saved old-chat value, preventing memory/persistence divergence.
+
 **UI location**:
 - Dashboard: Config profile dropdown (built-in + user, optgroup) + Apply button + Import button
 - Tools drawer → Config Profile card: Full management panel (save/export/delete/preset loading)
@@ -1038,7 +1040,7 @@ Users create custom placeholders, auto-registered as `{{name}}` Providers.
 
 **Two-level control**: Master switch `customPromptsEnabled` + per-item `enabled`.
 
-**Boundary and transactions**: `custom-prompt-validation.js` is the shared structural contract for CRUD, standalone imports, and config-profile imports. Every mutation is serialized in the system layer and awaits `saveSettings`; failure compensates only fields that have not since been changed concurrently. Providers are registered with a stable owner/entry ID, and hot reload reconciles a managed ledger so removed placeholders are cleaned up without replacing or deleting another subsystem's Provider.
+**Boundary and transactions**: `custom-prompt-validation.js` is the shared structural contract for CRUD, standalone imports, and config-profile imports. Batch import checks every name for Provider/placeholder conflicts before mutating the list, so an invalid later entry cannot leave a partial import. Every mutation is serialized in the system layer and awaits `saveSettings`; failure compensates only fields that have not since been changed concurrently. Providers are registered with a stable owner/entry ID, and hot reload reconciles a managed ledger so removed placeholders are cleaned up without replacing or deleting another subsystem's Provider.
 
 ---
 

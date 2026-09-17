@@ -856,7 +856,7 @@ decision 阶段完成后，`decisionSnapshot = deepFreeze({ decision: deepClone,
 
 导出格式：`{ version: 1, type: 'script-executor-export', exportedAt, executors: [...], migrations: [] }`
 
-导入由 UI 与系统层分工：UI 只读取文件、展示安全警告并收集同名覆盖选择；`script-executor-system` 通过 `script-executor-validation` 先校验完整文件和所有条目，再在候选列表中解决冲突，最后一次替换设置并保存一次。任何条目非法、取消事务或保存失败时，现有列表保持不变。覆盖条目保留现有内部 ID，新条目生成可信 ID，外部 ID 不会被采用。
+导入由 UI 与系统层分工：UI 只读取文件、展示安全警告并收集同名覆盖选择；`script-executor-system` 通过 `script-executor-validation` 先校验完整文件和所有条目，再在候选列表中解决冲突，最后一次替换设置并保存一次。导入与新增、更新、删除、启停共享同一变更队列；等待覆盖选择时其他写入不得插队。任何条目非法、取消事务或保存失败时，现有列表保持不变。覆盖条目保留现有内部 ID，新条目生成可信 ID，外部 ID 不会被采用。
 
 共享数据契约限制触发枚举、返回模式、`-100..100` 整数优先级、布尔字段和参数类型；参数键必须非空且唯一，并拒绝 `__proto__`、`prototype`、`constructor`。系统 CRUD、独立导入和配置档案导入复用同一契约。配置档管理 (Config Profile) 同步包含 `scriptExecutors`。
 
@@ -1009,6 +1009,8 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 **JSZip 加载**：使用 `ensureJSZip()` 含 script 标签 fallback — 先尝试 `import()`，失败后注入 `<script>` 标签加载，兼容非模块环境。
 
+**变量事务会话边界**：导入及后续补偿绑定原聊天和变量仓库引用，不得改写切换后的聊天。只有保存真正失败才回滚内存；保存成功后发现会话切换则报告 stale，同时保留旧聊天已保存的值，避免内存与持久层分叉。
+
 **UI 位置**：
 - 仪表盘：配置档下拉框（内置 + 用户，optgroup 分组）+ 应用按钮 + 导入按钮
 - 工具抽屉 → 配置档卡片：完整的管理面板（保存/导出/删除/预设加载）
@@ -1037,7 +1039,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 **两级控制**：总开关 `customPromptsEnabled` + 每条独立 `enabled`。
 
-**边界与事务**：`custom-prompt-validation.js` 是 CRUD、独立导入和配置档导入共享的结构契约。所有变更在系统层串行执行并等待 `saveSettings`；失败时只补偿本操作仍未被并发改写的字段。Provider 使用稳定 Owner/条目 ID 注册，热重载通过已管理台账清理配置档中已移除的旧占位符，禁止跨模块覆盖或删除同名 Provider。
+**边界与事务**：`custom-prompt-validation.js` 是 CRUD、独立导入和配置档导入共享的结构契约。批量导入在修改列表前先校验所有名称与 Provider/占位符冲突，后续条目非法不能留下前面条目的部分导入。所有变更在系统层串行执行并等待 `saveSettings`；失败时只补偿本操作仍未被并发改写的字段。Provider 使用稳定 Owner/条目 ID 注册，热重载通过已管理台账清理配置档中已移除的旧占位符，禁止跨模块覆盖或删除同名 Provider。
 
 ---
 
