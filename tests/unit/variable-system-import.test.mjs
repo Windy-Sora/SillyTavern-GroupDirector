@@ -2,6 +2,52 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createVariableSystem } from '../../systems/variable-system.js';
+import { createConfigProfileSubject } from './helpers/config-profile-subject.mjs';
+
+test('config profile import rejects a chat switch before settings commit or compensation', async () => {
+    const values = phase => ({ defs: [], values: { global: { phase }, character: {} }, log: [] });
+    const first = { gd: { variables: values('first-original') } };
+    const second = { gd: { variables: values('imported') } };
+    let metadata = first;
+    let finishSave;
+    const pending = new Promise(resolve => { finishSave = resolve; });
+    const variableSystem = createVariableSystem({
+        getChatMetadata: () => metadata, EXT_KEY: 'gd', saveChatConditional: () => pending,
+    });
+    const { subject, settings, calls } = createConfigProfileSubject({
+        summaryPrompt: 'original',
+        configProfiles: [{ id: 'p', name: 'p', drawers: { contextLedger: true },
+            settings: { summaryPrompt: 'incoming' }, variables: values('imported') }],
+    }, undefined, { variableSystem, saveError: new Error('settings save failed') });
+    const operation = subject.applyProfile('p');
+    metadata = second;
+    finishSave();
+    await assert.rejects(operation, { name: 'StaleExecutionError' });
+    assert.equal(calls.saves, 0);
+    assert.equal(settings.summaryPrompt, 'original');
+    assert.equal(first.gd.variables.values.global.phase, 'first-original');
+    assert.equal(second.gd.variables.values.global.phase, 'imported');
+});
+
+test('variable compensation refuses another chat or a replaced store', async () => {
+    const values = phase => ({ defs: [], values: { global: { phase }, character: {} }, log: [] });
+    const first = { gd: { variables: values('first-original') } };
+    const second = { gd: { variables: values('imported') } };
+    let metadata = first;
+    let saves = 0;
+    const system = createVariableSystem({
+        getChatMetadata: () => metadata, EXT_KEY: 'gd', saveChatConditional: () => { saves++; },
+    });
+    const { transaction } = await system.applyImportData({ variables: values('imported') }, { mode: 'replace', returnTransaction: true });
+    metadata = second;
+    await assert.rejects(system.rollbackImportTransaction(transaction), { name: 'StaleExecutionError' });
+    assert.equal(second.gd.variables.values.global.phase, 'imported');
+    metadata = first;
+    first.gd.variables = values('replacement');
+    await assert.rejects(system.rollbackImportTransaction(transaction), { name: 'StaleExecutionError' });
+    assert.equal(first.gd.variables.values.global.phase, 'replacement');
+    assert.equal(saves, 1);
+});
 
 function fixture(overrides = {}) {
     const metadata = {};

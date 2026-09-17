@@ -303,6 +303,14 @@ function simpleHash(input) {
 }
 
 export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, saveChatConditional, getCharacters, getCurrentGroup, getChat, getLang, log = console.log }) {
+    const importContexts = new WeakMap();
+    function currentMetadata() { return getChatMetadata ? getChatMetadata() : chat_metadata; }
+    function assertImportContext(metadata, vars) {
+        if (currentMetadata() === metadata && metadata[EXT_KEY]?.variables === vars) return;
+        const error = new Error('Variable import became stale after the chat or store changed');
+        error.name = 'StaleExecutionError';
+        throw error;
+    }
     function store() { return ensureStore(getChatMetadata ? getChatMetadata() : chat_metadata, EXT_KEY); }
     function characters() { return getCharacters?.() || []; }
     function activeCharacters() {
@@ -613,6 +621,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         if (!valid.ok) return valid;
         const incoming = valid.variables;
         const mode = options.mode || 'merge';
+        const metadata = currentMetadata();
         const vars = store();
         const previous = clone(vars);
 
@@ -638,7 +647,10 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             }
         }
         const applied = clone(vars);
-        try { await saveChatConditional?.(); }
+        try {
+            await saveChatConditional?.();
+            assertImportContext(metadata, vars);
+        }
         catch (error) {
             const rolledBack = {
                 defs: rollbackDefinitions(previous.defs, applied.defs, vars.defs),
@@ -650,15 +662,20 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             throw error;
         }
         const result = { ok: true, count: (incoming.defs || []).length };
-        if (options.returnTransaction) result.transaction = { previous, applied };
+        if (options.returnTransaction) {
+            result.transaction = { previous, applied };
+            importContexts.set(result.transaction, { metadata, vars });
+        }
         return result;
     }
 
     async function rollbackImportTransaction(transaction) {
-        if (!transaction?.previous || !transaction?.applied) {
+        const context = importContexts.get(transaction);
+        if (!transaction?.previous || !transaction?.applied || !context) {
             throw new Error('Invalid variable import transaction');
         }
-        const vars = store();
+        const { metadata, vars } = context;
+        assertImportContext(metadata, vars);
         const current = clone(vars);
         const rolledBack = {
             defs: rollbackDefinitions(transaction.previous.defs, transaction.applied.defs, vars.defs),
@@ -668,7 +685,10 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         for (const key of Object.keys(vars)) delete vars[key];
         Object.assign(vars, rolledBack);
         const appliedRollback = clone(vars);
-        try { await saveChatConditional?.(); }
+        try {
+            await saveChatConditional?.();
+            assertImportContext(metadata, vars);
+        }
         catch (error) {
             const restored = {
                 defs: rollbackDefinitions(current.defs, appliedRollback.defs, vars.defs),
