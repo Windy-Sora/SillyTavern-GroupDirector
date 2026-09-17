@@ -1026,6 +1026,8 @@ Three libraries provide "reusable packages" that share the export/import lineage
 | NPC Library | Characters drawer -> NPC Generation card | `npcLibraries` | No |
 | Story Blueprint Library | Continuity drawer -> Story Blueprint card | `storyBlueprintLibraries` | No |
 
+NPC Library save, delete, and file import await `saveSettings`. On failure, compensation uses entry identity or surviving neighbors to retain unrelated library edits made while saving. Malformed legacy entries do not block valid entries from rendering; invalid export data is rejected, and failed downloads still release the temporary node and Blob URL. The UI refreshes and reports success only after persistence succeeds. Library application still delegates to `npc-export-system.applyImport()`; its chat-save transaction is a separate, subsequent boundary and is not guaranteed by the library-list transaction.
+
 Library entries are content data, explicitly excluded by `INTENTIONALLY_UNCOVERED_KEYS` in `config-profile-system` and not saved/restored with config profiles. See section 3.6 for details.
 
 ---

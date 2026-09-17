@@ -1025,6 +1025,8 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | NPC Library | 角色抽屉 → NPC 生成卡片 | `npcLibraries` | 无 |
 | Story Blueprint Library | 连续性抽屉 → 故事蓝图卡片 | `storyBlueprintLibraries` | 无 |
 
+NPC Library 的保存、删除和文件导入必须等待 `saveSettings`；失败时按条目身份或仍存在的相邻条目补偿，保留等待期间其他库条目的修改。旧设置中的畸形条目不阻断有效条目展示；无效导出数据直接报错，下载异常也清理临时节点和 Blob URL。UI 只在持久化成功后刷新并提示成功。库的“应用”仍委托 `npc-export-system.applyImport()`，其聊天保存事务属于下一轮独立边界，不由库列表事务保证。
+
 库条目是内容数据，被 `config-profile-system` 的 `INTENTIONALLY_UNCOVERED_KEYS` 显式排除，不随配置档保存/还原。详见 3.6 节。
 
 ---

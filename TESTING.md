@@ -7,16 +7,16 @@ readable reports.
 
 Current verified baseline (2026-09-17):
 
-- 298 JavaScript source files and 10 JSON files pass static validation;
-- 485 behavior tests are discovered, with 484 passing and one optional real-host
+- 299 JavaScript source files and 10 JSON files pass static validation;
+- 496 behavior tests are discovered, with 495 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 147/155 production modules, while tests directly or
   transitively reach 77/155 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 93.41% lines, 78.32% branches, and
-  90.62% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 93.57% lines, 78.41% branches, and
+  90.78% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
@@ -25,6 +25,7 @@ Current verified baseline (2026-09-17):
   reaches 96.26% lines, 80.63% branches, and 84.00% functions; Script Executor
   System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
   History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
+  NPC Library reaches 98.15% lines;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
 
@@ -193,6 +194,12 @@ only the mutation that is still present when persistence rejects. Deferred-save
 tests cover restoration of prior active/archive values plus concurrent changes to
 the same avatar and unrelated profiles. Generation staleness remains covered by
 `tests/unit/similar-agent-concurrency.test.mjs`.
+
+NPC Library persistence coverage belongs in `tests/unit/npc-library-system.test.mjs`,
+with UI feedback and malformed legacy rendering in `tests/unit/npc-library-ui.test.mjs`.
+Deferred-save cases must cover save, delete, and file import rejection while a
+different library entry changes; failed downloads must release both temporary DOM
+and Blob URL resources. Application through NPC Export is tested separately.
 
 User Provider/Capability lifecycle coverage belongs in
 `tests/unit/user-provider-loader.test.mjs`. Modules must be exercised through real
