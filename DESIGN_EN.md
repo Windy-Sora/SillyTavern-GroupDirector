@@ -996,6 +996,10 @@ Group Director provides full export/import capability for five data types:
 | Format | `.json` | `.json` | `.json` | `.json` | `.zip` |
 | Storage | chat_metadata | chat_metadata | Independent key | chat_metadata | extension_settings |
 
+### Summary export/import boundary
+
+Imported files validate the root object, version, summary object, and content fields, not just the envelope; malformed legacy entries are skipped by list and Provider rendering. Updates to an imported summary accept only `name`, `content`, and `enabled`; callers cannot replace internal IDs. Add, update, and delete await chat persistence. On failure, compensation uses entry identity, field revisions, and surviving neighbors to preserve newer edits made while saving. A chat-reference switch detected after persistence reports a stale operation without writing to the new chat or undoing an already saved result in the old one. Download failures still release the temporary node and Blob URL, and the UI reports asynchronous failures rather than success.
+
 ### Global Config Export/Import (Config Profile System)
 
 **Storage**: `settings.configProfiles = [{ id, name, description, drawers, settings }]`

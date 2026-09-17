@@ -5,18 +5,18 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Current verified baseline (2026-09-16):
+Current verified baseline (2026-09-17):
 
-- 296 JavaScript source files and 10 JSON files pass static validation;
-- 422 behavior tests are discovered, with 421 passing and one optional real-host
+- 298 JavaScript source files and 10 JSON files pass static validation;
+- 478 behavior tests are discovered, with 477 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 147/155 production modules, while tests directly or
   transitively reach 77/155 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 92.58% lines, 77.15% branches, and
-  89.72% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 93.38% lines, 78.04% branches, and
+  90.58% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.33% lines / 86.36% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,

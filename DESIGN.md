@@ -995,6 +995,10 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | 格式 | `.json` | `.json` | `.json` | `.json` | `.zip` |
 | 存储 | chat_metadata | chat_metadata | 独立 key | chat_metadata | extension_settings |
 
+### Summary 导出/导入边界
+
+导入文件必须校验根对象、版本、摘要对象及内容字段，不能只检查外层容器；旧聊天中畸形的导入条目在列表和 Provider 渲染时跳过。更新导入摘要只接受 `name`、`content`、`enabled`，内部 ID 不允许由调用方覆盖。新增、更新、删除均等待聊天保存；失败时按条目身份、字段版本和仍存在的相邻条目补偿，尽量保留等待期间的较新修改。保存完成后若会话引用已切换，报告 stale，不改写新聊天；已成功保存的旧聊天结果不再撤销。导出下载在异常路径也清理临时节点和 Blob URL，UI 对异步失败显示错误而非成功提示。
+
 ### 全局配置导出/导入 (Config Profile System)
 
 **存储**：`settings.configProfiles = [{ id, name, description, drawers, settings }]`
