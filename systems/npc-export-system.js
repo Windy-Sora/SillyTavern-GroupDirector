@@ -128,8 +128,8 @@ export function createNpcExportSystem(deps) {
         return cm[EXT_KEY].npcs;
     }
 
-    async function saveNpcs() {
-        await saveChatConditional();
+    async function saveNpcs(metadata = getChatMetadata()) {
+        await saveChatConditional(metadata);
     }
 
     const isZh = () => (settings.lang || 'zh') === 'zh';
@@ -222,7 +222,7 @@ export function createNpcExportSystem(deps) {
 
         if (changes.length) {
             try {
-                await saveNpcs();
+                await saveNpcs(metadata);
             } catch (error) {
                 const conflict = rollbackNpcEntries(metadata, EXT_KEY, changes);
                 throw importFailure(error, conflict ? ['concurrent NPC edits may retain imported data'] : []);
@@ -256,7 +256,7 @@ export function createNpcExportSystem(deps) {
                         details.push('concurrent NPC edits may retain imported data');
                     }
                     if (getChatMetadata() === metadata) {
-                        try { await saveNpcs(); }
+                        try { await saveNpcs(metadata); }
                         catch (restoreError) { details.push(`NPC compensation save failed: ${restoreError.message}`); }
                     } else {
                         details.push('chat changed before NPC compensation could be saved');

@@ -76,12 +76,12 @@ export function createNpcSystem({
         return cm[EXT_KEY].npcs;
     }
 
-    async function saveNpcs() {
-        await saveChatConditional();
+    async function saveNpcs(metadata = getChatMetadata()) {
+        await saveChatConditional(metadata);
     }
 
     async function saveMutation(metadata, rollback) {
-        try { await saveNpcs(); }
+        try { await saveNpcs(metadata); }
         catch (error) { throw npcFailure(error, rollback()); }
         if (getChatMetadata() !== metadata) {
             throw staleExecutionError('NPC change became stale after the chat changed; the original chat was saved');
@@ -104,7 +104,7 @@ export function createNpcSystem({
         const previous = root.npcs;
         root.npcs = npcs;
         const appliedState = snapshotValue(npcs);
-        try { await saveNpcs(); }
+        try { await saveNpcs(metadata); }
         catch (error) {
             if (snapshotValue(root.npcs) === appliedState) root.npcs = previous;
             throw error;

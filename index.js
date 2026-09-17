@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
+import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
@@ -86,6 +86,7 @@ import { createSummaryAgent } from './agents/summary.js';
 import { createCritiqueAgent } from './agents/critique.js';
 import { createNpcAgent, DEFAULT_NPC_PROMPT } from './agents/npc.js';
 import { createNpcSystem } from './systems/npc-system.js';
+import { createConfirmedNpcChatSave } from './systems/npc-save-confirmation.js';
 import { createMemoryAgent, DEFAULT_MEMORY_PROMPT, DEFAULT_MEMORY_SCHEMA, DEFAULT_MEMORY_RENDER, DEFAULT_MEMORY_COMPRESS_PROMPT } from './agents/memory.js';
 import { createMemorySystem } from './systems/memory-system.js';
 import { createPostSpeechAgent } from './agents/post-speech.js';
@@ -261,6 +262,10 @@ async function saveSettingsConfirmed() {
 const getChatMetadata = () => chat_metadata;
 const getChat = () => chat;
 const getCharacters = () => characters;
+const saveNpcChatConfirmed = createConfirmedNpcChatSave({
+    saveChatConditional, getCurrentChatId, getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
+    getContext, getChatMetadata, getRequestHeaders, EXT_KEY,
+});
 
 const variableSystem = createVariableSystem({
     getChatMetadata,
@@ -426,7 +431,7 @@ const profileLibrarySystem = createProfileLibrarySystem({
 const { exportNpcs, parseImportFile: parseNpcImportFile, applyImport: applyNpcImport,
     loadPreset: loadNpcPreset, getPresetNames: getNpcPresetNames } =
     createNpcExportSystem({
-        settings, EXT_KEY, saveSettings, getCurrentGroup, getChatMetadata, saveChatConditional,
+        settings, EXT_KEY, saveSettings, getCurrentGroup, getChatMetadata, saveChatConditional: saveNpcChatConfirmed,
         defaultNpcPrompt: DEFAULT_NPC_PROMPT, log,
     });
 
@@ -597,7 +602,7 @@ log('Agent Runtime registered:', AgentRegistry.list().map(a => a.id).join(', '))
 
 // ─── NPC System ──────────────────────────────────────────────────────
 const npcSystem = createNpcSystem({
-    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional, getCharacters, log,
+    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional: saveNpcChatConfirmed, getCharacters, log,
     AgentRegistry, execute, buildContextPool, getCurrentGroup, createCaller, getContext, toastr: () => window.toastr,
 });
 

@@ -14,6 +14,7 @@ registerSection('npc', function (ctx) {
     const $generateBtn = $c('npc-generate');
     const $scanBtn = $c('npc-scan');
     const $list = $c('npc-list');
+    let deletionPending = false;
 
     // ── Bind values ──
     $toggle.prop('checked', settings.npcEnabled ?? false);
@@ -158,24 +159,35 @@ registerSection('npc', function (ctx) {
 
         // Delete
         $list.find('.gd-npc-delete').on('click', async function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
-            const npcName = esc(npcs[idx]?.name);
+            const target = npcs[idx];
+            if (!target) return;
+            const npcName = esc(target.name);
             if (!await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) return;
+            if (deletionPending) return;
+            if (npcSystem.getNpcs()[idx] !== target) {
+                renderNpcList();
+                return;
+            }
+            deletionPending = true;
             const btn = $(this);
             btn.prop('disabled', true);
             try {
                 await npcSystem.deleteNpc(idx);
-                renderNpcList();
                 window.__gdRefreshDashboard?.();
             } catch (e) {
                 toastr.error(L('NPC 删除失败: ' + e.message, 'NPC delete failed: ' + e.message));
             } finally {
+                deletionPending = false;
+                renderNpcList();
                 btn.prop('disabled', false);
             }
         });
 
         // Import
         $list.find('.gd-npc-import').on('click', async function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             const btn = $(this);
             btn.prop('disabled', true);
@@ -201,6 +213,7 @@ registerSection('npc', function (ctx) {
 
         // Edit toggle
         $list.find('.gd-npc-edit').on('click', function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             // Close all other edit panels to prevent data loss from multi-edit
             const npcs = npcSystem.getNpcs();
@@ -216,6 +229,7 @@ registerSection('npc', function (ctx) {
 
         // Cancel edit
         $list.find('.gd-npc-cancel').on('click', function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             $(`.gd-npc-edit-${idx}`).toggle(false);
             $(`.gd-npc-view-${idx}`).toggle(true);
@@ -223,6 +237,7 @@ registerSection('npc', function (ctx) {
 
         // Save edit
         $list.find('.gd-npc-save').on('click', async function () {
+            if (deletionPending) return;
             const idx = parseInt($(this).data('idx'));
             const nameEl = $list.find(`.gd-npc-edit-name[data-idx="${idx}"]`);
             const descEl = $list.find(`.gd-npc-edit-desc[data-idx="${idx}"]`);

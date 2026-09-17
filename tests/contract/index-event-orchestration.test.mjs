@@ -78,6 +78,12 @@ test('NPC library settings adapter requires a host save success event and remove
     assert.equal(listeners.size, 0);
 });
 
+test('NPC mutations and imports use the confirmed chat persistence adapter', () => {
+    assert.match(source, /const saveNpcChatConfirmed = createConfirmedNpcChatSave\(/);
+    assert.match(source, /createNpcExportSystem\(\{[\s\S]*?saveChatConditional: saveNpcChatConfirmed/);
+    assert.match(source, /createNpcSystem\(\{[\s\S]*?saveChatConditional: saveNpcChatConfirmed/);
+});
+
 test('new group rounds reset stale runtime state before clearing persisted counters', () => {
     const block = listenerBlock('GROUP_WRAPPER_STARTED');
     assertOrdered(block, [

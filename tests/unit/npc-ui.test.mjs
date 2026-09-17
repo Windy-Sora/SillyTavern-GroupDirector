@@ -10,7 +10,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-async function harness(overrides = {}) {
+async function harness(overrides = {}, options = {}) {
     const source = (await readFile(new URL('../../ui/sections/npc.js', import.meta.url), 'utf8'))
         .replace(/^import .*;\r?\n/gm, '');
     const handlers = new Map();
@@ -23,10 +23,11 @@ async function harness(overrides = {}) {
         ['npc-list .gd-npc-edit-firstmes[data-idx="0"]', 'hello'],
     ]);
     const nodes = new Map();
+    let currentIndex = 0;
     function node(key) {
         if (nodes.has(key)) return nodes.get(key);
         const item = {
-            key, length: 1, data: () => 0,
+            key, length: 1, data: () => currentIndex,
             val(value) { if (arguments.length) { values.set(key, value); return this; } return values.get(key) || ''; },
             prop() { return this; }, html() { return this; }, toggle() { return this; }, hide() { return this; }, show() { return this; },
             find(selector) { return node(`${key} ${selector}`); },
@@ -36,7 +37,7 @@ async function harness(overrides = {}) {
         return item;
     }
     const $ = target => typeof target === 'object' ? target : node(target);
-    const npcs = [{ name: 'Alice', description: 'before', personality: 'calm' }];
+    const npcs = options.npcs || [{ name: 'Alice', description: 'before', personality: 'calm' }];
     const npcSystem = {
         getNpcs: () => npcs,
         updateNpc: async () => {},
@@ -67,6 +68,8 @@ async function harness(overrides = {}) {
     return {
         notices,
         get dashboardRefreshes() { return dashboardRefreshes; },
+        setIndex(index) { currentIndex = index; },
+        setValue(key, value) { values.set(key, value); },
         click(key) {
             const { handler, node: target } = handlers.get(key);
             return handler.call(target);
@@ -84,6 +87,30 @@ test('NPC UI waits for edit persistence and reports rejection without success', 
     await pending;
     assert.deepEqual(h.notices.map(([kind]) => kind), ['error']);
     assert.equal(h.dashboardRefreshes, 0);
+});
+
+test('NPC UI blocks stale row actions while deletion is waiting for persistence', async () => {
+    const save = deferred();
+    const npcs = [{ name: 'Alice' }, { name: 'Bob' }, { name: 'Carol' }];
+    const edits = [];
+    const h = await harness({
+        getNpcs: () => npcs,
+        deleteNpc(index) { npcs.splice(index, 1); return save.promise; },
+        updateNpc(index, updates) { edits.push([index, updates]); },
+    }, { npcs });
+    const deleting = h.click('npc-list .gd-npc-delete:click');
+    await new Promise(setImmediate);
+    assert.deepEqual(npcs.map(npc => npc.name), ['Bob', 'Carol']);
+
+    h.setIndex(1); // The old Bob row still carries index 1, now occupied by Carol.
+    h.setValue('npc-list .gd-npc-edit-name[data-idx="1"]', 'Bobby');
+    await h.click('npc-list .gd-npc-save:click');
+    assert.deepEqual(edits, []);
+    assert.deepEqual(npcs.map(npc => npc.name), ['Bob', 'Carol']);
+
+    save.resolve();
+    await deleting;
+    assert.equal(h.dashboardRefreshes, 1);
 });
 
 test('NPC UI waits for delete persistence and reports rejection without refresh', async () => {
