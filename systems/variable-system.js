@@ -649,7 +649,6 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         const applied = clone(vars);
         try {
             await saveChatConditional?.();
-            assertImportContext(metadata, vars);
         }
         catch (error) {
             const rolledBack = {
@@ -661,6 +660,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             Object.assign(vars, rolledBack);
             throw error;
         }
+        assertImportContext(metadata, vars);
         const result = { ok: true, count: (incoming.defs || []).length };
         if (options.returnTransaction) {
             result.transaction = { previous, applied };
@@ -687,7 +687,6 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
         const appliedRollback = clone(vars);
         try {
             await saveChatConditional?.();
-            assertImportContext(metadata, vars);
         }
         catch (error) {
             const restored = {
@@ -699,6 +698,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             Object.assign(vars, restored);
             throw error;
         }
+        assertImportContext(metadata, vars);
         return { ok: true };
     }
 

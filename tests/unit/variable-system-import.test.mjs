@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createVariableSystem } from '../../systems/variable-system.js';
 import { createConfigProfileSubject } from './helpers/config-profile-subject.mjs';
 
-test('config profile import rejects a chat switch before settings commit or compensation', async () => {
+test('config profile import rejects a chat switch before settings commit without undoing a successful variable save', async () => {
     const values = phase => ({ defs: [], values: { global: { phase }, character: {} }, log: [] });
     const first = { gd: { variables: values('first-original') } };
     const second = { gd: { variables: values('imported') } };
@@ -25,8 +25,56 @@ test('config profile import rejects a chat switch before settings commit or comp
     await assert.rejects(operation, { name: 'StaleExecutionError' });
     assert.equal(calls.saves, 0);
     assert.equal(settings.summaryPrompt, 'original');
-    assert.equal(first.gd.variables.values.global.phase, 'first-original');
+    assert.equal(first.gd.variables.values.global.phase, 'imported');
     assert.equal(second.gd.variables.values.global.phase, 'imported');
+});
+
+test('variable import keeps memory consistent with a successful save after a chat switch', async () => {
+    const values = phase => ({ defs: [], values: { global: { phase }, character: {} }, log: [] });
+    const first = { gd: { variables: values('original') } };
+    const second = { gd: { variables: values('second') } };
+    let metadata = first;
+    let persisted;
+    let finishSave;
+    const system = createVariableSystem({
+        getChatMetadata: () => metadata, EXT_KEY: 'gd',
+        saveChatConditional: () => new Promise(resolve => {
+            finishSave = () => {
+                persisted = structuredClone(first.gd.variables);
+                metadata = second;
+                resolve();
+            };
+        }),
+    });
+    const operation = system.applyImportData({ variables: values('imported') }, { mode: 'replace' });
+    finishSave();
+    await assert.rejects(operation, { name: 'StaleExecutionError' });
+    assert.deepEqual(first.gd.variables, persisted);
+    assert.equal(first.gd.variables.values.global.phase, 'imported');
+    assert.equal(second.gd.variables.values.global.phase, 'second');
+});
+
+test('variable compensation keeps memory consistent with a successful save after a chat switch', async () => {
+    const values = phase => ({ defs: [], values: { global: { phase }, character: {} }, log: [] });
+    const first = { gd: { variables: values('original') } };
+    const second = { gd: { variables: values('second') } };
+    let metadata = first;
+    let persisted;
+    let saves = 0;
+    const system = createVariableSystem({
+        getChatMetadata: () => metadata, EXT_KEY: 'gd',
+        saveChatConditional: async () => {
+            persisted = structuredClone(first.gd.variables);
+            if (++saves === 2) metadata = second;
+        },
+    });
+    const { transaction } = await system.applyImportData(
+        { variables: values('imported') }, { mode: 'replace', returnTransaction: true },
+    );
+    await assert.rejects(system.rollbackImportTransaction(transaction), { name: 'StaleExecutionError' });
+    assert.deepEqual(first.gd.variables, persisted);
+    assert.equal(first.gd.variables.values.global.phase, 'original');
+    assert.equal(second.gd.variables.values.global.phase, 'second');
 });
 
 test('variable compensation refuses another chat or a replaced store', async () => {
