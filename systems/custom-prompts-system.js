@@ -313,13 +313,16 @@ export function createCustomPromptsSystem(deps) {
         return enqueue(async () => {
             const imported = normalizeCustomPromptList(data?.prompts, { path: 'prompts', preserveIds: false });
             const list = getList();
+            for (const prompt of imported) {
+                const existing = list.find(entry => entry.name === prompt.name);
+                const valid = validateName(prompt.name, existing?.id);
+                if (!valid.ok) throw new Error(valid.error);
+            }
             const addedEntries = [];
             const overwrittenEntries = [];
             const conflicts = [];
             for (const prompt of imported) {
                 const existing = list.find(entry => entry.name === prompt.name);
-                const valid = validateName(prompt.name, existing?.id);
-                if (!valid.ok) throw new Error(valid.error);
                 if (existing) {
                     if (!overwriteConflicts) {
                         conflicts.push(prompt.name);

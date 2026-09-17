@@ -34,6 +34,26 @@ function createSubject(initial, saveSettings = () => {}) {
     return { subject, settings, providers };
 }
 
+test('later reserved or registered names reject a whole prompt import without partial writes', async () => {
+    for (const blockedName of ['user', 'builtin']) {
+        let saves = 0;
+        const entry = { id: 'old', name: 'note', content: 'original', dataJson: '', scope: 'global', enabled: true };
+        const { subject, settings, providers } = createSubject({ customPrompts: [entry] }, () => { saves++; });
+        providers.set('builtin', { id: 'builtin', placeholder: '{{builtin}}' });
+        subject.initAll();
+        const before = structuredClone(settings);
+        await assert.rejects(subject.importPrompts({ prompts: [
+            { name: 'note', content: 'overwrite' },
+            { name: 'fresh', content: 'new' },
+            { name: blockedName, content: 'blocked' },
+        ] }, true));
+        assert.deepEqual(settings, before);
+        assert.equal(providers.get('note').render().content, 'original');
+        assert.equal(providers.has('fresh'), false);
+        assert.equal(saves, 0);
+    }
+});
+
 test('rejected async save rolls back add and rejects its caller', async () => {
     const pending = deferred();
     const { subject, settings, providers } = createSubject({}, () => pending.promise);
