@@ -2,7 +2,19 @@ import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
     snapshotValue,
+    staleExecutionError,
 } from './execution-snapshot.js';
+
+function sameValue(a, b) {
+    return snapshotValue(a) === snapshotValue(b);
+}
+
+function npcFailure(error, conflict) {
+    if (!conflict) return error;
+    const failure = new Error(`${error.message}; concurrent NPC edits may retain this operation's data`, { cause: error });
+    failure.rollbackIncomplete = true;
+    return failure;
+}
 
 export class NpcImportTrackingError extends Error {
     constructor(avatarName, cause) {
@@ -43,6 +55,17 @@ export function createNpcSystem({
     toastr,
 }) {
     const L = (zh, en) => (settings.lang === 'zh' ? zh : en);
+    const fieldRevisions = new WeakMap();
+    const entryRevisions = new WeakMap();
+
+    function bumpFieldRevision(entry, key) {
+        let fields = fieldRevisions.get(entry);
+        if (!fields) { fields = new Map(); fieldRevisions.set(entry, fields); }
+        const revision = (fields.get(key) || 0) + 1;
+        fields.set(key, revision);
+        entryRevisions.set(entry, (entryRevisions.get(entry) || 0) + 1);
+        return revision;
+    }
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
@@ -55,6 +78,25 @@ export function createNpcSystem({
 
     async function saveNpcs() {
         await saveChatConditional();
+    }
+
+    async function saveMutation(metadata, rollback) {
+        try { await saveNpcs(); }
+        catch (error) { throw npcFailure(error, rollback()); }
+        if (getChatMetadata() !== metadata) {
+            throw staleExecutionError('NPC change became stale after the chat changed; the original chat was saved');
+        }
+    }
+
+    function findCurrentNpc(metadata, entry, oldName) {
+        const list = getNpcs(metadata);
+        let index = list.indexOf(entry);
+        if (index < 0 && entry.importId) index = list.findIndex(npc => npc?.importId === entry.importId);
+        if (index < 0) index = list.findIndex(npc => npc?.name?.toLowerCase() === entry.name?.toLowerCase());
+        if (index < 0 && oldName !== entry.name) {
+            index = list.findIndex(npc => npc?.name?.toLowerCase() === oldName?.toLowerCase());
+        }
+        return { list, index };
     }
 
     async function replaceNpcs(npcs, metadata = getChatMetadata()) {
@@ -137,8 +179,9 @@ export function createNpcSystem({
             message: 'NPC generation became stale',
         });
 
-        // Add to storage
-        const npcs = [...getNpcs(executionSnapshot.metadata)];
+        // Add only accepted NPCs, so the return value matches the persisted change.
+        const npcs = getNpcs(executionSnapshot.metadata);
+        const added = [];
         for (const npc of result) {
             if (npcs.length >= maxCount) break;
             const lower = npc.name.toLowerCase();
@@ -148,26 +191,87 @@ export function createNpcSystem({
                 continue;
             }
             npcs.push(npc);
+            added.push(npc);
         }
-        await replaceNpcs(npcs, executionSnapshot.metadata);
+        if (!added.length) return [];
+        const addedStates = added.map(entry => ({
+            entry, state: snapshotValue(entry), revision: entryRevisions.get(entry) || 0,
+        }));
+        await saveMutation(executionSnapshot.metadata, () => {
+            let conflict = false;
+            const current = getNpcs(executionSnapshot.metadata);
+            for (const { entry, state, revision } of addedStates) {
+                const index = current.indexOf(entry) >= 0
+                    ? current.indexOf(entry)
+                    : current.findIndex(npc => npc?.name?.toLowerCase() === entry.name?.toLowerCase());
+                if (index < 0) continue;
+                if (snapshotValue(current[index]) === state
+                    && (entryRevisions.get(entry) || 0) === revision) current.splice(index, 1);
+                else conflict = true;
+            }
+            return conflict;
+        });
 
-        return result;
+        return added;
     }
 
     async function updateNpc(index, updates) {
-        const npcs = getNpcs();
+        const metadata = getChatMetadata();
+        const npcs = getNpcs(metadata);
         if (index < 0 || index >= npcs.length) return;
-        const next = structuredClone(npcs);
-        Object.assign(next[index], updates);
-        await replaceNpcs(next);
+        const entry = npcs[index];
+        const oldName = entry.name;
+        const previous = new Map(Object.keys(updates).map(key => [key, {
+            present: Object.hasOwn(entry, key), value: structuredClone(entry[key]),
+        }]));
+        const revisions = new Map(Object.keys(updates).map(key => [key, bumpFieldRevision(entry, key)]));
+        Object.assign(entry, updates);
+        const applied = new Map(Object.keys(updates).map(key => [key, structuredClone(entry[key])]));
+        await saveMutation(metadata, () => {
+            const { list, index: currentIndex } = findCurrentNpc(metadata, entry, oldName);
+            if (currentIndex < 0) return true;
+            const current = list[currentIndex];
+            let conflict = false;
+            for (const [key, before] of previous) {
+                if ((current === entry && fieldRevisions.get(entry)?.get(key) !== revisions.get(key))
+                    || !sameValue(current[key], applied.get(key))) {
+                    conflict = true;
+                    continue;
+                }
+                if (before.present) current[key] = before.value;
+                else delete current[key];
+            }
+            return conflict;
+        });
     }
 
     async function deleteNpc(index) {
-        const npcs = getNpcs();
+        const metadata = getChatMetadata();
+        const npcs = getNpcs(metadata);
         if (index < 0 || index >= npcs.length) return;
-        const next = [...npcs];
-        next.splice(index, 1);
-        await replaceNpcs(next);
+        const before = npcs[index - 1];
+        const after = npcs[index + 1];
+        const [removed] = npcs.splice(index, 1);
+        await saveMutation(metadata, () => {
+            const current = getNpcs(metadata);
+            if (current.includes(removed)
+                || current.some(npc => npc?.name?.toLowerCase() === removed.name?.toLowerCase())) return true;
+            const neighborIndex = neighbor => {
+                if (!neighbor) return -1;
+                const byIdentity = current.indexOf(neighbor);
+                if (byIdentity >= 0) return byIdentity;
+                if (neighbor.importId) {
+                    const byId = current.findIndex(npc => npc?.importId === neighbor.importId);
+                    if (byId >= 0) return byId;
+                }
+                return current.findIndex(npc => npc?.name?.toLowerCase() === neighbor.name?.toLowerCase());
+            };
+            const afterIndex = neighborIndex(after);
+            const beforeIndex = neighborIndex(before);
+            const restoreIndex = afterIndex >= 0 ? afterIndex : beforeIndex >= 0 ? beforeIndex + 1 : Math.min(index, current.length);
+            current.splice(restoreIndex, 0, removed);
+            return false;
+        });
     }
 
     /**

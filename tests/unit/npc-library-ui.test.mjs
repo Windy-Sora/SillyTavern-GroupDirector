@@ -95,3 +95,14 @@ test('NPC library UI reports file import rejection without success feedback', as
     assert.deepEqual(h.notices.map(([type]) => type), ['error']);
     assert.equal(target.value, '');
 });
+
+test('NPC library UI reports application rejection without success feedback', async () => {
+    const gate = deferred();
+    const entry = { id: 'pack', name: 'Pack', npcCount: 1 };
+    const h = await sectionHarness({ applyLibrary: () => gate.promise }, [entry]);
+    const action = h.handlers.get('#gd-npc-library-apply:click')();
+    assert.deepEqual(h.notices, []);
+    gate.reject(new Error('chat save failed'));
+    await action;
+    assert.deepEqual(h.notices.map(([type]) => type), ['error']);
+});

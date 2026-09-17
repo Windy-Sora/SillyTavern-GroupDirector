@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 const source = await readFile(new URL('../../index.js', import.meta.url), 'utf8');
 
@@ -41,6 +42,7 @@ test('index registers the complete SillyTavern event surface exactly once', () =
         MESSAGE_DELETED: 1,
         CHAT_CHANGED: 1,
         APP_READY: 1,
+        SETTINGS_UPDATED: 1,
     };
     const registrations = [...source.matchAll(/eventSource\.on\(event_types\.([A-Z_]+)/g)]
         .map(match => match[1]);
@@ -49,6 +51,31 @@ test('index registers the complete SillyTavern event surface exactly once', () =
         expected,
     );
     assert.deepEqual([...new Set(registrations)].sort(), Object.keys(expected).sort());
+});
+
+test('NPC library settings adapter requires a host save success event and removes its listener', async () => {
+    const adapter = source.match(/async function saveSettingsConfirmed\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(adapter);
+    const listeners = new Set();
+    const eventSource = {
+        on(_event, listener) { listeners.add(listener); },
+        removeListener(_event, listener) { listeners.delete(listener); },
+        async emit() { for (const listener of listeners) listener(); },
+    };
+    const context = {
+        settings: { npcLibraries: [{ id: 'pack' }] }, extension_settings: {}, EXT_KEY: 'gd',
+        event_types: { SETTINGS_UPDATED: 'settings_updated' }, eventSource,
+        setProviderTimeoutDefault() {},
+        saveSettingsHost: async () => { await eventSource.emit(); },
+    };
+    vm.runInNewContext(adapter, context);
+    await context.saveSettingsConfirmed();
+    assert.equal(context.extension_settings.gd, context.settings);
+    assert.equal(listeners.size, 0);
+
+    context.saveSettingsHost = async () => {}; // Host catches its own network failure.
+    await assert.rejects(context.saveSettingsConfirmed(), /not confirmed/);
+    assert.equal(listeners.size, 0);
 });
 
 test('new group rounds reset stale runtime state before clearing persisted counters', () => {

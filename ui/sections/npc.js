@@ -160,10 +160,17 @@ registerSection('npc', function (ctx) {
         $list.find('.gd-npc-delete').on('click', async function () {
             const idx = parseInt($(this).data('idx'));
             const npcName = esc(npcs[idx]?.name);
-            if (await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) {
-                npcSystem.deleteNpc(idx);
+            if (!await callGenericPopup(L(`确定删除 NPC「${npcName}」？`, `Delete NPC "${npcName}"?`), POPUP_TYPE.CONFIRM)) return;
+            const btn = $(this);
+            btn.prop('disabled', true);
+            try {
+                await npcSystem.deleteNpc(idx);
                 renderNpcList();
                 window.__gdRefreshDashboard?.();
+            } catch (e) {
+                toastr.error(L('NPC 删除失败: ' + e.message, 'NPC delete failed: ' + e.message));
+            } finally {
+                btn.prop('disabled', false);
             }
         });
 
@@ -215,7 +222,7 @@ registerSection('npc', function (ctx) {
         });
 
         // Save edit
-        $list.find('.gd-npc-save').on('click', function () {
+        $list.find('.gd-npc-save').on('click', async function () {
             const idx = parseInt($(this).data('idx'));
             const nameEl = $list.find(`.gd-npc-edit-name[data-idx="${idx}"]`);
             const descEl = $list.find(`.gd-npc-edit-desc[data-idx="${idx}"]`);
@@ -246,10 +253,18 @@ registerSection('npc', function (ctx) {
                 updates.first_mes = (fmEl.val() || '').trim();
             }
 
-            npcSystem.updateNpc(idx, updates);
-            toastr.success(L('已保存', 'Saved'));
-            renderNpcList();
-            window.__gdRefreshDashboard?.();
+            const btn = $(this);
+            btn.prop('disabled', true);
+            try {
+                await npcSystem.updateNpc(idx, updates);
+                toastr.success(L('已保存', 'Saved'));
+                renderNpcList();
+                window.__gdRefreshDashboard?.();
+            } catch (e) {
+                toastr.error(L('NPC 保存失败: ' + e.message, 'NPC save failed: ' + e.message));
+            } finally {
+                btn.prop('disabled', false);
+            }
         });
     }
 

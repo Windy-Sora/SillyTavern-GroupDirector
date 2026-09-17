@@ -5,18 +5,18 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Current verified baseline (2026-09-17):
+Current verified baseline (2026-09-18):
 
-- 299 JavaScript source files and 10 JSON files pass static validation;
-- 496 behavior tests are discovered, with 495 passing and one optional real-host
+- 301 JavaScript source files and 10 JSON files pass static validation;
+- 523 behavior tests are discovered, with 522 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 147/155 production modules, while tests directly or
   transitively reach 77/155 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 93.57% lines, 78.41% branches, and
-  90.78% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 93.66% lines, 78.44% branches, and
+  90.72% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
@@ -24,8 +24,10 @@ Current verified baseline (2026-09-17):
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
   reaches 96.26% lines, 80.63% branches, and 84.00% functions; Script Executor
   System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
-  History, World Info, Asset Loader, NPC Export, and Summary Export reach 100% lines;
+  History, World Info, Asset Loader, and Summary Export reach 100% lines;
+  NPC Export reaches 96.59% lines with its new transaction branches;
   NPC Library reaches 98.15% lines;
+  NPC System reaches 95.70% lines, 71.17% branches, and 70.00% functions;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
 
@@ -200,6 +202,30 @@ with UI feedback and malformed legacy rendering in `tests/unit/npc-library-ui.te
 Deferred-save cases must cover save, delete, and file import rejection while a
 different library entry changes; failed downloads must release both temporary DOM
 and Blob URL resources. Application through NPC Export is tested separately.
+The production adapter calls the host's direct settings save and requires its
+`SETTINGS_UPDATED` success event; a swallowed save failure without that event
+must reject and remove the temporary listener. The dashboard delete handler
+must await rejection, show an error, and refresh after rollback. The host event
+has no request ID, so concurrent host saves are not strictly attributable.
+
+NPC Export import application coverage belongs in `tests/unit/npc-export-system.test.mjs`.
+Both direct import and NPC Library application share this boundary. Tests must cover
+synchronous/asynchronous chat-save rejection, operation-local rollback after
+unrelated and same-NPC edits, prompt-only import, observable settings-save failure
+and failed compensation, and a chat switch after successful persistence. Newly
+imported NPCs edited concurrently are preserved with an explicit incomplete
+rollback error. NPC Library UI must report application rejection without success
+feedback; the production debounced settings callback cannot prove later disk writes.
+
+NPC System mutation coverage belongs in `tests/unit/npc-system.test.mjs`, with
+generation staleness and irreversible character-card import in
+`tests/unit/similar-agent-concurrency.test.mjs`, and edit/delete feedback in
+`tests/unit/npc-ui.test.mjs`. Deferred-save tests must cover synchronous and
+asynchronous rejection, unrelated and same-NPC concurrent edits (including a
+later same-value write), delete ordering after list replacement, generated
+additions edited while saving, and chat switches after successful persistence.
+Generation reports only NPCs actually added; UI feedback must wait for save.
+Remote character-card creation remains a separate follow-up boundary.
 
 User Provider/Capability lifecycle coverage belongs in
 `tests/unit/user-provider-loader.test.mjs`. Modules must be exercised through real

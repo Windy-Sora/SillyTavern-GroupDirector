@@ -593,11 +593,17 @@ registerSection('dashboard', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
-            npcLibrarySystem.deleteLibrary(id);
-            $('#gd-npc-library-select').val('');
-            toastr?.success?.(lang === 'zh' ? 'NPC 包已删除' : 'NPC library deleted');
-            window.__gdRefreshNpcLibrary?.();
-            refreshDashboardAndOpenPanel('npcs');
+            try {
+                await npcLibrarySystem.deleteLibrary(id);
+                $('#gd-npc-library-select').val('');
+                toastr?.success?.(lang === 'zh' ? 'NPC 包已删除' : 'NPC library deleted');
+                window.__gdRefreshNpcLibrary?.();
+                refreshDashboardAndOpenPanel('npcs');
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '删除失败: ' : 'Delete failed: ') + e.message);
+                window.__gdRefreshNpcLibrary?.();
+                refreshDashboardAndOpenPanel('npcs');
+            }
         });
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('npc'));
         $list.append($bar);

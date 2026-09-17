@@ -1,6 +1,6 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, getContext } from '../../../extensions.js';
-import { saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
+import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
@@ -239,6 +239,20 @@ function saveSettings() {
     // Keep the renderer's provider timeout default in sync with GUI changes.
     setProviderTimeoutDefault(settings.providerTimeoutMs);
     saveSettingsDebounced();
+}
+
+async function saveSettingsConfirmed() {
+    extension_settings[EXT_KEY] = settings;
+    setProviderTimeoutDefault(settings.providerTimeoutMs);
+    let confirmed = false;
+    const onSaved = () => { confirmed = true; };
+    eventSource.on(event_types.SETTINGS_UPDATED, onSaved);
+    try {
+        await saveSettingsHost();
+        if (!confirmed) throw new Error('Settings persistence was not confirmed');
+    } finally {
+        eventSource.removeListener(event_types.SETTINGS_UPDATED, onSaved);
+    }
 }
 
 // ─── Systems ──────────────────────────────────────────────────────────
@@ -591,7 +605,7 @@ const npcLibrarySystem = createNpcLibrarySystem({
     settings,
     extension_settings,
     EXT_KEY,
-    saveSettings,
+    saveSettings: saveSettingsConfirmed,
     getCurrentGroup,
     npcSystem,
     parseNpcImportFile,
