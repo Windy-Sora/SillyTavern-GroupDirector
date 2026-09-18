@@ -156,6 +156,7 @@ test('message rollback invalidates execution state before pruning dependent stor
 test('chat changes reset transient PostSpeech work and automatic counters without deleting decisions', () => {
     const block = listenerBlock('CHAT_CHANGED');
     assertOrdered(block, [
+        'invalidatePostSpeechRoundQueue()',
         'postSpeechSystem.resetPending()',
         'customAgentSystem.invalidateExecutions()',
         'profileLibrarySystem.resetAutoLoadDedup?.()',

@@ -176,6 +176,24 @@ test('a queued record cannot start after its chat is no longer selected', async 
     assert.equal(f.system.count(), 0);
 });
 
+test('a queued record cannot recreate a deleted message decision after prune', async () => {
+    const save = deferred();
+    let saves = 0;
+    const { system } = fixture(() => ++saves === 1 ? save.promise : Promise.resolve());
+    const result = { blocking: true, results: [{ intentIndex: 0, success: true }] };
+    const context = messageIndex => ({
+        messageIndex, messageName: 'A', intent: { type: 'image', params: {} },
+    });
+    const first = system.trackExecution(result, [context(0)]);
+    const queued = system.trackExecution(result, [context(5)]);
+    await system.pruneAfter(0);
+    save.resolve();
+    await Promise.all([first, queued]);
+    assert.equal(system.wasExecuted(0, 'image'), true);
+    assert.equal(system.wasExecuted(5, 'image'), false);
+    assert.equal(saves, 1);
+});
+
 test('concurrent completion trackers retain pending until both have settled', async () => {
     const first = deferred();
     const second = deferred();

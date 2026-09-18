@@ -142,6 +142,7 @@ const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let postSpeechRoundQueue = [];                  // caller-owned jobs deferred to group wrapper finished
+let postSpeechRoundQueueEpoch = 0;
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
@@ -171,7 +172,13 @@ function countQueuedPostSpeechIntents() {
     return postSpeechRoundQueue.reduce((total, job) => total + job.contexts.length, 0);
 }
 
+function invalidatePostSpeechRoundQueue() {
+    postSpeechRoundQueueEpoch++;
+    postSpeechRoundQueue = [];
+}
+
 async function drainPostSpeechRoundQueue() {
+    const queueEpoch = postSpeechRoundQueueEpoch;
     const pendingJobs = postSpeechRoundQueue.splice(0);
     const pendingCount = pendingJobs.reduce(
         (total, job) => total + job.contexts.length,
@@ -180,6 +187,7 @@ async function drainPostSpeechRoundQueue() {
     log(`PostSpeech: executing ${pendingCount} deferred per-message intents`);
 
     for (const job of pendingJobs) {
+        if (queueEpoch !== postSpeechRoundQueueEpoch) break;
         const reservation = postSpeechSystem.reserveExecution(job.contexts, { allowPending: job.allowPending });
         if (!reservation.contexts.length) continue;
         let trackingStarted = false;
@@ -1948,6 +1956,7 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    invalidatePostSpeechRoundQueue();
     postSpeechSystem.resetPending();
     customAgentSystem.invalidateExecutions();
     profileLibrarySystem.resetAutoLoadDedup?.();
@@ -1955,7 +1964,6 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
     await critiqueSystem.pruneCritiques();
-    postSpeechRoundQueue = [];
     // Reset auto-check counter on chat change
     if (chat_metadata[EXT_KEY]) {
         delete chat_metadata[EXT_KEY]._autoCheckLength;

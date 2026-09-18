@@ -108,9 +108,11 @@ export function createPostSpeechSystem({
     /** Record a decision after execution. */
     async function record(messageIndex, messageName, capabilityId, params, policy) {
         const cm = getChatMetadata();
+        const epoch = pendingEpoch;
         const previous = recordTail.get(cm);
         const operation = previous ? previous.catch(() => {}).then(async () => {
             if (getChatMetadata() !== cm) throw new Error('PostSpeech chat changed before recording');
+            if (epoch !== pendingEpoch) return;
             await recordForChat(cm, messageIndex, messageName, capabilityId, params, policy);
         }) : recordForChat(cm, messageIndex, messageName, capabilityId, params, policy);
         recordTail.set(cm, operation);
