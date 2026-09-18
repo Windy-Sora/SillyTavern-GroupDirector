@@ -84,6 +84,11 @@ test('NPC mutations and imports use the confirmed chat persistence adapter', () 
     assert.match(source, /createNpcSystem\(\{[\s\S]*?saveChatConditional: saveNpcChatConfirmed/);
 });
 
+test('PostSpeech decisions use confirmed chat persistence', () => {
+    assert.match(source, /const savePostSpeechChatConfirmed = createConfirmedPostSpeechChatSave\(/);
+    assert.match(source, /createPostSpeechSystem\(\{[\s\S]*?saveChatConditional: savePostSpeechChatConfirmed/);
+});
+
 test('new group rounds reset stale runtime state before clearing persisted counters', () => {
     const block = listenerBlock('GROUP_WRAPPER_STARTED');
     assertOrdered(block, [
@@ -124,19 +129,20 @@ test('message rollback invalidates execution state before pruning dependent stor
     ]);
 });
 
-test('chat changes reset library dedup and all chat-bound automatic counters', () => {
+test('chat changes reset transient PostSpeech work and automatic counters without deleting decisions', () => {
     const block = listenerBlock('CHAT_CHANGED');
     assertOrdered(block, [
+        'postSpeechSystem.resetPending()',
         'customAgentSystem.invalidateExecutions()',
         'profileLibrarySystem.resetAutoLoadDedup?.()',
         'await pruneDirectorHistory()',
         'await chatSummarySystem.pruneSummaries()',
         'await critiqueSystem.pruneCritiques()',
-        'await postSpeechSystem.clearAll()',
         "delete chat_metadata[EXT_KEY]._autoCheckLength",
         "key.startsWith('_autoCAG_')",
         "profileLibrarySystem.autoLoadForCurrentGroup('chat-changed')",
     ]);
+    assert.equal(block.includes('postSpeechSystem.clearAll()'), false);
 });
 
 test('APP_READY builds UI before restoring user modules and capability persistence hooks', () => {

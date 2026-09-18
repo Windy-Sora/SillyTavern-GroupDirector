@@ -94,6 +94,7 @@ import { createExecutor } from './systems/executor.js';
 import { CapabilityRegistry, registerCapabilityProviders } from './systems/capability-registry.js';
 import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
+import { createConfirmedPostSpeechChatSave } from './systems/post-speech-save-confirmation.js';
 import { runAutoMemoryTargets } from './systems/auto-memory-coordinator.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
@@ -628,8 +629,12 @@ const memorySystem = createMemorySystem({
 });
 
 // ─── PostSpeech System ───────────────────────────────────────────────
+const savePostSpeechChatConfirmed = createConfirmedPostSpeechChatSave({
+    saveChatConditional, getCurrentChatId, getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
+    getContext, getChatMetadata, getRequestHeaders, EXT_KEY,
+});
 const postSpeechSystem = createPostSpeechSystem({
-    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional, log,
+    settings, EXT_KEY, getChatMetadata, getChat, saveChatConditional: savePostSpeechChatConfirmed, log,
 });
 
 // ─── PostSpeech Executor ─────────────────────────────────────────────
@@ -1904,13 +1909,13 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    postSpeechSystem.resetPending();
     customAgentSystem.invalidateExecutions();
     profileLibrarySystem.resetAutoLoadDedup?.();
     log('CHAT_CHANGED — pruning ledger and summaries for branch/fork');
     await pruneDirectorHistory();
     await chatSummarySystem.pruneSummaries();
     await critiqueSystem.pruneCritiques();
-    await postSpeechSystem.clearAll();
     postSpeechRoundQueue = [];
     // Reset auto-check counter on chat change
     if (chat_metadata[EXT_KEY]) {

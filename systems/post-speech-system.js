@@ -21,19 +21,38 @@ export function createPostSpeechSystem({
 }) {
     const DEDUP_PREFIX = 'ps:';
     const pending = new Set();
+    const recordTail = new WeakMap();
     let pendingEpoch = 0;
 
     // ─── Helpers ───────────────────────────────────────────────────────
 
-    function getStore() {
-        const cm = getChatMetadata();
+    function getStoreFor(cm) {
         if (!cm[EXT_KEY]) cm[EXT_KEY] = {};
         if (!cm[EXT_KEY].postSpeechDecisions) cm[EXT_KEY].postSpeechDecisions = [];
         return cm[EXT_KEY].postSpeechDecisions;
     }
 
-    async function saveStore() {
-        await saveChatConditional();
+    function getStore() {
+        return getStoreFor(getChatMetadata());
+    }
+
+    function resetPending() {
+        pendingEpoch++;
+        pending.clear();
+    }
+
+    // Restore only entries removed by this operation, leaving later additions intact.
+    function restoreRemoved(cm, before, removed) {
+        const current = getStoreFor(cm);
+        const removedSet = new Set(removed);
+        const currentSet = new Set(current);
+        const oldEntries = before.filter(entry => currentSet.has(entry) || removedSet.has(entry));
+        const additions = current.filter(entry => !before.includes(entry));
+        cm[EXT_KEY].postSpeechDecisions = [...oldEntries, ...additions].slice(-500);
+    }
+
+    async function saveStore(metadata) {
+        await saveChatConditional(metadata);
     }
 
     function makeKey(messageIndex, capabilityId) {
@@ -56,18 +75,49 @@ export function createPostSpeechSystem({
 
     /** Record a decision after execution. */
     async function record(messageIndex, messageName, capabilityId, params, policy) {
-        const store = getStore();
-        store.push({
+        const cm = getChatMetadata();
+        const previous = recordTail.get(cm);
+        const operation = previous ? previous.catch(() => {}).then(async () => {
+            if (getChatMetadata() !== cm) throw new Error('PostSpeech chat changed before recording');
+            await recordForChat(cm, messageIndex, messageName, capabilityId, params, policy);
+        }) : recordForChat(cm, messageIndex, messageName, capabilityId, params, policy);
+        recordTail.set(cm, operation);
+        try {
+            await operation;
+        } finally {
+            if (recordTail.get(cm) === operation) recordTail.delete(cm);
+        }
+    }
+
+    async function recordForChat(cm, messageIndex, messageName, capabilityId, params, policy) {
+        const store = getStoreFor(cm);
+        const entry = {
             messageIndex,
             messageName,
             capabilityId,
             params,
             policySummary: policy ? { intents: policy.intents?.length ?? 0, timing: policy.timing?.mode ?? 'immediate' } : null,
             timestamp: Date.now(),
-        });
+        };
+        store.push(entry);
         // Keep storage bounded — max 500 records
-        while (store.length > 500) store.shift();
-        await saveStore();
+        const evicted = [];
+        while (store.length > 500) evicted.push(store.shift());
+        try {
+            await saveStore(cm);
+        } catch (error) {
+            if (error.persistenceUnknown) throw error;
+            const current = getStoreFor(cm);
+            const index = current.indexOf(entry);
+            if (index !== -1) {
+                current.splice(index, 1);
+                if (current === store) {
+                    current.unshift(...evicted.filter(item => !current.includes(item)));
+                    while (current.length > 500) current.shift();
+                }
+            }
+            throw error;
+        }
     }
 
     /**
@@ -90,6 +140,7 @@ export function createPostSpeechSystem({
                 if (epoch !== pendingEpoch) return;
 
                 for (const context of tracked) {
+                    if (epoch !== pendingEpoch) return;
                     const intentResults = results.filter(
                         result => result.intentIndex === context.intentIndex
                     );
@@ -156,26 +207,39 @@ export function createPostSpeechSystem({
 
     /** Prune decisions after a given message index (on MESSAGE_DELETED). */
     async function pruneAfter(messageIndex) {
-        pendingEpoch++;
-        pending.clear();
-        const store = getStore();
+        resetPending();
+        const cm = getChatMetadata();
+        const store = getStoreFor(cm);
         const before = store.length;
         const filtered = store.filter(r => r.messageIndex <= messageIndex);
         if (filtered.length < before) {
-            getChatMetadata()[EXT_KEY].postSpeechDecisions = filtered;
-            await saveStore();
+            const removed = store.filter(r => r.messageIndex > messageIndex);
+            cm[EXT_KEY].postSpeechDecisions = filtered;
+            try {
+                await saveStore(cm);
+            } catch (error) {
+                if (error.persistenceUnknown) throw error;
+                restoreRemoved(cm, store, removed);
+                throw error;
+            }
             log(`PostSpeech: pruned ${before - filtered.length} decisions after message ${messageIndex}`);
         }
     }
 
-    /** Clear all decisions (on CHAT_CHANGED). */
+    /** Explicitly clear this chat's decisions. Chat changes only reset pending work. */
     async function clearAll() {
-        pendingEpoch++;
-        pending.clear();
+        resetPending();
         const cm = getChatMetadata();
         if (cm[EXT_KEY]) {
+            const before = getStoreFor(cm).slice();
             cm[EXT_KEY].postSpeechDecisions = [];
-            await saveStore();
+            try {
+                await saveStore(cm);
+            } catch (error) {
+                if (error.persistenceUnknown) throw error;
+                restoreRemoved(cm, before, before);
+                throw error;
+            }
         }
     }
 
@@ -184,5 +248,5 @@ export function createPostSpeechSystem({
         return getStore().length;
     }
 
-    return { wasExecuted, isPending, record, trackExecution, list, pruneAfter, clearAll, count };
+    return { wasExecuted, isPending, record, trackExecution, list, pruneAfter, clearAll, resetPending, count };
 }
