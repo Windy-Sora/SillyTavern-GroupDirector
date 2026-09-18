@@ -346,7 +346,15 @@ Three library systems (`profile-library-system` / `npc-library-system` / `story-
 
 **Profile management UI safety boundary**: every asynchronous load, generation, save, and delete handler catches rejection, displays failure feedback, and restores disabled controls in `finally`. Imported avatar values enter markup only through HTML attribute encoding; edit panels are located through card DOM ancestry rather than avatar-derived HTML IDs or CSS selectors.
 
-### 3.7 Coding Rules
+### 3.7 Group ZIP Import and Export
+
+`export-import-system.js` exports PNG cards for enabled group members, activated world books, and `group.json`. It snapshots group and world-book selection before the first asynchronous request. Failed card requests are excluded from the manifest; if all cards fail, no unusable ZIP is downloaded. Partial exports show a warning, and temporary download nodes and Blob URLs are released even when clicking fails.
+
+Import validates the full archive before any host POST: manifest member and option types, safe single-level paths, no duplicate files, exactly one PNG for every member, and readable world-book JSON with an `entries` field. Character uploads omit `preserved_name` so SillyTavern assigns a non-conflicting filename; world-book names avoid currently known collisions. The host character endpoint can return `{ error: true }` with HTTP 200, so only a valid `file_name` counts as success. A group is created only when every required character was imported, with members remapped to the returned filenames.
+
+Remote character and world-book uploads are independent irreversible effects, not an atomic transaction. Results distinguish complete success, incomplete work after a write request, and definite zero-write preflight failure. Once a write request has been sent, even a failed response must prompt users to inspect host resources rather than claiming nothing was created or announcing success. UI handlers catch unexpected rejections and restore controls. World-book collision avoidance depends on the names currently supplied by the host; eliminating races between clients requires an atomic no-overwrite host contract.
+
+### 3.8 Coding Rules
 
 - Providers with switches return empty string inside `render()`, don't use `enabled` to skip
 - Mutable values passed via getters

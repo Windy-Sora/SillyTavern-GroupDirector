@@ -439,7 +439,9 @@ Save, export, and import the entire plugin configuration as `.zip`. Create multi
 
 #### Export / Import (Card)
 
-Export/import for four data types: Group Chat (character cards + world books `.zip`), Profiles (`.json`), Memories (`.json`), NPCs (`.json`), Summaries (`.json`). Auto-match characters on import (avatar exact → name exact → fuzzy match), confirmation popup for same-name conflicts.
+Export/import covers Group Chat (character cards + world books `.zip`), Profiles (`.json`), Memories (`.json`), NPCs (`.json`), and Summaries (`.json`). Each JSON module applies its own character-matching rules; Group ZIP uses the manifest and card filenames to map members.
+
+Group ZIP exports contain only enabled character cards that were retrieved successfully. Missing cards or world books produce a partial-export warning; if every card fails, no unusable archive is downloaded. Import checks the manifest, cards, and world books before uploading. It does not force existing character-card filenames to be overwritten, and it chooses a different name for known world-book collisions. If an upload fails partway through, resources already imported are not automatically deleted. The group is created only after all required characters import successfully, and a partial-success warning identifies the need to review created resources.
 
 #### Agent Configuration (Card)
 

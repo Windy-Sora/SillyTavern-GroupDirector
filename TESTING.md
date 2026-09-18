@@ -7,16 +7,16 @@ readable reports.
 
 Current verified baseline (2026-09-18):
 
-- 301 JavaScript source files and 10 JSON files pass static validation;
-- 523 behavior tests are discovered, with 522 passing and one optional real-host
+- 309 JavaScript source files and 10 JSON files pass static validation;
+- 583 behavior tests are discovered, with 582 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
-- entry-point reachability is 147/155 production modules, while tests directly or
-  transitively reach 77/155 production modules;
+- entry-point reachability is 149/157 production modules, while tests directly or
+  transitively reach 79/157 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 93.66% lines, 78.44% branches, and
-  90.72% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 94.10% lines, 79.32% branches, and
+  91.15% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
@@ -28,6 +28,8 @@ Current verified baseline (2026-09-18):
   NPC Export reaches 96.59% lines with its new transaction branches;
   NPC Library reaches 98.15% lines;
   NPC System reaches 95.70% lines, 71.17% branches, and 70.00% functions;
+  Group ZIP Import/Export reaches 89.80% lines, 80.81% branches, and 85.00%
+  functions; PostSpeech Decision Store reaches 98.33% lines and 92.37% branches;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
 
@@ -226,6 +228,20 @@ later same-value write), delete ordering after list replacement, generated
 additions edited while saving, and chat switches after successful persistence.
 Generation reports only NPCs actually added; UI feedback must wait for save.
 Remote character-card creation remains a separate follow-up boundary.
+
+Group ZIP import/export coverage belongs in `tests/unit/export-import-system.test.mjs`,
+with rejected UI actions in `tests/contract/export-import-ui.test.mjs`. Import tests
+must prove malformed manifests, unsafe or duplicate paths, missing member cards,
+and corrupt world books make no remote requests. Host responses with HTTP 200 but
+no character filename count as failures. A failed required card must not create a
+group, while any attempted remote write must yield an incomplete/inspection
+warning rather than a definite no-resource claim. Tests
+also verify avatar remapping, avoidance of known world-book name collisions,
+partial export manifest membership, original-chat export snapshots, and cleanup
+of temporary download nodes and Blob URLs on failure. HTTP-success responses
+with empty card bodies or invalid world-book payloads must not enter an export
+archive that the importer would reject. Remote uploads are not a
+rollback transaction; tests must not pretend partial success is atomic.
 
 User Provider/Capability lifecycle coverage belongs in
 `tests/unit/user-provider-loader.test.mjs`. Modules must be exercised through real
