@@ -89,6 +89,30 @@ test('PostSpeech decisions use confirmed chat persistence', () => {
     assert.match(source, /createPostSpeechSystem\(\{[\s\S]*?saveChatConditional: savePostSpeechChatConfirmed/);
 });
 
+test('PostSpeech claims intents before message, round, and queued capability execution', () => {
+    const message = listenerBlock('CHARACTER_MESSAGE_RENDERED', 1);
+    assertOrdered(message, [
+        'postSpeechSystem.reserveExecution(intentContexts)',
+        'postSpeechExecutor.run(',
+        'postSpeechSystem.trackExecution(execResult, activeContexts, reservation)',
+    ]);
+    assert.match(message, /if \(execResult\.deferred\.length\) \{[\s\S]*?reservation\.release\(\)/);
+
+    const round = listenerBlock('GROUP_WRAPPER_FINISHED');
+    assertOrdered(round, [
+        'postSpeechSystem.reserveExecution(contexts, { allowPending: true })',
+        'postSpeechExecutor.run(',
+        'postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation)',
+    ]);
+
+    const drain = source.slice(source.indexOf('async function drainPostSpeechRoundQueue()'), source.indexOf('// Custom extension prompt key'));
+    assertOrdered(drain, [
+        'postSpeechSystem.reserveExecution(job.contexts',
+        'postSpeechExecutor.executeDeferred(plans)',
+        'postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation)',
+    ]);
+});
+
 test('new group rounds reset stale runtime state before clearing persisted counters', () => {
     const block = listenerBlock('GROUP_WRAPPER_STARTED');
     assertOrdered(block, [

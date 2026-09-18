@@ -175,3 +175,144 @@ test('a queued record cannot start after its chat is no longer selected', async 
     assert.deepEqual(oldMetadata.test.postSpeechDecisions.map(r => r.capabilityId), ['image']);
     assert.equal(f.system.count(), 0);
 });
+
+test('concurrent completion trackers retain pending until both have settled', async () => {
+    const first = deferred();
+    const second = deferred();
+    const firstLogged = deferred();
+    const secondLogged = deferred();
+    let unresolved = 0;
+    const { system } = fixture(async () => {}, () => {
+        (++unresolved === 1 ? firstLogged : secondLogged).resolve();
+    });
+    const context = { messageIndex: 7, messageName: 'A', intent: { type: 'image', params: {} } };
+    await system.trackExecution({ blocking: false, completion: first.promise }, [context]);
+    await system.trackExecution({ blocking: false, completion: second.promise }, [context]);
+    assert.equal(system.isPending(7, 'image'), true);
+
+    first.resolve([]);
+    await firstLogged.promise;
+    assert.equal(system.isPending(7, 'image'), true);
+
+    second.resolve([]);
+    await secondLogged.promise;
+    assert.equal(system.isPending(7, 'image'), false);
+    assert.equal(system.wasExecuted(7, 'image'), false);
+});
+
+test('queued concurrent successes persist one decision for the same intent', async () => {
+    const heldSave = deferred();
+    let saves = 0;
+    const { system } = fixture(() => ++saves === 1 ? heldSave.promise : Promise.resolve());
+    const unrelated = system.record(1, 'A', 'audio', {}, null);
+    const context = { messageIndex: 8, messageName: 'B', intent: { type: 'image', params: {} } };
+    const execution = { blocking: true, results: [{ intentIndex: 0, success: true }] };
+    const first = system.trackExecution(execution, [context]);
+    const second = system.trackExecution(execution, [context]);
+    assert.equal(system.isPending(8, 'image'), true);
+    heldSave.resolve();
+    await Promise.all([unrelated, first, second]);
+    assert.equal(system.list().filter(r => r.messageIndex === 8 && r.capabilityId === 'image').length, 1);
+    assert.equal(system.isPending(8, 'image'), false);
+    assert.equal(saves, 2);
+});
+
+test('one rejected completion does not release another tracker for the same intent', async () => {
+    const first = deferred();
+    const second = deferred();
+    const firstLogged = deferred();
+    const secondLogged = deferred();
+    let logs = 0;
+    const { system } = fixture(async () => {}, () => {
+        (++logs === 1 ? firstLogged : secondLogged).resolve();
+    });
+    const context = { messageIndex: 9, messageName: 'A', intent: { type: 'image', params: {} } };
+    await system.trackExecution({ blocking: false, completion: first.promise }, [context]);
+    await system.trackExecution({ blocking: false, completion: second.promise }, [context]);
+    first.reject(new Error('completion failed'));
+    await firstLogged.promise;
+    assert.equal(system.isPending(9, 'image'), true);
+    second.resolve([]);
+    await secondLogged.promise;
+    assert.equal(system.isPending(9, 'image'), false);
+});
+
+test('late old-chat completion cannot decrement a new tracker with the same key', async () => {
+    const oldCompletion = deferred();
+    const newCompletion = deferred();
+    const newLogged = deferred();
+    const f = fixture(async () => {}, () => newLogged.resolve());
+    const context = { messageIndex: 2, messageName: 'A', intent: { type: 'image', params: {} } };
+    await f.system.trackExecution({ blocking: false, completion: oldCompletion.promise }, [context]);
+    f.switchTo({});
+    f.system.resetPending();
+    await f.system.trackExecution({ blocking: false, completion: newCompletion.promise }, [context]);
+    oldCompletion.resolve([{ intentIndex: 0, success: true }]);
+    await oldCompletion.promise;
+    await Promise.resolve();
+    assert.equal(f.system.isPending(2, 'image'), true);
+    assert.equal(f.system.wasExecuted(2, 'image'), false);
+    newCompletion.resolve([]);
+    await newLogged.promise;
+    assert.equal(f.system.isPending(2, 'image'), false);
+});
+
+test('reservation claims one intent before execution and releases after tracked completion', async () => {
+    const f = fixture();
+    const context = { messageIndex: 10, messageName: 'A', intent: { type: 'image', params: {} } };
+    const first = f.system.reserveExecution([context, context]);
+    assert.deepEqual(first.indexes, [0]);
+    assert.equal(first.contexts.length, 1);
+    assert.equal(f.system.isPending(10, 'image'), true);
+    const duplicate = f.system.reserveExecution([context]);
+    assert.equal(duplicate.contexts.length, 0);
+    duplicate.release();
+
+    await f.system.trackExecution({
+        blocking: true,
+        results: [{ intentIndex: 0, success: true }],
+    }, first.contexts, first);
+    assert.equal(f.system.isPending(10, 'image'), false);
+    assert.equal(f.system.wasExecuted(10, 'image'), true);
+    assert.equal(f.system.count(), 1);
+});
+
+test('reservation stays pending through non-blocking completion and releases on error', async () => {
+    const f = fixture();
+    const context = { messageIndex: 11, messageName: 'A', intent: { type: 'image', params: {} } };
+    const reservation = f.system.reserveExecution([context]);
+    let settle;
+    const completion = { then(onFulfilled) { settle = onFulfilled; return Promise.resolve(); } };
+    await f.system.trackExecution({ blocking: false, completion }, reservation.contexts, reservation);
+    assert.equal(f.system.isPending(11, 'image'), true);
+    await settle([]);
+    assert.equal(f.system.isPending(11, 'image'), false);
+    assert.equal(f.system.wasExecuted(11, 'image'), false);
+    reservation.release();
+    assert.equal(f.system.isPending(11, 'image'), false);
+});
+
+test('round reservation can intentionally overlap a message reservation', () => {
+    const f = fixture();
+    const context = { messageIndex: 12, messageName: 'A', intent: { type: 'image', params: {} } };
+    const message = f.system.reserveExecution([context]);
+    const round = f.system.reserveExecution([context], { allowPending: true });
+    assert.equal(round.contexts.length, 1);
+    message.release();
+    assert.equal(f.system.isPending(12, 'image'), true);
+    round.release();
+    assert.equal(f.system.isPending(12, 'image'), false);
+});
+
+test('old reservation release cannot clear a new chat reservation', () => {
+    const f = fixture();
+    const context = { messageIndex: 13, messageName: 'A', intent: { type: 'image', params: {} } };
+    const old = f.system.reserveExecution([context]);
+    f.switchTo({});
+    f.system.resetPending();
+    const current = f.system.reserveExecution([context]);
+    old.release();
+    assert.equal(f.system.isPending(13, 'image'), true);
+    current.release();
+    assert.equal(f.system.isPending(13, 'image'), false);
+});

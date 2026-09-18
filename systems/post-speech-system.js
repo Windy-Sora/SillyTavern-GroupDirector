@@ -20,7 +20,7 @@ export function createPostSpeechSystem({
     log,
 }) {
     const DEDUP_PREFIX = 'ps:';
-    const pending = new Set();
+    const pending = new Map();
     const recordTail = new WeakMap();
     let pendingEpoch = 0;
 
@@ -70,7 +70,39 @@ export function createPostSpeechSystem({
 
     /** Check whether this decision is currently executing but not yet settled. */
     function isPending(messageIndex, capabilityId) {
-        return pending.has(makeKey(messageIndex, capabilityId));
+        return (pending.get(makeKey(messageIndex, capabilityId)) ?? 0) > 0;
+    }
+
+    /** Claim intent keys synchronously before their capabilities start executing. */
+    function reserveExecution(contexts = [], { allowPending = false } = {}) {
+        const epoch = pendingEpoch;
+        const claimed = [];
+        const indexes = [];
+        const seen = new Set();
+        for (const [index, context] of contexts.entries()) {
+            const key = makeKey(context.messageIndex, context.intent?.type);
+            if (seen.has(key) || (!allowPending && pending.has(key))) continue;
+            seen.add(key);
+            pending.set(key, (pending.get(key) ?? 0) + 1);
+            claimed.push(context);
+            indexes.push(index);
+        }
+        let released = false;
+        return {
+            contexts: claimed,
+            indexes,
+            epoch,
+            release() {
+                if (released || epoch !== pendingEpoch) return;
+                released = true;
+                for (const context of claimed) {
+                    const key = makeKey(context.messageIndex, context.intent?.type);
+                    const remaining = (pending.get(key) ?? 0) - 1;
+                    if (remaining > 0) pending.set(key, remaining);
+                    else pending.delete(key);
+                }
+            },
+        };
     }
 
     /** Record a decision after execution. */
@@ -91,6 +123,7 @@ export function createPostSpeechSystem({
 
     async function recordForChat(cm, messageIndex, messageName, capabilityId, params, policy) {
         const store = getStoreFor(cm);
+        if (store.some(r => r.messageIndex === messageIndex && r.capabilityId === capabilityId)) return;
         const entry = {
             messageIndex,
             messageName,
@@ -125,15 +158,32 @@ export function createPostSpeechSystem({
      * Non-blocking executions remain transiently pending until their completion
      * receipt settles; unresolved or failed intents stay retryable.
      */
-    async function trackExecution(execution, contexts = []) {
+    async function trackExecution(execution, contexts = [], reservation = null) {
         const tracked = contexts.map((context, intentIndex) => ({
             ...context,
             intentIndex,
             key: makeKey(context.messageIndex, context.intent?.type),
         }));
-        const epoch = pendingEpoch;
+        const epoch = reservation?.epoch ?? pendingEpoch;
 
-        for (const context of tracked) pending.add(context.key);
+        if (!reservation) {
+            for (const context of tracked) pending.set(context.key, (pending.get(context.key) ?? 0) + 1);
+        }
+
+        let released = false;
+        const releasePending = () => {
+            if (released || epoch !== pendingEpoch) return;
+            released = true;
+            if (reservation) {
+                reservation.release();
+                return;
+            }
+            for (const context of tracked) {
+                const remaining = (pending.get(context.key) ?? 0) - 1;
+                if (remaining > 0) pending.set(context.key, remaining);
+                else pending.delete(context.key);
+            }
+        };
 
         const settle = async (results = []) => {
             try {
@@ -171,9 +221,7 @@ export function createPostSpeechSystem({
                     }
                 }
             } finally {
-                if (epoch === pendingEpoch) {
-                    for (const context of tracked) pending.delete(context.key);
-                }
+                releasePending();
             }
         };
 
@@ -191,9 +239,7 @@ export function createPostSpeechSystem({
         completion
             .then(settle)
             .catch(error => {
-                if (epoch === pendingEpoch) {
-                    for (const context of tracked) pending.delete(context.key);
-                }
+                releasePending();
                 log(`PostSpeech: completion tracking failed (${error.message})`);
             });
         return { pending: true };
@@ -248,5 +294,5 @@ export function createPostSpeechSystem({
         return getStore().length;
     }
 
-    return { wasExecuted, isPending, record, trackExecution, list, pruneAfter, clearAll, resetPending, count };
+    return { wasExecuted, isPending, reserveExecution, record, trackExecution, list, pruneAfter, clearAll, resetPending, count };
 }

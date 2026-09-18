@@ -158,11 +158,12 @@ function isPostSpeechIntentQueued(messageIndex, capabilityId) {
     );
 }
 
-function enqueuePostSpeechRoundJob(contexts, deferred = []) {
+function enqueuePostSpeechRoundJob(contexts, deferred = [], allowPending = false) {
     if (!contexts.length) return;
     postSpeechRoundQueue.push({
         contexts: [...contexts],
         deferred: [...deferred],
+        allowPending,
     });
 }
 
@@ -179,19 +180,35 @@ async function drainPostSpeechRoundQueue() {
     log(`PostSpeech: executing ${pendingCount} deferred per-message intents`);
 
     for (const job of pendingJobs) {
-        let execResult;
-        if (job.deferred.length) {
-            execResult = await postSpeechExecutor.executeDeferred(job.deferred);
-        } else {
-            execResult = await postSpeechExecutor.run(
-                { intents: job.contexts.map(context => context.intent) },
-                CapabilityRegistry.listExecutableForMode('message')
-            );
-            if (execResult.deferred.length) {
-                execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+        const reservation = postSpeechSystem.reserveExecution(job.contexts, { allowPending: job.allowPending });
+        if (!reservation.contexts.length) continue;
+        let trackingStarted = false;
+        try {
+            let execResult;
+            if (job.deferred.length) {
+                const selected = new Map(reservation.indexes.map((index, selectedIndex) => [index, selectedIndex]));
+                const plans = job.deferred
+                    .filter(plan => selected.has(plan.action.intentIndex))
+                    .map(plan => ({
+                        ...plan,
+                        action: { ...plan.action, intentIndex: selected.get(plan.action.intentIndex) },
+                    }));
+                execResult = await postSpeechExecutor.executeDeferred(plans);
+            } else {
+                execResult = await postSpeechExecutor.run(
+                    { intents: reservation.contexts.map(context => context.intent) },
+                    CapabilityRegistry.listExecutableForMode('message')
+                );
+                if (execResult.deferred.length) {
+                    execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                }
             }
+            trackingStarted = true;
+            await postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation);
+        } catch (error) {
+            if (!trackingStarted) reservation.release();
+            throw error;
         }
-        await postSpeechSystem.trackExecution(execResult, job.contexts);
     }
 }
 
@@ -1385,14 +1402,24 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
                             intent,
                             policy,
                         }));
-                        let execResult = await postSpeechExecutor.run(
-                            policy,
-                            CapabilityRegistry.listExecutableForMode('round')
-                        );
-                        if (execResult.deferred.length) {
-                            execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                        const reservation = postSpeechSystem.reserveExecution(contexts, { allowPending: true });
+                        if (reservation.contexts.length) {
+                            let trackingStarted = false;
+                            try {
+                                let execResult = await postSpeechExecutor.run(
+                                    { ...policy, intents: reservation.contexts.map(context => context.intent) },
+                                    CapabilityRegistry.listExecutableForMode('round')
+                                );
+                                if (execResult.deferred.length) {
+                                    execResult = await postSpeechExecutor.executeDeferred(execResult.deferred);
+                                }
+                                trackingStarted = true;
+                                await postSpeechSystem.trackExecution(execResult, reservation.contexts, reservation);
+                            } catch (error) {
+                                if (!trackingStarted) reservation.release();
+                                throw error;
+                            }
                         }
-                        await postSpeechSystem.trackExecution(execResult, contexts);
                     }
                 }
 
@@ -1841,26 +1868,38 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             policy,
         }));
 
+        let activeContexts = intentContexts;
         let queuedByPolicy = false;
         if (timing === 'message' || timing === 'both') {
-            const execResult = await postSpeechExecutor.run(
-                { ...policy, intents: freshIntents },
-                CapabilityRegistry.listExecutableForMode('message')
-            );
-            if (execResult.deferred.length) {
-                enqueuePostSpeechRoundJob(intentContexts, execResult.deferred);
-                queuedByPolicy = true;
-                log(`PostSpeech: policy deferred ${intentContexts.length} intents to round end`);
-            } else {
-                await postSpeechSystem.trackExecution(execResult, intentContexts);
+            const reservation = postSpeechSystem.reserveExecution(intentContexts);
+            if (!reservation.contexts.length) return;
+            activeContexts = reservation.contexts;
+            let trackingStarted = false;
+            try {
+                const execResult = await postSpeechExecutor.run(
+                    { ...policy, intents: activeContexts.map(context => context.intent) },
+                    CapabilityRegistry.listExecutableForMode('message')
+                );
+                if (execResult.deferred.length) {
+                    enqueuePostSpeechRoundJob(activeContexts, execResult.deferred);
+                    reservation.release();
+                    queuedByPolicy = true;
+                    log(`PostSpeech: policy deferred ${activeContexts.length} intents to round end`);
+                } else {
+                    trackingStarted = true;
+                    await postSpeechSystem.trackExecution(execResult, activeContexts, reservation);
+                }
+                log('PostSpeech execution (message):', execResult);
+            } catch (error) {
+                if (!trackingStarted) reservation.release();
+                throw error;
             }
-            log('PostSpeech execution (message):', execResult);
         }
 
         // Queue for round-end execution (round | both modes)
         if ((timing === 'round' || timing === 'both') && !queuedByPolicy) {
-            enqueuePostSpeechRoundJob(intentContexts);
-            log(`PostSpeech: queued ${freshIntents.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
+            enqueuePostSpeechRoundJob(activeContexts, [], timing === 'both');
+            log(`PostSpeech: queued ${activeContexts.length} intents for round end (queue=${countQueuedPostSpeechIntents()})`);
         }
 
         // Done notification
