@@ -578,7 +578,15 @@ registerSection('dashboard', function (ctx) {
                 window.__gdRefreshNpcLibrary?.();
                 refreshDashboardAndOpenPanel('npcs');
             } catch (e) {
-                toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+                if (e.persistenceUnknown) {
+                    ctx.renderNpcList?.();
+                    refreshDashboardAndOpenPanel('npcs');
+                    toastr?.warning?.(lang === 'zh'
+                        ? 'NPC 应用保存状态未确认，更改暂留当前页面。请勿直接刷新或重复应用；恢复连接后先导出 NPC 备份再核对。'
+                        : 'NPC apply save status is unknown; changes remain on this page. Do not reload or reapply yet; export an NPC backup before checking after reconnecting.');
+                } else {
+                    toastr?.error?.((lang === 'zh' ? '应用失败: ' : 'Apply failed: ') + e.message);
+                }
             }
         });
         $bar.find('.gd-dash-panel-npc-library-save').on('click', () => $('#gd-npc-library-save').trigger('click'));

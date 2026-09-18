@@ -224,6 +224,7 @@ export function createNpcExportSystem(deps) {
             try {
                 await saveNpcs(metadata);
             } catch (error) {
+                if (error.persistenceUnknown) throw error;
                 const conflict = rollbackNpcEntries(metadata, EXT_KEY, changes);
                 throw importFailure(error, conflict ? ['concurrent NPC edits may retain imported data'] : []);
             }

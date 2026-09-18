@@ -9,6 +9,19 @@ registerSection('npc', function (ctx) {
     const npcSystem = ctx.npcSystem;
     if (!npcSystem) return;
 
+    function reportNpcError(error, zh, en) {
+        if (error.persistenceUnknown) {
+            toastr.warning(L(
+                'NPC 保存状态未确认，更改暂留当前页面。请勿直接刷新或重试；恢复连接后先导出 NPC 备份再核对。',
+                'NPC save status is unknown; changes remain on this page. Do not reload or retry yet; export an NPC backup before checking after reconnecting.',
+            ));
+            renderNpcList();
+            window.__gdRefreshDashboard?.();
+            return;
+        }
+        toastr.error(L(zh + error.message, en + error.message));
+    }
+
     const $section = $('#gd-npc-section');
     const $toggle = $c('npc-enabled');
     const $generateBtn = $c('npc-generate');
@@ -71,7 +84,7 @@ registerSection('npc', function (ctx) {
                 window.__gdRefreshDashboard?.();
             }
         } catch (e) {
-            toastr.error(L('NPC 生成失败: ' + e.message, 'NPC generation failed: ' + e.message));
+            reportNpcError(e, 'NPC 生成失败: ', 'NPC generation failed: ');
             console.error('[GroupDirector] NPC generation error:', e);
         } finally {
             btn.prop('disabled', false);
@@ -177,7 +190,7 @@ registerSection('npc', function (ctx) {
                 await npcSystem.deleteNpc(idx);
                 window.__gdRefreshDashboard?.();
             } catch (e) {
-                toastr.error(L('NPC 删除失败: ' + e.message, 'NPC delete failed: ' + e.message));
+                reportNpcError(e, 'NPC 删除失败: ', 'NPC delete failed: ');
             } finally {
                 deletionPending = false;
                 renderNpcList();
@@ -199,8 +212,8 @@ registerSection('npc', function (ctx) {
             } catch (e) {
                 if (e.name === 'NpcImportTrackingError' && e.avatarName) {
                     toastr.warning(L(
-                        `角色卡已创建为 ${e.avatarName}，但导入状态保存失败。请勿重复导入。`,
-                        `Character card was created as ${e.avatarName}, but its import status could not be saved. Do not import it again.`,
+                        `角色卡已创建为 ${e.avatarName}，但导入状态未能确认。请勿重复导入。`,
+                        `Character card was created as ${e.avatarName}, but its import status could not be confirmed. Do not import it again.`,
                     ));
                     renderNpcList();
                     window.__gdRefreshDashboard?.();
@@ -276,7 +289,7 @@ registerSection('npc', function (ctx) {
                 renderNpcList();
                 window.__gdRefreshDashboard?.();
             } catch (e) {
-                toastr.error(L('NPC 保存失败: ' + e.message, 'NPC save failed: ' + e.message));
+                reportNpcError(e, 'NPC 保存失败: ', 'NPC save failed: ');
             } finally {
                 btn.prop('disabled', false);
             }

@@ -50,7 +50,11 @@ async function sectionHarness(overrides = {}, libraries = []) {
     vm.runInNewContext(source, context, { filename: 'npcLibrary.js' });
     section({
         settings: { lang: 'en' }, npcLibrarySystem: system,
-        toastr: { success: text => notices.push(['success', text]), error: text => notices.push(['error', text]) },
+        toastr: {
+            success: text => notices.push(['success', text]),
+            error: text => notices.push(['error', text]),
+            warning: text => notices.push(['warning', text]),
+        },
         getCurrentGroup: () => ({ name: 'Town' }),
     });
     return { handlers, notices };
@@ -105,4 +109,12 @@ test('NPC library UI reports application rejection without success feedback', as
     gate.reject(new Error('chat save failed'));
     await action;
     assert.deepEqual(h.notices.map(([type]) => type), ['error']);
+});
+
+test('NPC library UI warns when application persistence is unknown', async () => {
+    const entry = { id: 'pack', name: 'Pack', npcCount: 1 };
+    const unknown = Object.assign(new Error('verification unavailable'), { persistenceUnknown: true });
+    const h = await sectionHarness({ applyLibrary: async () => { throw unknown; } }, [entry]);
+    await h.handlers.get('#gd-npc-library-apply:click')();
+    assert.deepEqual(h.notices.map(([kind]) => kind), ['warning']);
 });

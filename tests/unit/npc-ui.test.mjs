@@ -89,6 +89,20 @@ test('NPC UI waits for edit persistence and reports rejection without success', 
     assert.equal(h.dashboardRefreshes, 0);
 });
 
+test('NPC UI warns and refreshes retained changes when persistence is unknown', async () => {
+    const npcs = [{ name: 'Alice', description: 'before' }];
+    const unknown = Object.assign(new Error('verification unavailable'), { persistenceUnknown: true });
+    const h = await harness({
+        getNpcs: () => npcs,
+        updateNpc: async () => { npcs[0].description = 'saved'; throw unknown; },
+    }, { npcs });
+    await h.click('npc-list .gd-npc-save:click');
+    assert.equal(npcs[0].description, 'saved');
+    assert.deepEqual(h.notices.map(([kind]) => kind), ['warning']);
+    assert.match(h.notices[0][1], /Do not reload or retry yet/);
+    assert.equal(h.dashboardRefreshes, 1);
+});
+
 test('NPC UI blocks stale row actions while deletion is waiting for persistence', async () => {
     const save = deferred();
     const npcs = [{ name: 'Alice' }, { name: 'Bob' }, { name: 'Carol' }];

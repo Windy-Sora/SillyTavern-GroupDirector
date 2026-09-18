@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createConfirmedNpcChatSave } from '../../systems/npc-save-confirmation.js';
+import { createNpcExportSystem } from '../../systems/npc-export-system.js';
 import { createNpcSystem } from '../../systems/npc-system.js';
 
 function fixture(overrides = {}) {
@@ -50,10 +51,39 @@ test('NPC update rolls back when host save resolves after swallowing an HTTP fai
     assert.equal(subject.metadata.gd.npcs[0].description, 'before');
 });
 
-test('NPC save rejects a failed read-back response', async () => {
-    const subject = fixture({ fetchChat: async () => ({ ok: false, status: 503 }) });
-    await assert.rejects(subject.system.updateNpc(0, { description: 'unsaved' }), /HTTP 503/);
-    assert.equal(subject.metadata.gd.npcs[0].description, 'before');
+test('NPC update preserves memory when a successful write cannot be read back', async () => {
+    let stored;
+    let subject;
+    subject = fixture({
+        saveChatConditional: () => { stored = structuredClone(subject.metadata.gd.npcs); },
+        fetchChat: async () => ({ ok: false, status: 503 }),
+    });
+    await assert.rejects(subject.system.updateNpc(0, { description: 'saved' }), error =>
+        error.persistenceUnknown === true && /HTTP 503/.test(error.message));
+    assert.equal(subject.metadata.gd.npcs[0].description, 'saved');
+    assert.deepEqual(subject.metadata.gd.npcs, stored);
+});
+
+test('NPC import preserves memory when verification transport fails after the write', async () => {
+    const metadata = { gd: { npcs: [{ name: 'Alice', description: 'before' }] } };
+    let stored;
+    const confirmedSave = createConfirmedNpcChatSave({
+        saveChatConditional: () => { stored = structuredClone(metadata.gd.npcs); },
+        getCurrentChatId: () => 'chat-1', getCurrentGroup: () => ({ id: 'group-1' }),
+        getContext: () => ({}), getChatMetadata: () => metadata,
+        getRequestHeaders: () => ({}), EXT_KEY: 'gd',
+        fetchChat: async () => { throw new Error('network unavailable'); },
+    });
+    const system = createNpcExportSystem({
+        settings: {}, EXT_KEY: 'gd', getChatMetadata: () => metadata,
+        getCurrentGroup: () => ({ id: 'group-1' }),
+        saveChatConditional: confirmedSave, saveSettings() {}, log() {},
+    });
+    await assert.rejects(system.applyImport({
+        template: {}, npcs: [{ name: 'Alice', description: 'saved' }],
+    }, ['Alice']), error => error.persistenceUnknown === true);
+    assert.equal(metadata.gd.npcs[0].description, 'saved');
+    assert.deepEqual(metadata.gd.npcs, stored);
 });
 
 test('NPC save reads the selected character chat when no group is active', async () => {

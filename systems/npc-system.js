@@ -18,7 +18,7 @@ function npcFailure(error, conflict) {
 
 export class NpcImportTrackingError extends Error {
     constructor(avatarName, cause) {
-        super(`Character was created as ${avatarName}, but its import status could not be saved`);
+        super(`Character was created as ${avatarName}, but its import status could not be confirmed`);
         this.name = 'NpcImportTrackingError';
         this.avatarName = avatarName;
         this.remoteCreated = true;
@@ -82,7 +82,10 @@ export function createNpcSystem({
 
     async function saveMutation(metadata, rollback) {
         try { await saveNpcs(metadata); }
-        catch (error) { throw npcFailure(error, rollback()); }
+        catch (error) {
+            if (error.persistenceUnknown) throw error;
+            throw npcFailure(error, rollback());
+        }
         if (getChatMetadata() !== metadata) {
             throw staleExecutionError('NPC change became stale after the chat changed; the original chat was saved');
         }
@@ -106,7 +109,7 @@ export function createNpcSystem({
         const appliedState = snapshotValue(npcs);
         try { await saveNpcs(metadata); }
         catch (error) {
-            if (snapshotValue(root.npcs) === appliedState) root.npcs = previous;
+            if (!error.persistenceUnknown && snapshotValue(root.npcs) === appliedState) root.npcs = previous;
             throw error;
         }
     }

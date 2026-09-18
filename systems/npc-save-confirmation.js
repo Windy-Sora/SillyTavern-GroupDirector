@@ -1,5 +1,13 @@
 import { snapshotValue } from './execution-snapshot.js';
 
+export class NpcPersistenceUnknownError extends Error {
+    constructor(cause) {
+        super(`NPC persistence status is unknown: verification read failed (${cause.message})`, { cause });
+        this.name = 'NpcPersistenceUnknownError';
+        this.persistenceUnknown = true;
+    }
+}
+
 // SillyTavern's saveChatConditional resolves even when its save fails or times out.
 // Read back the chat header to confirm that the NPC state reached storage.
 export function createConfirmedNpcChatSave({
@@ -18,19 +26,25 @@ export function createConfirmedNpcChatSave({
 
         await saveChatConditional();
 
-        const response = await fetchChat(group ? '/api/chats/group/get' : '/api/chats/get', {
-            method: 'POST',
-            headers: getRequestHeaders(),
-            cache: 'no-cache',
-            body: JSON.stringify(group
-                ? { id: chatId }
-                : { ch_name: character.name, file_name: chatId, avatar_url: character.avatar }),
-        });
-        if (!response.ok) throw new Error(`NPC persistence could not be confirmed: HTTP ${response.status}`);
-        const storedChat = await response.json();
-        const storedNpcs = Array.isArray(storedChat) && storedChat.length
-            ? storedChat[0]?.chat_metadata?.[EXT_KEY]?.npcs ?? []
-            : null;
+        let storedNpcs;
+        try {
+            const response = await fetchChat(group ? '/api/chats/group/get' : '/api/chats/get', {
+                method: 'POST',
+                headers: getRequestHeaders(),
+                cache: 'no-cache',
+                body: JSON.stringify(group
+                    ? { id: chatId }
+                    : { ch_name: character.name, file_name: chatId, avatar_url: character.avatar }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const storedChat = await response.json();
+            if (!Array.isArray(storedChat) || !storedChat.length || !storedChat[0]?.chat_metadata) {
+                throw new Error('chat header is unavailable');
+            }
+            storedNpcs = storedChat[0].chat_metadata[EXT_KEY]?.npcs ?? [];
+        } catch (error) {
+            throw new NpcPersistenceUnknownError(error);
+        }
         const stored = snapshotValue(storedNpcs);
         // A concurrent NPC edit may have reached storage during the same host
         // save. Either the submitted state or the current state is sufficient.
