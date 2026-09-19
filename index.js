@@ -52,6 +52,7 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
+import { createConfirmedChatMetadataSave } from './systems/chat-metadata-save-confirmation.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
 import { createCritiqueAutoCoordinator } from './systems/critique-auto-coordinator.js';
 import { createCustomAgentSystem } from './systems/custom-agent-system.js';
@@ -292,6 +293,24 @@ const saveNpcChatConfirmed = createConfirmedNpcChatSave({
     saveChatConditional, getCurrentChatId, getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
     getContext, getChatMetadata, getRequestHeaders, EXT_KEY,
 });
+const confirmedChatSaveDependencies = {
+    saveChatConditional,
+    getCurrentChatId,
+    getCurrentGroup: () => selected_group && groups.find(group => group.id === selected_group),
+    getContext,
+    getChatMetadata,
+    getRequestHeaders,
+};
+const saveSummaryChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.summaries ?? [],
+    label: 'Chat Summary',
+});
+const saveStoryBlueprintChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.storyBlueprint ?? null,
+    label: 'Story Blueprint',
+});
 
 const variableSystem = createVariableSystem({
     getChatMetadata,
@@ -310,6 +329,7 @@ const storyBlueprintSystem = createStoryBlueprintSystem({
     getChat,
     EXT_KEY,
     saveChatConditional,
+    saveChatConfirmed: saveStoryBlueprintChatConfirmed,
     renderPrompt,
     generateRaw: (opts) => getContext().generateRaw(opts),
     createCaller,
@@ -344,7 +364,7 @@ const { buildDirectorWorldInfo } =
     createWorldInfoSystem({ settings, getChat, getCharacters, checkWorldInfo, world_info_include_names, getContext, power_user, log });
 
 const chatSummarySystem = createChatSummarySystem({
-    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional,
+    settings, getChatMetadata, getChat, EXT_KEY, saveChatConditional: saveSummaryChatConfirmed,
     renderPrompt, generateRaw: (opts) => getContext().generateRaw(opts),
     inject_ids, extension_prompt_types, setExtensionPrompt, log,
     createCaller,

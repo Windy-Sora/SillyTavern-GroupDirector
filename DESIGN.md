@@ -339,7 +339,7 @@ Story Blueprint 是连续性层的故事结构系统。框架只维护结构化�
 
 **Profile 库自动加载**（核心能力）：`settings.profileLibraryAutoLoad` 配置 `enabled` / `mode('best'|'fixed')` / `fixedId` / 匹配规则 / `overwriteExisting` / `importTemplate`。`findBestLibrary` 按"可用匹配数×100 + 总匹配数×10 + 匹配率"打分选最优库；在 `CHAT_CHANGED` 和 `APP_READY` 事件中（且 `profileEnabled` 时）自动触发 `autoLoadForCurrentGroup`，成功后弹 toastr 并刷新 UI；用 `lastAutoLoadKey` 去重避免重复应用。
 
-**库持久化事务边界**：Profile 与 Story Blueprint Library 的保存、删除、文件导入和 Profile 自动加载配置更新均串行执行并等待已确认的设置持久化。“保存当前”在进入队列前即捕获当前聊天名称和内容副本，排队等待期间切换聊天不会改变已请求的来源。失败补偿只移除本次新增项、按存活相邻项恢复本次删除项，或恢复仍由本次操作占有的配置字段，不用整库快照覆盖并发修改。专用卡片和仪表盘必须等待 Promise，成功后才刷新和提示。导出无论创建节点或点击是否失败都会清理临时节点与 Blob URL。Profile Library 应用复用 Profile Import 自己的单次聊天保存；Story Blueprint Library 通过 `applyImportTextAndSave()` 统一执行一次保存，失败时三方回滚导入状态、保留等待期间的对象字段和数组增量，并补偿保存恢复结果；补偿保存也失败时明确报告回滚不完整。
+**库持久化事务边界**：Profile 与 Story Blueprint Library 的保存、删除、文件导入和 Profile 自动加载配置更新均串行执行并等待已确认的设置持久化。“保存当前”在进入队列前即捕获当前聊天名称和内容副本，排队等待期间切换聊天不会改变已请求的来源。失败补偿只移除本次新增项、按存活相邻项恢复本次删除项，或恢复仍由本次操作占有的配置字段，不用整库快照覆盖并发修改。专用卡片和仪表盘必须等待 Promise，成功后才刷新和提示。导出无论创建节点或点击是否失败都会清理临时节点与 Blob URL。Profile Library 应用复用 Profile Import 自己的单次聊天保存；Story Blueprint Library 通过 `applyImportTextAndSave()` 统一执行一次保存并回读原聊天头验证蓝图状态。明确回读不一致时三方回滚导入状态、保留等待期间的对象字段和数组增量，并再次确认补偿保存；补偿保存也失败时明确报告回滚不完整。若回读请求本身失败，持久化结果无法判定，此时保留可能已经落盘的内存状态并以 `persistenceUnknown` 拒绝，避免反向覆盖成功写入。
 
 **与配置档案的关系**：库条目是"可复用内容数据"，在 `config-profile-system` 中被 `INTENTIONALLY_UNCOVERED_KEYS` 显式排除，不随配置档保存/还原。
 
@@ -1013,7 +1013,7 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 
 ### Chat Summary 持久化事务边界
 
-上下文总结正文与上面的“导入摘要”属于不同存储集合。生成、重新生成、正文编辑、回退、重置、裁剪和清空统一由 `chat-summary-system.js` 串行写入，并绑定操作开始时的 `chat_metadata`；UI 只能调用系统门面，不能直接修改摘要数组或自行保存。扫描列表的编号只在当前视图有效，裁剪或清空等待持久化期间必须锁定编号相关编辑，完成后刷新视图再解锁，避免旧编号映射到压缩后的数组。聊天保存失败时按条目身份或字段应用值只补偿本次仍拥有的变更，保留并发新增、编辑及顺序；无法安全补偿时通过 `rollbackIncomplete` 明确报告。保存成功后切换聊天则报告 `StaleExecutionError`，不撤销旧聊天已保存状态。公开读取返回隔离副本，调用方不能通过查询接口绕过事务修改实时仓库。
+上下文总结正文与上面的“导入摘要”属于不同存储集合。生成、重新生成、正文编辑、回退、重置、裁剪和清空统一由 `chat-summary-system.js` 串行写入，并绑定操作开始时的 `chat_metadata`；UI 只能调用系统门面，不能直接修改摘要数组或自行保存。扫描列表的编号只在当前视图有效，裁剪或清空等待持久化期间必须锁定编号相关编辑，完成后刷新视图再解锁，避免旧编号映射到压缩后的数组。由于宿主 `saveChatConditional()` 会吞掉内部保存失败，生产入口通过 `chat-metadata-save-confirmation.js` 回读操作开始时的群聊或角色聊天头，仅在已提交摘要状态或同次保存带入的当前并发状态可见时确认成功。明确回读不一致时按条目身份或字段应用值只补偿本次仍拥有的变更，保留并发新增、编辑及顺序；无法安全补偿时通过 `rollbackIncomplete` 明确报告。回读接口失败属于 `persistenceUnknown`，保留可能已落盘的内存状态而不执行破坏性补偿。保存成功后切换聊天则报告 `StaleExecutionError`，不撤销旧聊天已保存状态。公开读取返回隔离副本，调用方不能通过查询接口绕过事务修改实时仓库。
 
 ### 全局配置导出/导入 (Config Profile System)
 

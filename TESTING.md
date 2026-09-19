@@ -7,28 +7,28 @@ readable reports.
 
 Current verified baseline (2026-09-19):
 
-- 313 JavaScript source files and 10 JSON files pass static validation;
-- 630 behavior tests are discovered, with 629 passing and one optional real-host
+- 315 JavaScript source files and 10 JSON files pass static validation;
+- 638 behavior tests are discovered, with 637 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
-- entry-point reachability is 149/157 production modules, while tests directly or
-  transitively reach 79/157 production modules;
+- entry-point reachability is 150/158 production modules, while tests directly or
+  transitively reach 80/158 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.94% lines, 79.97% branches, and
-  92.39% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 94.95% lines, 79.96% branches, and
+  92.41% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
-  96.53%, 99.32%, and 98.29% lines respectively, while Profile System reaches
+  96.53%, 99.32%, and 98.30% lines respectively, while Profile System reaches
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
   reaches 96.26% lines, 80.12% branches, and 84.00% functions; Script Executor
   System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
   History, World Info, Asset Loader, and Summary Export reach 100% lines;
   NPC Export reaches 96.60% lines with its new transaction branches;
   NPC Library reaches 98.15% lines; Profile Library and Story Blueprint Library
-  reach 96.96% and 98.66% lines respectively; Chat Summary System reaches 92.82%
-  lines, 64.34% branches, and 93.33% functions;
+  reach 96.96% and 98.66% lines respectively; Chat Summary System reaches 92.89%
+  lines, 65.15% branches, and 93.33% functions;
   NPC System reaches 95.73% lines, 71.43% branches, and 70.00% functions;
   Group ZIP Import/Export reaches 89.84% lines, 82.68% branches, and 85.71%
   functions; PostSpeech Decision Store reaches 98.33% lines and 92.37% branches;
@@ -212,7 +212,11 @@ restored ordering, queued target identity, incomplete rollback reporting, and a
 successful old-chat save followed by a chat switch. Public reads must be detached
 snapshots; UI tests prohibit direct summary array mutation and direct chat
 persistence. A deferred prune must also lock stale scan-number edits until the
-compacted list has been refreshed.
+compacted list has been refreshed. `tests/unit/chat-metadata-save-confirmation.test.mjs`
+covers group and character readback, swallowed host failures, concurrent state,
+and unavailable verification. A definite stored-state mismatch must enter normal
+transaction compensation; `persistenceUnknown` must reject while retaining the
+possibly persisted in-memory Summary state.
 
 NPC Library persistence coverage belongs in `tests/unit/npc-library-system.test.mjs`,
 with UI feedback and malformed legacy rendering in `tests/unit/npc-library-ui.test.mjs`.
@@ -237,7 +241,9 @@ name and detached payload captured at invocation. Story Blueprint library applic
 uses one awaited chat save through `applyImportTextAndSave`; a failed save performs
 three-way rollback that removes imported state while retaining concurrent object
 and array edits, followed by a compensating save; failed compensation is reported
-as incomplete rather than atomic success. Library download tests require temporary anchors and Blob URLs to
+as incomplete rather than atomic success. Production imports confirm the original
+chat header after the host save; unavailable readback preserves the imported memory
+and reports `persistenceUnknown` without compensation. Library download tests require temporary anchors and Blob URLs to
 be released even when the synthetic click throws.
 
 NPC Export import application coverage belongs in `tests/unit/npc-export-system.test.mjs`.

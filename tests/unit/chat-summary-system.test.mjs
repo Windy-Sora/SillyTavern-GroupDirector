@@ -76,6 +76,17 @@ test('failed summary generation preserves an edited new entry and reports incomp
     assert.equal(h.metadata.gd.summaries[0].content, 'concurrent edit');
 });
 
+test('unknown summary persistence preserves the possibly saved in-memory mutation', async () => {
+    const unknown = Object.assign(new Error('verification unavailable'), { persistenceUnknown: true });
+    const h = fixture({ saveChatConditional: async () => { throw unknown; } });
+    h.metadata.gd = { summaries: [summary('old')] };
+    await assert.rejects(
+        h.system.updateSummaryContents([{ index: 0, content: 'possibly saved' }]),
+        error => error === unknown,
+    );
+    assert.equal(h.metadata.gd.summaries[0].content, 'possibly saved');
+});
+
 test('failed regeneration restores owned fields while preserving another field edit', async () => {
     const gate = deferred();
     const h = fixture({ saveChatConditional: () => gate.promise });

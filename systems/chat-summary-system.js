@@ -58,6 +58,10 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
     async function persistMutation(metadata, rollback) {
         try { await saveChatConditional(); }
         catch (error) {
+            // A failed verification read cannot tell whether the host write
+            // succeeded. Preserve memory rather than compensating a possibly
+            // persisted mutation with an unverified rollback.
+            if (error.persistenceUnknown) throw error;
             if (rollback?.()) error.rollbackIncomplete = true;
             throw error;
         }

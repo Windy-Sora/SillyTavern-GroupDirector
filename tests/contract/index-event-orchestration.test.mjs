@@ -95,6 +95,13 @@ test('PostSpeech decisions use confirmed chat persistence', () => {
     assert.match(source, /createPostSpeechSystem\(\{[\s\S]*?saveChatConditional: savePostSpeechChatConfirmed/);
 });
 
+test('Chat Summary and Story Blueprint imports use confirmed chat persistence', () => {
+    assert.match(source, /const saveSummaryChatConfirmed = createConfirmedChatMetadataSave\(/);
+    assert.match(source, /const saveStoryBlueprintChatConfirmed = createConfirmedChatMetadataSave\(/);
+    assert.match(source, /createStoryBlueprintSystem\(\{[\s\S]*?saveChatConfirmed: saveStoryBlueprintChatConfirmed/);
+    assert.match(source, /createChatSummarySystem\(\{[\s\S]*?saveChatConditional: saveSummaryChatConfirmed/);
+});
+
 test('PostSpeech claims intents before message, round, and queued capability execution', () => {
     const message = listenerBlock('CHARACTER_MESSAGE_RENDERED', 1);
     assertOrdered(message, [

@@ -208,6 +208,19 @@ test('Story Blueprint transactional import reports failed rollback persistence',
     assert.equal(system.getBlueprint().title, 'Quest');
 });
 
+test('Story Blueprint import preserves possibly saved state when verification is unavailable', async () => {
+    const unknown = Object.assign(new Error('verification unavailable'), { persistenceUnknown: true });
+    const { system, calls } = fixture({ saveChatConfirmed: async () => { throw unknown; } });
+    system.setBlueprint(blueprint(), { persist: false });
+    const incoming = { nodes: [{ id: 'imported', title: 'Imported', content: {}, children: [] }] };
+    await assert.rejects(
+        system.applyImportTextAndSave(JSON.stringify(incoming)),
+        error => error === unknown,
+    );
+    assert.equal(system.getBlueprint().nodes[0].id, 'imported');
+    assert.equal(calls.saved, 0);
+});
+
 test('Story Blueprint transactional import reports a chat switch without undoing saved old-chat state', async () => {
     const gate = deferred();
     const oldMetadata = {};

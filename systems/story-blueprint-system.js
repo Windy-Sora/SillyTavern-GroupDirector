@@ -484,6 +484,7 @@ export function createStoryBlueprintSystem({
     getChat,
     EXT_KEY,
     saveChatConditional,
+    saveChatConfirmed = saveChatConditional,
     renderPrompt,
     generateRaw,
     createCaller,
@@ -1044,13 +1045,14 @@ ${schema}`;
         if (!result.ok) return result;
         const applied = clone(state);
         try {
-            await saveChatConditional?.();
+            await saveChatConfirmed?.(metadata);
         } catch (error) {
+            if (error.persistenceUnknown) throw error;
             const restored = rollbackJsonValue(previous, applied, state);
             for (const key of Object.keys(state)) delete state[key];
             Object.assign(state, restored);
             if (getChatMetadata() === metadata) {
-                try { await saveChatConditional?.(); }
+                try { await saveChatConfirmed?.(metadata); }
                 catch (rollbackError) {
                     const failure = new Error(`Story Blueprint import failed and rollback persistence failed: ${rollbackError.message || rollbackError}`, { cause: error });
                     failure.rollbackIncomplete = true;
