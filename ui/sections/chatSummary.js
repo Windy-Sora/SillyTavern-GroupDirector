@@ -279,13 +279,13 @@ registerSection('chatSummary', function (ctx) {
         checkEnabled();
         try {
             await ss.pruneDisabledSummaries();
-            doScan();
             toastr.success(settings.lang === 'zh'
                 ? `已清除，保留 ${activeOnly.length} 条活跃总结`
                 : `Pruned, ${activeOnly.length} active summaries kept`);
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '清理失败' : 'Prune failed'));
         } finally {
+            doScan(hideDisabled, true);
             archiveMutationPending = false;
             checkEnabled();
         }
