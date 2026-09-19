@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -89,4 +89,52 @@ test('checker discovery scans check files and rejects duplicate IDs', async t =>
 
     await files.write('duplicate', declaration('first', 30));
     await assert.rejects(discoverCheckers(files.directory), /Duplicate checker id "first"/);
+});
+
+test('checker loading failures and timeouts remain reportable while healthy checkers run', async t => {
+    const files = await fixture(t);
+    await files.write('broken', "throw new Error('load failed');");
+    await files.write('hanging', 'await new Promise(() => {});');
+    await files.write('healthy', declaration('healthy', 2, 'return { counts: { healthy: 1 } };'));
+    const result = await runCheckers(await discoverCheckers(files.directory, { timeoutMs: 1000 }), context);
+    assert.deepEqual(result.issues.map(issue => issue.code), ['CHECK_CRASH', 'CHECK_TIMEOUT']);
+    assert.match(result.issues[0].message, /load failed/);
+    assert.equal(result.counts.healthy, 1);
+    assert.equal(result.checkers.length, 3);
+});
+
+test('checker timeout reaps its service subprocess before the next checker runs', async t => {
+    const files = await fixture(t);
+    const pidFile = path.join(files.directory, 'child.pid');
+    t.after(async () => {
+        try {
+            const pid = Number(await readFile(pidFile, 'utf8'));
+            process.kill(pid, 'SIGKILL');
+        } catch (error) {
+            if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error;
+        }
+    });
+    const program = `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`;
+    await files.write('slow', `export default {
+        id: 'slow', title: 'slow', version: 1, order: 1, timeoutMs: 1000,
+        async run({ services }) {
+            await services.runCommand(process.execPath, ['-e', ${JSON.stringify(program)}], { timeoutMs: 0 });
+            return {};
+        },
+    };`);
+    await files.write('next', `import { readFile } from 'node:fs/promises';
+        export default { id: 'next', title: 'next', version: 1, order: 2,
+            async run() {
+                const pid = Number(await readFile(${JSON.stringify(pidFile)}, 'utf8'));
+                try { process.kill(pid, 0); } catch (error) {
+                    if (error.code === 'ESRCH') return { counts: { childReaped: 1 } };
+                    throw error;
+                }
+                throw new Error('Timed-out child is still alive');
+            },
+        };`);
+    const result = await runCheckers(await discoverCheckers(files.directory), context);
+    assert.equal(result.issues.length, 1);
+    assert.equal(result.issues[0].code, 'CHECK_TIMEOUT');
+    assert.equal(result.counts.childReaped, 1);
 });

@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { walkFiles } from '../lib/files.mjs';
 import { runCheckerWorker } from './check-worker-client.mjs';
 
-export async function discoverCheckers(checkDirectory) {
+export async function discoverCheckers(checkDirectory, { timeoutMs = 30_000 } = {}) {
     const files = (await walkFiles(checkDirectory))
         .filter(file => file.endsWith('.check.mjs'))
         .sort((a, b) => a.localeCompare(b));
@@ -11,11 +11,20 @@ export async function discoverCheckers(checkDirectory) {
     const ids = new Map();
     for (const file of files) {
         const relative = path.relative(checkDirectory, file).replaceAll('\\', '/');
-        const checker = await runCheckerWorker({
-            action: 'describe',
-            moduleUrl: pathToFileURL(file).href,
-            file: relative,
-        }, 30_000);
+        let checker;
+        try {
+            checker = await runCheckerWorker({
+                action: 'describe',
+                moduleUrl: pathToFileURL(file).href,
+                file: relative,
+            }, timeoutMs);
+        } catch (error) {
+            checkers.push({
+                id: `load-error:${relative}`, title: relative, file: relative, order: 0,
+                discoveryError: { code: error.code, message: error.message, stack: error.stack },
+            });
+            continue;
+        }
         if (ids.has(checker.id)) {
             throw new Error(`Duplicate checker id "${checker.id}" in ${ids.get(checker.id)} and ${checker.file}`);
         }

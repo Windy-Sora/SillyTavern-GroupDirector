@@ -35,27 +35,33 @@ export function parseOptions(argv, env = process.env) {
         help: false,
     };
     let profileSet = false;
+    const requireValue = (flag, value) => {
+        if (!value || value.startsWith('--') || value === '-h') {
+            throw new Error(`Missing value for ${flag}`);
+        }
+        return value;
+    };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (!arg.startsWith('-') && !profileSet) {
             options.profile = arg;
             profileSet = true;
         } else if (arg === '--filter') {
-            options.filter = argv[++i] || '';
+            options.filter = requireValue(arg, argv[++i]);
         } else if (arg.startsWith('--filter=')) {
-            options.filter = arg.slice('--filter='.length);
+            options.filter = requireValue('--filter', arg.slice('--filter='.length));
         } else if (arg === '--st-root') {
-            options.stRoot = argv[++i] || '';
+            options.stRoot = requireValue(arg, argv[++i]);
         } else if (arg.startsWith('--st-root=')) {
-            options.stRoot = arg.slice('--st-root='.length);
+            options.stRoot = requireValue('--st-root', arg.slice('--st-root='.length));
         } else if (arg === '--seed') {
-            options.seed = argv[++i] || '';
+            options.seed = requireValue(arg, argv[++i]);
         } else if (arg.startsWith('--seed=')) {
-            options.seed = arg.slice('--seed='.length);
+            options.seed = requireValue('--seed', arg.slice('--seed='.length));
         } else if (arg === '--report') {
-            options.report = argv[++i] || '';
+            options.report = requireValue(arg, argv[++i]);
         } else if (arg.startsWith('--report=')) {
-            options.report = arg.slice('--report='.length);
+            options.report = requireValue('--report', arg.slice('--report='.length));
         } else if (arg === '--coverage') {
             options.coverage = true;
         } else if (arg === '--list') {

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { parse } from 'acorn';
 
 const target = process.argv[2];
 if (!target) {
@@ -12,6 +13,17 @@ if (!target) {
         const imports = Array.isArray(module.moduleRequests)
             ? module.moduleRequests.map(request => request.specifier)
             : [...module.dependencySpecifiers];
+        const pending = [parse(source, { ecmaVersion: 'latest', sourceType: 'module' })];
+        while (pending.length) {
+            const node = pending.pop();
+            if (node.type === 'ImportExpression' && node.source.type === 'Literal' && typeof node.source.value === 'string') {
+                imports.push(node.source.value);
+            }
+            for (const value of Object.values(node)) {
+                if (Array.isArray(value)) pending.push(...value.filter(item => item && typeof item.type === 'string'));
+                else if (value && typeof value.type === 'string') pending.push(value);
+            }
+        }
         process.stdout.write(JSON.stringify({
             imports,
         }));

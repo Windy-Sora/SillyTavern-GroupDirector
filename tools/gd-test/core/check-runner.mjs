@@ -13,6 +13,7 @@ function platformIssue(code, checker, message) {
 async function runOne(checker, context) {
     const startedAt = Date.now();
     try {
+        if (checker.discoveryError) throw Object.assign(new Error(checker.discoveryError.message), checker.discoveryError);
         const result = await runCheckerWorker({
             action: 'run',
             moduleUrl: checker.moduleUrl,

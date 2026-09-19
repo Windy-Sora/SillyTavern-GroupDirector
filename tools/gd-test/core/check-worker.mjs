@@ -2,6 +2,27 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { normalizeCheckResult, validateChecker } from './check-contract.mjs';
 import { projectServices } from './project-index.mjs';
 
+let commandId = 0;
+const commands = new Map();
+parentPort.on('message', message => {
+    if (message.kind !== 'command-result') return;
+    const pending = commands.get(message.id);
+    if (!pending) return;
+    commands.delete(message.id);
+    if (message.error) pending.reject(new Error(message.error));
+    else pending.resolve(message.value);
+});
+const services = Object.freeze({
+    ...projectServices,
+    runCommand(command, args, options) {
+        return new Promise((resolve, reject) => {
+            const id = ++commandId;
+            commands.set(id, { resolve, reject });
+            parentPort.postMessage({ kind: 'run-command', id, command, args, options });
+        });
+    },
+});
+
 function serializeError(error) {
     return {
         code: error?.code,
@@ -35,7 +56,7 @@ try {
             root: project.root,
             config: project.config,
             project,
-            services: projectServices,
+            services,
         });
         parentPort.postMessage({
             ok: true,

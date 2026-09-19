@@ -33,6 +33,8 @@ export default {
 
 `services` 只提供通用基础能力：规范化相对路径、文件存在检查、限流并发和子进程执行。规则代码不得被放入 service。
 
+子进程必须通过 `services.runCommand()` 启动。它们由主线程托管；Worker 完成、异常或超时时，平台取消并等待尚未结束的托管子进程，然后才运行下一个 checker。直接调用 `child_process` 绕开此生命周期管理，不在隔离保证范围内。加载异常和加载超时也会转换成报告中的 issue，其他 checker 继续执行。
+
 ## 输出协议
 
 ```js

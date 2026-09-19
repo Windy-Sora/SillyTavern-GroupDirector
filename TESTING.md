@@ -7,15 +7,16 @@ readable reports.
 
 Current verified baseline (2026-09-19):
 
-- 315 JavaScript source files and 10 JSON files pass static validation;
-- 638 behavior tests are discovered, with 637 passing and one optional real-host
+- 316 JavaScript source files and 11 JSON files pass static validation;
+- 647 behavior tests are discovered, with 646 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 150/158 production modules, while tests directly or
   transitively reach 80/158 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.95% lines, 79.96% branches, and
+- the full loaded-module coverage snapshot is 94.95% lines, approximately 80.0%
+  branches (the seeded suite can vary by a few hundredths), and
   92.41% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
@@ -44,6 +45,15 @@ and Linux with Node 22 and 24 for every push and pull request, then uploads the
 JSON report even when a test fails.
 
 ## Commands
+
+Install the development-only JavaScript parser before running the test platform:
+
+```powershell
+npm ci
+```
+
+Acorn is used for static import analysis (including string-literal dynamic imports).
+It is not a runtime dependency of the SillyTavern extension.
 
 ```powershell
 npm test
@@ -130,7 +140,10 @@ globals must restore them before completion.
 
 When the `quick` or `full` profile runs without a filter, GD Test Lab also checks
 that all 17 confirmed historical bug IDs appear in executed test names. The
-required IDs live in `gd-test.config.mjs`; deleting or accidentally renaming the
+gate reads structured test events and only accepts passing, non-skipped, non-TODO
+test cases; console output and suite names do not satisfy a contract. A filter
+matching no test cases fails, including when Node reports only a passing file wrapper.
+The required IDs live in `gd-test.config.mjs`; deleting or accidentally renaming the
 last scenario for any historical bug therefore fails the run even if every
 remaining test passes. BUG-9 is intentionally absent because it was excluded from
 the confirmed audit set.

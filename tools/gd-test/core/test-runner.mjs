@@ -1,5 +1,8 @@
 import { relativePath } from '../lib/files.mjs';
 import { runCommand } from '../lib/process.mjs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 export function parseTestSummary(output) {
     const number = label => {
@@ -15,9 +18,11 @@ export function parseTestSummary(output) {
     };
 }
 
-export function parseBugCoverage(output, requiredIds = []) {
+export function parseBugCoverage(events, requiredIds = []) {
     const normalize = value => `BUG-${Number(value.replace(/^BUG-/i, ''))}`;
-    const found = new Set([...output.matchAll(/\bBUG-(\d+)\b/gi)].map(match => `BUG-${Number(match[1])}`));
+    const names = events.filter(event => event.type === 'test:pass' && event.kind === 'test'
+        && event.line != null && !event.skip && !event.todo).map(event => event.name).join('\n');
+    const found = new Set([...names.matchAll(/\bBUG-(\d+)\b/gi)].map(match => `BUG-${Number(match[1])}`));
     const required = requiredIds.map(normalize);
     return {
         required,
@@ -38,7 +43,11 @@ export function parseCoverageSummary(output) {
 
 export async function runNodeTests({ root, config, testEntries, options, requiredBugIds = [] }) {
     const files = testEntries.map(entry => entry.file);
-    const args = ['--test', `--test-concurrency=${config.test.concurrency}`, '--test-reporter=spec'];
+    const directory = await mkdtemp(path.join(tmpdir(), 'gd-test-events-'));
+    const eventsFile = path.join(directory, 'events.jsonl');
+    const reporter = new URL('../reporters/events.mjs', import.meta.url).href;
+    const args = ['--test', `--test-concurrency=${config.test.concurrency}`, '--test-reporter=spec',
+        '--test-reporter-destination=stdout', `--test-reporter=${reporter}`, `--test-reporter-destination=${eventsFile}`];
     const coverageIncludes = config.test.coverageIncludes || [
         '*.js',
         'agents/**/*.js',
@@ -55,17 +64,35 @@ export async function runNodeTests({ root, config, testEntries, options, require
         args.push(`--test-name-pattern=${options.filter}`);
     }
     args.push(...files);
-    const result = await runCommand(process.execPath, args, {
-        cwd: root,
-        env: { ...process.env, GD_TEST_ST_ROOT: options.stRoot, GD_TEST_SEED: options.seed },
-        timeoutMs: config.test.timeoutMs,
-        echo: options.verbose,
-    });
-    const output = `${result.stdout}${result.stderr}`;
-    const bugCoverage = parseBugCoverage(output, requiredBugIds);
+    let result;
+    let events = [];
+    let eventError = '';
+    const env = { ...process.env, GD_TEST_ST_ROOT: options.stRoot, GD_TEST_SEED: options.seed };
+    delete env.NODE_TEST_CONTEXT;
+    try {
+        result = await runCommand(process.execPath, args, {
+            cwd: root,
+            env,
+            timeoutMs: config.test.timeoutMs,
+            echo: options.verbose,
+        });
+        try {
+            const content = await readFile(eventsFile, 'utf8');
+            events = content.split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+        } catch (error) {
+            eventError = `Cannot read structured test results: ${error.message}`;
+        }
+    } finally {
+        await rm(directory, { recursive: true, force: true });
+    }
+    const matchedTests = events.filter(event => event.kind === 'test' && event.line != null).length;
+    const output = `${result.stdout}${result.stderr}${eventError ? `\n${eventError}\n` : ''}`
+        + (matchedTests ? '' : '\nNo tests matched the selected suites/filter.\n');
+    const bugCoverage = parseBugCoverage(events, requiredBugIds);
     return {
         name: 'tests',
-        ok: result.code === 0 && !result.timedOut && bugCoverage.missing.length === 0,
+        ok: result.code === 0 && !result.timedOut && !eventError && matchedTests > 0 && bugCoverage.missing.length === 0,
+        matchedTests,
         durationMs: result.durationMs,
         counts: parseTestSummary(output),
         exitCode: result.code,

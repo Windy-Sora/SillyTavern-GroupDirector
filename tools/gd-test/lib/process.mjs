@@ -5,9 +5,14 @@ export function runCommand(command, args, {
     env = process.env,
     timeoutMs = 120_000,
     echo = false,
+    signal: abortSignal,
 } = {}) {
     return new Promise(resolve => {
         const startedAt = Date.now();
+        if (abortSignal?.aborted) {
+            resolve({ command, args, code: null, signal: null, stdout: '', stderr: 'Command cancelled', timedOut: false, durationMs: 0 });
+            return;
+        }
         const child = spawn(command, args, {
             cwd,
             env,
@@ -18,10 +23,12 @@ export function runCommand(command, args, {
         let stdout = '';
         let stderr = '';
         let timedOut = false;
+        const cancel = () => child.kill('SIGKILL');
+        abortSignal?.addEventListener('abort', cancel, { once: true });
         const timer = timeoutMs > 0
             ? setTimeout(() => {
                 timedOut = true;
-                child.kill();
+                cancel();
             }, timeoutMs)
             : null;
 
@@ -37,6 +44,7 @@ export function runCommand(command, args, {
         });
 
         child.on('error', error => {
+            abortSignal?.removeEventListener('abort', cancel);
             if (timer) clearTimeout(timer);
             resolve({
                 command,
@@ -51,6 +59,7 @@ export function runCommand(command, args, {
         });
 
         child.on('close', (code, signal) => {
+            abortSignal?.removeEventListener('abort', cancel);
             if (timer) clearTimeout(timer);
             resolve({
                 command,

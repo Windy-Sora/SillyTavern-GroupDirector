@@ -124,7 +124,7 @@ export async function buildProjectIndex(root, config) {
         if (record.resolved && graph.has(record.resolved)) graph.get(record.importer).push(record.resolved);
     }
     const entryRoots = new Set();
-    if (manifest?.js) {
+    if (typeof manifest?.js === 'string' && manifest.js.trim()) {
         const entry = path.resolve(root, manifest.js);
         if (graph.has(entry)) entryRoots.add(entry);
     }
