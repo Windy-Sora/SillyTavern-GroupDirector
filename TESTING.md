@@ -211,8 +211,10 @@ own entries or fields. Deferred-save tests cover concurrent edits/additions,
 restored ordering, queued target identity, incomplete rollback reporting, and a
 successful old-chat save followed by a chat switch. Public reads must be detached
 snapshots; UI tests prohibit direct summary array mutation and direct chat
-persistence. A deferred prune must also lock stale scan-number edits until the
-compacted list has been refreshed. `tests/unit/chat-metadata-save-confirmation.test.mjs`
+persistence. A deferred prune must lock stale scan-number edits while persistence
+is pending and rebuild the scan from current memory before unlocking on success,
+rollback, or `persistenceUnknown`; an unknown readback after a successful write
+must never leave old indexes editable. `tests/unit/chat-metadata-save-confirmation.test.mjs`
 covers group and character readback, swallowed host failures, concurrent state,
 and unavailable verification. A definite stored-state mismatch must enter normal
 transaction compensation; `persistenceUnknown` must reject while retaining the
