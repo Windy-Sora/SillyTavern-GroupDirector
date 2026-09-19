@@ -898,6 +898,8 @@ Query: CapabilityRegistry.get(id) / list() / listEnabled()
 Toggle: CapabilityRegistry.setEnabled(id, true/false)
 ```
 
+**Executor boundary:** malformed intents and non-string `type` values are skipped; valid intents resolve by exact Capability ID, then Schema alias, and only then by ID substring, while disabled entries never enter a plan. Numeric Schema parameters accept only finite numbers or convertible non-empty numeric strings before defaults, range clamps, and enum fallbacks are applied. Nested parameters and Schema defaults passed to a Capability are isolated copies, so Capability mutations cannot contaminate the LLM policy or later executions. `immediate`, `deferred`, and `round_end` are the only scheduling modes; unknown values are logged and fall back to immediate execution. Both blocking and non-blocking execution invoke and isolate `onExecuted` after every action, and non-blocking `completion` settles only after both the Capability and any asynchronous callback finish.
+
 ---
 
 ### 13.3 Critique Module Boundaries

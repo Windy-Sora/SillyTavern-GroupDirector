@@ -5,31 +5,32 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Current verified baseline (2026-09-18):
+Current verified baseline (2026-09-19):
 
-- 309 JavaScript source files and 10 JSON files pass static validation;
-- 583 behavior tests are discovered, with 582 passing and one optional real-host
+- 310 JavaScript source files and 10 JSON files pass static validation;
+- 594 behavior tests are discovered, with 593 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 149/157 production modules, while tests directly or
   transitively reach 79/157 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.10% lines, 79.32% branches, and
-  91.15% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 94.52% lines, 80.04% branches, and
+  91.71% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
   96.53%, 99.32%, and 98.70% lines respectively, while Profile System reaches
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
-  reaches 96.26% lines, 80.63% branches, and 84.00% functions; Script Executor
+  reaches 96.26% lines, 80.12% branches, and 84.00% functions; Script Executor
   System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
   History, World Info, Asset Loader, and Summary Export reach 100% lines;
-  NPC Export reaches 96.59% lines with its new transaction branches;
+  NPC Export reaches 96.60% lines with its new transaction branches;
   NPC Library reaches 98.15% lines;
-  NPC System reaches 95.70% lines, 71.17% branches, and 70.00% functions;
+  NPC System reaches 95.73% lines, 71.43% branches, and 70.00% functions;
   Group ZIP Import/Export reaches 89.80% lines, 80.81% branches, and 85.00%
   functions; PostSpeech Decision Store reaches 98.33% lines and 92.37% branches;
+  PostSpeech Executor reaches 100% lines/functions and 96.55% branches;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
   independently reach 92.86%, 96.91%, and 91.98% lines.
 
@@ -242,6 +243,17 @@ of temporary download nodes and Blob URLs on failure. HTTP-success responses
 with empty card bodies or invalid world-book payloads must not enter an export
 archive that the importer would reject. Remote uploads are not a
 rollback transaction; tests must not pretend partial success is atomic.
+
+PostSpeech Executor coverage belongs in `tests/unit/executor.test.mjs`, while the
+historical round-end and stale-Capability contracts remain under regression tests.
+The unit suite owns malformed-intent filtering, exact/alias/fallback resolution,
+disabled capabilities, numeric schema coercion and rejection, immutable nested
+params and defaults, immediate and
+round-end scheduling, blocking/non-blocking receipts, callback isolation, live
+Capability resolution, and deferred-input validation. Unknown timing values must
+log and fall back to immediate execution rather than silently becoming round-end
+work. Both synchronous and asynchronous `onExecuted` failures are isolated, and
+the callback contract applies in blocking mode as well.
 
 User Provider/Capability lifecycle coverage belongs in
 `tests/unit/user-provider-loader.test.mjs`. Modules must be exercised through real

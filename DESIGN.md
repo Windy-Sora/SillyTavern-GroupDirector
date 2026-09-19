@@ -897,6 +897,8 @@ decision 阶段完成后，`decisionSnapshot = deepFreeze({ decision: deepClone,
 开关: CapabilityRegistry.setEnabled(id, true/false)
 ```
 
+**Executor 边界：** 畸形意图或非字符串 `type` 会被跳过；有效意图按精确 Capability ID、Schema alias、最后才是 ID 子串的顺序解析，禁用项不进入计划。Schema 数字参数只接受有限数字或可转换的非空数字字符串，并在执行前应用默认值、范围截断和枚举回退。传给 Capability 的嵌套参数与 Schema 默认值均为隔离副本，Capability 的修改不会污染 LLM policy 或后续执行。`immediate`、`deferred`、`round_end` 是唯一调度模式；未知值记录警告并回退为立即执行。blocking 与 non-blocking 都在每项完成后调用并隔离 `onExecuted`，non-blocking 的 `completion` 在 Capability 与异步回调均完成后结算。
+
 ---
 
 ### 13.3 Critique 模块边界
