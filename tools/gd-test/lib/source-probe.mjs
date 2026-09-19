@@ -16,8 +16,12 @@ if (!target) {
         const pending = [parse(source, { ecmaVersion: 'latest', sourceType: 'module' })];
         while (pending.length) {
             const node = pending.pop();
-            if (node.type === 'ImportExpression' && node.source.type === 'Literal' && typeof node.source.value === 'string') {
-                imports.push(node.source.value);
+            if (node.type === 'ImportExpression') {
+                if (node.source.type === 'Literal' && typeof node.source.value === 'string') {
+                    imports.push(node.source.value);
+                } else if (node.source.type === 'TemplateLiteral' && node.source.expressions.length === 0) {
+                    imports.push(node.source.quasis[0].value.cooked ?? node.source.quasis[0].value.raw);
+                }
             }
             for (const value of Object.values(node)) {
                 if (Array.isArray(value)) pending.push(...value.filter(item => item && typeof item.type === 'string'));

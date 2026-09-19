@@ -8,7 +8,7 @@ readable reports.
 Current verified baseline (2026-09-19):
 
 - 316 JavaScript source files and 11 JSON files pass static validation;
-- 647 behavior tests are discovered, with 646 passing and one optional real-host
+- 649 behavior tests are discovered, with 648 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 150/158 production modules, while tests directly or

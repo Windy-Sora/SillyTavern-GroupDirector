@@ -138,3 +138,36 @@ test('checker timeout reaps its service subprocess before the next checker runs'
     assert.equal(result.issues[0].code, 'CHECK_TIMEOUT');
     assert.equal(result.counts.childReaped, 1);
 });
+
+test('checker timeout reaps descendants of its service subprocess', async t => {
+    const files = await fixture(t);
+    const childPidFile = path.join(files.directory, 'grandchild.pid');
+    const marker = path.join(files.directory, 'grandchild-marker.txt');
+    t.after(async () => {
+        try {
+            const pid = Number(await readFile(childPidFile, 'utf8'));
+            process.kill(pid, 'SIGKILL');
+        } catch (error) {
+            if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error;
+        }
+    });
+    const childProgram = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'survived'), 1500);`;
+    const parentProgram = `const { spawn } = require('node:child_process');
+        const child = spawn(process.execPath, ['-e', ${JSON.stringify(childProgram)}], { detached: true, windowsHide: true, stdio: 'ignore' });
+        child.unref();
+        require('node:fs').writeFileSync(${JSON.stringify(childPidFile)}, String(child.pid));
+        setInterval(() => {}, 1000);`;
+    await files.write('tree', `export default {
+        id: 'tree', title: 'tree', version: 1, order: 1, timeoutMs: 1000,
+        async run({ services }) {
+            await services.runCommand(process.execPath, ['-e', ${JSON.stringify(parentProgram)}], { timeoutMs: 0 });
+            return {};
+        },
+    };`);
+    const result = await runCheckers(await discoverCheckers(files.directory), context);
+    assert.equal(result.issues[0].code, 'CHECK_TIMEOUT');
+    await new Promise(resolve => setTimeout(resolve, 1700));
+    await assert.rejects(access(marker), { code: 'ENOENT' });
+    const childPid = Number(await readFile(childPidFile, 'utf8'));
+    assert.throws(() => process.kill(childPid, 0), { code: 'ESRCH' });
+});

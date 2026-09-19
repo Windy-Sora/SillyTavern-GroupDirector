@@ -108,6 +108,17 @@ const example = "import('./not-a-dependency.js')";
     assert.ok(result.moduleReachability.testReachableModules.includes('dynamic.js'));
 });
 
+test('static checks follow no-substitution template literal imports', async t => {
+    const root = await createFixture(t, {
+        'manifest.json': JSON.stringify({ display_name: 'fixture', loading_order: 0, js: 'index.js', css: 'style.css', version: '1.0.0' }),
+        'style.css': '',
+        'index.js': 'export const load = () => import(`./missing.js`);',
+    });
+    const result = await runStaticChecks(root, fixtureConfig());
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some(issue => issue.code === 'IMPORT_MISSING' && issue.file === 'index.js'));
+});
+
 test('manifest required fields reject null and incorrect types without throwing', async () => {
     for (const invalid of [null, false, {}, [], ' ']) {
         const manifest = Object.fromEntries(['display_name', 'loading_order', 'js', 'css', 'version'].map(key => [key, invalid]));
