@@ -161,3 +161,45 @@ for (const outcome of ['success', 'failure', 'blocked']) {
         if (outcome !== 'blocked') assert.equal(ctx.quickActions.state('blueprint').status, outcome === 'success' ? 'success' : 'failed');
     });
 }
+
+for (const boundary of ['chat-switch', 'panel-rebuild', 'chat-switch-and-rebuild']) {
+    for (const outcome of ['success', 'failure']) {
+        test(`old blueprint continuation preserves drafts after ${boundary} and ${outcome}`, async () => {
+            const $ = jqueryFixture(), d = depsFixture();
+            let chat = [], metadata = {}, group = { id: 'A', members: ['a'] };
+            let blueprint = { title: 'A saved', nodes: [] }, finish;
+            d.getChat = () => chat; d.getChatMetadata = () => metadata; d.getCurrentGroup = () => group;
+            d.storyBlueprintSystem = {
+                getState: () => ({ continuePending: false }), getBlueprint: () => blueprint,
+                getProgress: () => ({ steps: [], doneCount: 0, total: 0, complete: true }), getProviderData: () => ({ blueprint, current: null }),
+                getCompletionVariable: () => 'story_done', getDefaultPrompt: () => '', getDefaultContinuePrompt: () => '', getDefaultSchema: () => '', getDefaultTemplate: () => '', renderCurrent: () => '',
+                generateBlueprint: () => new Promise((resolve, reject) => { finish = () => outcome === 'failure' ? reject(Error('chat changed')) : resolve(blueprint); }),
+            };
+            const window = {}, globals = { $, window, console, getQuickActions, quickResultText, activeContexts: new WeakMap() };
+            const context = vm.createContext(globals);
+            vm.runInContext(fn('ui/settings-init.js', 'prepareContext'), context);
+            const init = section('ui/sections/storyBlueprint.js', globals);
+            const oldCtx = context.prepareContext(d, id => $('#gd-' + id)); init(oldCtx);
+            const task = $('#gd-story-blueprint-continue').handlers.click();
+            if (boundary.includes('chat-switch')) {
+                chat = []; metadata = {}; group = { id: 'B', members: ['b'] }; blueprint = { title: 'B saved', nodes: [] };
+            }
+            if (boundary.includes('rebuild')) {
+                const newCtx = context.prepareContext(d, id => $('#gd-' + id)); init(newCtx);
+                assert.equal(oldCtx.isCurrentPanel(), false);
+            } else window.__gdRefreshStoryBlueprint();
+            const draft = '{"title":"unsaved draft","nodes":[]}';
+            $('#gd-story-blueprint-json').val(draft);
+            $('#gd-story-blueprint-continue-prompt').val('unsaved prompt');
+            let fullRefreshes = 0;
+            const refresh = window.__gdRefreshStoryBlueprint;
+            window.__gdRefreshStoryBlueprint = () => { fullRefreshes++; refresh(); };
+            finish(); await task;
+            assert.equal(fullRefreshes, 0);
+            assert.equal($('#gd-story-blueprint-json').val(), draft);
+            assert.equal($('#gd-story-blueprint-continue-prompt').val(), 'unsaved prompt');
+            assert.equal($('#gd-story-blueprint-card-status').text(), '0/0');
+            assert.doesNotMatch($('#gd-story-blueprint-status').text(), /continuing/i);
+        });
+    }
+}

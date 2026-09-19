@@ -332,7 +332,7 @@ registerSection('storyBlueprint', function (ctx) {
         bindInlineEditors($card, blueprint, current);
     }
 
-    function refresh() {
+    function refresh(statusOnly = false) {
         const state = storyBlueprintSystem.getState();
         const blueprint = storyBlueprintSystem.getBlueprint();
         const progress = storyBlueprintSystem.getProgress();
@@ -354,16 +354,20 @@ registerSection('storyBlueprint', function (ctx) {
                     : (langZh() ? '正在生成故事蓝图...' : 'Generating Story Blueprint...'))
                 : (langZh() ? '未加载故事蓝图' : 'No Story Blueprint loaded')));
 
-        $c('story-blueprint-json').val(blueprint ? JSON.stringify(blueprint, null, 2) : '');
-        renderCurrentCard(data, progress);
-        $c('story-blueprint-provider-preview').val(storyBlueprintSystem.renderCurrent());
-        $c('story-blueprint-signals').val(JSON.stringify(state.doneSignals || [], null, 2));
-        $c('story-blueprint-last-error').text(state.lastError || '');
+        if (!statusOnly) {
+            $c('story-blueprint-json').val(blueprint ? JSON.stringify(blueprint, null, 2) : '');
+            renderCurrentCard(data, progress);
+            $c('story-blueprint-provider-preview').val(storyBlueprintSystem.renderCurrent());
+            $c('story-blueprint-signals').val(JSON.stringify(state.doneSignals || [], null, 2));
+            $c('story-blueprint-last-error').text(state.lastError || '');
+        }
         $c('story-blueprint-card-status').text(generationBusy
             ? (generationBusy === 'continue' ? (langZh() ? '续写中' : 'continuing') : (langZh() ? '生成中' : 'generating'))
             : (blueprint ? `${progress.doneCount}/${progress.total}` : 'empty'));
-        renderTree();
-        window.__gdRefreshDashboard?.();
+        if (!statusOnly) {
+            renderTree();
+            window.__gdRefreshDashboard?.();
+        }
     }
 
     syncControls();
@@ -469,7 +473,13 @@ registerSection('storyBlueprint', function (ctx) {
         if (mode === 'continue' && ctx.runQuickAction) {
             setGenerationBusy(mode);
             try { await ctx.runQuickAction('blueprint'); }
-            finally { setGenerationBusy(null); refresh(); }
+            finally {
+                generationBusy = null;
+                if (ctx.isCurrentPanel?.() !== false) {
+                    setGenerationBusy(null);
+                    refresh(true);
+                }
+            }
             return;
         }
         setGenerationBusy(mode);

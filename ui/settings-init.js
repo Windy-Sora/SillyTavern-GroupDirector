@@ -17,6 +17,7 @@ function prepareContext(deps, $c) {
     const actions = getQuickActions(deps);
     const ctx = { ...deps, $c, quickActions: actions, quickActionGuards: {} };
     activeContexts.set(actions, ctx);
+    ctx.isCurrentPanel = () => activeContexts.get(actions) === ctx;
     deps.quickActions = actions;
     deps.quickActionGuard = id => activeContexts.get(actions)?.quickActionGuards?.[id]?.();
     deps.syncDirectorControls = () => {
@@ -28,7 +29,7 @@ function prepareContext(deps, $c) {
     };
     deps.runQuickAction = ctx.runQuickAction = async id => {
         const result = await actions.run(id);
-        if (!actions.isCurrent(result)) return result;
+        if (!actions.isCurrent(result) || !ctx.isCurrentPanel()) return result;
         const live = activeContexts.get(actions);
         try {
             if (['success', 'partial', 'failed'].includes(result.status)) {
