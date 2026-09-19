@@ -7,26 +7,27 @@ readable reports.
 
 Current verified baseline (2026-09-19):
 
-- 310 JavaScript source files and 10 JSON files pass static validation;
-- 596 behavior tests are discovered, with 595 passing and one optional real-host
+- 311 JavaScript source files and 10 JSON files pass static validation;
+- 615 behavior tests are discovered, with 614 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 149/157 production modules, while tests directly or
   transitively reach 79/157 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.52% lines, 80.16% branches, and
-  91.72% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 94.80% lines, 80.09% branches, and
+  92.04% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
-  96.53%, 99.32%, and 98.70% lines respectively, while Profile System reaches
+  96.53%, 99.32%, and 98.29% lines respectively, while Profile System reaches
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
-  reaches 96.26% lines, 80.12% branches, and 84.00% functions; Script Executor
+  reaches 96.26% lines, 80.63% branches, and 84.00% functions; Script Executor
   System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
   History, World Info, Asset Loader, and Summary Export reach 100% lines;
   NPC Export reaches 96.60% lines with its new transaction branches;
-  NPC Library reaches 98.15% lines;
+  NPC Library reaches 98.15% lines; Profile Library and Story Blueprint Library
+  reach 96.96% and 98.66% lines respectively;
   NPC System reaches 95.73% lines, 71.43% branches, and 70.00% functions;
   Group ZIP Import/Export reaches 89.84% lines, 82.68% branches, and 85.71%
   functions; PostSpeech Decision Store reaches 98.33% lines and 92.37% branches;
@@ -210,6 +211,19 @@ The production adapter calls the host's direct settings save and requires its
 must reject and remove the temporary listener. The dashboard delete handler
 must await rejection, show an error, and refresh after rollback. The host event
 has no request ID, so concurrent host saves are not strictly attributable.
+
+Profile and Story Blueprint Library persistence coverage belongs in
+`tests/unit/profile-library-system.test.mjs` and
+`tests/unit/story-blueprint-library-system.test.mjs`, with awaited UI feedback in
+`tests/unit/library-ui-persistence.test.mjs`. Save, delete, import, and auto-load
+setting mutations must await confirmed settings persistence, serialize overlapping
+writes, and compensate only their own entry or fields. Deferred-save tests retain
+concurrent neighbors and newer field values. Story Blueprint library application
+uses one awaited chat save through `applyImportTextAndSave`; a failed save performs
+three-way rollback that removes imported state while retaining concurrent object
+and array edits, followed by a compensating save; failed compensation is reported
+as incomplete rather than atomic success. Library download tests require temporary anchors and Blob URLs to
+be released even when the synthetic click throws.
 
 NPC Export import application coverage belongs in `tests/unit/npc-export-system.test.mjs`.
 Both direct import and NPC Library application share this boundary. Tests must cover

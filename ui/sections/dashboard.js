@@ -337,22 +337,29 @@ registerSection('dashboard', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
-            profileLibrarySystem.deleteLibrary(id);
-            $('#gd-profile-library-select').val('');
-            toastr?.success?.(lang === 'zh' ? '档案包已删除' : 'Profile library deleted');
-            window.__gdRefreshProfileLibrary?.();
-            refreshAll();
-            renderPanelProfiles();
+            try {
+                await profileLibrarySystem.deleteLibrary(id);
+                $('#gd-profile-library-select').val('');
+                toastr?.success?.(lang === 'zh' ? '档案包已删除' : 'Profile library deleted');
+                window.__gdRefreshProfileLibrary?.();
+                refreshAll();
+                renderPanelProfiles();
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '删除失败: ' : 'Delete failed: ') + e.message);
+            }
         });
-        $bar.find('#gd-dash-panel-profile-library-auto').on('change', function () {
+        $bar.find('#gd-dash-panel-profile-library-auto').on('change', async function () {
             const enabled = !!$(this).prop('checked');
             const next = profileLibrarySystem.getAutoLoadSettings();
-            next.enabled = enabled;
-            if (!next.mode) next.mode = 'best';
-            profileLibrarySystem.saveAll();
-            $('#gd-profile-library-auto-enabled').prop('checked', enabled);
-            window.__gdRefreshProfileLibrary?.();
-            refreshDashboardAndOpenPanel('profiles');
+            try {
+                await profileLibrarySystem.updateAutoLoadSettings({ enabled, mode: next.mode || 'best' });
+                $('#gd-profile-library-auto-enabled').prop('checked', enabled);
+                window.__gdRefreshProfileLibrary?.();
+                refreshDashboardAndOpenPanel('profiles');
+            } catch (e) {
+                $(this).prop('checked', !!profileLibrarySystem.getAutoLoadSettings().enabled);
+                toastr?.error?.((lang === 'zh' ? '保存失败: ' : 'Save failed: ') + e.message);
+            }
         });
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('profile'));
         $list.append($bar);
@@ -767,11 +774,15 @@ registerSection('dashboard', function (ctx) {
                 POPUP_TYPE.CONFIRM,
             );
             if (!ok) return;
-            storyBlueprintLibrarySystem.deleteLibrary(id);
-            $('#gd-story-blueprint-library-select').val('');
-            toastr?.success?.(lang === 'zh' ? '蓝图包已删除' : 'Story Blueprint library deleted');
-            window.__gdRefreshStoryBlueprintLibrary?.();
-            refreshDashboardAndOpenPanel('storyBlueprint');
+            try {
+                await storyBlueprintLibrarySystem.deleteLibrary(id);
+                $('#gd-story-blueprint-library-select').val('');
+                toastr?.success?.(lang === 'zh' ? '蓝图包已删除' : 'Story Blueprint library deleted');
+                window.__gdRefreshStoryBlueprintLibrary?.();
+                refreshDashboardAndOpenPanel('storyBlueprint');
+            } catch (e) {
+                toastr?.error?.((lang === 'zh' ? '删除失败: ' : 'Delete failed: ') + e.message);
+            }
         });
         $bar.find('.gd-dash-open-settings').on('click', () => openSettingsCard('storyBlueprint'));
         $list.append($bar);

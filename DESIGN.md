@@ -339,6 +339,8 @@ Story Blueprint 是连续性层的故事结构系统。框架只维护结构化�
 
 **Profile 库自动加载**（核心能力）：`settings.profileLibraryAutoLoad` 配置 `enabled` / `mode('best'|'fixed')` / `fixedId` / 匹配规则 / `overwriteExisting` / `importTemplate`。`findBestLibrary` 按"可用匹配数×100 + 总匹配数×10 + 匹配率"打分选最优库；在 `CHAT_CHANGED` 和 `APP_READY` 事件中（且 `profileEnabled` 时）自动触发 `autoLoadForCurrentGroup`，成功后弹 toastr 并刷新 UI；用 `lastAutoLoadKey` 去重避免重复应用。
 
+**库持久化事务边界**：Profile 与 Story Blueprint Library 的保存、删除、文件导入和 Profile 自动加载配置更新均串行执行并等待已确认的设置持久化。失败补偿只移除本次新增项、按存活相邻项恢复本次删除项，或恢复仍由本次操作占有的配置字段，不用整库快照覆盖并发修改。专用卡片和仪表盘必须等待 Promise，成功后才刷新和提示。导出无论创建节点或点击是否失败都会清理临时节点与 Blob URL。Profile Library 应用复用 Profile Import 自己的单次聊天保存；Story Blueprint Library 通过 `applyImportTextAndSave()` 统一执行一次保存，失败时三方回滚导入状态、保留等待期间的对象字段和数组增量，并补偿保存恢复结果；补偿保存也失败时明确报告回滚不完整。
+
 **与配置档案的关系**：库条目是"可复用内容数据"，在 `config-profile-system` 中被 `INTENTIONALLY_UNCOVERED_KEYS` 显式排除，不随配置档保存/还原。
 
 **Profile 持久化事务边界**：`saveProfile()` 负责单角色写入，`archiveProfiles()` 负责活动档案到归档区的移动；两者都必须 `await saveChatConditional()`。保存失败时按头像分别补偿，只恢复仍等于本次应用状态的槽位，因此不会用整仓快照覆盖等待期间同角色或其他角色的并发编辑。同步、角色变动检测和卡片删除统一调用该事务 API，UI 不再直接改写两个存储映射。
@@ -1036,6 +1038,8 @@ Group Director 为五种数据类型提供完整的导出/导入能力：
 | Story Blueprint Library | 连续性抽屉 → 故事蓝图卡片 | `storyBlueprintLibraries` | 无 |
 
 NPC Library 的保存、删除和文件导入必须等待注入的设置保存适配器；失败时按条目身份或仍存在的相邻条目补偿，保留等待期间其他库条目的修改。生产适配器直接调用宿主 `saveSettings()`，并要求收到成功保存后发出的 `SETTINGS_UPDATED` 事件；防抖包装函数不提供完成结果，宿主直接保存也会吞掉请求错误，因此不能只等待其 Promise。事件没有请求 ID，极端并发宿主保存仍无法严格归因。旧设置中的畸形条目不阻断有效条目展示；无效导出数据直接报错，下载异常也清理临时节点和 Blob URL。专用卡片与仪表盘删除入口均等待操作，失败时刷新回滚状态且不提示成功。库的“应用”和独立文件导入共用 `npc-export-system.applyImport()`。
+
+Profile 与 Story Blueprint Library 使用同一个已确认设置保存适配器和串行写入原则。Profile 自动加载开关由系统层字段事务管理，`getAutoLoadSettings()` 只返回快照，UI 不直接改写设置对象；蓝图库应用由 Story Blueprint System 独占聊天保存和并发安全补偿，避免内部未等待保存与外层重复保存。
 
 **NPC 导入应用事务：** 先改当前聊天的 NPC 列表并等待 `saveChatConditional()`；失败时只对本次新增/覆盖的条目做三方补偿，保留其他 NPC 和同一 NPC 的并发字段编辑。聊天保存成功后若已切换会话，报告 stale，不回滚已保存的旧会话，也不应用全局 Prompt。可选 Prompt 在聊天保存成功后才写入并等待 `saveSettings()` 的可观察结果；若该回调失败，则恢复本次仍拥有的 Prompt 值，并尝试将 NPC 补偿再次保存。跨聊天元数据与插件设置的操作不是原子提交：补偿保存失败、会话切换或同一新增 NPC 被并发编辑时会明确报告补偿可能不完整，而不伪称全部回滚。生产环境的 `saveSettings()` 只调度防抖保存，因此等待它不能证明后续磁盘写入成功。
 

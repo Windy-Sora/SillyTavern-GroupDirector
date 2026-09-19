@@ -172,6 +172,68 @@ test('Story Blueprint import validates raw and wrapped forms and sanitizes impor
     assert.equal(metadata.gd.storyBlueprint.completeNoticeKey, '');
 });
 
+test('Story Blueprint transactional import awaits one save and rolls back around concurrent edits', async () => {
+    const gate = deferred();
+    let saves = 0;
+    const { system } = fixture({ saveChatConditional: () => ++saves === 1 ? gate.promise : Promise.resolve() });
+    system.setBlueprint(blueprint(), { persist: false });
+    const incoming = {
+        blueprint: {
+            title: 'Imported',
+            meta: { premise: 'Imported premise' },
+            nodes: [{ id: 'imported', title: 'Imported', content: {}, children: [] }],
+        },
+    };
+    const pending = system.applyImportTextAndSave(JSON.stringify(incoming));
+    await Promise.resolve();
+    system.getBlueprint().meta.concurrent = 'kept';
+    system.getBlueprint().nodes.push({ id: 'concurrent', title: 'Concurrent', content: {}, children: [] });
+    gate.reject(new Error('chat save failed'));
+    await assert.rejects(pending, /chat save failed/);
+    assert.equal(saves, 2);
+    assert.equal(system.getBlueprint().title, 'Quest');
+    assert.equal(system.getBlueprint().meta.premise, 'Old');
+    assert.equal(system.getBlueprint().meta.concurrent, 'kept');
+    assert.deepEqual(system.getBlueprint().nodes.map(node => node.id), ['first', 'concurrent']);
+});
+
+test('Story Blueprint transactional import reports failed rollback persistence', async () => {
+    const { system } = fixture({ saveChatConditional: async () => { throw new Error('chat save failed'); } });
+    system.setBlueprint(blueprint(), { persist: false });
+    const incoming = { nodes: [{ id: 'imported', title: 'Imported', content: {}, children: [] }] };
+    await assert.rejects(
+        system.applyImportTextAndSave(JSON.stringify(incoming)),
+        error => error.rollbackIncomplete === true && /rollback persistence failed/.test(error.message),
+    );
+    assert.equal(system.getBlueprint().title, 'Quest');
+});
+
+test('Story Blueprint transactional import reports a chat switch without undoing saved old-chat state', async () => {
+    const gate = deferred();
+    const oldMetadata = {};
+    const newMetadata = {};
+    let currentMetadata = oldMetadata;
+    const { system } = fixture({
+        getChatMetadata: () => currentMetadata,
+        saveChatConditional: () => gate.promise,
+    });
+    system.setBlueprint(blueprint(), { persist: false });
+    const incoming = { nodes: [{ id: 'imported', title: 'Imported', content: {}, children: [] }] };
+    const pending = system.applyImportTextAndSave(JSON.stringify(incoming));
+    await Promise.resolve();
+    currentMetadata = newMetadata;
+    gate.resolve();
+    await assert.rejects(pending, { name: 'StaleExecutionError' });
+    assert.equal(oldMetadata.gd.storyBlueprint.blueprint.nodes[0].id, 'imported');
+    assert.equal(newMetadata.gd, undefined);
+});
+
+test('Story Blueprint transactional import returns validation failures without saving', async () => {
+    const { system, calls } = fixture();
+    assert.equal((await system.applyImportTextAndSave('{')).ok, false);
+    assert.equal(calls.saved, 0);
+});
+
 test('Story Blueprint exposes stable language defaults and schema/template contracts', () => {
     const { system } = fixture();
     assert.match(system.getDefaultPrompt(), /story blueprint/i);

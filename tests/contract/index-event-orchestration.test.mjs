@@ -53,7 +53,7 @@ test('index registers the complete SillyTavern event surface exactly once', () =
     assert.deepEqual([...new Set(registrations)].sort(), Object.keys(expected).sort());
 });
 
-test('NPC library settings adapter requires a host save success event and removes its listener', async () => {
+test('library settings adapter requires a host save success event and removes its listener', async () => {
     const adapter = source.match(/async function saveSettingsConfirmed\(\) \{[\s\S]*?\n\}/)?.[0];
     assert.ok(adapter);
     const listeners = new Set();
@@ -76,6 +76,12 @@ test('NPC library settings adapter requires a host save success event and remove
     context.saveSettingsHost = async () => {}; // Host catches its own network failure.
     await assert.rejects(context.saveSettingsConfirmed(), /not confirmed/);
     assert.equal(listeners.size, 0);
+});
+
+test('all reusable libraries use confirmed settings persistence', () => {
+    assert.match(source, /createProfileLibrarySystem\(\{[\s\S]*?saveSettings: saveSettingsConfirmed/);
+    assert.match(source, /createStoryBlueprintLibrarySystem\(\{[\s\S]*?saveSettings: saveSettingsConfirmed/);
+    assert.match(source, /createNpcLibrarySystem\(\{[\s\S]*?saveSettings: saveSettingsConfirmed/);
 });
 
 test('NPC mutations and imports use the confirmed chat persistence adapter', () => {

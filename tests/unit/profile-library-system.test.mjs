@@ -36,11 +36,11 @@ function fixture(overrides = {}) {
     return { system: createProfileLibrarySystem(dependencies), settings, extension_settings, calls, characters };
 }
 
-test('profile library saves ready profiles and maintains auto-load settings', () => {
+test('profile library saves ready profiles and maintains auto-load settings', async () => {
     const { system, settings, extension_settings, calls } = fixture();
-    assert.throws(() => system.saveCurrentAsLibrary('  '), /name is required/i);
+    await assert.rejects(system.saveCurrentAsLibrary('  '), /name is required/i);
 
-    const entry = system.saveCurrentAsLibrary('Main / Cast', 'campaign');
+    const entry = await system.saveCurrentAsLibrary('Main / Cast', 'campaign');
     assert.equal(entry.profileCount, 2);
     assert.equal(entry.exportData.source.groupName, 'Party');
     assert.equal(entry.exportData.template.generatorPrompt, 'default prompt');
@@ -48,20 +48,17 @@ test('profile library saves ready profiles and maintains auto-load settings', ()
     assert.equal(extension_settings['group-director'], settings);
     assert.equal(calls.saved, 1);
 
-    const auto = system.getAutoLoadSettings();
-    assert.equal(auto.mode, 'best');
-    auto.enabled = true;
-    auto.mode = 'fixed';
-    auto.fixedId = entry.id;
-    assert.equal(system.deleteLibrary(entry.id), true);
-    assert.equal(auto.enabled, false);
-    assert.equal(auto.fixedId, '');
-    assert.equal(system.deleteLibrary('missing'), false);
+    assert.equal(system.getAutoLoadSettings().mode, 'best');
+    await system.updateAutoLoadSettings({ enabled: true, mode: 'fixed', fixedId: entry.id });
+    assert.equal(await system.deleteLibrary(entry.id), true);
+    assert.equal(system.getAutoLoadSettings().enabled, false);
+    assert.equal(system.getAutoLoadSettings().fixedId, '');
+    assert.equal(await system.deleteLibrary('missing'), false);
 });
 
 test('profile library matches without reusing profiles and applies translated avatars', async () => {
     const { system, settings, calls } = fixture();
-    const entry = system.saveCurrentAsLibrary('Cast');
+    const entry = await system.saveCurrentAsLibrary('Cast');
     settings.profileLibraries[0].exportData.profiles[0].avatar = 'old-alice.png';
 
     const preview = system.matchLibraryProfiles(entry, { overwriteExisting: false });
@@ -78,7 +75,7 @@ test('profile library matches without reusing profiles and applies translated av
     assert.deepEqual(calls.applied[0][2], { importTemplate: true });
     assert.equal(calls.applied[0][0].profiles[0].avatar, 'alice.png');
     assert.equal(calls.refreshed, 1);
-    assert.equal(calls.chatSaved, 1);
+    assert.equal(calls.chatSaved, 0);
     await assert.rejects(system.applyLibrary('missing'), /not found/i);
 });
 
@@ -99,7 +96,7 @@ test('profile library imports, ranks matches, and deduplicates automatic loading
     assert.equal(entry.profileCount, 2);
     assert.equal(system.findBestLibrary()?.entry.id, entry.id);
 
-    Object.assign(system.getAutoLoadSettings(), { enabled: true, mode: 'best', overwriteExisting: true });
+    await system.updateAutoLoadSettings({ enabled: true, mode: 'best', overwriteExisting: true });
     const first = await system.autoLoadForCurrentGroup('chat');
     assert.equal(first.applied, 2);
     assert.equal((await system.autoLoadForCurrentGroup('chat')).reason, 'deduped');
@@ -113,11 +110,95 @@ test('profile library imports, ranks matches, and deduplicates automatic loading
 
 test('profile library reports invalid imports and empty sources', async () => {
     const empty = fixture({ getProfiles: () => ({}) }).system;
-    assert.throws(() => empty.saveCurrentAsLibrary('Empty'), /No ready/i);
+    await assert.rejects(empty.saveCurrentAsLibrary('Empty'), /No ready/i);
 
     const invalid = fixture({ parseImportFile: () => ({ ok: false, error: 'bad profile data' }) }).system;
     await assert.rejects(
         invalid.importFileToLibrary({ name: 'bad.json', text: async () => '{}' }),
         /bad profile data/,
     );
+});
+
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; });
+    return { promise, resolve, reject };
+}
+
+test('profile library rolls back failed saves without removing a later queued entry', async () => {
+    const firstSave = deferred();
+    let saves = 0;
+    const { system } = fixture({
+        saveSettings: () => ++saves === 1 ? firstSave.promise : Promise.resolve(),
+    });
+    const failed = system.saveCurrentAsLibrary('Failed');
+    const later = system.saveCurrentAsLibrary('Later');
+    firstSave.reject(new Error('settings save failed'));
+    await assert.rejects(failed, /settings save failed/);
+    assert.equal((await later).name, 'Later');
+    assert.deepEqual(system.getLibraries().map(entry => entry.name), ['Later']);
+});
+
+test('profile library restores a failed deletion while preserving concurrent neighbors and settings', async () => {
+    const gate = deferred();
+    let saves = 0;
+    const { system, settings } = fixture({ saveSettings: () => ++saves === 4 ? gate.promise : Promise.resolve() });
+    const first = await system.saveCurrentAsLibrary('First');
+    const middle = await system.saveCurrentAsLibrary('Middle');
+    const last = await system.saveCurrentAsLibrary('Last');
+    system.getAutoLoadSettings();
+    Object.assign(settings.profileLibraryAutoLoad, { enabled: true, mode: 'fixed', fixedId: middle.id });
+    const pending = system.deleteLibrary(middle.id);
+    await Promise.resolve();
+    system.getLibraries().unshift({ id: 'concurrent', name: 'Concurrent' });
+    settings.profileLibraryAutoLoad.enabled = true;
+    gate.reject(new Error('settings save failed'));
+    await assert.rejects(pending, /settings save failed/);
+    assert.deepEqual(system.getLibraries().map(entry => entry.id), ['concurrent', first.id, middle.id, last.id]);
+    assert.equal(system.getAutoLoadSettings().enabled, true);
+    assert.equal(system.getAutoLoadSettings().fixedId, middle.id);
+});
+
+test('profile auto-load rollback preserves a newer concurrent field value', async () => {
+    const gate = deferred();
+    const { system, settings } = fixture({ saveSettings: () => gate.promise });
+    const pending = system.updateAutoLoadSettings({ enabled: true, mode: 'fixed' });
+    await Promise.resolve();
+    settings.profileLibraryAutoLoad.enabled = false;
+    settings.profileLibraryAutoLoad.fixedId = 'newer';
+    gate.reject(new Error('settings save failed'));
+    await assert.rejects(pending, /settings save failed/);
+    assert.equal(system.getAutoLoadSettings().enabled, false);
+    assert.equal(system.getAutoLoadSettings().mode, 'best');
+    assert.equal(system.getAutoLoadSettings().fixedId, 'newer');
+});
+
+test('profile library import save failure removes only its own entry', async () => {
+    const { system } = fixture({ saveSettings: async () => { throw new Error('settings save failed'); } });
+    const data = { type: 'profile-export', profiles: [], source: {}, libraryMeta: { name: 'Failed' } };
+    await assert.rejects(
+        system.importFileToLibrary({ name: 'failed.json', text: async () => JSON.stringify(data) }),
+        /settings save failed/,
+    );
+    assert.deepEqual(system.getLibraries(), []);
+});
+
+test('profile library export cleans temporary resources when download fails', async () => {
+    const original = { document: globalThis.document, URL: globalThis.URL };
+    const events = [];
+    globalThis.document = {
+        createElement: () => ({ click() { throw new Error('click failed'); } }),
+        body: { appendChild() { events.push('append'); }, removeChild() { events.push('remove'); } },
+    };
+    globalThis.URL = { createObjectURL: () => 'blob:profiles', revokeObjectURL() { events.push('revoke'); } };
+    try {
+        const { system } = fixture();
+        const entry = await system.saveCurrentAsLibrary('Pack');
+        assert.throws(() => system.exportLibrary(entry.id), /click failed/);
+        assert.deepEqual(events, ['append', 'remove', 'revoke']);
+    } finally {
+        globalThis.document = original.document;
+        globalThis.URL = original.URL;
+    }
 });
