@@ -10,6 +10,7 @@ export function createExportImportSystem({
     getChat,
     characters,
     world_names,
+    getWorldNames = () => world_names,
     selected_world_info,
     world_info,
     getChatMetadata,
@@ -21,6 +22,7 @@ export function createExportImportSystem({
     const JSZIP_PATH = '../../../../../lib/jszip.min.js';
     let JSZip;
     let csrfToken = null;
+    const reservedWorldNames = new Set();
 
     async function ensureJSZip() {
         if (JSZip) return;
@@ -355,7 +357,6 @@ export function createExportImportSystem({
                     const blob = characterBlobs.get(file.name);
                     const archivePath = file.name;
                     const originalName = archivePath.split('/').pop() || archivePath;
-                    const baseName = originalName.replace(/\.(png|webp)$/i, '');
 
                     const formData = new FormData();
                     formData.append('avatar', blob, originalName);
@@ -375,8 +376,6 @@ export function createExportImportSystem({
                             !importedAvatars.has(actualAvatar.toLowerCase())) {
                             importedAvatars.add(actualAvatar.toLowerCase());
                             avatarNameMap.set(originalName, actualAvatar);
-                            avatarNameMap.set(baseName, actualAvatar); // also map without extension
-                            avatarNameMap.set(archivePath, actualAvatar); // support full paths returned by JSZip
                             log(`Imported character: ${originalName} → ${actualAvatar}`);
                             charOk++;
                         } else {
@@ -395,8 +394,10 @@ export function createExportImportSystem({
         }
 
         // ── 2. Import world books ──
-        const usedWorldNames = new Set((Array.isArray(world_names) ? world_names : [])
+        const currentWorldNames = getWorldNames();
+        const usedWorldNames = new Set((Array.isArray(currentWorldNames) ? currentWorldNames : [])
             .filter(name => typeof name === 'string').map(name => name.toLowerCase()));
+        for (const name of reservedWorldNames) usedWorldNames.add(name);
 
         {
             for (const file of worldFiles) {
@@ -409,6 +410,7 @@ export function createExportImportSystem({
                         importedName = `${baseName}_${suffix}`;
                     }
                     usedWorldNames.add(importedName.toLowerCase());
+                    reservedWorldNames.add(importedName.toLowerCase());
 
                     const formData = new FormData();
                     formData.append('avatar', blob, `${importedName}.json`);

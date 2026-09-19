@@ -422,7 +422,8 @@ function log(...args) {
 
 const { exportGroup, importGroup } = createExportImportSystem({
     settings, getCurrentGroup, getChat, getCharacters,
-    world_names, selected_world_info, world_info, getChatMetadata, log,
+    world_names, getWorldNames: () => world_names,
+    selected_world_info, world_info, getChatMetadata, log,
 });
 
 // ─── Profile Export System ──────────────────────────────────────────

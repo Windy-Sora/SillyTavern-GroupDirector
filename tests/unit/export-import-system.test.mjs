@@ -174,6 +174,71 @@ test('group import remaps renamed character files before creating the group', as
     } finally { browser.restore(); }
 });
 
+test('character filename aliases cannot overwrite another imported member mapping', async () => {
+    const browser = importBrowser(importZip(
+        { members: ['alice.png', 'alice.png.png'] },
+        ['characters/alice.png', 'characters/alice.png.png'],
+    ));
+    let importCount = 0;
+    let createBody;
+    try {
+        globalThis.fetch = async (url, options = {}) => {
+            if (url === '/csrf-token') return { json: async () => ({ token: 'csrf' }) };
+            if (url === '/api/characters/import') {
+                return { ok: true, json: async () => ({ file_name: `Imported${++importCount}` }) };
+            }
+            if (url === '/api/groups/create') {
+                createBody = JSON.parse(options.body);
+                return { ok: true, json: async () => ({ id: 'g2' }) };
+            }
+            throw new Error(`Unexpected URL: ${url}`);
+        };
+        const result = await createSystem().importGroup(new ArrayBuffer(2));
+        assert.equal(result.ok, true);
+        assert.deepEqual(createBody.members, ['Imported1.png', 'Imported2.png']);
+        assert.equal(new Set(createBody.members).size, 2);
+    } finally { browser.restore(); }
+});
+
+test('sequential imports reserve world-book names and read the latest host list', async () => {
+    let loadedZip;
+    class ImportZip { static async loadAsync() { return loadedZip; } }
+    const browser = installBrowser(ImportZip);
+    let currentWorldNames = [];
+    const uploadedNames = [];
+    let characterCount = 0;
+    try {
+        globalThis.fetch = async (url, options = {}) => {
+            if (url === '/csrf-token') return { json: async () => ({ token: 'csrf' }) };
+            if (url === '/api/characters/import') {
+                return { ok: true, json: async () => ({ file_name: `Imported${++characterCount}` }) };
+            }
+            if (url === '/api/worldinfo/import') {
+                uploadedNames.push(options.body.get('avatar').name);
+                return { ok: true };
+            }
+            if (url === '/api/groups/create') return { ok: true, json: async () => ({ id: 'g2' }) };
+            throw new Error(`Unexpected URL: ${url}`);
+        };
+        const system = createSystem({
+            world_names: currentWorldNames,
+            getWorldNames: () => currentWorldNames,
+        });
+        loadedZip = importZip(
+            { members: ['alice.png'] }, ['characters/alice.png'], ['worlds/Lore.json'],
+        );
+        assert.equal((await system.importGroup(new ArrayBuffer(2))).ok, true);
+
+        currentWorldNames = ['External'];
+        loadedZip = importZip(
+            { members: ['bob.png'] }, ['characters/bob.png'],
+            ['worlds/Lore.json', 'worlds/External.json'],
+        );
+        assert.equal((await system.importGroup(new ArrayBuffer(2))).ok, true);
+        assert.deepEqual(uploadedNames, ['Lore.json', 'Lore_1.json', 'External_1.json']);
+    } finally { browser.restore(); }
+});
+
 test('invalid group archives never upload characters, world books, or a group', async () => {
     const cases = [
         importZip(null, ['characters/alice.png']),

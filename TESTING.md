@@ -8,15 +8,15 @@ readable reports.
 Current verified baseline (2026-09-19):
 
 - 310 JavaScript source files and 10 JSON files pass static validation;
-- 594 behavior tests are discovered, with 593 passing and one optional real-host
+- 596 behavior tests are discovered, with 595 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 149/157 production modules, while tests directly or
   transitively reach 79/157 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.52% lines, 80.04% branches, and
-  91.71% functions. All eight built-in Agent modules are test-reachable; Custom
+- the full loaded-module coverage snapshot is 94.52% lines, 80.16% branches, and
+  91.72% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
@@ -28,7 +28,7 @@ Current verified baseline (2026-09-19):
   NPC Export reaches 96.60% lines with its new transaction branches;
   NPC Library reaches 98.15% lines;
   NPC System reaches 95.73% lines, 71.43% branches, and 70.00% functions;
-  Group ZIP Import/Export reaches 89.80% lines, 80.81% branches, and 85.00%
+  Group ZIP Import/Export reaches 89.84% lines, 82.68% branches, and 85.71%
   functions; PostSpeech Decision Store reaches 98.33% lines and 92.37% branches;
   PostSpeech Executor reaches 100% lines/functions and 96.55% branches;
   `prompt-renderer.js`, `utils/custom-api.js`, and `systems/agent-runtime.js`
@@ -238,8 +238,10 @@ no character filename count as failures. A failed required card must not create 
 group, while any attempted remote write must yield an incomplete/inspection
 warning rather than a definite no-resource claim. Tests
 also verify avatar remapping, avoidance of known world-book name collisions,
-partial export manifest membership, original-chat export snapshots, and cleanup
-of temporary download nodes and Blob URLs on failure. HTTP-success responses
+collision-safe mappings for valid filenames whose basenames resemble another card,
+cross-call world-book reservations against both earlier imports and a replaced live
+host name list, partial export manifest membership, original-chat export snapshots,
+and cleanup of temporary download nodes and Blob URLs on failure. HTTP-success responses
 with empty card bodies or invalid world-book payloads must not enter an export
 archive that the importer would reject. Remote uploads are not a
 rollback transaction; tests must not pretend partial success is atomic.
