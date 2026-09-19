@@ -11,6 +11,7 @@ registerSection('chatSummary', function (ctx) {
     const { settings, $c, saveSettings, summarySystem, toastr, isRoundActive } = ctx;
     const ss = summarySystem;
     const defaultPrompt = getDefaultPrompt(settings.lang);
+    let archiveMutationPending = false;
 
     // Init
     $c('summary-enabled').prop('checked', !!settings.summaryEnabled);
@@ -19,7 +20,7 @@ registerSection('chatSummary', function (ctx) {
 
     const checkEnabled = () => {
         const locked = isRoundActive ? isRoundActive() : false;
-        const on = !!settings.summaryEnabled && !locked;
+        const on = !!settings.summaryEnabled && !locked && !archiveMutationPending;
         $c('summary-lock-warn').toggle(locked);
         $c('summary-reuse').prop('disabled', !settings.summaryEnabled);
         $c('summary-prompt').prop('disabled', !settings.summaryEnabled);
@@ -29,6 +30,8 @@ registerSection('chatSummary', function (ctx) {
         $c('summary-reset').prop('disabled', !on);
         $c('summary-prompt-reset').prop('disabled', !settings.summaryEnabled);
         $c('summary-result-save').prop('disabled', !on);
+        $c('summary-prune-btn').prop('disabled', archiveMutationPending);
+        $c('summary-scan-clear').prop('disabled', archiveMutationPending);
     };
     checkEnabled();
 
@@ -78,7 +81,7 @@ registerSection('chatSummary', function (ctx) {
 
     // Save edited result — handles both single active and multi-summary scan views
     $c('summary-result-save').on('click', async () => {
-        if (isRoundActive && isRoundActive()) return;
+        if (archiveMutationPending || (isRoundActive && isRoundActive())) return;
         $c('summary-result-save').prop('disabled', true);
         const text = $c('summary-result').val();
         try {
@@ -262,6 +265,7 @@ registerSection('chatSummary', function (ctx) {
 
     // Prune disabled summaries
     $c('summary-prune-btn').on('click', async () => {
+        if (archiveMutationPending) return;
         const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
         const activeOnly = allSummaries.filter(s => s.active);
         if (activeOnly.length === allSummaries.length) {
@@ -271,6 +275,8 @@ registerSection('chatSummary', function (ctx) {
         if (!await callGenericPopup(settings.lang === 'zh'
             ? `将删除 ${allSummaries.length - activeOnly.length} 条已禁用总结，保留 ${activeOnly.length} 条活跃。确认？`
             : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`, POPUP_TYPE.CONFIRM)) return;
+        archiveMutationPending = true;
+        checkEnabled();
         try {
             await ss.pruneDisabledSummaries();
             doScan();
@@ -279,6 +285,9 @@ registerSection('chatSummary', function (ctx) {
                 : `Pruned, ${activeOnly.length} active summaries kept`);
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '清理失败' : 'Prune failed'));
+        } finally {
+            archiveMutationPending = false;
+            checkEnabled();
         }
     });
 
@@ -300,9 +309,12 @@ registerSection('chatSummary', function (ctx) {
     });
 
     $c('summary-scan-clear').on('click', async () => {
+        if (archiveMutationPending) return;
         if (!await callGenericPopup(settings.lang === 'zh'
             ? '清除全部存档总结？此操作不可撤销。'
             : 'Clear all archived summaries? This cannot be undone.', POPUP_TYPE.CONFIRM)) return;
+        archiveMutationPending = true;
+        checkEnabled();
         try {
             await ss.clearSummaries();
             $c('summary-scan-notice').hide();
@@ -310,6 +322,9 @@ registerSection('chatSummary', function (ctx) {
             toastr.info(settings.lang === 'zh' ? '已清除全部总结' : 'All summaries cleared');
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '清除失败' : 'Clear failed'));
+        } finally {
+            archiveMutationPending = false;
+            checkEnabled();
         }
     });
 

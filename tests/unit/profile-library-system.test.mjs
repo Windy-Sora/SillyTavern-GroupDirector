@@ -140,6 +140,28 @@ test('profile library rolls back failed saves without removing a later queued en
     assert.deepEqual(system.getLibraries().map(entry => entry.name), ['Later']);
 });
 
+test('profile library captures the source chat before a queued save waits', async () => {
+    const gate = deferred();
+    let saves = 0;
+    let group = 'A';
+    const { system } = fixture({
+        saveSettings: () => ++saves === 1 ? gate.promise : Promise.resolve(),
+        getProfiles: () => ({
+            'alice.png': { state: 'ready', hash: 'a|p|s', profile: { from: group } },
+        }),
+        getCurrentGroup: () => ({ name: group, members: ['alice.png'], disabled_members: [] }),
+    });
+    const blocking = system.saveCurrentAsLibrary('Blocking');
+    await Promise.resolve();
+    const pending = system.saveCurrentAsLibrary('Save A');
+    group = 'B';
+    gate.resolve();
+    await blocking;
+    const entry = await pending;
+    assert.equal(entry.sourceGroupName, 'A');
+    assert.equal(entry.exportData.profiles[0].profile.from, 'A');
+});
+
 test('profile library restores a failed deletion while preserving concurrent neighbors and settings', async () => {
     const gate = deferred();
     let saves = 0;

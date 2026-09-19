@@ -132,22 +132,22 @@ export function createProfileLibrarySystem({
     }
 
     async function saveCurrentAsLibrary(name, description = '') {
-        return enqueueMutation(async () => {
-            const title = String(name || '').trim();
-            if (!title) throw new Error('Library name is required');
-            const exportData = buildExportJson(title, description);
-            if (!exportData.profiles.length) throw new Error('No ready character profiles to save');
+        const title = String(name || '').trim();
+        if (!title) throw new Error('Library name is required');
+        const exportData = buildExportJson(title, description);
+        if (!exportData.profiles.length) throw new Error('No ready character profiles to save');
 
-            const entry = {
-                id: genId(),
-                name: title,
-                description: description || '',
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                sourceGroupName: exportData.source.groupName || '',
-                profileCount: exportData.profiles.length,
-                exportData,
-            };
+        const entry = {
+            id: genId(),
+            name: title,
+            description: description || '',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            sourceGroupName: exportData.source.groupName || '',
+            profileCount: exportData.profiles.length,
+            exportData,
+        };
+        return enqueueMutation(async () => {
             const list = getLibraries();
             list.push(entry);
             try { await saveAll(); }

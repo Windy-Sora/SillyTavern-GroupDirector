@@ -102,6 +102,29 @@ test('Story Blueprint library serializes saves and removes only a failed additio
     assert.deepEqual(system.getLibraries().map(entry => entry.name), ['Later']);
 });
 
+test('Story Blueprint library captures the source chat before a queued save waits', async () => {
+    const gate = deferred();
+    let saves = 0;
+    let group = 'A';
+    const { system } = fixture({
+        saveSettings: () => ++saves === 1 ? gate.promise : Promise.resolve(),
+        getCurrentGroup: () => ({ name: group }),
+        storyBlueprintSystem: {
+            buildExportFile: () => ({ storyBlueprint: { blueprint: { title: group, nodes: [] } } }),
+            getSteps: () => [],
+        },
+    });
+    const blocking = system.saveCurrentAsLibrary('Blocking');
+    await Promise.resolve();
+    const pending = system.saveCurrentAsLibrary('Save A');
+    group = 'B';
+    gate.resolve();
+    await blocking;
+    const entry = await pending;
+    assert.equal(entry.sourceGroupName, 'A');
+    assert.equal(entry.exportData.storyBlueprint.blueprint.title, 'A');
+});
+
 test('Story Blueprint library restores a failed deletion relative to concurrent neighbors', async () => {
     const gate = deferred();
     let saves = 0;

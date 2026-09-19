@@ -82,6 +82,24 @@ test('summary edit UI awaits system persistence and restores its control on reje
     assert.equal(h.controls.get('summary-result-save').prop('disabled'), false);
 });
 
+test('summary pruning blocks edits that still use the stale scan numbering', async () => {
+    const gate = deferred();
+    let edits = 0;
+    const list = [{ content: 'inactive', active: false, rangeEnd: 1, basedOn: null }, { content: 'active', active: true, rangeEnd: 1, basedOn: null }];
+    const h = await harness({
+        pruneDisabledSummaries: () => gate.promise,
+        updateSummaryContents: async () => { edits++; return 1; },
+    }, list);
+    const pruning = h.handlers.get('summary-prune-btn:click')();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.controls.get('summary-result-save').prop('disabled'), true);
+    await h.handlers.get('summary-result-save:click')();
+    assert.equal(edits, 0);
+    gate.resolve(1);
+    await pruning;
+    assert.equal(h.controls.get('summary-result-save').prop('disabled'), false);
+});
+
 test('summary destructive UI actions report rejected transactions without success feedback', async () => {
     for (const [key, method] of [
         ['summary-revert', 'revertLastSummary'],

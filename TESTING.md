@@ -8,19 +8,19 @@ readable reports.
 Current verified baseline (2026-09-19):
 
 - 313 JavaScript source files and 10 JSON files pass static validation;
-- 627 behavior tests are discovered, with 626 passing and one optional real-host
+- 630 behavior tests are discovered, with 629 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 149/157 production modules, while tests directly or
   transitively reach 79/157 production modules;
 - 78 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.95% lines, 80.01% branches, and
+- the full loaded-module coverage snapshot is 94.94% lines, 79.97% branches, and
   92.39% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
   System reaches 98.36% lines / 88.50% branches / 100% functions. Memory
   System, Variable System, Memory Export, and Story Blueprint now reach 98.75%,
-  96.65%, 99.32%, and 98.29% lines respectively, while Profile System reaches
+  96.53%, 99.32%, and 98.29% lines respectively, while Profile System reaches
   92.03% lines, 70.10% branches, and 87.18% functions. User Provider Loader now
   reaches 96.26% lines, 80.12% branches, and 84.00% functions; Script Executor
   System reaches 90.60% lines, 77.36% branches, and 93.62% functions;
@@ -211,7 +211,8 @@ own entries or fields. Deferred-save tests cover concurrent edits/additions,
 restored ordering, queued target identity, incomplete rollback reporting, and a
 successful old-chat save followed by a chat switch. Public reads must be detached
 snapshots; UI tests prohibit direct summary array mutation and direct chat
-persistence.
+persistence. A deferred prune must also lock stale scan-number edits until the
+compacted list has been refreshed.
 
 NPC Library persistence coverage belongs in `tests/unit/npc-library-system.test.mjs`,
 with UI feedback and malformed legacy rendering in `tests/unit/npc-library-ui.test.mjs`.
@@ -230,7 +231,9 @@ Profile and Story Blueprint Library persistence coverage belongs in
 `tests/unit/library-ui-persistence.test.mjs`. Save, delete, import, and auto-load
 setting mutations must await confirmed settings persistence, serialize overlapping
 writes, and compensate only their own entry or fields. Deferred-save tests retain
-concurrent neighbors and newer field values. Story Blueprint library application
+concurrent neighbors and newer field values. Save-current tests also switch chats
+behind a blocked earlier write and require the queued entry to retain the source
+name and detached payload captured at invocation. Story Blueprint library application
 uses one awaited chat save through `applyImportTextAndSave`; a failed save performs
 three-way rollback that removes imported state while retaining concurrent object
 and array edits, followed by a compensating save; failed compensation is reported

@@ -87,8 +87,8 @@ export function createStoryBlueprintLibrarySystem({
     }
 
     async function saveCurrentAsLibrary(name, description = '', options = {}) {
+        const entry = buildEntry(name, description, options.includeProgress !== false);
         return enqueueMutation(async () => {
-            const entry = buildEntry(name, description, options.includeProgress !== false);
             const list = getLibraries();
             list.push(entry);
             try { await saveAll(); }
