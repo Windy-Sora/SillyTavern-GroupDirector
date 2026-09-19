@@ -18,6 +18,19 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
     let profilePage;
     let compactDisclosures;
     let commandBoard;
+    const debugLabel = root.querySelector('#gd-debug')?.closest('label');
+    const debugTarget = root.querySelector('[data-card="debug"] .gd-card-body');
+    let debugAnchor;
+    function placeDebugControl(preview) {
+        if (preview && debugLabel && debugTarget && !debugAnchor) {
+            debugAnchor = doc.createComment('debug-control');
+            debugLabel.before(debugAnchor);
+            debugTarget.prepend(debugLabel);
+        } else if (!preview && debugAnchor) {
+            debugAnchor.replaceWith(debugLabel);
+            debugAnchor = null;
+        }
+    }
     let boardScroll = 0;
     const featurePages = new Map();
     let returnRoute = null;
@@ -133,6 +146,7 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
         }
         const current = FEATURES.find(f => f.id === state.last[state.area]);
         commandBoard?.update(state.layout === 'preview');
+        placeDebugControl(state.layout === 'preview');
         compactDisclosures?.update(state.layout === 'preview', current.selector);
         root.dataset.gdRoute = current.id;
         featurePages.forEach(page => page?.update(state.layout === 'preview'));
@@ -185,6 +199,7 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
             profilePage?.update(false, state.last[state.area]);
             compactDisclosures?.update(false);
             commandBoard?.update(false);
+            placeDebugControl(false);
             featurePages.forEach(page => page?.update(false));
             clearPresentation(); root.classList.remove('gd-ui-preview'); layout.value = 'classic';
             status.textContent = t('导航切换失败，已恢复经典界面。', 'Navigation failed; Classic restored.');
@@ -246,6 +261,7 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
             profilePage?.dispose();
             compactDisclosures?.dispose();
             commandBoard?.dispose();
+            placeDebugControl(false);
             featurePages.forEach(page => page?.dispose());
             delete root.dataset.gdRoute;
             back.removeEventListener('click', onBack);

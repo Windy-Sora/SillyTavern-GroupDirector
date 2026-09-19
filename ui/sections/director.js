@@ -20,7 +20,10 @@ registerSection('director', function (ctx) {
 
     $c('llm-prompt').on('input', () => { settings.llmPrompt = $c('llm-prompt').val(); saveSettings(); });
     $c('llm-max-speakers').on('input', () => {
-        if (ctx.quickActions) return ctx.quickActions.setSpeakers($c('llm-max-speakers').val(), 'llm');
+        if (ctx.quickActions) {
+            if (!ctx.quickActions.setSpeakers($c('llm-max-speakers').val(), 'llm')) $c('llm-max-speakers').val(settings.llmMaxSpeakers);
+            return;
+        }
         settings.llmMaxSpeakers = Math.max(1, parseInt($c('llm-max-speakers').val()) || 3); saveSettings();
     });
     $c('llm-context-depth').on('input', () => { settings.llmContextDepth = Math.max(1, parseInt($c('llm-context-depth').val()) || 10); saveSettings(); });

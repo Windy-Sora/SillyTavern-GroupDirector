@@ -1213,6 +1213,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     }
 
     isGroupChat = true;
+    window.__gdRefreshDashboard?.();
 
     // Regenerate / swipe: reuse the existing director decision — only reset
     // per-speaker tracking. Don't re-trigger takeover; let ST decide which
@@ -1342,6 +1343,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
 
 eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     isGroupChat = false;
+    window.__gdRefreshDashboard?.();
     log('Group generation finished');
 
     if (roundOrchestrator.getSnapshot().takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {

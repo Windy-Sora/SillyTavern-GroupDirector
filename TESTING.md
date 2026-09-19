@@ -5,7 +5,7 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
-Latest navigation/feature-migration check: 31/31 targeted tests pass, including
+Latest navigation/feature-migration check: 38/38 targeted tests pass, including
 complete route coverage across primary and collapsed entries and a CSS contract for
 the overview disclosure button's bounded content width, live profile control identity,
 classic order restoration, dynamic results, language updates and listener cleanup.
@@ -25,15 +25,20 @@ batch termination, subscriber cleanup and mode/limit validation. An assembly con
 checks route IDs, shared action delegation, cleanup and board return-scroll wiring.
 These do not substitute for real-host DOM, keyboard or layout acceptance.
 
+The b69f6c8 follow-up adds seven state regressions: actual round-handler transitions
+refresh mounted board controls; both speaker inputs restore rejected values; the
+single debug control retains its listener and classic position; blueprint detail
+status clears after successful, failed and blocked continuation via the shared adapter.
+
 Current verified baseline (2026-09-19):
 
-- 329 JavaScript source files and 11 JSON files pass static validation;
-- 680 behavior tests are discovered, with 679 passing and one optional real-host
+- 330 JavaScript source files and 11 JSON files pass static validation;
+- 687 behavior tests are discovered, with 686 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
 - entry-point reachability is 157/165 production modules, while tests directly or
-  transitively reach 85/165 production modules;
-- 80 production modules are currently not test-reachable. The full JSON report
+  transitively reach 86/165 production modules;
+- 79 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
 - the pre-navigation loaded-module coverage snapshot (not remeasured for the
   navigation preview) is 94.95% lines, approximately 80.0%

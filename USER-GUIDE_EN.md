@@ -14,6 +14,8 @@ are saved globally. Disabled features must be enabled on their pages first.
 Memory batches report successes and failures and stop remaining work after a chat
 switch. Page navigation does not cancel started generation. Detail links provide a
 return path to the board; NPCs, variables, world books and presets are linked below.
+The debug collection toggle is under Advanced & help → More features → Template
+tester & traces. In Classic it remains on the dashboard.
 
 Profiles now use a compact single page with chat profiles first,
 with scanning and regeneration under More actions and a separate library disclosure.

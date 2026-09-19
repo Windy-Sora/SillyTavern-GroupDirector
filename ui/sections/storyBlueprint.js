@@ -469,7 +469,7 @@ registerSection('storyBlueprint', function (ctx) {
         if (mode === 'continue' && ctx.runQuickAction) {
             setGenerationBusy(mode);
             try { await ctx.runQuickAction('blueprint'); }
-            finally { setGenerationBusy(null); }
+            finally { setGenerationBusy(null); refresh(); }
             return;
         }
         setGenerationBusy(mode);
