@@ -1012,6 +1012,10 @@ Group Director provides full export/import capability for five data types:
 
 Imported files validate the root object, version, summary object, and content fields, not just the envelope; malformed legacy entries are skipped by list and Provider rendering. Updates to an imported summary accept only `name`, `content`, and `enabled`; callers cannot replace internal IDs. Add, update, and delete await chat persistence. On failure, compensation uses entry identity, field revisions, and surviving neighbors to preserve newer edits made while saving. A chat-reference switch detected after persistence reports a stale operation without writing to the new chat or undoing an already saved result in the old one. Download failures still release the temporary node and Blob URL, and the UI reports asynchronous failures rather than success.
 
+### Chat Summary persistence transaction boundary
+
+Chat Summary bodies use a different collection from the imported summaries above. Generation, regeneration, content edits, revert, reset, pruning, and clearing are serialized by `chat-summary-system.js` and remain bound to the `chat_metadata` captured when each operation begins. The UI may call only the system facade; it must not mutate the summary array or save chat state directly. If chat persistence fails, compensation uses entry identity or applied field values to undo only changes still owned by that operation, preserving concurrent additions, edits, and ordering; an unsafe partial compensation is reported through `rollbackIncomplete`. A chat switch after a successful save raises `StaleExecutionError` without undoing the old chat's persisted state. Public reads are detached snapshots, so callers cannot bypass the transaction boundary through query APIs.
+
 ### Global Config Export/Import (Config Profile System)
 
 **Storage**: `settings.configProfiles = [{ id, name, description, drawers, settings }]`

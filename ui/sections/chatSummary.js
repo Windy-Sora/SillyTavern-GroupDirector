@@ -79,38 +79,35 @@ registerSection('chatSummary', function (ctx) {
     // Save edited result — handles both single active and multi-summary scan views
     $c('summary-result-save').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
+        $c('summary-result-save').prop('disabled', true);
         const text = $c('summary-result').val();
-        const { saveChatConditional } = ctx;
-
-        // Try multi-summary format: --- #N [status] range ---
-        const blocks = text.split(/^--- #(\d+) .+? ---$/m);
-        if (blocks.length > 1) {
-            const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
-            let updated = 0;
-            // blocks[0] = text before first header (ignored)
-            // blocks[1] = "1", blocks[2] = content of #1
-            // blocks[3] = "2", blocks[4] = content of #2 etc.
-            for (let j = 1; j + 1 < blocks.length; j += 2) {
-                const idx = parseInt(blocks[j], 10) - 1; // section number → 0-based index
-                if (idx >= 0 && idx < allSummaries.length && blocks[j + 1] !== undefined) {
-                    allSummaries[idx].content = blocks[j + 1].trim();
-                    updated++;
+        try {
+            // Try multi-summary format: --- #N [status] range ---
+            const blocks = text.split(/^--- #(\d+) .+? ---$/m);
+            let updates = [];
+            if (blocks.length > 1) {
+                const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
+                for (let j = 1; j + 1 < blocks.length; j += 2) {
+                    const index = parseInt(blocks[j], 10) - 1;
+                    if (index >= 0 && index < allSummaries.length && blocks[j + 1] !== undefined) {
+                        updates.push({ index, content: blocks[j + 1].trim() });
+                    }
                 }
+            } else {
+                const allSummaries = ss.getSummaries ? ss.getSummaries() : [];
+                const index = allSummaries.findLastIndex(summary => summary.active);
+                if (index >= 0) updates = [{ index, content: text }];
             }
+            const updated = await ss.updateSummaryContents(updates);
             if (updated > 0) {
-                if (saveChatConditional) await saveChatConditional();
                 toastr.info(settings.lang === 'zh' ? `已更新 ${updated} 条总结` : `Updated ${updated} summaries`);
             }
-        } else {
-            // Single summary view
-            const active = ss.getLatestActive();
-            if (active) {
-                active.content = text;
-                if (saveChatConditional) await saveChatConditional();
-                toastr.info(settings.lang === 'zh' ? '总结已更新' : 'Summary updated');
-            }
+            refreshStatus();
+        } catch (e) {
+            toastr.error(e.message || (settings.lang === 'zh' ? '保存总结失败' : 'Failed to save summary'));
+        } finally {
+            checkEnabled();
         }
-        refreshStatus();
     });
 
     // Execute
@@ -125,8 +122,9 @@ registerSection('chatSummary', function (ctx) {
                 : `Summary complete, covers ${entry.rangeEnd} messages`);
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '总结失败' : 'Summary failed'));
+        } finally {
+            checkEnabled();
         }
-        $c('summary-execute').prop('disabled', false);
     });
 
     // Regenerate
@@ -139,26 +137,35 @@ registerSection('chatSummary', function (ctx) {
             toastr.success(settings.lang === 'zh' ? '已重新总结' : 'Regenerated summary');
         } catch (e) {
             toastr.error(e.message || (settings.lang === 'zh' ? '重新总结失败' : 'Regenerate failed'));
+        } finally {
+            checkEnabled();
         }
-        $c('summary-regenerate').prop('disabled', false);
     });
 
     // Revert
     $c('summary-revert').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
         if (!await callGenericPopup(settings.lang === 'zh' ? '回退最新总结，恢复原文片段？' : 'Revert latest summary, restore original text?', POPUP_TYPE.CONFIRM)) return;
-        await ss.revertLastSummary();
-        refreshStatus();
-        toastr.info(settings.lang === 'zh' ? '已回退总结' : 'Summary reverted');
+        try {
+            await ss.revertLastSummary();
+            refreshStatus();
+            toastr.info(settings.lang === 'zh' ? '已回退总结' : 'Summary reverted');
+        } catch (e) {
+            toastr.error(e.message || (settings.lang === 'zh' ? '回退失败' : 'Revert failed'));
+        }
     });
 
     // Reset
     $c('summary-reset').on('click', async () => {
         if (isRoundActive && isRoundActive()) return;
         if (!await callGenericPopup(settings.lang === 'zh' ? '关闭所有总结，恢复全部原文？' : 'Deactivate all summaries, restore full original text?', POPUP_TYPE.CONFIRM)) return;
-        await ss.resetAll();
-        refreshStatus();
-        toastr.info(settings.lang === 'zh' ? '已重置全部总结' : 'All summaries reset');
+        try {
+            await ss.resetAll();
+            refreshStatus();
+            toastr.info(settings.lang === 'zh' ? '已重置全部总结' : 'All summaries reset');
+        } catch (e) {
+            toastr.error(e.message || (settings.lang === 'zh' ? '重置失败' : 'Reset failed'));
+        }
     });
 
     function getChatLen() {
@@ -264,14 +271,15 @@ registerSection('chatSummary', function (ctx) {
         if (!await callGenericPopup(settings.lang === 'zh'
             ? `将删除 ${allSummaries.length - activeOnly.length} 条已禁用总结，保留 ${activeOnly.length} 条活跃。确认？`
             : `Delete ${allSummaries.length - activeOnly.length} disabled summaries, keep ${activeOnly.length} active. Confirm?`, POPUP_TYPE.CONFIRM)) return;
-        allSummaries.length = 0;
-        allSummaries.push(...activeOnly);
-        const { saveChatConditional } = ctx;
-        if (saveChatConditional) await saveChatConditional();
-        doScan();
-        toastr.success(settings.lang === 'zh'
-            ? `已清除，保留 ${activeOnly.length} 条活跃总结`
-            : `Pruned, ${activeOnly.length} active summaries kept`);
+        try {
+            await ss.pruneDisabledSummaries();
+            doScan();
+            toastr.success(settings.lang === 'zh'
+                ? `已清除，保留 ${activeOnly.length} 条活跃总结`
+                : `Pruned, ${activeOnly.length} active summaries kept`);
+        } catch (e) {
+            toastr.error(e.message || (settings.lang === 'zh' ? '清理失败' : 'Prune failed'));
+        }
     });
 
     // Toggle hide disabled
@@ -295,14 +303,14 @@ registerSection('chatSummary', function (ctx) {
         if (!await callGenericPopup(settings.lang === 'zh'
             ? '清除全部存档总结？此操作不可撤销。'
             : 'Clear all archived summaries? This cannot be undone.', POPUP_TYPE.CONFIRM)) return;
-        await ss.resetAll();
-        const summaries = ss.getSummaries ? ss.getSummaries() : [];
-        summaries.length = 0;
-        const { saveChatConditional } = ctx;
-        if (saveChatConditional) await saveChatConditional();
-        $c('summary-scan-notice').hide();
-        refreshStatus();
-        toastr.info(settings.lang === 'zh' ? '已清除全部总结' : 'All summaries cleared');
+        try {
+            await ss.clearSummaries();
+            $c('summary-scan-notice').hide();
+            refreshStatus();
+            toastr.info(settings.lang === 'zh' ? '已清除全部总结' : 'All summaries cleared');
+        } catch (e) {
+            toastr.error(e.message || (settings.lang === 'zh' ? '清除失败' : 'Clear failed'));
+        }
     });
 
     // Auto-scan on init (silent — no toast if empty)
