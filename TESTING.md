@@ -31,6 +31,8 @@ single debug control retains its listener and classic position; blueprint detail
 status clears after successful, failed and blocked continuation via the shared adapter.
 Six follow-up regressions preserve JSON and prompt drafts when an old continuation
 settles after a chat switch, panel rebuild, or both (success and rejection paths).
+The fixture also transitions continuePending from true to false while rebuilding:
+the current panel must clear stale running text without a full editor refresh.
 
 Current verified baseline (2026-09-19):
 

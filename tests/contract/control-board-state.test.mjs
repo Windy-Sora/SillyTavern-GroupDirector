@@ -167,13 +167,19 @@ for (const boundary of ['chat-switch', 'panel-rebuild', 'chat-switch-and-rebuild
         test(`old blueprint continuation preserves drafts after ${boundary} and ${outcome}`, async () => {
             const $ = jqueryFixture(), d = depsFixture();
             let chat = [], metadata = {}, group = { id: 'A', members: ['a'] };
-            let blueprint = { title: 'A saved', nodes: [] }, finish;
+            let blueprint = { title: 'A saved', nodes: [] }, finish, continuePending = false;
             d.getChat = () => chat; d.getChatMetadata = () => metadata; d.getCurrentGroup = () => group;
             d.storyBlueprintSystem = {
-                getState: () => ({ continuePending: false }), getBlueprint: () => blueprint,
+                getState: () => ({ continuePending }), getBlueprint: () => blueprint,
                 getProgress: () => ({ steps: [], doneCount: 0, total: 0, complete: true }), getProviderData: () => ({ blueprint, current: null }),
                 getCompletionVariable: () => 'story_done', getDefaultPrompt: () => '', getDefaultContinuePrompt: () => '', getDefaultSchema: () => '', getDefaultTemplate: () => '', renderCurrent: () => '',
-                generateBlueprint: () => new Promise((resolve, reject) => { finish = () => outcome === 'failure' ? reject(Error('chat changed')) : resolve(blueprint); }),
+                generateBlueprint: () => new Promise((resolve, reject) => {
+                    continuePending = true;
+                    finish = () => {
+                        continuePending = false;
+                        if (outcome === 'failure') reject(Error('chat changed')); else resolve(blueprint);
+                    };
+                }),
             };
             const window = {}, globals = { $, window, console, getQuickActions, quickResultText, activeContexts: new WeakMap() };
             const context = vm.createContext(globals);
@@ -188,6 +194,7 @@ for (const boundary of ['chat-switch', 'panel-rebuild', 'chat-switch-and-rebuild
                 const newCtx = context.prepareContext(d, id => $('#gd-' + id)); init(newCtx);
                 assert.equal(oldCtx.isCurrentPanel(), false);
             } else window.__gdRefreshStoryBlueprint();
+            assert.match($('#gd-story-blueprint-status').text(), /continuing/i);
             const draft = '{"title":"unsaved draft","nodes":[]}';
             $('#gd-story-blueprint-json').val(draft);
             $('#gd-story-blueprint-continue-prompt').val('unsaved prompt');

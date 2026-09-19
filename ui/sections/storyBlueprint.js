@@ -370,6 +370,7 @@ registerSection('storyBlueprint', function (ctx) {
         }
     }
 
+    ctx.refreshBlueprintStatus = () => refresh(true);
     syncControls();
     refresh();
     window.__gdRefreshStoryBlueprint = () => {

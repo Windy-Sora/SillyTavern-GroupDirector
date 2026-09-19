@@ -29,8 +29,12 @@ function prepareContext(deps, $c) {
     };
     deps.runQuickAction = ctx.runQuickAction = async id => {
         const result = await actions.run(id);
-        if (!actions.isCurrent(result) || !ctx.isCurrentPanel()) return result;
         const live = activeContexts.get(actions);
+        if (id === 'blueprint') {
+            try { live?.refreshBlueprintStatus?.(); }
+            catch (error) { console.error('[GroupDirector] Blueprint status refresh failed:', error); }
+        }
+        if (!actions.isCurrent(result) || !ctx.isCurrentPanel()) return result;
         try {
             if (['success', 'partial', 'failed'].includes(result.status)) {
                 if (id === 'memory') live.renderMemoryList?.();
