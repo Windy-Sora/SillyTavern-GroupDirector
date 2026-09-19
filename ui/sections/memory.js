@@ -63,6 +63,7 @@ registerSection('memory', function (ctx) {
     $c('memory-compress-prompt-reset').on('click', () => { settings.memoryCompressPrompt = ''; $c('memory-compress-prompt').val(DEFAULT_MEMORY_COMPRESS_PROMPT); saveSettings(); });
 
     // ── Actions ──
+    $c('memory-generate-all').on('click', () => ctx.runQuickAction?.('memory'));
     $c('memory-refresh').on('click', () => renderMemoryList());
     $c('memory-detect-orphans').on('click', function () {
         const orphans = memorySystem.detectOrphans();

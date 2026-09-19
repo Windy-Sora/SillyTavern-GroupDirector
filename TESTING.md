@@ -5,17 +5,38 @@ It combines static validation, automatically discovered behavior tests, a reusab
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
 readable reports.
 
+Latest navigation/feature-migration check: 31/31 targeted tests pass, including
+complete route coverage across primary and collapsed entries and a CSS contract for
+the overview disclosure button's bounded content width, live profile control identity,
+classic order restoration, dynamic results, language updates and listener cleanup.
+Director/memory/summary coverage also verifies mode/enable ancestry, result-before-action
+ordering, More disclosures and template grouping with summary status outside switched views.
+The compact-page checks cover simultaneous basic/settings visibility, no view
+buttons, on-demand editor expansion, connection visibility and classic restoration.
+All-page disclosures additionally validate 12 curated ranges against the real
+template, exact restoration, library navigation, language refresh, core-editor/error
+visibility and non-mutating failure on an invalid mapping.
+The profile tree fixture does not simulate CSS layout. Browser visual and keyboard
+acceptance remains manual.
+
+Control board checks add six quick-action behavior tests for disabled/no-chat/round
+guards, shared locks and panel rebuild reuse, partial and total failure, chat-switch
+batch termination, subscriber cleanup and mode/limit validation. An assembly contract
+checks route IDs, shared action delegation, cleanup and board return-scroll wiring.
+These do not substitute for real-host DOM, keyboard or layout acceptance.
+
 Current verified baseline (2026-09-19):
 
-- 316 JavaScript source files and 11 JSON files pass static validation;
-- 649 behavior tests are discovered, with 648 passing and one optional real-host
+- 329 JavaScript source files and 11 JSON files pass static validation;
+- 680 behavior tests are discovered, with 679 passing and one optional real-host
   contract skipped when `GD_TEST_ST_ROOT` is not configured;
 - all 17 historical regression-contract IDs are represented;
-- entry-point reachability is 150/158 production modules, while tests directly or
-  transitively reach 80/158 production modules;
-- 78 production modules are currently not test-reachable. The full JSON report
+- entry-point reachability is 157/165 production modules, while tests directly or
+  transitively reach 85/165 production modules;
+- 80 production modules are currently not test-reachable. The full JSON report
   preserves their paths, while the console groups them by top-level area;
-- the full loaded-module coverage snapshot is 94.95% lines, approximately 80.0%
+- the pre-navigation loaded-module coverage snapshot (not remeasured for the
+  navigation preview) is 94.95% lines, approximately 80.0%
   branches (the seeded suite can vary by a few hundredths), and
   92.41% functions. All eight built-in Agent modules are test-reachable; Custom
   Prompt validation reaches 98.95% lines / 93.75% branches, and Custom Prompts
@@ -45,6 +66,13 @@ and Linux with Node 22 and 24 for every push and pull request, then uploads the
 JSON report even when a test fails.
 
 ## Commands
+
+Navigation preview verification adds six model tests and three assembly contracts:
+classic defaults, per-area history, preference failure handling, exclusion of
+private data, complete legacy-card routing, presentation-only switching and
+navigation cleanup during settings reload. These tests do not verify DOM layout,
+focus behavior, or browser interactions. Manual checks at 320/400/600/800px,
+keyboard flows, and real-host switching remain pending; see `UI-REWORK.md`.
 
 Install the development-only JavaScript parser before running the test platform:
 

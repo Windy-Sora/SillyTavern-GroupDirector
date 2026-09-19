@@ -1,5 +1,47 @@
 # Group Director — User Guide
 
+## Navigation preview
+
+Use the Interface selector at the top of the extension panel to switch between
+Classic (the default) and New · Preview. Four common categories are visible;
+Automation and Advanced are under More. Each category initially shows 1–3 common
+features, with the rest in an expandable list. Navigation to a less common feature
+automatically expands its category and list. Categories use two rows in narrow
+panels and one row in wide panels. The Control board shows the mode and last speaker
+decision, with profile change detection, memory extraction, summary generation and
+blueprint continuation alongside links to their full pages. Mode and speaker limit
+are saved globally. Disabled features must be enabled on their pages first.
+Memory batches report successes and failures and stop remaining work after a chat
+switch. Page navigation does not cancel started generation. Detail links provide a
+return path to the board; NPCs, variables, world books and presets are linked below.
+
+Profiles now use a compact single page with chat profiles first,
+with scanning and regeneration under More actions and a separate library disclosure.
+Budget/concurrency and a model-connection link with a return path remain on the page.
+Prompts, schema and render template expand in place; parameters and templates
+retain automatic saving on input and apply globally, while profile data belongs to
+the current chat. Disabling still hides content without deleting profiles. Classic
+restores the original control order. Speaker rules now trial a compact single page:
+speaker/context limits remain visible, with scoring details and LLM prompts/output
+format expanded in place. Memories and summaries follow the same compact approach:
+data, daily actions, automatic rules and short parameters stay on one page,
+templates expand in place, and reset/revert/maintenance stays under More actions.
+Edited summary results still require Save. Changing memory limits triggers existing
+pruning, so lower them carefully. Mode, enable and generation locks retain their
+existing behavior. Connection links provide a return to the source feature.
+All other preview routes now use compact headings and controls. Auxiliary prompts
+and templates for NPCs, blueprints, critique and feedback expand in place, as do
+NPC/blueprint libraries and injection previews. Library shortcuts open their target.
+Identity, agents, scripts, variables, connections and testing retain their core
+editors and existing business behavior; this is not a replacement of those editors.
+Classic restores the original content order.
+Switching changes presentation without rebuilding controls or changing
+business settings. You can return to Classic at any time. The preference is stored
+locally for this browser/site, not in exported profiles; session switching still
+works when storage is unavailable. Applying configuration profiles still rebuilds
+the panel as before: finish unsaved edits first. Draft protection across that
+rebuild is not part of this iteration.
+
 ## Table of Contents
 
 1. [Quick Start (5 Minutes)](#1-quick-start-5-minutes)

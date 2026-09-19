@@ -206,6 +206,7 @@ registerSection('quickStart', function (ctx) {
     });
 
     $c('qs-memory-extract').on('click', async function () {
+        if (ctx.runQuickAction) return ctx.runQuickAction('memory');
         if (!memorySystem) return;
         const btn = $(this); btn.prop('disabled', true);
         try {

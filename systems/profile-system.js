@@ -690,7 +690,7 @@ function refreshProfileManagementUI() {
     const isZh = lang === 'zh';
 
     if (Object.keys(profiles).length === 0) {
-        $container.html(`<small><i>${isZh ? '暂无角色档案。点击上方「全部重新生成」按钮为当前群聊角色生成档案。' : 'No character profiles yet. Click "Regenerate All" above to generate profiles for current group members.'}</i></small>`);
+        $container.html(`<small><i>${isZh ? '暂无角色档案。使用「全部重新生成」为当前群聊角色生成档案。' : 'No character profiles yet. Use "Regenerate All" to generate profiles for current group members.'}</i></small>`);
         return;
     }
 

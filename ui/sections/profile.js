@@ -45,7 +45,10 @@ registerSection('profile', function (ctx) {
     const checkGroup = () => { const g = getCurrentGroup(); if (!g) { toastr.warning(settings.lang === 'zh' ? '请先在群聊中打开此设置面板' : 'Please open this settings panel from within a group chat'); return null; } return g; };
 
     $c('profile-scan-save').on('click', () => { const g = checkGroup(); if (g) { buildProfileLoaderPanel(); toastr.info(settings.lang === 'zh' ? '已扫描存档' : 'Save scanned'); } });
-    $c('profile-detect-changes').on('click', () => { const g = checkGroup(); if (g) detectCharacterChanges(); });
+    $c('profile-detect-changes').on('click', () => {
+        if (ctx.runQuickAction) return ctx.runQuickAction('profiles');
+        const g = checkGroup(); if (g) detectCharacterChanges();
+    });
 
     $c('profile-regenerate-all').on('click', async () => {
         const g = checkGroup(); if (!g) return;

@@ -466,6 +466,12 @@ registerSection('storyBlueprint', function (ctx) {
     async function runGenerate(mode) {
         if (isRoundActive?.()) return;
         if (generationBusy) return;
+        if (mode === 'continue' && ctx.runQuickAction) {
+            setGenerationBusy(mode);
+            try { await ctx.runQuickAction('blueprint'); }
+            finally { setGenerationBusy(null); }
+            return;
+        }
         setGenerationBusy(mode);
         refresh();
         toastr.info(mode === 'continue'

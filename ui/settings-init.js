@@ -1,7 +1,56 @@
 import { renderExtensionTemplateAsync } from '../../../../extensions.js';
 import { doNavbarIconClick } from '../../../../../script.js';
-import { applyI18n } from './i18n.js';
+import { applyI18n, applyModeVisibility } from './i18n.js';
+import { getQuickActions, quickResultText } from './quick-actions.js';
 import { initAllSections } from './sections/registry.js';
+import { mountNavigation } from './navigation-shell.js';
+
+function attachNavigation(root, deps, initialState) {
+    let storage;
+    try { storage = window.localStorage; } catch (_) { /* session-only layout */ }
+    try { mountNavigation(root, { settings: deps.settings, storage, initialState, deps }); }
+    catch (error) { console.error('[GroupDirector] Navigation unavailable; retaining classic UI:', error); }
+}
+
+const activeContexts = new WeakMap();
+function prepareContext(deps, $c) {
+    const actions = getQuickActions(deps);
+    const ctx = { ...deps, $c, quickActions: actions, quickActionGuards: {} };
+    activeContexts.set(actions, ctx);
+    deps.quickActions = actions;
+    deps.quickActionGuard = id => activeContexts.get(actions)?.quickActionGuards?.[id]?.();
+    deps.syncDirectorControls = () => {
+        applyModeVisibility(deps.settings.mode);
+        $(`input[name="gd-mode"][value="${deps.settings.mode}"]`).prop('checked', true);
+        $('#gd-topn').val(deps.settings.topN);
+        $('#gd-llm-max-speakers').val(deps.settings.llmMaxSpeakers);
+        window.__gdRefreshDashboard?.();
+    };
+    deps.runQuickAction = ctx.runQuickAction = async id => {
+        const result = await actions.run(id);
+        if (!actions.isCurrent(result)) return result;
+        const live = activeContexts.get(actions);
+        try {
+            if (['success', 'partial', 'failed'].includes(result.status)) {
+                if (id === 'memory') live.renderMemoryList?.();
+                if (id === 'summary') window.__gdRefreshSummaryStatus?.();
+                if (id === 'blueprint') window.__gdRefreshStoryBlueprint?.();
+                window.__gdRefreshDashboard?.();
+            }
+            const message = quickResultText(result, live.settings.lang === 'en');
+            // Do not duplicate the profile detector's own notification.
+            if (id !== 'profiles' || result.status !== 'success') {
+                const level = result.status === 'success' ? 'success' : result.status === 'failed' ? 'error' : 'warning';
+                live.toastr?.[level]?.(message, undefined, { escapeHtml: true });
+            }
+        } catch (error) {
+            // A detached/broken view must not turn a settled task into an unhandled rejection.
+            console.error('[GroupDirector] Quick action view refresh failed:', error);
+        }
+        return result;
+    };
+    return ctx;
+}
 
 const TEMPLATE_FOLDERS = ['SillyTavern-GroupDirector', 'SillyTavern-GroupWorld'];
 async function renderSettingsTemplate() {
@@ -114,8 +163,9 @@ export async function loadSettingsUI(deps) {
         console.warn('[GroupDirector] Could not find extensions drawer for top-level tab — falling back to inline');
         const $c = (sel) => $(`#gd-${sel}`);
         bindLanguageHandler(deps, $c);
-        const ctx = { ...deps, $c };
+        const ctx = prepareContext(deps, $c);
         initAllSections(ctx);
+        attachNavigation(document.querySelector('#extensions_settings .group-director-settings'), deps);
         return;
     }
 
@@ -128,8 +178,9 @@ export async function loadSettingsUI(deps) {
     bindLanguageHandler(deps, $c);
 
     // Delegate to registered sections
-    const ctx = { ...deps, $c };
+    const ctx = prepareContext(deps, $c);
     initAllSections(ctx);
+    attachNavigation(document.querySelector('#gd-settings-panel .group-director-settings'), deps);
 }
 
 /**
@@ -150,9 +201,13 @@ export async function reloadSettingsUI(deps) {
         console.error('[GroupDirector] Settings template could not be reloaded; UI initialization skipped');
         return;
     }
+    const navigation = $panel.find('.group-director-settings')[0]?.__gdNavigation;
+    const navigationState = navigation?.getState();
+    navigation?.dispose();
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
     bindLanguageHandler(deps, $c);
-    const ctx = { ...deps, $c };
+    const ctx = prepareContext(deps, $c);
     initAllSections(ctx);
+    attachNavigation($panel.find('.group-director-settings')[0], deps, navigationState);
 }

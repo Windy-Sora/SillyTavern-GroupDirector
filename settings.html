@@ -174,11 +174,14 @@
             <!-- Formula -->
             <div id="gd-formula-section" style="display:none;">
                 <hr>
+                <div data-feature-view="use">
                 <label for="gd-topn" data-i18n="topn">发言人数 (Top-N)</label>
                 <input type="number" id="gd-topn" class="text_pole" min="1" max="20" step="1">
 
                 <label for="gd-recent-count" data-i18n="recentCount">分析最近消息条数</label>
                 <input type="number" id="gd-recent-count" class="text_pole" min="1" max="100" step="1">
+                </div>
+                <div data-feature-view="settings">
 
                 <label for="gd-consecutive-penalty" data-i18n="consecutivePenalty">连续发言惩罚</label>
                 <input type="number" id="gd-consecutive-penalty" class="text_pole" min="0" max="200" step="1">
@@ -208,19 +211,25 @@
                 </label>
                 <label for="gd-initiative-base" data-i18n="initiativeBase">主动性基础值</label>
                 <input type="number" id="gd-initiative-base" class="text_pole" min="0" step="1">
+                </div>
             </div>
 
             <!-- LLM -->
             <div id="gd-llm-section" style="display:none;">
                 <hr>
+                <div data-feature-view="use">
                 <label for="gd-llm-max-speakers" data-i18n="llmMaxSpeakers">每轮最多发言人数</label>
                 <input type="number" id="gd-llm-max-speakers" class="text_pole" min="1" max="20" step="1">
+                </div>
+                <div data-feature-view="settings">
 
                 <label for="gd-llm-context-depth" data-i18n="llmContextDepth">上下文层数</label>
                 <input type="number" id="gd-llm-context-depth" class="text_pole" min="1" max="100" step="1">
+                </div>
 
 
 
+                <div data-feature-view="advanced">
                 <label for="gd-llm-prompt" data-i18n="promptShort">Director Prompt</label>
                 <textarea id="gd-llm-prompt" class="text_pole textarea_compact" rows="12" style="width:100%;"></textarea>
                 <div class="gd-row-buttons">
@@ -260,13 +269,18 @@
                 </div>
 
                 <hr>
+                </div>
+                <div data-feature-view="settings">
                 <label class="checkbox_label" for="gd-llm-script-enabled">
                     <input type="checkbox" id="gd-llm-script-enabled">
                     <span data-i18n="scriptEnabled">导演剧本 (Director Script)</span>
                 </label>
+                </div>
+                <div data-feature-view="advanced">
                 <div id="gd-script-detail" style="display:none;">
                     <label for="gd-llm-script-prompt" data-i18n="scriptPrompt">剧本风格要求</label>
                     <textarea id="gd-llm-script-prompt" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                </div>
                 </div>
 
                 <hr>
@@ -417,10 +431,13 @@
                         <span class="menu_button menu_button_icon" id="gd-profile-detect-changes">
                             <i class="fa-solid fa-rotate"></i> <span data-i18n="profileDetectChanges">检测变动</span>
                         </span>
+                        <div data-profile-group="settings">
                         <label for="gd-profile-token-budget" data-i18n="profileTokenBudget">Token 预算</label>
                         <input type="number" id="gd-profile-token-budget" class="text_pole" min="500" max="10000" step="100">
                         <label for="gd-profile-concurrency" data-i18n="profileConcurrency">并发数</label>
                         <input type="number" id="gd-profile-concurrency" class="text_pole" min="0" max="20" step="1">
+                        </div>
+                        <div data-profile-group="advanced">
                         <label for="gd-profile-generator-prompt" data-i18n="profileGeneratorPromptTitle">生成 Prompt</label>
                         <textarea id="gd-profile-generator-prompt" class="text_pole textarea_compact" rows="8" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-profile-generator-reset">
@@ -437,11 +454,14 @@
                         <span class="menu_button menu_button_icon" id="gd-profile-render-reset">
                             <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                         </span>
+                        </div>
+                        <div data-profile-group="batch">
                         <hr>
                         <span class="menu_button menu_button_icon" id="gd-profile-regenerate-all">
                             <i class="fa-solid fa-arrows-rotate"></i> <span data-i18n="profileRegenerateAll">全部重新生成</span>
                         </span>
                         <hr>
+                        </div>
                         <div id="gd-profile-library-section" style="border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:8px;margin-top:8px;">
                             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                                 <strong>档案库</strong>
@@ -469,7 +489,9 @@
                             </div>
                             <div id="gd-profile-library-list" style="margin-top:6px;"></div>
                         </div>
-                        <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+                        <div data-profile-group="data">
+                            <div id="gd-profile-management-list" style="margin-top:8px;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -485,6 +507,7 @@
                         <input type="checkbox" id="gd-memory-enabled">
                         <span data-i18n="memoryEnabled">启用角色记忆</span>
                     </label>
+                    <div data-feature-view="settings">
                     <label class="checkbox_label" for="gd-auto-memory-enabled" style="margin-top:2px;">
                         <input type="checkbox" id="gd-auto-memory-enabled">
                         <span data-i18n="autoMemoryEnabled">自动提取</span>
@@ -498,9 +521,13 @@
                             <span data-i18n="autoMemorySpeakers">仅发言角色</span>
                         </label>
                     </span>
+                    </div>
                     <div id="gd-memory-section" style="display:none;">
+                        <div data-feature-view="settings">
                         <label for="gd-memory-token-budget" data-i18n="memoryTokenBudget">Token 预算</label>
                         <input type="number" id="gd-memory-token-budget" class="text_pole" min="100" max="10000" step="100">
+                        </div>
+                        <div data-feature-view="advanced">
                         <label for="gd-memory-prompt" data-i18n="memoryPromptLabel">提取 Prompt</label>
                         <textarea id="gd-memory-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-memory-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
@@ -514,17 +541,27 @@
                         <textarea id="gd-memory-compress-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-memory-compress-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <hr>
+                        </div>
+                        <div data-feature-view="use" data-feature-order="20">
                         <div class="gd-row-buttons">
                             <span class="menu_button menu_button_icon" id="gd-memory-refresh"><i class="fa-solid fa-rotate"></i> <span data-i18n="refreshBtn">刷新</span></span>
                             <span class="menu_button menu_button_icon" id="gd-memory-scan"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="scanBtn">扫描</span></span>
                             <span class="menu_button menu_button_icon" id="gd-memory-generate-all"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="qsMemoryExtractAll">提取全部</span></span>
+                        </div>
+                        </div>
+                        <div data-feature-view="more" data-feature-order="30">
+                        <div class="gd-row-buttons">
                             <span class="menu_button menu_button_icon" id="gd-memory-detect-orphans"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="memoryDetectOrphans">检测失联</span></span>
                             <span class="menu_button menu_button_icon" id="gd-memory-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="resetFieldBtn">重置</span></span>
                         </div>
+                        </div>
+                        <div data-feature-view="settings">
                         <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent">压缩保留最近</label>
                         <input type="number" id="gd-memory-keep-recent" class="text_pole" min="1" max="100" step="1" style="width:80px;">
                         <label for="gd-memory-max-entries" data-i18n="memoryMaxEntries">单角色上限</label>
                         <input type="number" id="gd-memory-max-entries" class="text_pole" min="10" max="2000" step="10" style="width:100px;">
+                        </div>
+                        <div data-feature-view="use" data-feature-order="10">
                         <div id="gd-memory-list" style="margin-top:6px;max-height:400px;overflow-y:auto;"></div>
                         <div id="gd-mem-edit-panel" style="display:none;margin-top:6px;padding:6px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;">
                             <input type="hidden" id="gd-mem-edit-idx">
@@ -542,6 +579,7 @@
                                 <span class="menu_button menu_button_icon" id="gd-mem-edit-save"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="saveBtn">保存</span></span>
                                 <span class="menu_button menu_button_icon" id="gd-mem-edit-cancel"><i class="fa-solid fa-xmark"></i> <span data-i18n="memoryEditCancel">取消</span></span>
                             </div>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -632,7 +670,7 @@
                         <span id="gd-summary-scan-result" style="color:#ff9800;font-size:0.9em;"></span>
                         <span class="menu_button menu_button_icon" id="gd-summary-scan-clear" style="margin-left:8px;font-size:0.85em;"><i class="fa-solid fa-trash"></i> <span data-i18n="summaryScanClear">清除存档</span></span>
                     </div>
-                    <div class="gd-row-buttons">
+                    <div class="gd-row-buttons" data-feature-view="more" data-feature-order="30">
                         <span class="menu_button menu_button_icon" id="gd-summary-scan-btn"><i class="fa-solid fa-magnifying-glass"></i> <span data-i18n="scanArchiveBtn">扫描存档</span></span>
                         <span class="menu_button menu_button_icon" id="gd-summary-prune-btn"><i class="fa-solid fa-broom"></i> <span data-i18n="clearDisabledBtn">清除禁用</span></span>
                         <span class="menu_button menu_button_icon" id="gd-summary-hide-btn"><i class="fa-solid fa-eye-slash"></i> <span data-i18n="hideDisabledBtn">隐藏禁用</span></span>
@@ -641,6 +679,7 @@
                         <input type="checkbox" id="gd-summary-enabled">
                         <span data-i18n="summaryEnabled">启用</span>
                     </label>
+                    <div data-feature-view="settings">
                     <label class="checkbox_label" for="gd-summary-reuse">
                         <input type="checkbox" id="gd-summary-reuse">
                         <span data-i18n="summaryReuse">复用上次</span>
@@ -655,20 +694,31 @@
                         <input type="number" id="gd-auto-summary-interval" class="text_pole" min="1" max="200" step="1" style="width:60px;">
                         <span style="font-size:0.85em;" data-i18n="autoSummaryIntervalSuffix">条新消息触发</span>
                     </span>
+                    </div>
+                    <div data-feature-view="advanced">
                     <label for="gd-summary-prompt" data-i18n="summaryPromptLabel">总结 Prompt</label>
                     <textarea id="gd-summary-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-summary-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
+                    </div>
+                    <div data-feature-view="use" data-feature-order="20">
                     <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-summary-execute"><i class="fa-solid fa-play"></i> <span data-i18n="executeBtn">执行</span></span>
+                    </div>
+                    </div>
+                    <div data-feature-view="more" data-feature-order="30">
+                    <div class="gd-row-buttons">
                         <span class="menu_button menu_button_icon" id="gd-summary-regenerate"><i class="fa-solid fa-rotate"></i> <span data-i18n="regenerateBtn">重新</span></span>
                         <span class="menu_button menu_button_icon" id="gd-summary-revert"><i class="fa-solid fa-undo"></i> <span data-i18n="memoryRevert">回退</span></span>
                         <span class="menu_button menu_button_icon" id="gd-summary-reset"><i class="fa-solid fa-trash"></i> <span data-i18n="resetFieldBtn">重置</span></span>
                     </div>
+                    </div>
                     <span id="gd-summary-status" style="font-size:0.9em;color:var(--grey70a);"></span>
                     <span class="menu_button menu_button_icon" id="gd-summary-refresh" style="font-size:0.8em;padding:2px 6px;"><i class="fa-solid fa-rotate"></i></span>
+                    <div data-feature-view="use" data-feature-order="10">
                     <label for="gd-summary-result" data-i18n="summaryResultLabel">总结结果</label>
                     <textarea id="gd-summary-result" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-summary-result-save"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="saveBtn">保存</span></span>
+                    </div>
                 </div>
             </div>
 
