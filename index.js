@@ -2704,6 +2704,12 @@ customAgentSystem.refreshProviders();
 // ─── Init ─────────────────────────────────────────────────────────────
 eventSource.on(event_types.APP_READY, async () => {
     const deps = {
+        muyuOwner: {},
+        getMuyuGuards: () => ({
+            manualGenerating: manualGenInProgress,
+            generationType: roundGenerateType,
+            canFinalize: roundOrchestrator.canFinalize({ manualGenerationInProgress: manualGenInProgress, generationStopped }),
+        }),
         settings, EXT_KEY, chat_metadata, getChatMetadata, saveChatConditional, saveSettings,
         getCurrentGroup, getDefaultLlmPrompt, generateProfilesBatch, getProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,

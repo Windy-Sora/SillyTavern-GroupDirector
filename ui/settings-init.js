@@ -110,6 +110,7 @@ import './sections/customAgents.js';
 import './sections/variables.js';
 import './sections/agents.js';
 import './sections/gdAssistant.js';
+import './sections/muyu.js';
 
 // 绑定语言选择器：设当前值 + on-change。提取出来让 loadSettingsUI / reloadSettingsUI / fallback 共用一份。
 function bindLanguageHandler(deps, $c) {
@@ -121,6 +122,7 @@ function bindLanguageHandler(deps, $c) {
         applyI18n(settings.lang, EXT_KEY, chat_metadata);
         saveSettings();
         window.__gdRefreshDashboard?.();
+        deps.muyuOwner?.refreshView?.();
     });
 }
 
@@ -209,6 +211,7 @@ export async function reloadSettingsUI(deps) {
     const navigation = $panel.find('.group-director-settings')[0]?.__gdNavigation;
     const navigationState = navigation?.getState();
     navigation?.dispose();
+    $panel.find('#gd-muyu-root')[0]?.__gdMuyuDispose?.();
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
     bindLanguageHandler(deps, $c);

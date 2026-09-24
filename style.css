@@ -1104,3 +1104,22 @@
 .gd-command-board .gd-board-meta, .gd-command-board .gd-board-task { font-size: .8em; line-height: 1.5; margin: 6px 0; overflow-wrap: anywhere; }
 .gd-command-board .gd-board-task:empty { display: none; }
 .gd-command-board button:focus-visible, .gd-command-board select:focus-visible, .gd-command-board input:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Classic-only assistant: one collapsible entry, no second business editor. */
+.gd-ui-preview .gd-muyu-entry { display: none !important; }
+.gd-muyu-entry { margin: 8px 0; min-width: 0; }
+.gd-muyu-entry > details { border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 8px; padding: 10px; }
+.gd-muyu-entry summary { cursor: pointer; font-weight: 600; }
+.gd-muyu-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; overflow-wrap: anywhere; }
+.gd-muyu-panel p { margin: 6px 0; white-space: pre-wrap; }
+.gd-muyu-panel label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.gd-muyu-panel .text_pole { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin: 0; }
+.gd-muyu-panel textarea { resize: vertical; }
+.gd-muyu-panel fieldset { min-width: 0; margin: 0; }
+.gd-muyu-panel [hidden] { display: none !important; }
+.gd-muyu-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.gd-muyu-panel .menu_button { width: auto; max-width: 100%; margin: 3px; white-space: normal; }
+.gd-muyu-panel button[aria-pressed="true"] { outline: 1px solid currentColor; }
+.gd-muyu-history { max-height: 340px; overflow-y: auto; min-width: 0; }
+.gd-muyu-card { border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 6px; padding: 8px; margin: 6px 0; }
+.gd-muyu-panel :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

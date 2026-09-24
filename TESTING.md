@@ -538,3 +538,34 @@ The platform automates execution and verification, but it cannot infer all busin
 requirements by itself. Coverage grows by converting each accepted behavior,
 reported bug, and important lifecycle into a scenario. Unknown-bug discovery still
 requires review, fuzzing, or exploratory testing.
+
+## Muyu Agent kernel addition (2026-09-24)
+
+The Muyu foundation, runtime, application, workspace and classic UI have 101 focused tests in
+`tests/unit/muyu-foundation.test.mjs`, `tests/unit/muyu-execution.test.mjs`,
+`tests/unit/muyu-application.test.mjs`, `tests/unit/muyu-model.test.mjs`,
+`tests/unit/muyu-memory.test.mjs`, `tests/unit/muyu-config-draft.test.mjs`,
+`tests/unit/muyu-controller.test.mjs`, `tests/unit/muyu-panel.test.mjs`, and
+`tests/contract/muyu-boundaries.test.mjs`. They use scripted model events and an
+injected clock; no API keys, network, ST session, or UI are required. Coverage
+includes cancellation, bounded waits, call/result pairing, deduplication,
+permissions, argument/output checks, budgets, and the core import boundary.
+Application tests cover physical drain gating, queue limits, chat ownership,
+subscription remounting, task continuation, artifact revisions and capacity.
+The `muyu` directory is now included in module smoke checks and coverage selection.
+This does not establish full-suite coverage or real-model/host compatibility.
+Implementation limits are documented in [muyu/README.md](muyu/README.md).
+
+Classic UI checks cover mount/dispose subscriptions, input preservation, consent reset,
+text-only rendering, connection credential clearing and one-click/keyboard submission.
+Controller tests cover target identity, physical drain, chat changes, global drafts,
+trusted publication and stale validation. The DOM double does not validate layout.
+Browser acceptance is pending (no browser was available on 2026-09-24): test
+320/400/600/800px containers, keyboard focus, Chinese/English, panel rebuilding,
+chat-switch cancellation and a real DeepSeek request from the ST origin (including
+CORS failure reporting). Do not infer browser success from Node harness results.
+
+Manual follow-up (2026-09-24): after syncing both local release extension directories,
+the user reported successful operation with no issues. This confirms a basic real-host
+smoke run, not exhaustive completion of the browser checklist above. Automated baseline:
+101 Muyu tests passed; full suite 794 tests, 793 passed, 1 skipped, 0 failed; static PASS.
