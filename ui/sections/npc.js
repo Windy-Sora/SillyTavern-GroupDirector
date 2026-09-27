@@ -301,4 +301,5 @@ registerSection('npc', function (ctx) {
 
     // Initial render
     if (settings.npcEnabled) renderNpcList();
+    ctx.refreshNpcList = renderNpcList;
 });

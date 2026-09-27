@@ -52,6 +52,7 @@ import { createWorldInfoSystem } from './systems/world-info-system.js';
 import { createProfileSystem } from './systems/profile-system.js';
 import { createWorldBookScanner } from './systems/world-book-scanner.js';
 import { createChatSummarySystem } from './systems/chat-summary-system.js';
+import { planSummaryAutoRun, runSummaryAutoPlan } from './systems/summary-auto-policy.js';
 import { createConfirmedChatMetadataSave } from './systems/chat-metadata-save-confirmation.js';
 import { createCritiqueSystem } from './systems/critique-system.js';
 import { createCritiqueAutoCoordinator } from './systems/critique-auto-coordinator.js';
@@ -1612,35 +1613,24 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
             // Check Auto Summary
             if (settings.autoSummaryEnabled && settings.summaryEnabled) {
                 const interval = settings.autoSummaryInterval || 10;
-                if (sumLen === 0 && chat_metadata[EXT_KEY]._autoSumLen === undefined && legacyLen === undefined) {
-                    console.log('[GD-auto-sum] path: first-enable currentLen=', currentLen);
-                    if (currentLen >= interval) {
-                        try {
-                            log(`Auto-summary: first enable, ${currentLen} existing msgs`);
-                            toastr?.info?.(lang === 'zh' ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `Auto-summary (${currentLen} existing msgs)...`, '', { timeOut: 3000 });
-                            await chatSummarySystem.generateSummary();
-                            await saveSumLen(currentLen);
-                            toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-summary failed:', e.message); }
-                    } else {
-                        await saveSumLen(currentLen);
-                    }
-                } else if (currentLen < sumLen) {
-                    console.log('[GD-auto-sum] path: deletion');
-                    await saveSumLen(currentLen);
+                const action = planSummaryAutoRun({ currentLength: currentLen, covered: sumLen,
+                    hasCounter: chat_metadata[EXT_KEY]._autoSumLen !== undefined, hasLegacyCounter: legacyLen !== undefined, interval });
+                const runAction = () => runSummaryAutoPlan(action, { currentLength: currentLen,
+                    generateSummary: () => chatSummarySystem.generateSummary(), saveLength: saveSumLen });
+                if (action.type === 'checkpoint') {
+                    await runAction();
+                } else if (action.type === 'reset') {
+                    await runAction();
                     toastr?.warning?.(lang === 'zh' ? '检测到消息被删除，自动总结计数器已重置。' : 'Messages deleted. Auto-summary counter reset.', '', { timeOut: 8000 });
-                } else {
-                    const newMsgs = currentLen - sumLen;
-                    console.log('[GD-auto-sum] path: normal newMsgs=', newMsgs, 'interval=', interval);
-                    if (newMsgs >= interval) {
-                        try {
-                            log(`Auto-summary triggered (${newMsgs} msgs)`);
-                            toastr?.info?.(lang === 'zh' ? `自动总结触发（${newMsgs} 条新消息）...` : `Auto-summary (${newMsgs} msgs)...`, '', { timeOut: 3000 });
-                            await chatSummarySystem.generateSummary();
-                            await saveSumLen(currentLen);
-                            toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
-                        } catch (e) { log('Auto-summary failed:', e.message); }
-                    }
+                } else if (action.type === 'execute') {
+                    try {
+                        log(action.firstEnable ? `Auto-summary: first enable, ${currentLen} existing msgs` : `Auto-summary triggered (${action.newMessages} msgs)`);
+                        toastr?.info?.(lang === 'zh'
+                            ? action.firstEnable ? `自动总结触发（检测到 ${currentLen} 条现有消息）...` : `自动总结触发（${action.newMessages} 条新消息）...`
+                            : action.firstEnable ? `Auto-summary (${currentLen} existing msgs)...` : `Auto-summary (${action.newMessages} msgs)...`, '', { timeOut: 3000 });
+                        await runAction();
+                        toastr?.success?.(lang === 'zh' ? '自动总结完成' : 'Auto-summary done', '', { timeOut: 2000 });
+                    } catch (e) { log('Auto-summary failed:', e.message); }
                 }
             }
 
@@ -2698,14 +2688,24 @@ registerCharMemory({
     log,
 });
 registerNewRecentMessages(settings, getChat, () => chatSummarySystem.getLatestActive());
+const muyuProviderBindings = getProviders().filter(p => ['recentMessages', 'chatSummary', 'character_profiles', 'charMemory', 'characters', 'directorLedger', 'directorHistory'].includes(p.id) && !p._gdOwner);
 registerNpcList(() => npcSystem.getNpcs());
 customAgentSystem.refreshProviders();
 
 // ─── Init ─────────────────────────────────────────────────────────────
 eventSource.on(event_types.APP_READY, async () => {
     const deps = {
+        muyuProviderBindings, getMuyuProviders: getProviders, saveMuyuCredentials: saveSettingsConfirmed,
+        getMuyuAccount: async () => {
+            const account = await import('../../../user.js');
+            return { enabled: account.accountsEnabled, handle: account.currentUser?.handle, created: account.currentUser?.created };
+        },
         muyuOwner: {},
         getMuyuGuards: () => ({
+            roundActive: isGroupChat,
+            takeoverPending: roundOrchestrator.getSnapshot().takeoverPending,
+            takeoverRemaining: roundOrchestrator.getSnapshot().takeoverRemaining,
+            takeoverFailed: roundOrchestrator.getSnapshot().takeoverFailed,
             manualGenerating: manualGenInProgress,
             generationType: roundGenerateType,
             canFinalize: roundOrchestrator.canFinalize({ manualGenerationInProgress: manualGenInProgress, generationStopped }),
@@ -2721,6 +2721,7 @@ eventSource.on(event_types.APP_READY, async () => {
         onLatestEntryEdited: () => { llmPickedSet = null; },
         summarySystem: chatSummarySystem,
         critiqueSystem,
+        profileSystem,
         customAgentSystem,
         getChat: () => chat,
         getCharacters: () => characters,

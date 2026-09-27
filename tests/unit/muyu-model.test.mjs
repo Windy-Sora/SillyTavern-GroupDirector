@@ -4,6 +4,7 @@ import { createChatCompletionsModel } from '../../muyu/model/chat-completions.js
 import { validateConnection } from '../../muyu/model/connection.js';
 import { createHttpTransport } from '../../muyu/model/http-transport.js';
 import { startMuyuRun } from '../../muyu/composition.js';
+import { composeInstructions } from '../../muyu/instructions/compose.js';
 import { identity, registry, toolId, createClock, flush, deferred } from './helpers/muyu-subject.mjs';
 
 const connection = { endpoint: 'https://model.invalid/v1/chat/completions', apiKey: 'test-only-placeholder', model: 'fixture', supportsTools: true };
@@ -29,6 +30,28 @@ test('Model connection requires explicit safe endpoint and known thinking profil
     assert.equal(validateConnection({ ...connection, profile: 'deepseek' }).thinking, true);
 });
 
+test('Final payload inspection includes tools and private thinking; local context limits block network dispatch', async () => {
+    const s = subject([response('', [tc()], { reasoning_content: '私'.repeat(5000) })], { connection: { ...connection, profile: 'deepseek', thinking: true } });
+    const context = {}, first = request(); await collect(s.model, first, context);
+    const follow = { messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [{ callId: 'c1', toolId, version: 1, args: { n: 1 } }] }, { role: 'tool', callId: 'c1', result: { ok: true, data: 1 } }], tools: first.tools, inputTokenLimit: 4096 };
+    const measured = s.model.inspect(follow, context);
+    assert.ok(measured.reasoningBytes > 15000); assert.ok(measured.toolDefinitionBytes > 10); assert.ok(measured.toolResultBytes > 10);
+    await assert.rejects(collect(s.model, follow, context), /CONTEXT_LIMIT/); assert.equal(s.requests.length, 1);
+    assert.equal(Object.hasOwn(s.requests[0].payload, 'inputTokenLimit'), false);
+});
+
+test('System instructions are injected once after internal indexing and preserve thinking replay through finalization', async () => {
+    const s = subject([response('', [tc()], { reasoning_content: 'private thought' }), response('answer', [], { reasoning_content: 'next thought' })], { connection: { ...connection, profile: 'deepseek', thinking: true } });
+    const context = {}, instructions = composeInstructions('memory', { enabled: true, text: 'Use short answers.' });
+    const first = { ...request(), instructions }; await collect(s.model, first, context);
+    const follow = { ...first, finalize: true, messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [{ callId: 'c1', toolId, version: 1, args: { n: 1 } }] }, { role: 'tool', callId: 'c1', result: { ok: true, data: 1 } }] };
+    assert.ok(s.model.inspect(follow, context).instructionBytes > 0); await collect(s.model, follow, context);
+    for (const r of s.requests) { assert.equal(r.payload.messages[0].role, 'system'); assert.equal(r.payload.messages.filter(m => m.role === 'system').length, 1); assert.equal(Object.hasOwn(r.payload, 'instructions'), false); }
+    assert.equal(s.requests[1].payload.messages[2].reasoning_content, 'private thought'); assert.equal(Object.hasOwn(s.requests[1].payload, 'tools'), false);
+    assert.equal(first.messages.length, 1);
+    await assert.rejects(collect(s.model, { ...request(), messages: [{ role: 'system', content: 'untrusted history' }] }), /MODEL_PROTOCOL_ERROR/);
+});
+
 test('Model adapter maps tools without leaking execution metadata and reports optional usage', async () => {
     const data = response(); data.usage = { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 };
     const s = subject([data]); const events = await collect(s.model);
@@ -48,6 +71,18 @@ test('Adapter drives real runtime through multiple tool results and final answer
     assert.equal(clock.pending, 0); assert.deepEqual(s.usages, [null, null]);
 });
 
+test('Answer-only finalization preserves thinking/tool history, overrides output tokens and aggregates reported usage', async () => {
+    const first = response('', [tc('a')], { reasoning_content: 'PRIVATE_THINKING' }); first.usage = { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 };
+    const last = response('partial answer', [], { reasoning_content: 'PRIVATE_FINAL' }); last.usage = { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 };
+    const s = subject([first, last], { connection: { ...connection, profile: 'deepseek' } });
+    const h = startMuyuRun({ identity, input: 'test', model: s.model, registry: registry(), handlers: { [toolId]: () => 1 }, allowedTools: [toolId], policy: () => true, limits: { modelCalls: 2 }, maxTokens: 1024, finalizeOnLimit: true });
+    const r = await h.completion; await h.drained;
+    assert.equal(r.answer, 'partial answer'); assert.equal(s.requests[1].payload.tools, undefined);
+    assert.equal(s.requests[1].payload.messages.find(m => m.tool_calls)?.reasoning_content, 'PRIVATE_THINKING');
+    assert.equal(s.requests[1].payload.max_tokens, 1024); assert.equal(r.budget.inputTokens, 10); assert.equal(r.budget.outputTokens, 8); assert.equal(r.budget.usageReports, 2);
+    assert.doesNotMatch(JSON.stringify(r), /PRIVATE_/);
+});
+
 test('Thinking stays private and is replayed exactly across multiple tool steps', async () => {
     const s = subject([response('', [tc('a')], { reasoning_content: 'private-first' }), response('', [tc('b')], { reasoning_content: 'private-second' }), response('final', [], { reasoning_content: 'private-final' })], { connection: { ...connection, profile: 'deepseek' } });
     const events = [], clock = createClock();
@@ -57,6 +92,26 @@ test('Thinking stays private and is replayed exactly across multiple tool steps'
     assert.equal(s.requests[0].payload.tool_choice, undefined);
     assert.deepEqual(s.requests[2].payload.messages.filter(m => m.role === 'assistant').map(m => m.reasoning_content), ['private-first', 'private-second']);
     assert.ok(!JSON.stringify({ result, events, snapshot: run.snapshot(), usages: s.usages }).includes('private-'));
+});
+
+test('Host permission pause retains private thinking for the resumed original tool call', async () => {
+    const s = subject([response('', [tc()], { reasoning_content: 'private-before-approval' }),
+        response('done', [], { reasoning_content: 'private-after-approval' })], { connection: { ...connection, profile: 'deepseek' } });
+    let granted = false, reads = 0;
+    const options = { input: 'read', model: s.model, registry: registry(), handlers: { [toolId]: () => { reads++; return 7; } },
+        allowedTools: [toolId], policy: () => granted ? true : { decision: 'permission_required', missingSources: ['source:memoryConfig'] } };
+    const first = startMuyuRun({ ...options, identity });
+    const paused = await first.completion; await first.drained;
+    assert.equal(paused.state.status, 'yielded');
+    assert.equal(paused.interaction.source, 'memoryConfig');
+    assert.equal(reads, 0); assert.equal(s.requests.length, 1);
+    granted = true;
+    const next = startMuyuRun({ ...options, identity: { ...identity, id: 'r2' }, resume: paused.resume });
+    const result = await next.completion; await next.drained;
+    assert.equal(result.state.status, 'succeeded'); assert.equal(result.answer, 'done');
+    assert.equal(reads, 1); assert.equal(s.requests.length, 2);
+    assert.equal(s.requests[1].payload.messages.find(m => m.tool_calls)?.reasoning_content, 'private-before-approval');
+    assert.doesNotMatch(JSON.stringify({ paused: { ...paused, resume: null }, result }), /private-before-approval/);
 });
 
 test('Thinking state cannot cross run contexts; prior text becomes labelled reference data', async () => {

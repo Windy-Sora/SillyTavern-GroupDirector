@@ -1,3 +1,4 @@
+import { peekProfiles } from './provider-read-data.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -7,6 +8,7 @@ import {
 export function createProfileSystem(deps) {
     const { settings, EXT_KEY, getChatMetadata, getChat, getCharacters, saveChatConditional, getContext, setExtensionPrompt, inject_ids, extension_prompt_types, djb2Hash, hashChar, extractJsonObject, sanitizeJson, matchCharacterByName, getCurrentGroup, log, getLlmPickedSet, getLlmPickedAvatars, getRoundSpeakerCount, isRoundActive, saveSettings, renderPrompt, createCaller } = deps;
     const cm = () => getChatMetadata();
+    let activeProfileTasks = 0;
 
     // Escape untrusted strings before embedding in HTML strings.
     // Character names and profile fields can contain user content from
@@ -52,7 +54,8 @@ function migrateProfileData(container) {
 }
 
 function getProfiles(metadata = cm()) {
-    return getProfileContainer(metadata).characterProfiles;
+    getProfileContainer(metadata);
+    return peekProfiles(metadata, EXT_KEY);
 }
 
 function getArchivedProfiles(metadata = cm()) {
@@ -187,7 +190,7 @@ function normalizeProfileFields(parsed) {
     };
 }
 
-async function generateSingleProfile(avatar) {
+async function generateSingleProfileInternal(avatar) {
     if (!settings.profileEnabled) return null;
     if (isRoundActive()) {
         console.warn('[GroupDirector] Profile generation skipped — director round is active, will retry later');
@@ -242,7 +245,7 @@ async function generateSingleProfile(avatar) {
     return normalizeProfileFields(parsed);
 }
 
-async function generateProfilesBatch(avatars) {
+async function generateProfilesBatchInternal(avatars) {
     if (!settings.profileEnabled) return;
     if (!avatars.length) return;
 
@@ -329,6 +332,15 @@ async function generateProfilesBatch(avatars) {
 
     refreshProfileManagementUI();
 }
+
+async function trackProfileTask(operation) {
+    activeProfileTasks++;
+    try { return await operation(); }
+    finally { activeProfileTasks--; }
+}
+
+const generateSingleProfile = avatar => trackProfileTask(() => generateSingleProfileInternal(avatar));
+const generateProfilesBatch = avatars => trackProfileTask(() => generateProfilesBatchInternal(avatars));
 
 // ─── Profile System: Renderer ──────────────────────────────────────────
 function renderSingleProfile(prof) {
@@ -808,6 +820,7 @@ function bindProfileCardActions() {
         computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         normalizeProfileFields, generateSingleProfile, generateProfilesBatch,
+        isGenerating: () => activeProfileTasks > 0,
         buildCharacterProfilesText,
         validateAndWarnProfilePlaceholders,
         syncProfiles,

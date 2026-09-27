@@ -1,0 +1,43 @@
+import { DEFAULT_SETTINGS } from '../../settings.js';
+import { configFields, fieldDefinition } from './registry.js';
+
+// Explicit inventory, not a whitelist generated from defaults. New default keys
+// must receive an owner and a deliberate support classification in tests.
+const groups = {
+    muyu: 'muyuInstructionConfig muyuContextConfig muyuRunConfig muyuHistoryEnabled',
+    director: 'mode topN llmContextDepth llmPrompt llmMaxSpeakers llmRespectOrder llmCharDescMode llmCharDescLength llmScriptEnabled llmScriptPrompt llmScriptWrapper llmJsonSchema llmJsonSchemaHint llmHistoryEnabled llmScriptContinuity llmScriptContinuityMode llmScriptContinuityCount llmScriptContinuityWrapper llmScriptContinuityHistoryWrapper llmWorldInfoEnabled llmWorldInfoWrapper templateMaxPasses templateRecursive templateDebugPlaceholders providerTimeoutMs forceSpeakMode forceSpeakPrompt llmScriptPosition',
+    formula: 'scoreWeights recentMessageCount consecutivePenalty triggerEnabled triggerScore initiativeEnabled initiativeBaseScore',
+    summary: 'knowledgeText summaryEnabled summaryReusePrevious summaryPrompt autoSummaryEnabled autoSummaryInterval',
+    storyBlueprint: 'storyBlueprintEnabled storyBlueprintAutoContinue storyBlueprintProgressionMode storyBlueprintProgressionLevel storyBlueprintCompletionVariable storyBlueprintMaxNodes storyBlueprintPrompt storyBlueprintContinuePrompt storyBlueprintJsonSchema storyBlueprintProviderTemplate storyBlueprintLibraries',
+    critique: 'critiqueEnabled critiqueReusePrevious critiquePrompt critiqueSchema autoCritiqueEnabled autoCritiqueInterval',
+    worldBook: 'worldBookSourceMode worldBookSelection worldBookMaxEntries',
+    general: 'identityPrompt debugLogging lang',
+    profiles: 'profileEnabled profileTokenBudget profileConcurrency profileGeneratorPrompt profileJsonSchema profileRenderTemplate profileSchemaVersion profileLibraries profileLibraryAutoLoad',
+    npc: 'npcEnabled npcMaxCount npcBatchSize npcGenerateFirstMes npcPrompt npcLibraries',
+    memory: 'memoryEnabled memoryTokenBudget autoMemoryEnabled autoMemoryInterval autoMemorySpeakers memoryPrompt memoryJsonSchema memoryRenderTemplate memoryKeepRecent memoryMaxEntries memoryCompressPrompt',
+    postSpeech: 'traceMaxEntries postSpeechMessageEnabled postSpeechMessagePrompt postSpeechRoundEnabled postSpeechRoundPrompt postSpeechBlocking postSpeechDecisionLimit',
+    assets: 'agentConfigs customPrompts customPromptsEnabled scriptExecutors providerReferenceList providerReferenceDeletedDefaultIds customAgents',
+};
+export const dynamicSettings = Object.freeze({
+    configProfiles: 'systems/config-profile-system.js', userProviders: 'systems/user-provider-loader.js', userCapabilities: 'systems/user-provider-loader.js',
+    uiState: 'ui/sections/dashboard.js',
+});
+const special = new Set('agentConfigs customPrompts scriptExecutors customAgents profileLibraries npcLibraries storyBlueprintLibraries providerReferenceList providerReferenceDeletedDefaultIds'.split(' '));
+export function configurationCoverage() {
+    return Object.entries(groups).flatMap(([owner, list]) => list.split(' ').map(key => {
+        const fields = configFields.filter(id => id === key || id.startsWith(key + '.'));
+        const value = DEFAULT_SETTINGS[key];
+        return { key, owner, type: Array.isArray(value) ? 'array' : typeof value, scope: 'global',
+            status: fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
+            secret: key === 'agentConfigs', executable: key === 'scriptExecutors',
+            writer: fields.length ? 'muyu/host/config-write.js' : null,
+            contract: fields.map(fieldDefinition),
+        };
+    }));
+}
+export function assertConfigurationCoverage() {
+    const keys = configurationCoverage().map(row => row.key);
+    if (new Set(keys).size !== keys.length || keys.length !== Object.keys(DEFAULT_SETTINGS).length || Object.keys(DEFAULT_SETTINGS).some(key => !keys.includes(key))) throw Error('CONFIG_COVERAGE_DRIFT');
+    if (Object.keys(DEFAULT_SETTINGS.scoreWeights).some(key => !configFields.includes('scoreWeights.' + key))) throw Error('CONFIG_COVERAGE_DRIFT');
+    return keys.length;
+}

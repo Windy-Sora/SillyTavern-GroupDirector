@@ -1,5 +1,41 @@
 # GD Test Lab
 
+Muyu 档案生成 Prompt 批次（2026-09-25）：`profileGeneratorPrompt` 接入选择性读取、预览及逐份确认；保留角色字段和已注册 Provider 占位符、空串恢复默认、生成中禁写及经典编辑器聚焦草稿。全量 **1099 项，1098 通过、1 跳过、0 失败**；静态检查与历史 BUG 契约 17/17 通过。真实浏览器和付费模型尚未验收。
+
+Muyu 点评输出示例批次（2026-09-25）：`critiqueSchema` 接入选择性读取、结构预览及逐份确认；非空新草稿须为有界 JSON 示例，空串恢复默认，保留经典界面未聚焦同步与聚焦草稿。全量 **1096 项，1095 通过、1 跳过、0 失败**；静态检查及历史 BUG 契约 17/17 通过。真实浏览器和付费模型尚未验收。
+
+Muyu Prompt 配置批次（2026-09-25）：`summaryPrompt` 与 `critiquePrompt` 进入选择性读取、预览和逐份确认流程；空值回退内置 Prompt，生成中禁止写入，重生成旧记录仍优先使用记录内 Prompt。专项测试覆盖授权、Schema 不变、长文本边界、旧草稿失效和经典编辑器焦点保护。全量 **1093 项，1092 通过、1 跳过、0 失败**；静态检查及历史 BUG 契约 17/17 通过。真实浏览器和付费模型尚未验收。
+
+Memory-limit action (2026-09-25): `muyu-memory-limit.test.mjs` covers a single-field, current-chat-bound preview; anonymized per-character counts; zero raw-memory exposure; stale memory/chat rejection; one approved global save followed by chat pruning; and partial/unknown outcomes for save failure, a new generation, concurrent edits, or chat switching. `muyu-settings.test.mjs` retains the 40-field inventory and legacy four-field draft compatibility. Full suite: **1081 tests, 1080 passed, 1 skipped, 0 failed**; static checks and historical BUG contracts 17/17 passed. Real-browser and paid-model acceptance remain manual.
+
+Memory-setting closure (2026-09-25): `muyu-settings.test.mjs` now checks `memoryKeepRecent` contract, 1–100 tool range, dependency freshness, exact diff, sibling preservation, and one-time application. The legacy four-field memory draft remains unchanged. `memoryTokenBudget` is explicitly inactive in the classic UI and is not offered as an agent-write field; `memoryMaxEntries` remains pending a chat-data pruning action. Full suite: **1074 tests, 1073 passed, 1 skipped, 0 failed**; static checks and historical BUG contracts 17/17 passed. No live-browser or paid-model acceptance was performed for this change.
+
+Configuration domains round 1 (2026-09-25): `muyu-settings.test.mjs` and unified controller cases cover the explicit default-key inventory, selective reads, separate config permission, default-deny tool policy, nested sibling preservation, semantic conflicts, runtime guards, one-shot approval, async save failures, long prompts/receipts, inert history import, and invalid replacement candidates. Full suite: **1042 tests, 1041 passed, 1 skipped, 0 failed**; static checks passed; historical BUG contracts 17/17. Report: `.bug-hunter/muyu-settings-round1-tests.json`. No paid-model or real-browser acceptance was performed. The registered 13 leaf fields and remaining scope are documented in [the configuration contract](muyu/config/README.md).
+
+Provider 扩展基础（2026-09-25）：用户脚本加载器的私有源码摘要在恢复后保持一致；运行实例替换时拒收迟到结果；可选上下文声明报告缺失并提供有界投影；Provider 执行 v2 的长结果在同一 Run 分页读取且不重复执行，Broker 按原版本授权检查每页。全量 1024 项，1023 通过、1 跳过、0 失败；随后补充的 Broker 分页授权用例另行专项通过，其他代码未变。历史 BUG 合同 17/17。
+
+Registered Provider execution (2026-09-25): `muyu-provider-execution.test.mjs` verifies metadata discovery without render, exact script/version/task/chat approval, denial, replacement, async stale results, legacy render context, content/data projection, legacy-mode isolation, and history withholding/restoration. Panel tests verify the code-execution disclosure and absence of persistent execution approval. Full suite: 1020 tests, 1019 passed, 1 skipped, 0 failed; historical BUG contracts 17/17. This synthetic suite does not establish that arbitrary user JavaScript is sandboxed or side-effect-free.
+
+Provider story-source stage (2026-09-24): `muyu-story-sources.test.mjs` covers raw variable values, chat-local global scope, missing/default separation, blueprint hierarchy and unpruned signals, no mutation, opaque identities, malformed/oversized data, pagination/Unicode, stale snapshots and budgets. Unified controller cases additionally verify zero pre-grant reads, independent source grants, denial, global-session rejection and history expiry. Targeted: 317/317. Full: 1013 tests, 1012 passed, 1 skipped, 0 failed; historical BUG contracts 17/17. No paid-model or browser acceptance is implied.
+
+Unified Muyu assistant (2026-09-24): `muyu-unified.test.mjs` covers mixed-tool tasks, lazy draft binding, source-level denials across alternate readers, task-grant expiry and history withholding/restoration, explicit history omission, global/chat scope, reconnect and legacy read-only sessions. Panel tests cover Chinese/English unified entry points without pre-send permission or task selectors. Targeted: 309/309. Full: 1005 tests, 1004 passed, 1 skipped, 0 failed; 17/17 historical BUG contracts. No new paid-model or browser acceptance is implied.
+
+Muyu config application (2026-09-24): `muyu-config-apply.test.mjs` and controller/panel
+integration cover explicit one-shot approval, immutable drafts, final baseline checks,
+save exceptions/unconfirmed receipts, concurrent edits and reconnect drain. Production
+ST persistence is conservatively unconfirmed; see `muyu/actions/README.md`.
+
+Muyu on-demand permissions (2026-09-24): `muyu-permissions.test.mjs` plus controller/UI
+coverage verify source/task/chat isolation, rollback, zero unauthorized reads, denial,
+history/summary guards, stale requests and the shared six-handoff ceiling. See
+`muyu/permissions/README.md`. Deterministic tests do not imply browser or live-model acceptance.
+
+Muyu clarification stage (2026-09-24): added bounded request/store/runtime tests,
+same-task continuation and scope invalidation checks, three-question cap, draft/remount
+UI coverage, and pending-drain/late-result cases. See `muyu/interactions/README.md`.
+The separate synthetic DeepSeek harness exercises question/draft/answer/clear-query
+flows; its model-output review is distinct from deterministic and browser acceptance.
+
 GD Test Lab is the repository-wide automated test platform for Group Director.
 It combines static validation, automatically discovered behavior tests, a reusable
 fake SillyTavern host, optional real-host contract checks, coverage, and machine
@@ -541,7 +577,7 @@ requires review, fuzzing, or exploratory testing.
 
 ## Muyu Agent kernel addition (2026-09-24)
 
-The Muyu foundation, runtime, application, workspace and classic UI have 101 focused tests in
+The Muyu foundation, runtime, application, workspace and classic UI have 151 focused tests in
 `tests/unit/muyu-foundation.test.mjs`, `tests/unit/muyu-execution.test.mjs`,
 `tests/unit/muyu-application.test.mjs`, `tests/unit/muyu-model.test.mjs`,
 `tests/unit/muyu-memory.test.mjs`, `tests/unit/muyu-config-draft.test.mjs`,
@@ -569,3 +605,184 @@ Manual follow-up (2026-09-24): after syncing both local release extension direct
 the user reported successful operation with no issues. This confirms a basic real-host
 smoke run, not exhaustive completion of the browser checklist above. Automated baseline:
 101 Muyu tests passed; full suite 794 tests, 793 passed, 1 skipped, 0 failed; static PASS.
+
+Floating UI follow-up: `tests/unit/floating-ui.test.mjs` verifies generic module registration,
+badge aggregation, unregistration, single-window mounting, focus return, language remount,
+drag handling and viewport constraints. Muyu panel tests also cover standalone subscription,
+input recovery and authorization reset on reopening. These tests do not establish real-browser
+layout, native resize, touch input or host z-index compatibility; the earlier user smoke run
+predates the floating window.
+
+Floating implementation validation: full suite 801 tests, 800 passed, 1 skipped,
+0 failed; static PASS. The six generic floating-shell tests are separate from
+the 102 Muyu-specific tests. No browser geometry verification was performed.
+
+Chat-first UI iteration adds bubble toggle, hidden settings/return navigation, unsent-key
+clearing, input preservation, pre-send authorization, task selector and message bubble tests.
+The current generic floating tests number seven; the Muyu-specific tests number 105.
+Ctrl+Enter opens the confirmation card only, and no model call occurs before explicit consent.
+Validation: full suite 805 tests, 804 passed, 1 skipped, 0 failed; static PASS.
+Visual layout and real-host interaction for this iteration still require manual acceptance.
+
+Process observability adds `tests/unit/muyu-process.test.mjs` for safe event projection,
+per-run/global bounds, replay rejection, execution versus reuse/denial, observer isolation,
+logical cancellation versus physical drain, model/startup failures and exclusion from model history.
+Panel tests cover persistent details nodes, expansion/list scroll and current-view cleanup.
+The runtime event contract now includes model started/completed/failed and tool started/reused;
+cancellation tests use attempt identity instead of hard-coded global event sequence numbers.
+Process iteration result: 111 Muyu tests passed; full suite 811 tests, 810 passed,
+1 skipped, 0 failed; static PASS (370 sources, 11 JSON, 92 module smoke checks).
+No real-model requests or browser acceptance were performed for this iteration.
+
+Director/context/Markdown iteration adds `muyu-director.test.mjs` and `muyu-markdown.test.mjs`,
+plus controller/panel scenarios for director scope, permission wording, anonymous publication
+and denial of cross-task state tools. Director tests reject changed evidence/targets and avoid
+reading raw reasons. Markdown tests verify formatting and that HTML, images and unsafe links
+remain inert. These are deterministic tests, not real-model quality or browser layout acceptance.
+
+Director/context/Markdown validation: 120 Muyu-specific tests; full suite 820 tests,
+819 passed, 1 skipped, 0 failed; all 17 regression contracts passed; static PASS
+(378 sources, 11 JSON, 98 module smoke checks). No live-model request or browser
+acceptance was performed for this iteration. Markdown is a bounded subset, not
+a complete CommonMark implementation; raw HTML and remote images remain inert.
+
+Provider/permission/credential iteration adds `muyu-provider-access.test.mjs` plus
+controller, panel and process tests. Coverage includes reusable grants, chat isolation,
+revocation during a pending run, reset model history, pure provider projections, directory
+identity/revision checks, paging and byte budgets, disabled/replaced sources, optional
+credential persistence, exact endpoint reuse, save failures and key-free snapshots/DOM.
+`config-profile-export.test.mjs` verifies stripping the remembered Muyu key from snapshots
+and exported profiles. Browser and live-model acceptance remain pending.
+
+Provider iteration validation: 135 Muyu-specific tests; full suite 836 tests,
+835 passed, 1 skipped, 0 failed; 17/17 historical BUG contracts passed; static PASS
+(384 source files, 11 JSON, 103 module smoke checks). The final chat-only process
+note adjustment was additionally checked by rerunning panel/process tests.
+
+Extended context iteration adds six scenarios covering independent chat-scoped extended
+grants, source-specific policy enforcement, older message range access, card participant
+restriction and identity changes, ledger projections and staleness, and the GUI opt-in.
+No arbitrary card extensions, message extras, alternate swipes or other chats are read.
+
+Extended-context validation: 141 Muyu-specific tests; full suite 842 tests,
+841 passed, 1 skipped, 0 failed; 17/17 historical BUG contracts passed; static PASS
+(386 source files, 11 JSON, 105 module smoke checks). No live-model or browser
+acceptance was performed for this extension; both local release copies are synced.
+
+Workbench budget phase adds `muyu-budget.test.mjs` plus model/controller/panel cases:
+closed configuration bounds, save rollback, per-run snapshots, answer-only finalization,
+skipped tool-result pairing, refusal of further tools, timeout/cancellation without extra
+requests, per-run Provider quota, actual/unknown token usage, private thinking replay,
+and budget form persistence across progress updates. Conversation persistence and
+resumable checkpoints are not implemented by this phase.
+
+Budget-phase validation: 151 Muyu-specific tests; full suite 852 tests, 851 passed,
+1 skipped, 0 failed; 17/17 historical BUG contracts passed; static PASS (390 sources,
+11 JSON, 108 module smoke checks). No live-model request or browser acceptance was
+performed for this phase; finalization protocol was exercised using synthetic responses.
+
+Session-repository phase 2A adds `muyu-history.test.mjs` and `muyu-history-idb.test.mjs`,
+plus controller/panel scenarios. Coverage includes opt-in persistence, lazy body reads,
+failed saves and retries, CAS conflicts, atomic metadata/body rollback, verified account
+namespaces, overlapping reads, bounded complete-turn replay, reconnect/revocation gates,
+inert reload, draft isolation and idle runtime-cache reclamation. The IDB adapter is tested
+with a narrow asynchronous transaction double, not a real browser implementation.
+
+Phase 2A validation: full suite 871 tests, 870 passed, 1 skipped, 0 failed;
+17/17 historical BUG contracts and static checks passed. A separate Muyu-only run
+passed 169 tests. The final profile-export assertion excluding the history privacy
+setting was checked separately (6/6 profile-export tests). No live API request or
+browser acceptance was performed; native IDB quota, account switching, multiple tabs
+and 320/400/600/800px layout remain manual acceptance items. Both local release copies
+receive the same implementation and documentation. See [session contract](muyu/sessions/README.md).
+
+History-workbench phase 2B adds title/scope/task/archive filters, confirmed metadata
+management, read-only foreign-chat and imported records, explicit import previews,
+JSON/Markdown exports, view-local scroll restoration and responsive sidebar tests.
+Storage coverage includes v1-to-v2 migration, atomic deletion, stale-update rejection,
+concurrent answers during metadata saves, autosave-off behavior and late reads after
+deletion. Controller cases verify physical task drain before deletion and isolation
+from another session's running task.
+
+Phase 2B validation: full suite 895 tests, 894 passed, 1 skipped, 0 failed;
+193/193 Muyu-specific tests, 17/17 historical BUG contracts and static checks passed.
+No live-model requests or real-browser acceptance were performed. DOM/ResizeObserver
+and IndexedDB doubles do not replace native quota, multi-tab, account-switching or
+320/400/600/800px visual acceptance. Imports remain permanently read-only in this phase;
+archive does not reclaim capacity, and confirmed deletion has no trash/undo.
+
+Sidebar-first navigation follow-up: creation/search and collapsed filters live in the
+sidebar, import is in its footer, and exports are in conversation menus (not settings).
+Two added panel cases cover entry placement, narrow-screen close after selection/create,
+row-specific export and stale-selection rejection. Full suite: 897 tests, 896 passed,
+1 skipped, 0 failed; 17/17 historical BUG contracts passed. After the final scope-label
+change, Muyu-specific tests passed 195/195. Real-browser layout remains manual acceptance.
+
+Context-workbench phase 3 adds `muyu-context.test.mjs` plus model/controller/panel cases.
+Coverage includes closed configuration and save rollback, mixed-language estimation,
+complete-turn trimming, preflight limits with private reasoning/tool overhead, bounded
+rolling summaries, no-tool summary protocol, cancellation/timeout/physical drain,
+same-run budget accounting, one-send omission, original transcript preservation,
+permission/chat/delete isolation, opt-in summary persistence and read-only JSON import.
+V1/v2 records normalize to v3; the index excludes summary text. The core dependency
+contract remains unchanged: context capabilities are injected by composition.
+
+Validation: full suite 916 tests, 915 passed, 1 skipped, 0 failed; static checks and
+17/17 historical BUG contracts passed. Muyu-specific coverage comprises 214 passing
+tests. No live API calls, tokenizer calibration, browser layout acceptance or native
+IndexedDB multi-tab/quota acceptance were performed. Summary quality is not established
+by deterministic fixtures; see [context contract](muyu/context/README.md).
+
+Behavior-preference phase adds `muyu-instructions.test.mjs` plus controller/model/panel
+and config-profile cases. Covers opt-in composition, closed bounds and oversized drafts,
+confirmed save rollback/concurrent editing, send-time snapshots, summary isolation,
+budget enforcement, denied tool access despite malicious preferences, single system
+message insertion with unchanged thinking indices, finalization replay, view remounts,
+and profile import/export/apply exclusion. Core dependency rules remain unchanged.
+
+Final validation: full suite 927 tests, 926 passed, 1 skipped, 0 failed; static checks
+and 17/17 historical BUG contracts passed. Muyu-specific suite: 224 tests.
+Separate DeepSeek harness: four same-question heuristic checks passed (6 requests),
+then a focused constraint/unknown-state check passed after two base-rule clarifications
+(2 requests). Human review found wording issues in the initial comparison; the final
+wording was not rerun across all four live cases. Total reported live usage: 9522 tokens.
+These are synthetic Node tests, not browser/ST acceptance or general quality guarantees.
+See [instruction contract](muyu/instructions/README.md); harness stays outside the plugin.
+
+Operation receipts add `muyu-receipts.test.mjs` and controller/context/panel cases:
+closed bounded facts, inert v4 persistence/import/export, deduplication, storage failure
+and data-only retry, origin-session ownership across selection changes, concurrent edits,
+explicit tool-free explanation, failed explanation retry with one business write,
+composer preservation, revocation/omit-history gates, summary isolation, request budgets
+and Chinese/English remount behavior. Receipts are application data, not orphan tool results.
+The existing single-apply tests continue to cover write confirmation and failure boundaries.
+No paid model or native browser acceptance was performed for this change.
+Validation: 985 total, 984 passed, 1 skipped, 0 failed; historical BUG contracts 17/17.
+Muyu plus floating-UI suite: 289/289 passed.
+
+Receipt explanation follow-up: independent task rules and explicit field semantics now
+have regression assertions. Full suite: 986 total, 985 passed, 1 skipped, 0 failed;
+historical BUG contracts 17/17; Muyu plus floating UI 290/290. External synthetic
+DeepSeek harness repeated the three original receipt cases with thinking enabled:
+3 requests, 5941 reported tokens. Human review found the previous changed-flag
+misinterpretation and inappropriate Provider selectors absent in this run. Answers
+remain verbose; this is a targeted comparison, not a general quality guarantee or
+browser acceptance. Initial failures remain in the external harness report.
+
+Receipt presentation follow-up adds assertions for concise/explicit instruction rules,
+the human confirmation path, single receipt rendering, localized explanation status
+and a separate action container in both languages. No permission or write lifecycle
+changes. Native layout and live-model brevity still require user acceptance; no paid
+requests were made for this presentation-only pass.
+
+Provider adapter v2 adds `muyu-provider-config.test.mjs` plus controller/panel assertions:
+structured whitelist/missing/unsupported values, no default filling or render calls,
+global-owner and chat isolation, rejected structured selectors/pagination, byte accounting,
+invalid payload rejection, mixed snapshot rejection, version/policy gates, diagnostic
+permission independent of chat grants, protected-history revocation, and deterministic
+receipt checks with no model calls, no repeated writes, preserved drafts and origin views.
+Existing eight-source text, pagination and permission regressions remain in the suite.
+Local checks use the shared Provider/Broker path, not a parallel configuration tool.
+No paid API call or browser layout acceptance was performed in this phase.
+Validation: 994 total, 993 passed, 1 skipped, 0 failed; BUG contracts 17/17.
+Muyu plus floating-UI suite: 298/298 passed.

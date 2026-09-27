@@ -3,6 +3,8 @@ import { assertActive, ExecutionError } from '../core/execution.js';
 import { validateConnection } from './connection.js';
 import { createHttpTransport } from './http-transport.js';
 import { modelError } from './errors.js';
+import { measurePayload } from '../context/policy.js';
+import { renderInstructions } from '../instructions/contract.js';
 
 const fail = () => { throw modelError('MODEL_PROTOCOL_ERROR'); };
 const callId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
@@ -52,8 +54,16 @@ function prepare(request, connection, privateHistory) {
         return out;
     });
     if (pending.size) fail();
-    const payload = { model: connection.model, messages, stream: false, max_tokens: connection.maxTokens };
-    if (tools.length) { payload.tools = tools; if (!connection.thinking) payload.tool_choice = 'auto'; }
+    // Prepend only after replay mapping: private reasoning remains keyed to INTERNAL indices.
+    if (request.instructions !== undefined) {
+        let content; try { content = renderInstructions(request.instructions); } catch { fail(); }
+        messages.unshift({ role: 'system', content });
+    }
+    const maxTokens = request.maxTokens ?? connection.maxTokens;
+    if (!Number.isInteger(maxTokens) || maxTokens < 256 || maxTokens > 32768 || request.finalize !== undefined && typeof request.finalize !== 'boolean') fail();
+    const payload = { model: connection.model, messages, stream: false, max_tokens: maxTokens };
+    // Retain stable mappings/reasoning for historical tool pairs, but advertise no new tools when closing.
+    if (tools.length && !request.finalize) { payload.tools = tools; if (!connection.thinking) payload.tool_choice = 'auto'; }
     if (connection.profile === 'deepseek') {
         payload.thinking = { type: connection.thinking ? 'enabled' : 'disabled' };
         if (connection.thinking) payload.reasoning_effort = connection.reasoningEffort;
@@ -104,15 +114,19 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
     const post = createHttpTransport({ fetchImpl, ...transportLimits });
     const histories = new WeakMap();
     return Object.freeze({
+        inspect(request, context) { return measurePayload(prepare(request, config, histories.get(context) || new Map()).payload); },
         releaseContext(context) { histories.delete(context); },
         capabilities: Object.freeze({ tools: config.supportsTools, streaming: false, requestAbort: true, usage: 'optional', reasoning: config.thinking }),
-        async *run(request, { signal, context }) {
+        async *run(request, { signal, context, onUsage: reportUsage = () => {} }) {
             assertActive(signal);
             try {
                 if (config.thinking && (!context || typeof context !== 'object')) throw modelError('MODEL_HISTORY_UNAVAILABLE');
                 let privateHistory = context && histories.get(context);
                 if (!privateHistory) { privateHistory = new Map(); if (context) histories.set(context, privateHistory); }
                 const { payload, byName } = prepare(request, config, privateHistory);
+                const measured = measurePayload(payload);
+                if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > 128000)) fail();
+                if (measured.requestBytes > 1048576 || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
                 const { events, usage, reasoning, signature } = decode(await post(config, payload, signal), byName, config);
                 assertActive(signal);
                 if (config.thinking) {
@@ -121,6 +135,7 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
                     privateHistory.set(request.messages.length, { reasoning, signature });
                 }
                 try { onUsage(usage === null ? null : { ...usage }); } catch { /* Diagnostics cannot control execution. */ }
+                try { reportUsage(usage === null ? null : { ...usage }); } catch { /* Isolated per-run usage reporting. */ }
                 for (const event of events) { assertActive(signal); yield event; }
                 yield { type: 'done' };
             } catch (error) {

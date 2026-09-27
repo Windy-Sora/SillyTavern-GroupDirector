@@ -8,6 +8,7 @@ registerSection('memory', function (ctx) {
     const getCharacters = () => window.characters || [];
     const lang = settings.lang || 'zh';
     const L = (zh, en) => lang === 'zh' ? zh : en;
+    ctx.refreshMemoryList = renderMemoryList;
 
     const $section = $('#gd-memory-section');
     const $list = $('#gd-memory-list');
@@ -49,7 +50,6 @@ registerSection('memory', function (ctx) {
         saveSettings();
         window.__gdRefreshDashboard?.();
     });
-    $c('memory-token-budget').on('input', function () { settings.memoryTokenBudget = Math.max(100, parseInt($(this).val(), 10) || 2000); saveSettings(); });
     $c('memory-prompt').on('input', function () { settings.memoryPrompt = $(this).val(); saveSettings(); });
     $c('memory-json-schema').on('input', function () { settings.memoryJsonSchema = $(this).val(); saveSettings(); });
     $c('memory-render-template').on('input', function () { settings.memoryRenderTemplate = $(this).val(); saveSettings(); });
@@ -176,9 +176,10 @@ registerSection('memory', function (ctx) {
         $list.find('.gd-mem-revert-btn').off('click').on('click', async function (e) {
             e.stopPropagation();
             const avatar = $(this).data('av');
-            if (!await callGenericPopup(L('回退最近一次提取？', 'Revert last extraction?'), POPUP_TYPE.CONFIRM)) return;
+            const count = settings.memoryKeepRecent ?? 5;
+            if (!await callGenericPopup(L(`删除该角色最近 ${count} 条记忆？此操作不按提取批次撤销。`, `Remove this character's latest ${count} memories? This is not grouped by extraction batch.`), POPUP_TYPE.CONFIRM)) return;
             try {
-                await memorySystem.revertLast(avatar, settings.memoryKeepRecent ?? 5);
+                await memorySystem.revertLast(avatar, count);
                 renderMemoryList();
                 window.__gdRefreshDashboard?.();
             } catch (e) { toastr.error(e.message); }

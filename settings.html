@@ -525,8 +525,8 @@
                     </div>
                     <div id="gd-memory-section" style="display:none;">
                         <div data-feature-view="settings">
-                        <label for="gd-memory-token-budget" data-i18n="memoryTokenBudget">Token 预算</label>
-                        <input type="number" id="gd-memory-token-budget" class="text_pole" min="100" max="10000" step="100">
+                        <label for="gd-memory-token-budget" data-i18n="memoryTokenBudget">Token 预算（暂未生效）</label>
+                        <input type="number" id="gd-memory-token-budget" class="text_pole" min="100" max="10000" step="100" disabled>
                         </div>
                         <div data-feature-view="advanced">
                         <label for="gd-memory-prompt" data-i18n="memoryPromptLabel">提取 Prompt</label>
@@ -557,7 +557,7 @@
                         </div>
                         </div>
                         <div data-feature-view="settings">
-                        <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent">压缩保留最近</label>
+                        <label for="gd-memory-keep-recent" data-i18n="memoryKeepRecent">压缩保留／回退删除条数</label>
                         <input type="number" id="gd-memory-keep-recent" class="text_pole" min="1" max="100" step="1" style="width:80px;">
                         <label for="gd-memory-max-entries" data-i18n="memoryMaxEntries">单角色上限</label>
                         <input type="number" id="gd-memory-max-entries" class="text_pole" min="10" max="2000" step="10" style="width:100px;">
@@ -865,7 +865,7 @@
                     <label for="gd-critique-prompt" data-i18n="critiquePromptLabel">批判 Prompt</label>
                     <textarea id="gd-critique-prompt" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-critique-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
-                    <label for="gd-critique-schema" data-i18n="critiqueSchemaLabel">JSON Schema（自定义输出格式）</label>
+                    <label for="gd-critique-schema" data-i18n="critiqueSchemaLabel">JSON 输出示例（留空使用默认）</label>
                     <textarea id="gd-critique-schema" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-critique-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                     <div class="gd-row-buttons">

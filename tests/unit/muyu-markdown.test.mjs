@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { renderMarkdown } from '../../muyu/ui/markdown.js';
+function dom() {
+    const doc = { createElement(tag) { return { tag, ownerDocument: doc, children: [], attrs: {}, append(e) { this.children.push(e); }, replaceChildren() { this.children = []; }, setAttribute(k, v) { this.attrs[k] = v; } }; } };
+    const root = doc.createElement('div'), all = (el = root) => [el, ...el.children.flatMap(all)];
+    return { root, all };
+}
+test('Markdown supports headings, bold, emphasis, lists, quotes, tables, code and explicit safe links', () => {
+    const f = dom(); renderMarkdown(f.root, '# 标题\n\n**重点**和*强调*，`inline`\n\n- 一\n- 二\n\n1. first\n\n> 引用\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```js\nconst x = "<tag>";\n```\n\n[文档](https://example.com/doc)');
+    for (const tag of ['h1', 'strong', 'em', 'ul', 'ol', 'blockquote', 'table', 'pre', 'code', 'a']) assert.ok(f.all().some(e => e.tag === tag), tag);
+    const a = f.all().find(e => e.tag === 'a'); assert.equal(a.attrs.rel, 'noopener noreferrer'); assert.equal(a.attrs.href, 'https://example.com/doc');
+});
+test('Markdown never parses HTML, loads images or makes executable/relative links', () => {
+    const f = dom(); renderMarkdown(f.root, '<script>alert(1)</script>\n<img src=x onerror=alert(1)>\n![track](https://secret.test/x)\n[x](javascript:alert) [y](data:text/html,x) [z](/api/private)');
+    assert.ok(f.all().every(e => !['script', 'img', 'iframe', 'a'].includes(e.tag)));
+    assert.ok(f.all().some(e => e.textContent?.includes('<script>')));
+    assert.ok(f.all().every(e => !Object.hasOwn(e, 'innerHTML')));
+});
+test('Markdown malformed fences and oversized input remain bounded and explicitly marked', () => {
+    const f = dom(); renderMarkdown(f.root, '```\n<img>'); assert.equal(f.all().find(e => e.tag === 'code').textContent, '<img>');
+    renderMarkdown(f.root, 'a'.repeat(40000)); assert.ok(f.all().some(e => e.tag === 'small' && e.textContent.includes('truncated')));
+});

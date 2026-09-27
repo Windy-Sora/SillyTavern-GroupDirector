@@ -1,3 +1,4 @@
+import { latestActiveSummary } from './provider-read-data.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -34,10 +35,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
 
     function findLatestActive(metadata = cm()) {
         const summaries = getLiveSummaries(metadata);
-        for (let i = summaries.length - 1; i >= 0; i--) {
-            if (summaries[i].active) return summaries[i];
-        }
-        return null;
+        return latestActiveSummary(summaries);
     }
 
     function getLatestActive(metadata = cm()) {
@@ -393,6 +391,7 @@ export function createChatSummarySystem({ settings, getChatMetadata, getChat, EX
     }
 
     return {
+        isGenerating: () => summarizing,
         getActiveSummaryText,
         getLatestActive,
         getSummaries,

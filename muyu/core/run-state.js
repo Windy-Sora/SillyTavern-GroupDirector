@@ -1,9 +1,9 @@
 import { copyJson, jsonKey } from './json-contract.js';
 
-const terminal = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
+const terminal = new Set(['succeeded', 'failed', 'cancelled', 'interrupted', 'yielded']);
 const transitions = {
     queued: ['running', 'cancelled', 'interrupted'],
-    running: ['awaiting_input', 'awaiting_approval', 'succeeded', 'failed', 'cancelling', 'interrupted'],
+    running: ['awaiting_input', 'awaiting_approval', 'yielded', 'succeeded', 'failed', 'cancelling', 'interrupted'],
     awaiting_input: ['running', 'cancelling', 'interrupted'],
     awaiting_approval: ['running', 'cancelling', 'interrupted'],
     cancelling: ['cancelled', 'failed', 'interrupted'],

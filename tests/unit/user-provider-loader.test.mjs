@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { createUserProviderLoader } from '../../systems/user-provider-loader.js';
+import { createUserProviderLoader, getTrustedProviderDigest } from '../../systems/user-provider-loader.js';
 import { CapabilityRegistry } from '../../systems/capability-registry.js';
 
 function deferred() {
@@ -78,6 +78,20 @@ function createProviderHarness(settings, saveSettings = () => {}, loaderOptions 
     });
     return { loader, providers, deps };
 }
+
+test('User Provider loader stamps the same source digest after restore', async () => {
+    await withAssetRuntime(async () => {
+        const settings = {}, source = 'export function register({registerProvider}) { registerProvider({id:"script",placeholder:"{{script}}",render:()=>({content:"x"})}); }';
+        const first = createProviderHarness(settings);
+        assert.equal((await first.loader.importAsset({ name: 'script.js', source }, 'provider', first.deps)).ok, true);
+        const digest = getTrustedProviderDigest(first.providers.get('script'));
+        assert.match(digest, /^[0-9a-f]{64}$/);
+        const restored = createProviderHarness(settings);
+        assert.deepEqual((await restored.loader.restoreAll('provider', restored.deps)).loaded, ['script']);
+        assert.equal(getTrustedProviderDigest(restored.providers.get('script')), digest);
+        assert.equal(getTrustedProviderDigest({ ...restored.providers.get('script') }), null);
+    });
+});
 
 function createCapabilityHarness(settings, saveSettings = () => {}, loaderOptions = {}) {
     const capabilities = new Map();

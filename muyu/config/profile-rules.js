@@ -1,0 +1,6 @@
+export const profileRuleDefinitions = {
+    profileEnabled: { domain: 'profiles', schema: { type: 'boolean' }, idle: true, source: 'ui/sections/profile.js', description: '角色档案总开关，影响所有聊天。开启后已有就绪档案可用于后续提示词；不会因本次设置写入而立即生成档案。若另行启用了档案库自动加载，下一次启动或切换聊天时可能加载档案。' },
+    profileTokenBudget: { domain: 'profiles', schema: { type: 'integer', minimum: 1, maximum: 20000 }, dependencies: ['profileEnabled'], idle: true, source: 'ui/sections/profile.js', description: '角色档案注入的估算 Token 预算；本工具支持 1..20000，原界面与运行时没有此上限。渲染可能保留首份档案并压缩后续档案，不保证输出严格低于此数；仅影响后续注入。' },
+    profileConcurrency: { domain: 'profiles', schema: { type: 'integer', minimum: 0, maximum: 20 }, dependencies: ['profileEnabled'], idle: true, source: 'ui/sections/profile.js', description: '档案批量生成的并发数；0 表示不限并发，正数按该数量分批。本工具支持 0..20，原界面与运行时没有 20 的强制上限；只影响后续生成，不启动任务。' },
+    profileGeneratorPrompt: { domain: 'profiles', schema: { type: 'string', maxLength: 4000 }, dependencies: ['profileEnabled'], idle: true, source: 'ui/sections/profile.js', description: '角色档案生成使用的原始 Prompt；空字符串恢复内置 Prompt。生成前替换 charName、charDescription、charPersonality、charScenario 四个角色字段，然后交给 renderPrompt 解析已注册 Provider 占位符；不把其他占位符一律判为无效。仅影响之后的新生成或重新生成，不改写已有档案，也不更改 profileJsonSchema 或其版本哈希。影响所有聊天；本工具最多 4000 字符，草稿另受 UTF-8 字节预算限制。' },
+};

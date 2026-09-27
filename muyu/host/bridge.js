@@ -1,5 +1,5 @@
 /** Page-local identity only; no names or raw identity strings enter model requests. */
-export function createHostBridge({ getContext, getSettings, extensionKey, getGuards = () => ({}), pageId = globalThis.crypto.randomUUID() }) {
+export function createHostBridge({ getContext, getSettings, extensionKey, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, configWriter, memoryLimitPort, getGuards = () => ({}), pageId = globalThis.crypto.randomUUID() }) {
     const userKey = 'page:' + pageId;
     const globalTarget = Object.freeze({ kind: 'global', userKey });
     function currentTarget() {
@@ -15,7 +15,7 @@ export function createHostBridge({ getContext, getSettings, extensionKey, getGua
         return { kind: 'chat', userKey, chatKey: JSON.stringify([...owner, chatId]) };
     }
     return Object.freeze({
-        currentTarget, globalTarget,
+        currentTarget, globalTarget, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, configWriter, memoryLimitPort,
         configTarget: () => currentTarget() || globalTarget,
         getSettings,
         memoryPorts: Object.freeze({ extensionKey, getTarget: currentTarget, getSettings,

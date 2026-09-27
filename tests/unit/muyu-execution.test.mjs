@@ -20,7 +20,7 @@ test('Muyu offline loop pairs multiple serial calls and final response', async (
     assert.equal(result.state.status, 'succeeded'); assert.equal(result.answer, 'complete');
     assert.deepEqual(order, [1, 3]);
     assert.deepEqual(s.model.requests[1].messages.filter(m => m.role === 'tool').map(m => [m.callId, m.result.data]), [['a', 2], ['b', 6]]);
-    assert.deepEqual(s.events.filter(e => e.type.startsWith('tool.')).map(e => e.type), ['tool.requested', 'tool.completed', 'tool.requested', 'tool.completed']);
+    assert.deepEqual(s.events.filter(e => e.type.startsWith('tool.')).map(e => e.type), ['tool.requested', 'tool.started', 'tool.completed', 'tool.requested', 'tool.started', 'tool.completed']);
     assert.equal(s.clock.pending, 0);
 });
 test('Muyu broker denies absent policy, absent allowlist, invalid scope/version and writes', async () => {
@@ -109,7 +109,7 @@ test('Muyu observers cannot break execution, and independent runs do not share d
 test('Muyu repeated IDs across steps still get paired results when later batch is cancelled', async () => {
     let handle;
     const s = subject([[request(call()), done], [request(call()), request(call('later')), done]], { onEvent: e => {
-        if (e.type === 'tool.requested' && e.seq > 3) handle.cancel();
+        if (e.type === 'tool.requested' && e.payload.attemptId === 2) handle.cancel();
     } });
     handle = s.handle;
     const result = await handle.completion;

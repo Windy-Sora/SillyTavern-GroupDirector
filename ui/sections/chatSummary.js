@@ -18,6 +18,7 @@ registerSection('chatSummary', function (ctx) {
     $c('summary-enabled').prop('checked', !!settings.summaryEnabled);
     $c('summary-reuse').prop('checked', settings.summaryReusePrevious !== false);
     $c('summary-prompt').val(settings.summaryPrompt || defaultPrompt);
+    $c('summary-prompt').data?.('gdDefaultPrompt', defaultPrompt);
 
     const checkEnabled = () => {
         const locked = isRoundActive ? isRoundActive() : false;

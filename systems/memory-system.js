@@ -1,3 +1,4 @@
+import { peekMemories } from './provider-read-data.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -44,7 +45,8 @@ export function createMemorySystem({
     }
 
     function getMemories(avatar, metadata = getChatMetadata()) {
-        return getStore(metadata)[avatar] || [];
+        getStore(metadata);
+        return peekMemories(metadata, EXT_KEY)[avatar] || [];
     }
 
     function setMemories(avatar, memories, metadata = getChatMetadata()) {
@@ -392,7 +394,7 @@ Output ONLY the summary text. No JSON, no formatting, no preamble. Write in the 
         updateEntry, deleteEntry, deleteCharacterMemories,
         revertLast, resetAll, compressOldMemories,
         getStats, detectOrphans, listMemories, totalCount,
-        getMemories, pruneAfter,
+        getMemories, pruneAfter, isPruning: () => _pruning,
         // Internal helpers for auto-migration
         _setMemories: (avatar, mems) => replaceMemories(avatar, mems),
         _deleteKey: avatar => removeMemories(avatar),

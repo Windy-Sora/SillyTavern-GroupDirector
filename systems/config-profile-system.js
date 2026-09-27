@@ -16,6 +16,10 @@ import { sanitizeImportedSettings, validateConfigProfileManifest } from './confi
 
 const CONFIG_PROFILE_VERSION = 1;
 const INTENTIONALLY_UNCOVERED_KEYS = new Set([
+    'muyuInstructionConfig', // Personal assistant instructions, excluded from story profiles.
+    'muyuContextConfig', // Private assistant context policy, not a story profile.
+    'muyuRunConfig', // Local assistant execution policy, not a shared story profile.
+    'muyuHistoryEnabled', // Local history privacy choice, never imported with story settings.
     // Profile libraries are reusable content data, not a config-profile setting.
     'profileLibraries',
     'storyBlueprintLibraries',
@@ -101,6 +105,7 @@ function snapshotSettings(settings, drawers) {
 function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
+        if (k === 'muyuInstructionConfig') continue; // Personal instructions are never applied by a story profile.
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
         if (k === 'agentConfigs') continue;   // preserved per-user, never overwritten by snapshot
@@ -368,6 +373,7 @@ export function createConfigProfileSystem(deps) {
         // stored profiles should already be clean, but a manually injected
         // profile could carry raw keys).
         const expSettings = JSON.parse(JSON.stringify(profile.settings));
+        delete expSettings.muyuInstructionConfig;
         if (expSettings.agentConfigs) expSettings.agentConfigs = stripApiKeys(expSettings.agentConfigs);
 
         const manifest = {
@@ -430,6 +436,7 @@ export function createConfigProfileSystem(deps) {
         if (!profile) throw new Error('Profile not found');
 
         const snap = JSON.parse(JSON.stringify(profile.settings));
+        delete snap.muyuInstructionConfig;
 
         // Strip API keys (defense-in-depth: stored profiles should already be clean)
         if (snap.agentConfigs) {

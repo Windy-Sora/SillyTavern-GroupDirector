@@ -9,7 +9,9 @@ registerSection('profile', function (ctx) {
     $c('profile-enabled').prop('checked', settings.profileEnabled);
     $c('profile-token-budget').val(settings.profileTokenBudget);
     $c('profile-concurrency').val(settings.profileConcurrency);
-    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || getDefaultProfileGeneratorPrompt());
+    const defaultGeneratorPrompt = getDefaultProfileGeneratorPrompt();
+    $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || defaultGeneratorPrompt);
+    $c('profile-generator-prompt').data?.('gdDefaultPrompt', defaultGeneratorPrompt);
     $c('profile-json-schema').val(settings.profileJsonSchema || getDefaultProfileSchema());
     $c('profile-render-template').val(settings.profileRenderTemplate || getDefaultProfileRenderTemplate());
     $('#gd-profile-section').toggle(settings.profileEnabled);

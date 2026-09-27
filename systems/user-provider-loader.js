@@ -28,6 +28,15 @@ const DANGEROUS_PATTERNS = [
 const USER_PROVIDER_OWNER = 'group-director/user-provider';
 const USER_CAPABILITY_OWNER = 'group-director/user-capability';
 const DEFAULT_REGISTRATION_TIMEOUT_MS = 10000;
+const trustedProviderDigests = new WeakMap();
+export const getTrustedProviderDigest = provider => trustedProviderDigests.get(provider) || null;
+
+async function sourceDigest(name, source) {
+    if (!globalThis.crypto?.subtle) return null;
+    const bytes = new TextEncoder().encode(`${name}\0${source}`);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 function scanSource(source) {
     const found = [];
@@ -76,7 +85,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         if (typeof saveSettings === 'function') await saveSettings();
     }
 
-    function getAssetDeps(type, name, deps, registeredIds, previousEntries, lifecycle) {
+    function getAssetDeps(type, name, deps, registeredIds, previousEntries, lifecycle, digest = null) {
         const assertActive = () => {
             if (!lifecycle.active) throw new Error(`User ${type} "${name}" registration is no longer active`);
         };
@@ -93,6 +102,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                         _gdOwner: USER_PROVIDER_OWNER,
                         _gdOwnerId: name,
                     });
+                    if (digest && result && typeof result === 'object') trustedProviderDigests.set(result, digest);
                     if (provider?.id) registeredIds.add(provider.id);
                     return result;
                 },
@@ -233,6 +243,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         let insertedEntry = null;
         try {
             const source = await readFileAsText(file);
+            const digest = type === 'provider' ? await sourceDigest(name, source) : null;
 
             const findings = scanSource(source);
             if (findings.length > 0) {
@@ -261,7 +272,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             const lifecycle = { active: true };
             try {
                 await withTimeout(
-                    Promise.resolve().then(() => mod.register(getAssetDeps(type, name, deps, registeredIds, previousEntries, lifecycle))),
+                    Promise.resolve().then(() => mod.register(getAssetDeps(type, name, deps, registeredIds, previousEntries, lifecycle, digest))),
                     `User ${type} "${name}" register()`,
                     () => { lifecycle.active = false; },
                 );
@@ -339,6 +350,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             const registeredIds = new Set();
             const previousEntries = new Map();
             try {
+                const digest = type === 'provider' ? await sourceDigest(p.name, p.source) : null;
                 const findings = scanSource(p.source);
                 if (findings.length > 0) {
                     log(`Security: persisted ${type} "${p.name}" contains: ${findings.map(f => f.label).join(', ')}`);
@@ -349,7 +361,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                     const lifecycle = { active: true };
                     try {
                         await withTimeout(
-                            Promise.resolve().then(() => mod.register(getAssetDeps(type, p.name, deps, registeredIds, previousEntries, lifecycle))),
+                            Promise.resolve().then(() => mod.register(getAssetDeps(type, p.name, deps, registeredIds, previousEntries, lifecycle, digest))),
                             `User ${type} "${p.name}" register()`,
                             () => { lifecycle.active = false; },
                         );

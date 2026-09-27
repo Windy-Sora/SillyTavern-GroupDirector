@@ -57,6 +57,7 @@ export function createNpcSystem({
     const L = (zh, en) => (settings.lang === 'zh' ? zh : en);
     const fieldRevisions = new WeakMap();
     const entryRevisions = new WeakMap();
+    let activeGenerations = 0;
 
     function bumpFieldRevision(entry, key) {
         let fields = fieldRevisions.get(entry);
@@ -124,7 +125,7 @@ export function createNpcSystem({
 
     // ─── CRUD ──────────────────────────────────────────────────────────
 
-    async function generateNpcs() {
+    async function generateNpcsInternal() {
         const agent = AgentRegistry.get('npc');
         if (!agent) throw new Error('NPC agent not registered');
 
@@ -216,6 +217,13 @@ export function createNpcSystem({
         });
 
         return added;
+    }
+
+    async function generateNpcs() {
+        if (!settings.npcEnabled) throw new Error('NPC generation is disabled');
+        activeGenerations++;
+        try { return await generateNpcsInternal(); }
+        finally { activeGenerations--; }
     }
 
     async function updateNpc(index, updates) {
@@ -371,5 +379,5 @@ export function createNpcSystem({
         return _csrfToken;
     }
 
-    return { getNpcs, generateNpcs, updateNpc, deleteNpc, importNpcAsCharacter, nameExists };
+    return { getNpcs, generateNpcs, isGenerating: () => activeGenerations > 0, updateNpc, deleteNpc, importNpcAsCharacter, nameExists };
 }
