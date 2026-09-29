@@ -257,7 +257,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 (intent.mode === 'assistant' || id === 'muyu.provider.read' || permissions.allows(category(registry.get(id)), options.identity.target)));
             const trimRecoveryTools = intent.mode === 'assistant' && !intent.explanation && intent.historyStart === 0 && !intent.autoHistoryOmitted && intent.sourceMessages.length &&
                 !intent.contextPlan.omitted && !intent.contextPlan.summaryUsed ? task.tools.filter(id => id.startsWith('muyu.history.')) : [];
-            const policyTools = new Set([...allowedTools, ...trimRecoveryTools]);
+            const policyTools = new Set([...allowedTools, ...trimRecoveryTools, ...(options.resume?.toolIds || []).filter(id => id.startsWith('muyu.history.'))]);
             if (intent.resumeFrom) {
                 const previous = app.snapshot().runs.find(row => row.id === intent.resumeFrom);
                 if (previous?.status !== 'yielded' || previous.taskId !== options.identity.taskId || jsonKey(previous.target) !== jsonKey(options.identity.target)) throw Error('INVALID_RUN_TRANSFER');

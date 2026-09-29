@@ -23,7 +23,10 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     }
     if (typeof input !== 'string' || !input.trim()) throw new TypeError('Missing user input');
     copyJson(input);
-    if (resume && (jsonKey(resume.target) !== jsonKey(identity.target) || !Array.isArray(resume.messages) || !Array.isArray(resume.pendingCalls) || !resume.pendingCalls.length || resume.pendingCalls.length > 64 || !resume.modelContext || typeof resume.dispose !== 'function')) throw new TypeError('Invalid tool continuation');
+    if (resume && (jsonKey(resume.target) !== jsonKey(identity.target) || !Array.isArray(resume.messages) || !Array.isArray(resume.pendingCalls) || !resume.pendingCalls.length || resume.pendingCalls.length > 64 ||
+        !Array.isArray(resume.toolIds) || resume.toolIds.length > 64 || new Set(resume.toolIds).size !== resume.toolIds.length || resume.toolIds.some(id => typeof id !== 'string' || !registry.get(id)) ||
+        !resume.modelContext || typeof resume.dispose !== 'function')) throw new TypeError('Invalid tool continuation');
+    if (resume?.instructions) instructions = instructionPort.validate(resume.instructions);
     if (!Array.isArray(previousMessages) || previousMessages.length > 256) throw new TypeError('Invalid message history');
     const initialMessages = previousMessages.map(raw => {
         const m = copyJson(raw);
@@ -42,10 +45,10 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     // Opaque run-local identity for private provider state; never part of messages or snapshots.
     const modelContext = resume?.modelContext || Object.freeze({});
     const drain = createDrainTracker();
-    const pinned = registry.list().filter(d => allowedTools.includes(d.id)).map(d => copyJson(d));
-    const recovery = registry.list().filter(d => trimRecoveryTools.includes(d.id) && !allowedTools.includes(d.id)).map(d => copyJson(d));
-    const activeTools = new Set(allowedTools);
-    const broker = createBroker({ registry, handlers, runId: state.id, target: state.target, allowedTools: [...allowedTools, ...recovery.map(d => d.id)], policy: call => activeTools.has(call.definition.id) && (typeof policy === 'function' ? policy(call) : false), signal, maxCalls: budget.toolCalls, clock, track: drain.track,
+    const pinned = registry.list().filter(d => (resume ? resume.toolIds : allowedTools).includes(d.id)).map(d => copyJson(d));
+    const recovery = resume ? [] : registry.list().filter(d => trimRecoveryTools.includes(d.id) && !allowedTools.includes(d.id)).map(d => copyJson(d));
+    const activeTools = new Set(pinned.map(d => d.id));
+    const broker = createBroker({ registry, handlers, runId: state.id, target: state.target, allowedTools: [...activeTools, ...recovery.map(d => d.id)], policy: call => activeTools.has(call.definition.id) && (typeof policy === 'function' ? policy(call) : false), signal, maxCalls: budget.toolCalls, clock, track: drain.track,
         onEvent: ({ type, attemptId, toolId }) => emit(type, { attemptId, toolId }) });
     const messages = resume ? resume.messages.map(copyJson) : [...initialMessages, { role: 'user', content: input }];
     if (messages.length > 512) throw new TypeError('Tool continuation too large');
@@ -177,7 +180,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
                     result.error.missingSources?.length && result.error.missingSources.every(source => !source.startsWith('source:providerExecution:'))) {
                     const source = result.error.missingSources[0];
                     interaction = { kind: 'permission', source: source.slice(7), reason: `Read ${source.slice(7)} to complete ${call.toolId}; the tool has not run.` };
-                    resumeState = { target: copyJson(state.target), messages: history(), pendingCalls: toolCalls.slice(i).map(copyJson), modelContext,
+                    resumeState = { target: copyJson(state.target), messages: history(), pendingCalls: toolCalls.slice(i).map(copyJson), toolIds: pinned.map(d => d.id), instructions: instructions ? copyJson(instructions) : null, modelContext,
                         dispose: () => { try { model.releaseContext?.(modelContext); } catch { /* Cleanup only. */ } } };
                     return interactionPort.describe(interaction);
                 }

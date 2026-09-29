@@ -52,7 +52,8 @@ export function createHistoryModule({ access = () => null } = {}) {
             while (low <= high) {
                 const mid = Math.floor((low + high) / 2);
                 const boundary = mid < message.content.length && /[\uD800-\uDBFF]/.test(message.content.charAt(mid - 1)) ? mid - 1 : mid;
-                if (boundary > start && encoded({ ...page(boundary), remainingBytes: 16000 }) <= remaining(ctx)) { end = boundary; low = mid + 1; }
+                if (boundary <= start) low = mid + 1;
+                else if (encoded({ ...page(boundary), remainingBytes: 16000 }) <= remaining(ctx)) { end = boundary; low = mid + 1; }
                 else high = mid - 1;
             }
             if (end > start || start === message.content.length) {
