@@ -185,7 +185,9 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
                     return interactionPort.describe(interaction);
                 }
                 messages.push({ role: 'tool', callId: call.callId, result }); answered = true;
-                emit(result.ok ? 'tool.completed' : 'tool.failed', { callId: call.callId, toolId: call.toolId, attemptId, result });
+                const changeFields = result.error?.code === 'INVALID_ARGUMENT' && call.args?.changes && typeof call.args.changes === 'object' && !Array.isArray(call.args.changes)
+                    ? Object.keys(call.args.changes).filter(field => field.length <= 200).slice(0, 256) : [];
+                emit(result.ok ? 'tool.completed' : 'tool.failed', { callId: call.callId, toolId: call.toolId, attemptId, result, changeFields });
                 usageEvent();
                 const requested = interactionPort?.read(call, result);
                 if (requested) { interaction = copyJson(requested); return interactionPort.describe(interaction); }

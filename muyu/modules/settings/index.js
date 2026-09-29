@@ -8,7 +8,7 @@ const string = { type: 'string', maxLength: 24000 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const strings = { type: 'array', items: { type: 'string', enum: configFields }, maxItems: configFields.length };
 // JSON text keeps the global tool schema small; the domain owner validates its contents.
-const output = { type: 'object', properties: { text: string, candidateId: { type: 'string', maxLength: 100 }, applyRequested: { type: 'boolean' }, replacedCandidateIds: { type: 'array', items: { type: 'string', maxLength: 100 }, maxItems: 16 } }, required: ['text', 'candidateId'], additionalProperties: false };
+const output = { type: 'object', properties: { text: string, candidateId: { type: 'string', maxLength: 100 }, applyRequested: { type: 'boolean' } }, required: ['text', 'candidateId'], additionalProperties: false };
 
 export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, completionVariablePort }) {
     const registry = createToolRegistry(), handlers = {}, runs = new Map(); let disposed = false;
@@ -56,6 +56,14 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         registry.register({ id, version: 1, description, inputSchema, outputSchema: output, scope: 'global', effect: 'read', dataClasses: ['settings-whitelist'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
         handlers[id] = (args, ctx) => { if (disposed) throw Error('MODULE_DISPOSED'); assertActive(ctx.signal); return handler(args, ctx); };
     }
+    function invalidateCandidates(run, fields) {
+        for (const [id, candidate] of run.candidates) {
+            if (!fields.some(field => Object.hasOwn(candidate.content.requestedChanges, field))) continue;
+            if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan);
+            if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan);
+            run.candidates.delete(id); run.invalidatedCandidateIds.push(id);
+        }
+    }
     register('muyu.settings.catalog', '列出当前可编辑配置领域和字段，以及尚未接入或暂缓的配置键；deferred 表示暮羽暂不支持修改，不能靠额外授权解锁。目录不读取配置值。', object({}), () => ({ candidateId: '', text: JSON.stringify({ version: 2,
         supported: configDomains.map(domain => ({ domain, fields: configFields.filter(id => fieldDefinition(id).domain === domain) })),
         pending: configurationCoverage().filter(row => row.status !== 'supported' && row.status !== 'internal').map(({ key, owner, status }) => ({ key, owner, status })), dynamicPending: Object.keys(dynamicSettings),
@@ -64,13 +72,8 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
     register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields) }) }));
     register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
-        const replacedCandidateIds = [];
-        for (const [id, candidate] of run.candidates) {
-            if (!Object.keys(changes).some(field => Object.hasOwn(candidate.content.requestedChanges, field))) continue;
-            if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan);
-            if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan);
-            run.candidates.delete(id); replacedCandidateIds.push(id);
-        }
+        run.invalidatedCandidateIds = [];
+        invalidateCandidates(run, Object.keys(changes));
         const fields = dependencyFields(Object.keys(changes)), baseline = read(ctx.target, fields);
         const basePreview = previewSettings({ baseline, changes });
         let plan, completionPlan, content;
@@ -84,7 +87,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); throw error; }
         const candidateId = 'settings:' + crypto.randomUUID();
         const result = copyJson({ candidateId, text: JSON.stringify(apply ? { ...content.preview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : content.preview) });
-        run.candidates.set(candidateId, { candidateId, content }); return { ...result, replacedCandidateIds, ...(apply ? { applyRequested: true } : {}) };
+        run.candidates.set(candidateId, { candidateId, content }); return { ...result, ...(apply ? { applyRequested: true } : {}) };
     });
     registry.seal();
     function verifyContent(content, expectedTarget) {
@@ -97,7 +100,9 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         if (jsonKey(withCompletionImpact(withMemoryImpact(previewSettings({ baseline, changes }), plan), completionPlan)) !== jsonKey(content.preview)) throw Error('INVALID_DRAFT');
     }
     return { registry, handlers,
-        bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidates: new Map() }); },
+        bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidates: new Map(), invalidatedCandidateIds: [] }); },
+        invalidateAttempt(id, fields) { const run = runs.get(id); if (run && Array.isArray(fields)) invalidateCandidates(run, fields); },
+        takeInvalidatedCandidates(id) { const run = runs.get(id); if (!run) return []; const ids = run.invalidatedCandidateIds; run.invalidatedCandidateIds = []; return ids; },
         transferRun(from, identity) { const run = runs.get(from); if (!run) return; if (runs.has(identity.id) || run.taskId !== identity.taskId || jsonKey(run.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); runs.delete(from); for (const candidate of run.candidates.values()) candidate.content.producedByRunId = identity.id; runs.set(identity.id, run); },
         publishDraft(app, id, candidateId) {
             const r = runs.get(id), run = app.snapshot().runs.find(item => item.id === id);

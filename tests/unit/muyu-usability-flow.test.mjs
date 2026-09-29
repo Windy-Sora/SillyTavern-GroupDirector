@@ -139,3 +139,35 @@ test('An unrelated tool failure still blocks automatic apply and explains manual
         assert.equal(state.notice, 'AUTO_APPLY_REQUIRES_REVIEW');
     } finally { await f.controller.dispose(); }
 });
+
+for (const apply of [false, true]) test(`A later independent split error preserves all earlier and corrected drafts (${apply ? 'apply' : 'preview'})`, async () => {
+    const preview = changes => call('muyu.settings.preview', { changes, ...(apply ? { apply: true } : {}) });
+    const f = fixture([[preview({ topN: 2 }), done],
+        [preview({ memoryMaxEntries: 10, providerTimeoutMs: 1000 }), done],
+        [preview({ memoryMaxEntries: 10 }), done],
+        [preview({ providerTimeoutMs: 1000 }), done], [text('三项分别处理'), done]]);
+    try {
+        await f.start('分别处理 topN 2、记忆上限 10 和 Provider 超时 1000'); await settle();
+        const state = f.controller.snapshot();
+        assert.deepEqual(state.artifacts.map(a => a.content.requestedChanges), [
+            { topN: 2 }, { memoryMaxEntries: 10 }, { providerTimeoutMs: 1000 },
+        ]);
+        assert.equal(f.settings.topN, apply ? 2 : 1);
+        assert.equal(f.settings.memoryMaxEntries, apply ? 10 : 200);
+        assert.equal(f.saves(), apply ? 3 : 0);
+        assert.equal(state.receipts.length, apply ? 3 : 0);
+        assert.equal(state.notice, null);
+    } finally { await f.controller.dispose(); }
+});
+
+test('An invalid overlapping revision removes only that draft, not an unrelated one', async () => {
+    const f = fixture([[call('muyu.settings.preview', { changes: { topN: 2 } }), done],
+        [call('muyu.settings.preview', { changes: { mode: 'llm' } }), done],
+        [call('muyu.settings.preview', { changes: { mode: 'invalid' } }), done], [text('模式修订无效'), done]]);
+    try {
+        await f.start('分别预览 topN 和模式');
+        const state = f.controller.snapshot();
+        assert.deepEqual(state.artifacts.map(a => a.content.requestedChanges), [{ topN: 2 }]);
+        assert.equal(f.saves(), 0);
+    } finally { await f.controller.dispose(); }
+});

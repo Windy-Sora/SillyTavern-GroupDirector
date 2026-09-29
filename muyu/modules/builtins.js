@@ -83,7 +83,7 @@ export function createBuiltins(host) {
     };
     for (const task of Object.values(tasks)) task.tools = task.module ? [...shared, ...task.module.registry.list().map(d => d.id)] : registry.list().map(d => d.id);
     tasks.chat.tools.push(...permission.registry.list().map(d => d.id));
-    return { registry, handlers, tasks, candidateTool: artifacts.produces,
+    return { registry, handlers, tasks, candidateTool: artifacts.produces, invalidateSettingsAttempt: (id, fields) => settings.invalidateAttempt(id, fields), takeInvalidatedSettingsCandidates: id => settings.takeInvalidatedCandidates(id),
         transferRun(from, identity, intent) { const previous = unified.get(from); if (previous) { unified.delete(from); unified.set(identity.id, { ...previous, identity, intent }); } for (const module of modules) if (module !== providers) module.transferRun?.(from, identity); },
         bindBudget: (id, limit, from = null) => from ? providers.transferRun(from, id, limit) : providers.bindRun(id, limit),
         resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };

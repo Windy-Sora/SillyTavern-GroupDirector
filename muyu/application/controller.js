@@ -332,17 +332,18 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 onEvent: event => {
                     options.onEvent(event);
                     if (['tool.completed', 'tool.failed'].includes(event.type) && builtins.candidateTool(event.payload.toolId)) {
+                        if (event.payload.toolId === 'muyu.settings.preview') {
+                            if (event.payload.result.error?.code === 'INVALID_ARGUMENT') builtins.invalidateSettingsAttempt(options.identity.id, event.payload.changeFields);
+                            for (const invalidated of builtins.takeInvalidatedSettingsCandidates(options.identity.id)) { intent.candidates.delete(invalidated); intent.autoApplyCandidates.delete(invalidated); }
+                        }
                         const candidateId = event.payload.result.data?.candidateId;
                         if (event.payload.result.ok && candidateId) {
                             const key = ['muyu.profile.preview', 'muyu.settings.preview'].includes(event.payload.toolId) ? candidateId : event.payload.toolId;
-                            if (event.payload.toolId === 'muyu.settings.preview') {
-                                for (const replaced of event.payload.result.data?.replacedCandidateIds || []) { intent.candidates.delete(replaced); intent.autoApplyCandidates.delete(replaced); }
-                                intent.recoverablePreviewFailure = false;
-                            }
+                            if (event.payload.toolId === 'muyu.settings.preview') intent.recoverablePreviewFailure = false;
                             intent.candidates.set(key, { toolId: event.payload.toolId, candidateId });
                             if (fullAccess && event.payload.result.data?.applyRequested === true) intent.autoApplyCandidates.set(key, candidateId);
                             else intent.autoApplyCandidates.delete(key);
-                        } else if (event.payload.toolId !== 'muyu.profile.preview') {
+                        } else if (!['muyu.profile.preview', 'muyu.settings.preview'].includes(event.payload.toolId)) {
                             for (const [key, candidate] of intent.candidates) if (candidate.toolId === event.payload.toolId) { intent.candidates.delete(key); intent.autoApplyCandidates.delete(key); }
                         }
                     }
