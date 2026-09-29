@@ -347,8 +347,14 @@ test('Context UI preserves settings drafts, requires summary confirmation and re
     f.state.runs = [{ process: { context: { estimatedTokens: 900, inputTokenLimit: 4096, requestBytes: 1800, historicalMessages: 0, trimmedHistoricalMessages: 2, messageBytes: 400, toolDefinitionBytes: 300, toolResultBytes: 0, reasoningBytes: 0 } } }]; f.emit();
     assert.ok(f.all().some(e => e.tag === 'p' && e.textContent.includes('Some original history is not planned')));
     assert.ok(f.all().some(e => e.tag === 'p' && e.textContent.includes('Additional historical messages removed before sending')));
-    const input = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Input budget (estimated tokens)');
+    const automatic = f.all().find(e => e.type === 'checkbox' && e.parent.textContent.includes('Automatic input budget'));
+    const input = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Manual input budget (estimated tokens)');
+    assert.equal(automatic.checked, true); assert.equal(input.disabled, true);
+    automatic.checked = false; automatic.onchange(); assert.equal(input.disabled, false);
     input.value = '64000'; f.emit(); assert.equal(input.value, '64000');
+    let savedContext; f.controller.saveContextConfig = value => { savedContext = value; };
+    await f.find('button', 'Save context settings').click(); assert.equal(savedContext.inputTokens, 64000);
+    automatic.checked = true; automatic.onchange(); await f.find('button', 'Save context settings').click(); assert.equal(savedContext.inputTokens, null);
     let calls = 0, omitted = false; f.controller.compactHistory = () => { calls++; }; f.controller.setOmitHistory = value => { omitted = value; };
     await f.find('button', 'Summarize history now').click(); assert.equal(calls, 0);
     f.state.viewToken++; f.emit(); assert.equal(f.find('button', 'Confirm model summarization').hidden, true);
@@ -437,7 +443,7 @@ test('View switches restore scroll position and unrelated renders do not force s
     transcript.scrollTop = 350; f.emit(); assert.equal(transcript.scrollTop, 350); f.root.__gdMuyuDispose();
 });
 
-test('Session chooser creates/switches explicitly and saving remains opt-in without model calls', async () => {
+test('Session chooser creates/switches explicitly and local saving can be toggled without model calls', async () => {
     const f = fixture('zh', true);
     f.state.history = { available: true, enabled: false, loading: false, pending: 0, error: null, dirty: false, sessionId: '', sessions: [{ id: 'old', title: '<img onerror=alert(1)>' }], missingPermissions: [], omitted: 0 };
     f.emit(); assert.equal(f.sent.length, 0);
@@ -445,7 +451,7 @@ test('Session chooser creates/switches explicitly and saving remains opt-in with
     assert.equal(open.textContent, '<img onerror=alert(1)>'); assert.equal(f.find('img'), undefined);
     await open.click(); assert.equal(f.state.history.sessionId, 'old');
     await f.find('button', '新对话').click(); assert.equal(f.state.history.sessionId, 'new');
-    const save = f.all().find(e => e.type === 'checkbox' && e.parent.textContent === '保存历史到本浏览器（默认关闭）');
+    const save = f.all().find(e => e.type === 'checkbox' && e.parent.textContent === '保存暮羽对话到本浏览器（默认开启）');
     assert.equal(save.checked, false); save.checked = true; await save.onchange(); assert.equal(f.state.history.enabled, true);
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
@@ -457,6 +463,24 @@ test('History status distinguishes loading, conflicts, permission gates and inte
     f.state.history.loading = false; f.state.history.error = 'HISTORY_CONFLICT'; f.state.history.restoredStatus = 'interrupted'; f.state.history.missingPermissions = ['chat']; f.emit();
     const status = f.all().find(e => e.tag === 'small' && e.attrs.role === 'status');
     assert.match(status.textContent, /Another tab/); assert.match(status.textContent, /interrupted/); assert.match(status.textContent, /Reauthorize/);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+test('Failed question recovery only restores the composer; saving status states what is durable', async () => {
+    const f = fixture('en', true); f.state.enabled = true;
+    f.state.history = { ...managedHistory(), enabled: false, dirty: true, persisted: false };
+    f.state.recovery = { runId: 'failed-run', status: 'failed', possibleEffects: true };
+    let restored = 0;
+    f.controller.restoreFailedInput = id => { assert.equal(id, 'failed-run'); restored++; f.state.input = 'Original question'; f.emit(); };
+    f.emit();
+    const status = f.all().find(e => e.tag === 'small' && e.attrs.role === 'status');
+    assert.match(status.textContent, /This page only; new content is unsaved/);
+    const restore = f.find('button', 'Restore failed question to composer');
+    assert.equal(restore.disabled, false);
+    assert.ok(f.all().some(e => e.tag === 'small' && e.textContent.includes('no automatic retry')));
+    await restore.click(); assert.equal(restored, 1); assert.equal(f.find('textarea').value, 'Original question'); assert.equal(restore.disabled, true);
+    f.state.history = { ...f.state.history, enabled: true, dirty: false, persisted: true }; f.emit();
+    assert.match(status.textContent, /Saved locally/);
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
 

@@ -102,6 +102,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const instructionView = createInstructionView({ doc, settings: settingsLayout.pages.behavior, controller, act, lang });
     const inputBox = node('div', '', composer); inputBox.className = 'gd-muyu-input-box';
     const inputLabel = node('label', t('给暮羽的消息', 'Message to Muyu'), inputBox), input = node('textarea', '', inputLabel); input.className = 'text_pole'; input.rows = 3; input.maxLength = 16000;
+    const recoveryBar = node('div', '', inputBox); recoveryBar.className = 'gd-muyu-recovery'; recoveryBar.hidden = true;
+    const recoveryNote = node('small', '', recoveryBar), restoreInput = button(t('恢复失败问题到输入框', 'Restore failed question to composer'), recoveryBar);
+    let recoveryRunId = null;
+    restoreInput.onclick = () => act(() => { controller.restoreFailedInput(recoveryRunId); input.focus?.(); });
     inputLabel.className = 'gd-muyu-input-label'; input.setAttribute('aria-label', t('给暮羽的消息', 'Message to Muyu'));
     input.placeholder = t('向暮羽提问，或描述你想排查的问题…', 'Ask Muyu a question, or describe what needs investigating…');
     const inputToolbar = node('div', '', inputBox); inputToolbar.className = 'gd-muyu-input-toolbar';
@@ -143,7 +147,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     permissionSummary.onclick = () => showSettings(true, 'data');
     gear.setAttribute('aria-expanded', 'false');
     const notices = {
-        CONTEXT_LIMIT: t('输入上下文超过本地预算；未发送超限请求。可新建对话、整理历史或调整预算。', 'Input context exceeds the local budget; oversized request was not sent. Start a new conversation, summarize history or adjust the budget.'),
+        CONTEXT_LIMIT: t('输入超过手动预算或请求体安全上限；未发送超限请求。可整理历史、缩短输入或调整预算。', 'Input exceeds the manual budget or request-size safety limit; the oversized request was not sent. Summarize history, shorten input or adjust the budget.'),
         MODEL_NETWORK_ERROR: t('网络请求失败，可能涉及 CORS；不代表密钥错误。', 'Network request failed; CORS is possible. This does not establish an invalid key.'),
         MODEL_AUTH_ERROR: t('服务拒绝认证或访问，请检查密钥与权限。', 'Service rejected authentication/access. Check credentials and permissions.'),
         MODEL_RATE_LIMIT: t('服务限流，请稍后手动重试。', 'Service rate limit; retry manually later.'),
@@ -168,6 +172,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (code?.startsWith('HISTORY_')) { errors.textContent = code === 'HISTORY_PERMISSION_REQUIRED' ? t('旧对话含需授权的资料。可在会话工具中选择本次不带历史、在配置中授权，或新建对话。', 'Old history requires authorization. Omit history in conversation tools, authorize in settings, or start a new conversation.') : code === 'HISTORY_CAPACITY' ? t('已达到历史容量限制，请导出备份；单会话满时可新建对话。', 'History capacity reached. Export a backup; start a new conversation if this one is full.') : t('历史操作未完成，未自动覆盖或清除记录。请检查存储状态并重试。', 'History operation failed; records were not automatically overwritten or cleared. Check storage and retry.'); return; }
         if (code === 'CREDENTIAL_SAVE_FAILED') { errors.textContent = t('未能确认密钥设置已保存，请检查酒馆存储状态后重试。', 'Could not confirm credential persistence. Check ST storage and retry.'); return; }
         if (code === 'INVALID_RUN_CONFIG' || code === 'RUN_CONFIG_SAVE_FAILED') { errors.textContent = code === 'INVALID_RUN_CONFIG' ? t('预算必须是标注范围内的整数，未保存。', 'Budgets must be integers within the displayed bounds; not saved.') : t('未能确认预算保存，仍使用原配置。', 'Budget save was not confirmed; previous configuration remains active.'); return; }
+        if (code === 'RECOVERY_STALE' || code === 'DRAFT_EXISTS') { errors.textContent = code === 'DRAFT_EXISTS' ? t('输入框已有草稿；先处理或清空草稿，再恢复旧问题。', 'The composer already has a draft. Keep or clear it before restoring the old question.') : t('这条失败记录已变化，不能恢复旧问题。', 'The failed record changed; the old question cannot be restored.'); return; }
         const known = { CONSENT_REQUIRED: t('请确认本次数据外发范围。', 'Confirm data sharing for this request.'), FIELD_SCOPE_REQUIRED: t('请选择本次可修改的字段。', 'Choose fields for this draft.'), CHAT_REQUIRED: t('请先打开聊天。', 'Open a chat first.'), EMPTY_INPUT: t('请输入问题。', 'Enter a question.'), NOT_READY: t('请先启用连接，或等待任务清理结束。', 'Enable a connection or wait for cleanup.'), STALE_DRAFT: t('草稿或配置已变化，请重新生成预览。', 'Draft/settings changed; generate a fresh preview.') };
         errors.textContent = known[code] || t('操作未完成，请检查连接配置、状态和输入。网络失败也可能是 CORS，禁止据此断言密钥错误。', 'Operation failed. Check connection, state and input. Network failure may be CORS, not necessarily invalid credentials.');
     }
@@ -217,6 +222,12 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (s.readOnly) status.textContent = t('查看历史 · 只读，不读取当前聊天，也不发送给模型', 'History viewer · Read-only; no current-chat reads or model requests');
         if (s.interaction?.status === 'pending') status.textContent = s.interaction.kind === 'permission' ? t('等待资料授权 · 请选择允许或拒绝', 'Waiting for data access · Allow or deny') : t('等待你的回答 · 请在上方问题卡中补充，或取消澄清', 'Waiting for your answer · Use the question card above, or cancel clarification');
         if (s.interaction?.kind === 'permission' && s.interaction.status === 'pending') status.textContent = t('等待读取授权 · 可允许、拒绝并继续，或取消任务', 'Waiting for read permission · Allow, deny and continue, or cancel task');
+        recoveryRunId = s.recovery?.runId || null;
+        recoveryBar.hidden = !recoveryRunId;
+        restoreInput.disabled = !recoveryRunId || !!s.input?.trim() || !!s.busy || !!s.resetting;
+        recoveryNote.textContent = s.recovery?.possibleEffects
+            ? t('仅复制原问题，不自动重试。此前操作结果可能不明；重新发送前请核对实际状态。', 'Copies the question only; no automatic retry. Earlier effects may be unknown, so verify actual state before sending again.')
+            : t('仅复制原问题，不自动重试或恢复旧授权。可先修改，再自行发送。', 'Copies the question only; no automatic retry or restored grants. Edit it before sending if needed.');
         input.disabled = !!s.readOnly;
         send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
         if (s.interaction?.status === 'pending') { send.disabled = true; resetAuthorization(); }

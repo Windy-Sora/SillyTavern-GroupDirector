@@ -12,9 +12,9 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
         return el;
     };
     const section = node('section', '', settings); node('h3', t('对话历史', 'Conversation history'), section);
-    const label = node('label', t('保存历史到本浏览器（默认关闭）', 'Save history in this browser (off by default)'), section);
+    const label = node('label', t('保存暮羽对话到本浏览器（默认开启）', 'Save Muyu conversations in this browser (on by default)'), section);
     const enabled = node('input', '', label); enabled.type = 'checkbox';
-    node('small', t('本地明文，可能含私密资料；不同设备不同步。关闭自动保存不删除旧记录。手动重命名、归档、删除已保存记录仍会修改磁盘。刷新不恢复授权或执行。', 'Unencrypted local data may be private; devices do not sync. Disabling automatic saves does not delete records. Explicit rename, archive and delete still modify saved records. Reload never restores grants or execution.'), section);
+    node('small', t('服务端插件可用时记录写入 ST 用户私有目录；否则回退到本浏览器 IndexedDB。均不写入聊天存档或角色卡，数据未加密、不同设备不同步；刷新不恢复授权或执行。', 'With the server plugin, records use private ST user files; otherwise they use this browser’s IndexedDB. Neither writes chat saves or cards. Data is unencrypted and does not sync; reload never restores grants or execution.'), section);
     const retry = button(t('重试保存', 'Retry saving'), section);
     const bar = node('div', '', chat); bar.className = 'gd-muyu-session-bar';
     const toggle = button(t('历史', 'History'), bar), title = node('strong', '', bar);
@@ -83,12 +83,12 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             (task.parentElement || task.parent).hidden = s.mode === 'assistant';
             actions.render(s);
             enabled.checked = h.enabled; enabled.disabled = !h.available || h.loading || s.resetting || s.busy;
-            retry.disabled = !h.enabled || h.loading || !!h.pending; refresh.disabled = !h.available || h.loading || s.resetting;
+            retry.disabled = !h.enabled || h.loading || !!h.pending || !h.error && !h.dirty; refresh.disabled = !h.available || h.loading || s.resetting;
             create.disabled = h.loading || s.resetting || !s.hasChat && !['draft', 'assistant'].includes(s.mode);
             rename.disabled = archive.disabled = remove.disabled = !h.sessionId || h.loading || s.resetting;
             archive.textContent = h.selected?.archived ? t('恢复归档', 'Restore archive') : t('归档', 'Archive');
             title.textContent = h.selected?.title || t('新对话', 'New conversation');
-            const filters = h.filters || { range: 'current', archive: 'active', task: '', query: '' };
+            const filters = h.filters || { range: 'all', archive: 'active', task: '', query: '' };
             range.value = filters.range; archived.value = filters.archive; task.value = filters.task; if (search.value !== filters.query) search.value = filters.query;
             const next = JSON.stringify([h.sessions, h.sessionId, s.resetting, h.loading]);
             if (signature !== next) {
@@ -130,9 +130,10 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
                 }
             }
             count.textContent = `${h.sessions.length} / ${h.total ?? h.sessions.length} · ${t('归档仍占容量', 'Archives retain storage')}`;
-            status.textContent = h.loading ? t('正在加载历史…', 'Loading history…') : h.error ? t('历史操作或保存失败；请先导出备份。', 'History operation/save failed; export a backup first.') : h.pending ? t('保存中…', 'Saving…') : !h.enabled ? t('自动保存关闭', 'Automatic saving off') : h.dirty ? t('有未保存内容', 'Unsaved changes') : t('本地历史已就绪', 'Local history ready');
+            status.textContent = h.loading ? t('正在加载历史…', 'Loading history…') : h.error ? t('历史操作或保存失败；请先导出备份。', 'History operation/save failed; export a backup first.') : h.pending ? t('正在保存到本地…', 'Saving locally…') : !h.enabled ? h.dirty ? t('仅保留在本页；新内容未保存', 'This page only; new content is unsaved') : h.persisted ? t('本机有旧记录；新内容不会自动保存', 'An older local record exists; new content will not auto-save') : t('仅保留在本页；自动保存关闭', 'This page only; automatic saving is off') : h.dirty ? t('有未保存内容', 'Unsaved changes') : h.persisted ? t('已保存在本地', 'Saved locally') : t('自动保存已开启；发送后保存新对话', 'Automatic saving is on; new conversations save after sending');
             if (h.error === 'HISTORY_CONFLICT' || h.error === 'HISTORY_DELETED') status.textContent = t('另一标签页已更新或删除此记录；未覆盖。请先导出本页内容，再刷新页面核对。', 'Another tab updated or deleted this record; not overwritten. Export this version before reloading the page.');
             if (h.restoredStatus === 'interrupted') status.textContent += t(' · 上次任务已中断，未自动恢复', ' · Previous run interrupted; not resumed');
+            if (s.switchedChat && !s.readOnly) status.textContent += t(' · 已切换 ST 聊天：继续发送会使用当前聊天，并告知暮羽重新核对资料', ' · ST chat changed: the next message uses this chat and tells Muyu to recheck its data');
             if (s.readOnly) status.textContent += h.selected?.imported ? t(' · 导入备份：只读，不会发送给模型', ' · Imported backup: read-only, not sent to a model') : h.selected?.archived ? t(' · 已归档：恢复后才能继续', ' · Archived: restore to continue') : t(' · 其他聊天历史：只读，请在原聊天继续', ' · Other chat: read-only; continue in its original chat');
             if (s.readOnly && h.selected?.scope) {
                 const [task, kind, key] = JSON.parse(h.selected.scope);
@@ -140,6 +141,8 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             }
             if (h.missingPermissions?.length && !s.readOnly) status.textContent += t(' · 继续前请在配置中重新授权相关资料', ' · Reauthorize relevant data before continuing');
             if (h.omitted) status.textContent += t(' · 继续时仅发送预算内完整问答', ' · Continuation sends complete turns within the history budget');
+            if (h.enabled && h.backend === 'private-files') status.textContent += t(' · ST 私有文件', ' · Private ST files');
+            else if (h.enabled && h.backend === 'browser') status.textContent += t(' · 浏览器 IndexedDB', ' · Browser IndexedDB');
         },
         setVisible(value) { visible = value; visibility(); },
         dispose() { disposed = true; observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); },

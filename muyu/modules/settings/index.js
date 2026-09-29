@@ -68,7 +68,15 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         supported: configDomains.map(domain => ({ domain, fields: configFields.filter(id => fieldDefinition(id).domain === domain) })),
         pending: configurationCoverage().filter(row => row.status !== 'supported' && row.status !== 'internal').map(({ key, owner, status }) => ({ key, owner, status })), dynamicPending: Object.keys(dynamicSettings),
     }) }));
-    register('muyu.settings.contract', '按领域查询字段类型、限制、生效时机；scope=global影响所有聊天。未指定字段保持原值，不填默认值；Prompt是文本，不能当JSON解析。', object({ domain: { type: 'string', enum: configDomains } }), ({ domain }) => ({ candidateId: '', text: JSON.stringify(configFields.filter(id => fieldDefinition(id).domain === domain).map(fieldDefinition)) }));
+    register('muyu.settings.contract', '查询字段类型、限制和生效时机。已知字段名时优先用fields一次查询多个领域的明确字段；仅探索领域时用domain。两者同时提供时fields必须属于该领域。scope=global影响所有聊天；未指定字段保持原值，不填默认值。', {
+        type: 'object', properties: { domain: { type: 'string', enum: configDomains }, fields: { type: 'array', items: { type: 'string', enum: configFields }, maxItems: 16 } },
+        required: [], additionalProperties: false,
+    }, ({ domain, fields }) => {
+        if (!domain && !fields) throw Error('INVALID_CONTRACT_QUERY');
+        const ids = fields ? selectedFields(fields) : configFields.filter(id => fieldDefinition(id).domain === domain);
+        if (domain && ids.some(id => fieldDefinition(id).domain !== domain)) throw Error('INVALID_CONTRACT_QUERY');
+        return { candidateId: '', text: JSON.stringify(ids.map(fieldDefinition)) };
+    });
     register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields) }) }));
     register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');

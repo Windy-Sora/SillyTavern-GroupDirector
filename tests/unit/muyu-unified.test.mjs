@@ -236,7 +236,7 @@ test('Unified global conversation asks permission, lazily drafts, confirms once 
 });
 
 test('General settings request produces an approved leaf patch, versioned history and fresh receipt check', async () => {
-    const f = fixture([ask('configSettings'), [call('muyu.settings.contract', { domain: 'director' }), done],
+    const f = fixture([ask('configSettings'), [call('muyu.settings.contract', { fields: ['mode', 'scoreWeights.mention', 'llmPrompt'] }), done],
         [call('muyu.settings.preview', { changes: { mode: 'llm', 'scoreWeights.mention': 55, llmPrompt: 'Focus on relevance.\n{{recentMessages}}' } }), done], [text('Preview only'), done]], false);
     f.settings.scoreWeights = { mention: 30, keyword: 15 }; f.settings.llmPrompt = '';
     await f.enable(); const c = f.controller; c.setInput('Change mode, weight and prompt'); c.send(); await settle();

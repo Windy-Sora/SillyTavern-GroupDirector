@@ -15,7 +15,7 @@ import { importedRecord, parseHistoryImport, exportHistoryRecord } from '../../m
 import { identity, registry, toolId, createClock, flush, deferred, scriptedModel, request, call, done, text } from './helpers/muyu-subject.mjs';
 
 const history = (count = 8) => Array.from({ length: count }, (_, i) => [{ role: 'user', content: `Q${i}`, runId: String(i) }, { role: 'assistant', content: `A${i}`, runId: String(i) }]).flat();
-const config = { ...CONTEXT_DEFAULTS, recentTurns: 2 };
+const config = { ...CONTEXT_DEFAULTS, inputTokens: 32000, recentTurns: 2 };
 function run(steps, extra = {}) {
     const model = scriptedModel(steps), clock = createClock(), events = [];
     const handle = startMuyuRun({ identity, input: 'current', model, clock, registry: registry(), allowedTools: [toolId], policy: () => true, handlers: { [toolId]: () => 1 }, contextConfig: config, onEvent: e => events.push(e), ...extra });
@@ -36,11 +36,36 @@ test('Operation facts survive summary replacement as bounded independent applica
 });
 
 test('Context config has closed bounds and persistence failure restores the previous policy', async () => {
-    for (const patch of [{ inputTokens: 1 }, { recentTurns: 25 }, { autoSummary: 1 }, { injected: true }]) assert.throws(() => validateContextConfig({ ...config, ...patch }));
+    for (const patch of [{ inputTokens: 1 }, { inputTokens: 1000001 }, { recentTurns: 25 }, { autoSummary: 1 }, { injected: true }]) assert.throws(() => validateContextConfig({ ...config, ...patch }));
+    assert.equal(validateContextConfig(CONTEXT_DEFAULTS).inputTokens, null);
+    assert.equal(validateContextConfig({ ...config, inputTokens: 1000000 }).inputTokens, 1000000);
     const settings = {}; let fails = false;
     const store = createContextConfigStore({ getSettings: () => settings, saveSettings: async () => { if (fails) throw Error('private'); } });
     assert.deepEqual(store.read(), CONTEXT_DEFAULTS); await store.save(config); fails = true;
     await assert.rejects(store.save(CONTEXT_DEFAULTS), /CONTEXT_CONFIG_SAVE_FAILED/); assert.deepEqual(store.read(), config);
+});
+
+test('Automatic input budget does not guess the model window but retains the request byte guard', async () => {
+    const inspect = request => ({ ...measurePayload(request), estimatedTokens: 35886 });
+    const autoModel = scriptedModel([[text('answer'), done]]); autoModel.inspect = inspect;
+    const auto = run([], { model: autoModel, contextConfig: CONTEXT_DEFAULTS });
+    assert.equal((await auto.handle.completion).answer, 'answer');
+    assert.equal(autoModel.requests[0].inputTokenLimit, undefined);
+    const manualModel = scriptedModel([]); manualModel.inspect = inspect;
+    const manual = run([], { model: manualModel, contextConfig: { ...CONTEXT_DEFAULTS, inputTokens: 32000 } });
+    assert.equal((await manual.handle.completion).error, 'CONTEXT_LIMIT');
+    assert.equal(manualModel.requests.length, 0);
+    const hugeModel = scriptedModel([]);
+    hugeModel.inspect = request => ({ ...measurePayload(request), estimatedTokens: 100, requestBytes: 1048577 });
+    const huge = run([], { model: hugeModel, contextConfig: CONTEXT_DEFAULTS });
+    assert.equal((await huge.handle.completion).error, 'CONTEXT_LIMIT');
+    assert.equal(hugeModel.requests.length, 0);
+});
+
+test('Process projection preserves manual input limits above the old 128k ceiling', () => {
+    const process = createProcessStore(); process.create('large');
+    process.event('large', { runId: 'large', seq: 1, type: 'run.context', payload: { phase: 'request', ...measurePayload({ messages: [{ role: 'user', content: 'test' }], tools: [] }), inputTokenLimit: 250000 } });
+    assert.equal(process.snapshot('large').context.inputTokenLimit, 250000);
 });
 
 test('Planner preserves complete recent turns, ignores orphans and never splits oversized turns', () => {

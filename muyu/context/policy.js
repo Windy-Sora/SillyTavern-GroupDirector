@@ -1,8 +1,10 @@
-/** Local input targets, not a claim about the remote model's context window. */
-export const CONTEXT_DEFAULTS = Object.freeze({ inputTokens: 32000, recentTurns: 12, autoSummary: false });
+/** Null means auto: no guessed model-token limit, only the transport byte ceiling. */
+export const CONTEXT_DEFAULTS = Object.freeze({ inputTokens: null, recentTurns: 12, autoSummary: false });
+export const MAX_REQUEST_BYTES = 1048576;
+export const MAX_MANUAL_INPUT_TOKENS = 1000000;
 export function validateContextConfig(value) {
     if (!value || Object.keys(value).sort().join(',') !== 'autoSummary,inputTokens,recentTurns' ||
-        !Number.isSafeInteger(value.inputTokens) || value.inputTokens < 4096 || value.inputTokens > 128000 ||
+        !(value.inputTokens === null || Number.isSafeInteger(value.inputTokens) && value.inputTokens >= 4096 && value.inputTokens <= MAX_MANUAL_INPUT_TOKENS) ||
         !Number.isSafeInteger(value.recentTurns) || value.recentTurns < 1 || value.recentTurns > 24 || typeof value.autoSummary !== 'boolean') throw Error('INVALID_CONTEXT_CONFIG');
     return { ...value };
 }

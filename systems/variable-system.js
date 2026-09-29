@@ -540,7 +540,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
             if (!def) { ignored++; return; }
             if (!def.autoUpdate || def.locked) {
                 ignored++;
-                pushLog({ id, scope: def.scope, target, oldValue: getValue(def, target), newValue: raw?.value ?? raw, reason: raw?.reason || '', source: options.source || 'director', ignored: true });
+                pushLog({ id, scope: def.scope, target, oldValue: getValue(def, target), newValue: raw?.value ?? raw, reason: raw?.reason || '', source: options.source || 'director', ignored: true, outcomeCode: def.locked ? 'locked' : 'auto_update_disabled' });
                 return;
             }
             const value = raw && typeof raw === 'object' && 'value' in raw ? raw.value : raw;
@@ -562,7 +562,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                         ignored++;
                         const reason = raw && typeof raw === 'object' ? raw.reason || '' : '';
                         errors.push(`${id}: unknown character target "${target}"`);
-                        pushLog({ id, scope: 'character', target, oldValue: undefined, newValue: raw?.value ?? raw, reason, source: options.source || 'director', ignored: true });
+                        pushLog({ id, scope: 'character', target, oldValue: undefined, newValue: raw?.value ?? raw, reason, source: options.source || 'director', ignored: true, outcomeCode: 'unknown_character_target' });
                     }
                     continue;
                 }

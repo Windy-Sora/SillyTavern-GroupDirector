@@ -3,7 +3,7 @@ export { toolLabels as processTools } from '../modules/catalog.js';
 import { toolLabels as processTools } from '../modules/catalog.js';
 import { providerCatalog } from '../modules/providers/catalog.js';
 import { projectBudget } from '../core/budget.js';
-import { projectContext } from '../context/policy.js';
+import { MAX_MANUAL_INPUT_TOKENS, projectContext } from '../context/policy.js';
 const codes = new Set(['PERMISSION_DENIED', 'INVALID_ARGUMENT', 'CALL_ID_CONFLICT', 'UNSUPPORTED_CAPABILITY', 'TARGET_UNAVAILABLE', 'UPSTREAM_PENDING', 'OUTPUT_INVALID', 'TIMEOUT', 'TOOL_FAILED', 'CANCELLED', 'BUDGET_EXCEEDED', 'MODEL_NETWORK_ERROR', 'MODEL_AUTH_ERROR', 'MODEL_RATE_LIMIT', 'MODEL_SERVICE_ERROR', 'MODEL_HTTP_ERROR', 'MODEL_PROTOCOL_ERROR', 'MODEL_HISTORY_UNAVAILABLE', 'MODEL_OUTPUT_TRUNCATED', 'MODEL_FAILED', 'START_FAILED']);
 const safeCode = value => codes.has(value) ? value : value ? 'UNKNOWN_ERROR' : null;
 codes.add('CONTEXT_LIMIT');
@@ -34,7 +34,7 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
             r.seq = event.seq;
             if (event.type === 'run.context') {
                 const p = event.payload || {}, value = projectContext(p);
-                if (value) r.context = { ...value, inputTokenLimit: Number.isSafeInteger(p.inputTokenLimit) ? Math.max(4096, Math.min(128000, p.inputTokenLimit)) : null, historicalMessages: Number.isSafeInteger(p.historicalMessages) ? Math.max(0, Math.min(256, p.historicalMessages)) : null, trimmedHistoricalMessages: Math.min(256, (r.context?.trimmedHistoricalMessages || 0) + (Number.isSafeInteger(p.trimmedHistoricalMessages) ? Math.max(0, Math.min(256, p.trimmedHistoricalMessages)) : 0)) };
+                if (value) r.context = { ...value, inputTokenLimit: Number.isSafeInteger(p.inputTokenLimit) ? Math.max(4096, Math.min(MAX_MANUAL_INPUT_TOKENS, p.inputTokenLimit)) : null, historicalMessages: Number.isSafeInteger(p.historicalMessages) ? Math.max(0, Math.min(256, p.historicalMessages)) : null, trimmedHistoricalMessages: Math.min(256, (r.context?.trimmedHistoricalMessages || 0) + (Number.isSafeInteger(p.trimmedHistoricalMessages) ? Math.max(0, Math.min(256, p.trimmedHistoricalMessages)) : 0)) };
                 if (['request', 'summarizing', 'summarized', 'summary_failed'].includes(p.phase)) r.contextPhase = p.phase;
                 if (['summarizing', 'summarized', 'summary_failed'].includes(p.phase)) r.summaryPhase = p.phase;
                 if (p.phase === 'summarizing') r.summaryUsage = { calls: 1, inputTokens: null, outputTokens: null };

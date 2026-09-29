@@ -1,5 +1,6 @@
 import { jsonKey } from '../core/json-contract.js';
 import { createApplication } from './service.js';
+import { recoverableQuestion } from './recovery.js';
 import { createConfigActions } from '../actions/config-apply.js';
 import { createVariableActions } from '../actions/variable-apply.js';
 import { createTaskBundleActions } from '../actions/task-bundle-apply.js';
@@ -43,7 +44,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const configChecks = new Map(), autoConfigChecks = [];
     let checking = null;
     let selectionEpoch = 0, viewedId = null, viewSequence = 0;
-    let historyFilters = { range: 'current', archive: 'active', task: '', query: '' };
+    let observedAssistantScope = historyScope('assistant', host.currentTarget() || host.globalTarget);
+    let historyFilters = { range: 'all', archive: 'active', task: '', query: '' };
     const scrollPositions = new Map();
     const emit = () => { for (const fn of [...listeners]) { try { fn(); } catch { /* Detached views cannot control tasks. */ } } };
     const live = () => { if (disposed) throw new Error('CONTROLLER_DISPOSED'); };
@@ -148,11 +150,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
         app.unloadSession(sessionId);
         for (const id of ownedTasks) { releaseContinuation(id); permissions.forgetTask(null, id); }
     }
-    function syncTarget(changed = true) { selectionEpoch++; if (changed) { viewedId = null; pinnedTarget = null; } if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { releaseContinuation(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
+    function syncTarget(changed = true) { const retained = changed && mode === 'assistant' ? viewedId || sessions.get(observedAssistantScope) : null; selectionEpoch++; if (changed) { viewedId = retained || null; pinnedTarget = null; } observedAssistantScope = historyScope('assistant', host.currentTarget() || host.globalTarget); if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { releaseContinuation(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
     function readOnly(record) {
         if (!record) return false;
         const [task, kind] = JSON.parse(record.scope);
         if (task !== 'assistant' && mode === 'assistant') return true;
+        if (task === 'assistant' && mode === 'assistant') return record.imported || record.archived;
         return record.imported || record.archived || record.scope !== historyScope(task, kind === 'global' ? host.globalTarget : host.currentTarget());
     }
     async function openSession(id, strict = false) {
@@ -231,28 +234,31 @@ export function createMuyuController({ host, createModel = createChatCompletions
         const plan = planContext((record?.messages || []).slice(choice.historyStart), choice.omitHistory ? null : record?.contextSummary, contextConfig);
         const taskRuns = state?.runs.filter(r => r.taskId === latestTaskId) || [];
         const taskUsage = taskRuns.reduce((sum, run) => { const b = run.process?.budget; if (b) for (const k of ['modelCalls', 'toolCalls', 'inputTokens', 'outputTokens', 'elapsedMs']) sum[k] += b[k] || 0; return sum; }, { segments: taskRuns.length, modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 });
-        return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly,
-            interaction: isReadOnly ? null : interaction, taskUsage,
+        const busy = !!checking || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
+        const switchedChat = mode === 'assistant' && !!record && !record.imported && !record.archived && record.scope !== historyScope('assistant', targetFor());
+        const recovery = recoverableQuestion({ record, messages: session?.messages || record?.messages, runs: state?.runs.filter(r => r.sessionId === sessionId) || [], readOnly: isReadOnly || switchedChat, busy });
+        return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly, switchedChat,
+            interaction: isReadOnly || switchedChat ? null : interaction, taskUsage, recovery,
             enabled: !!model, resetting, mode, fullAccess, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
             permissions: permissions.snapshot(targetFor()), sourceGrants: permissions.sourceGrants(targetFor()), canReadConfig: configAllowed(targetFor()), canCheckReceipts: Object.fromEntries(receiptsFor(selectedId()).map(r => [r.operationId, receiptAllowed(r, host.globalTarget)])), savedConnection: host.credentials?.describe() || null,
             runConfig: { ...runConfig }, savingRunConfig,
             contextConfig: { ...contextConfig }, savingContextConfig,
             instructionSettings: { saved: { ...instructionConfig }, draft: { ...instructionDraft }, saving: savingInstructions, dirty: JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft) },
             context: { turns: plan.turns, omitted: plan.omitted + choice.historyStart, summaryUsed: plan.summaryUsed, estimatedTokens: plan.estimatedTokens, omitHistory: omittedViews.has(viewKey()), permissionOmitted: choice.autoHistoryOmitted, summary: record?.contextSummary?.text || '', summaryStale: !!record?.contextSummary && !usableSummary(record.contextSummary, record.messages), compacting: !!compacting && compacting.id === id, progress: compactState?.progress || null, usage: compactState?.usage || null },
-            busy: !!checking || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued'), draining: !!compacting?.finished || !!state?.draining,
+            busy, draining: !!compacting?.finished || !!state?.draining,
             occupiedElsewhere: !!compacting && compacting.id !== id || !!state?.activeRunId && state.runs.find(r => r.id === state.activeRunId)?.sessionId !== sessionId,
             messages: session?.messages || record?.messages || [], runs: state?.runs.filter(r => r.sessionId === sessionId) || [],
             history: { ...library.snapshot(scopeKey(), id, { ...historyFilters, chatKey: host.currentTarget()?.chatKey }), filters: { ...historyFilters }, restoredStatus: !session ? record?.status : null,
                 missingPermissions: choice.missing,
                 omitted: plan.omitted },
-            artifacts: isReadOnly ? [] : state?.artifacts.filter(a => a.sessionId === sessionId) || [],
-            approvedPlans: isReadOnly ? [] : [...approvedPlans],
-            declinedPlans: isReadOnly ? [] : [...declinedPlans],
-            invalidPlans: isReadOnly ? [] : [...invalidPlans],
-            configActions: isReadOnly ? [] : actions.list().filter(a => a.sessionId === sessionId), canApplyConfig: !!host.configWriter,
-            variableActions: isReadOnly ? [] : variableActions.list().filter(a => a.sessionId === sessionId), canApplyVariable: !!host.variableWriter,
-            bundleActions: isReadOnly ? [] : bundleActions.list().filter(a => a.sessionId === sessionId), canApplyBundle: !!host.bundleWriter,
-            profileActions: isReadOnly ? [] : profileActions.list().filter(a => a.sessionId === sessionId), canSaveProfile: !!host.profileWriter,
+            artifacts: isReadOnly || switchedChat ? [] : state?.artifacts.filter(a => a.sessionId === sessionId) || [],
+            approvedPlans: isReadOnly || switchedChat ? [] : [...approvedPlans],
+            declinedPlans: isReadOnly || switchedChat ? [] : [...declinedPlans],
+            invalidPlans: isReadOnly || switchedChat ? [] : [...invalidPlans],
+            configActions: isReadOnly || switchedChat ? [] : actions.list().filter(a => a.sessionId === sessionId), canApplyConfig: !!host.configWriter,
+            variableActions: isReadOnly || switchedChat ? [] : variableActions.list().filter(a => a.sessionId === sessionId), canApplyVariable: !!host.variableWriter,
+            bundleActions: isReadOnly || switchedChat ? [] : bundleActions.list().filter(a => a.sessionId === sessionId), canApplyBundle: !!host.bundleWriter,
+            profileActions: isReadOnly || switchedChat ? [] : profileActions.list().filter(a => a.sessionId === sessionId), canSaveProfile: !!host.profileWriter,
             receipts: receiptsFor(id), receiptRecordFailed: [...recordedActions.values()].some(e => e.id === id && e.failed),
             configChecks: Object.fromEntries(receiptsFor(id).filter(r => configChecks.has(r.operationId)).map(r => [r.operationId, structuredClone(configChecks.get(r.operationId))])),
             receiptExplanations: Object.fromEntries([...explanations].map(([key, runId]) => [key, state?.runs.find(r => r.id === runId)?.status || 'interrupted'])),
@@ -537,7 +543,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         ready: library.ready,
         newSession() {
             live(); if (resetting || !targetFor()) throw Error('NOT_READY');
-            const id = library.create(scopeKey()); selectionEpoch++; viewedId = null; sessions.set(scopeKey(), id); historyFilters = { ...historyFilters, range: mode === 'draft' ? 'global' : 'current', archive: 'active', query: '', task: '' }; emit(); return id;
+            const id = library.create(scopeKey()); selectionEpoch++; viewedId = null; sessions.set(scopeKey(), id); historyFilters = { ...historyFilters, archive: 'active', query: '', task: '' }; emit(); return id;
         },
         selectSession: id => openSession(id, true),
         openSession,
@@ -566,8 +572,16 @@ export function createMuyuController({ host, createModel = createChatCompletions
         exportHistory(format) { live(); return library.export(selectedId(), format); },
         flushHistory: () => library.flush(),
         subscribe(fn) { live(); listeners.add(fn); return { snapshot: snapshot(), unsubscribe: () => listeners.delete(fn) }; },
-        setMode(value) { live(); if (!Object.hasOwn(taskCatalog, value)) throw new Error('INVALID_MODE'); selectionEpoch++; viewedId = null; pinnedTarget = null; mode = value; historyFilters.range = value === 'draft' ? 'global' : 'current'; emit(); },
+        setMode(value) { live(); if (!Object.hasOwn(taskCatalog, value)) throw new Error('INVALID_MODE'); selectionEpoch++; viewedId = null; pinnedTarget = null; mode = value; emit(); },
         setInput(value) { live(); if (readOnly(library.get(selectedId()))) throw Error('HISTORY_READ_ONLY'); if (typeof value !== 'string' || value.length > 16000) throw new Error('INPUT_LIMIT'); inputs.set(viewKey(), value); },
+        restoreFailedInput(runId) {
+            live(); const current = snapshot();
+            if (!current.recovery || current.recovery.runId !== runId || current.busy || current.readOnly) throw Error('RECOVERY_STALE');
+            if (current.input.trim()) throw Error('DRAFT_EXISTS');
+            const question = current.messages.at(-1)?.content;
+            if (typeof question !== 'string' || !question.trim() || question.length > 16000) throw Error('RECOVERY_STALE');
+            inputs.set(viewKey(), question); emit();
+        },
         async saveRunConfig(value) {
             live(); if (savingRunConfig || resetting) throw Error('NOT_READY');
             const next = validateRunConfig(value); savingRunConfig = true; emit();
@@ -633,7 +647,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const { missing, autoHistoryOmitted, historyStart, omitHistory } = historyChoice(record, key, target, continuation, continuation ? request.taskId : null, !!explanation);
             if (!omitHistory && record.required.some(kind => !permissions.allows(kind, target, continuation ? request.taskId : null))) throw Error('HISTORY_PERMISSION_REQUIRED');
             if (omitHistory && (artifactId || planArtifactId)) throw Error('INVALID_ARTIFACT');
+            const switchedChat = mode === 'assistant' && record.scope !== historyScope('assistant', target);
             let sessionId = runtimeSessions.get(id);
+            if (sessionId && jsonKey(app.snapshot().sessions.find(s => s.id === sessionId)?.target) !== jsonKey(target)) {
+                unloadRuntime(sessionId); runtimeSessions.delete(id); sessionId = null;
+                actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate();
+            }
             if (!sessionId) {
                 if (runtimeSessions.size >= 8) {
                     const [oldId, oldRuntime] = runtimeSessions.entries().next().value;
@@ -649,10 +668,18 @@ export function createMuyuController({ host, createModel = createChatCompletions
             if (continuation?.artifact && artifact.revision !== continuation.artifact.revision) throw Error('STALE_DRAFT');
             const contextPlan = planContext(record.messages.slice(historyStart), omitHistory ? null : record.contextSummary, contextConfig, false);
             const historyNote = !omitHistory && contextPlan.omitted > 0 ? '\n部分历史原文因上下文预算未携带；摘要如有也只是参考。不要猜测缺失的步骤、数值或当前宿主状态，应明确说明缺口。' : '';
-            const scopedInstructions = autoHistoryOmitted || historyNote ? { ...instructions, task: instructions.task + (autoHistoryOmitted ? '\n部分历史因缺少资料授权未发送，本轮不据此猜测历史；必要时可逐项申请：' + missing.join(', ') : '') + historyNote } : instructions;
+            const switchNote = switchedChat ? '\n用户已在同一暮羽会话中切换 SillyTavern 聊天。较早对话可能讨论另一个聊天；本轮所有聊天范围的读取和操作只针对当前聊天。不要把旧聊天的状态当成当前状态；必要时重新读取并申请当前聊天资料授权。' : record.scopeChanges?.length ? '\n本暮羽会话曾跨 ST 聊天继续，历史可能涉及不同聊天。本轮聊天范围的工具仅指向当前 ST 聊天；旧聊天的状态不能作为当前值，必要时重新读取。' : '';
+            const scopedInstructions = autoHistoryOmitted || historyNote || switchNote ? { ...instructions, task: instructions.task + (autoHistoryOmitted ? '\n部分历史因缺少资料授权未发送，本轮不据此猜测历史；必要时可逐项申请：' + missing.join(', ') : '') + historyNote + switchNote } : instructions;
             const result = continuation ? permissionDecision !== null ? app.answerPermission(interactionId, permissionDecision) : app.answerInteraction(interactionId, request.draft) : artifact ? { taskId: artifact.taskId, runId: app.continueTask(artifact.taskId, input) } : app.submit(sessionId, input, []);
             const receipts = !omitHistory && configAllowed(target, result.taskId) ? receiptsFor(id).filter(r => !explanation || r.operationId === explanation).slice(-3) : [];
             if (explanation) explanations.set(explanation, result.runId);
+            if (switchedChat) {
+                const previousScope = record.scope;
+                library.retarget(id, historyScope('assistant', target));
+                if (sessions.get(previousScope) === id) sessions.delete(previousScope);
+                sessions.set(historyScope('assistant', target), id);
+                viewedId = null;
+            }
             intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, resumeFrom: continuation?.sourceRunId || null, candidates: new Map(continuation?.candidates || []), autoApplyCandidates: new Map(continuation?.autoApplyCandidates || []), completedTools: new Set(continuation?.completedTools || []), failedTool: continuation?.failedTool || false, recoverablePreviewFailure: continuation?.recoverablePreviewFailure || false, autoHistoryOmitted, instructions: scopedInstructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
                 compaction: !omitHistory && contextConfig.autoSummary && contextPlan.omitted > 0 ? candidateFor(record, contextConfig) : null });
             omittedViews.delete(key);

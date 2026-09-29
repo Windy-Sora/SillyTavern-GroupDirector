@@ -35,7 +35,7 @@ registerSection('muyu', ctx => {
         const runConfig = createRunConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const contextConfig = createContextConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const instructionConfig = createInstructionConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
-        const history = createHistoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
+        const history = createHistoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
         let host;
         const memoryLimitPort = createMemoryLimitPort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY, memorySystem: ctx.memorySystem,
             changed: () => { const live = owner.currentContext || ctx; live.refreshMemoryList?.(); window.__gdRefreshDashboard?.(); } });

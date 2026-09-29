@@ -5,6 +5,7 @@ import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { createHistoryPort } from '../../muyu/host/history.js';
 import { historyScope, validateRecord, selectHistory, HISTORY_LIMITS } from '../../muyu/sessions/contract.js';
 import { deferred } from './helpers/muyu-subject.mjs';
+import { DEFAULT_SETTINGS } from '../../settings.js';
 
 const scope = historyScope('chat', { kind: 'chat', chatKey: 'A' });
 function fixture(store = createMemoryHistoryStore(), initiallyEnabled = false) {
@@ -103,4 +104,30 @@ test('Host history requires verified account identity, stable namespace and conf
     account = { enabled: true }; await assert.rejects(port.open(), /HISTORY_IDENTITY_UNAVAILABLE/);
     account = {}; await assert.rejects(port.open(), /HISTORY_IDENTITY_UNAVAILABLE/);
     account = { enabled: false }; await port.open(); assert.notEqual(namespaces[0], namespaces.at(-1));
+});
+
+test('Local history is on for new installations but an existing opt-out remains respected', async () => {
+    assert.equal(DEFAULT_SETTINGS.muyuHistoryEnabled, true);
+    const settings = { ...DEFAULT_SETTINGS };
+    const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {}, openStore: async () => createMemoryHistoryStore() });
+    assert.equal(port.enabled(), true);
+    await port.setEnabled(false);
+    assert.equal(port.enabled(), false);
+    assert.equal(settings.muyuHistoryEnabled, false);
+});
+
+test('Cross-chat retarget persists provenance and restores it without carrying grants', async () => {
+    const f = fixture(undefined, true); await f.library.ready;
+    const a = historyScope('assistant', { kind: 'chat', chatKey: 'A' });
+    const b = historyScope('assistant', { kind: 'chat', chatKey: 'B' });
+    const id = f.library.create(a);
+    f.library.update(id, { messages: pair(), required: ['source:variables'] });
+    f.library.retarget(id, b); await f.library.flush();
+    const g = createSessionLibrary({ port: f.port }); await g.ready;
+    assert.equal(g.snapshot(b, id, { range: 'all', archive: 'active', query: '', task: '', chatKey: 'B' }).sessions.length, 1);
+    const restored = await g.load(id, b);
+    assert.equal(restored.version, 6);
+    assert.deepEqual(restored.scopeChanges.map(({ from, to, messageIndex }) => ({ from, to, messageIndex })), [{ from: a, to: b, messageIndex: 2 }]);
+    assert.deepEqual(restored.required, ['source:variables']);
+    await f.library.close(); await g.close();
 });

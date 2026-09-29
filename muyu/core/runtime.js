@@ -69,12 +69,12 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     }
     function move(status) { state = transitionRun(state, { eventId: 'control:' + (state.seq + 1), runId: state.id, seq: state.seq + 1, status }); }
     function history() { return messages.map(m => copyJson(m)); }
-    const requestFor = () => ({ messages: history(), tools: pinned.map(d => copyJson(d)), maxTokens, finalize: finalizing, ...(instructions ? { instructions } : {}), ...(contextConfig ? { inputTokenLimit: contextConfig.inputTokens } : {}) });
+    const requestFor = () => ({ messages: history(), tools: pinned.map(d => copyJson(d)), maxTokens, finalize: finalizing, ...(instructions ? { instructions } : {}), ...(contextConfig?.inputTokens != null ? { inputTokenLimit: contextConfig.inputTokens } : {}) });
     function checkContext(request, context, trim = false) {
         if (!contextConfig) return request;
         const plannedHistoricalMessages = historyPrefix;
         let value = model.inspect ? model.inspect(request, context) : measurePayload(request);
-        if (trim && historyPrefix > 0 && recovery.length && (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576)) {
+        if (trim && historyPrefix > 0 && recovery.length && ((contextConfig.inputTokens !== null && value.estimatedTokens > contextConfig.inputTokens) || value.requestBytes > 1048576)) {
             pinned.push(...recovery); recovery.forEach(d => activeTools.add(d.id)); request.tools = pinned.map(d => copyJson(d));
             if (instructions && trimRecoveryNote) {
                 const field = instructions.task.length + trimRecoveryNote.length + 1 <= 4000 ? 'task' : 'base';
@@ -83,7 +83,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             }
             value = model.inspect ? model.inspect(request, context) : measurePayload(request);
         }
-        while (contextConfig && trim && (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576) && historyPrefix > 0) {
+        while (contextConfig && trim && ((contextConfig.inputTokens !== null && value.estimatedTokens > contextConfig.inputTokens) || value.requestBytes > 1048576) && historyPrefix > 0) {
             // Only pre-run historical messages are removable; never touch live tool/reasoning indices.
             const count = messages[0]?.role === 'user' && messages[1]?.role === 'assistant' && historyPrefix >= 2 ? 2 : 1;
             messages.splice(0, count); historyPrefix -= count; request.messages = history();
@@ -91,7 +91,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
         }
         if (contextConfig) {
             emit('run.context', { ...value, phase: 'request', historicalMessages: historyPrefix, trimmedHistoricalMessages: plannedHistoricalMessages - historyPrefix, inputTokenLimit: contextConfig.inputTokens });
-            if (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576) throw new ExecutionError('CONTEXT_LIMIT');
+            if ((contextConfig.inputTokens !== null && value.estimatedTokens > contextConfig.inputTokens) || value.requestBytes > 1048576) throw new ExecutionError('CONTEXT_LIMIT');
         }
         return request;
     }

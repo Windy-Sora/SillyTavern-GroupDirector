@@ -1,6 +1,7 @@
 import { openIndexedHistoryStore } from '../sessions/indexeddb-store.js';
+import { openServerHistoryStore } from '../sessions/server-store.js';
 /** Only the host composition layer supplies account identity, never the model or an import. */
-export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore }) {
+export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openServer = openServerHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
     async function accountKey() {
         let account;
         try { account = await getAccount?.(); } catch { throw Error('HISTORY_IDENTITY_UNAVAILABLE'); }
@@ -25,10 +26,27 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
             const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('gd-muyu-history-v1:' + identity));
             const hex = [...new Uint8Array(digest)].slice(0, 16).map(n => n.toString(16).padStart(2, '0')).join('');
             const namespace = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-            const store = await openStore({ namespace });
+            const server = await openServer({ namespace, fetcher, headers: getHeaders });
+            const store = server || await openStore({ namespace });
+            if (server) {
+                // Copy older browser records without deleting the original. A server record with
+                // the same ID wins; conflict resolution remains explicit, never an overwrite.
+                let browser;
+                try {
+                    browser = await openStore({ namespace });
+                    const existing = new Set((await server.list()).map(row => row.id));
+                    for (const summary of await browser.list()) if (!existing.has(summary.id)) {
+                        const record = await browser.read(summary.id);
+                        if (record) { await server.create({ ...record, revision: 0 }); existing.add(summary.id); }
+                    }
+                } catch (error) {
+                    if (error.message !== 'HISTORY_UNAVAILABLE') { server.close(); throw error; }
+                } finally { browser?.close(); }
+            }
             const check = async () => { if (await accountKey() !== identity) throw Error('HISTORY_IDENTITY_UNAVAILABLE'); };
             try { await check(); } catch (e) { store.close(); throw e; }
             return {
+                kind: store.kind || 'browser',
                 async list() { await check(); const value = await store.list(); await check(); return value; },
                 async read(id) { await check(); const value = await store.read(id); await check(); return value; },
                 async write(record, revision) { await check(); return store.write(record, revision); },

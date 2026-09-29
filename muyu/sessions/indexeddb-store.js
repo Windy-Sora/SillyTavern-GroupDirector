@@ -25,6 +25,7 @@ export async function openIndexedHistoryStore({ namespace, indexedDB = globalThi
         });
     }
     return {
+        kind: 'browser',
         list: () => transaction('readonly', (tx, result) => {
             const req = tx.objectStore('summaries').index('namespace').getAll(namespace);
             req.onsuccess = () => result(req.result.map(({ namespace: ignored, ...summary }) => summary));

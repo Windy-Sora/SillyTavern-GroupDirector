@@ -2,7 +2,7 @@ import { peekProfiles, peekMemories, latestActiveSummary } from '../../systems/p
 import { providerCatalog } from '../modules/providers/catalog.js';
 import { readExtendedSource } from './extended-sources.js';
 import { readMemoryConfig } from './config-read.js';
-import { readVariables, readBlueprint } from './story-sources.js';
+import { readVariables, readVariableDiagnostics, readBlueprint } from './story-sources.js';
 import { readStSource } from './st-sources.js';
 import { readWorldBookOverview, readWorldBookEntries } from './st-world-books.js';
 import { readStPresets, readStPersonas, readStExtensions } from './st-directories.js';
@@ -117,6 +117,7 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         legacy: legacyRead,
         memoryConfig: (_id, selector) => { if (selector) throw Error('INVALID_SELECTOR'); return { data: readMemoryConfig(getSettings) }; },
         variables: (_id, selector) => readVariables(selector, getContext(), extensionKey),
+        variableDiagnostics: (_id, selector) => readVariableDiagnostics(selector, getContext(), extensionKey),
         storyBlueprint: (_id, selector) => readBlueprint(selector, getContext(), extensionKey, getSettings()),
         st: (id, selector) => readStSource(id, selector, getContext()),
         stWorldBooks: (_id, selector) => readWorldBookOverview(selector, worldBooks?.getState),

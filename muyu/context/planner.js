@@ -1,4 +1,4 @@
-import { bytes, estimateTokens, CONTEXT_DEFAULTS } from './policy.js';
+import { bytes, estimateTokens, CONTEXT_DEFAULTS, MAX_REQUEST_BYTES } from './policy.js';
 import { compactionRequest } from './compaction.js';
 
 // Change detector only, never an authorization or authenticity check.
@@ -29,7 +29,9 @@ export function planContext(messages, summary, config = CONTEXT_DEFAULTS, omit =
     // Reserve space for the actual question, instructions, tool definitions and subsequent results.
     // Keep the default window conservative, but let larger configured windows carry
     // a complete long answer instead of silently treating 12k as a universal cap.
-    const limit = Math.min(Math.floor(config.inputTokens * 0.45), Math.max(12000, Math.floor(config.inputTokens * 0.25)));
+    // Auto mode budgets history against the transport ceiling, not a guessed model window.
+    const limit = config.inputTokens === null ? Math.floor(MAX_REQUEST_BYTES / 8) :
+        Math.min(Math.floor(config.inputTokens * 0.45), Math.max(12000, Math.floor(config.inputTokens * 0.25)));
     const head = valid ? [summaryMessage(summary.text)] : [];
     size += estimateTokens(head);
     for (const turn of turns.reverse()) {
@@ -55,7 +57,8 @@ export function summaryCandidate(messages, config = CONTEXT_DEFAULTS, previous =
         const request = compactionRequest({ messages: next }, config.inputTokens);
         // Each segment must pass the model DTO contract. The aggregate still
         // has to fit the one-call summary budget; never claim an uncovered turn.
-        if (request.messages.some(message => bytes(message) > 32768) || estimateTokens(request) > config.inputTokens * 0.6) break;
+        if (request.messages.length > 512 || request.messages.some(message => bytes(message) > 32768) ||
+            (config.inputTokens === null ? bytes(request) > MAX_REQUEST_BYTES * 0.6 : estimateTokens(request) > config.inputTokens * 0.6)) break;
         selected.push(...turn.messages); through = start + turn.end;
     }
     return through ? { through, fingerprint: fingerprint(messages.slice(0, through)), messages: selected } : null;

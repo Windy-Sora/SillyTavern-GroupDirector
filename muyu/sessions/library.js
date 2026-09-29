@@ -118,7 +118,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
                     && (!filters.task || JSON.parse(r.scope)[0] === filters.task)
                     && r.title.toLocaleLowerCase().includes((filters.query || '').trim().toLocaleLowerCase());
             }).sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-            return { available: !!port, enabled, loading, pending, error: failures.get(id) || error,
+            return { available: !!port, enabled, backend: store?.kind || 'memory', loading, pending, error: failures.get(id) || error,
                 dirty: dirty.has(id), sessionId: id || '', persisted: (revisions.get(id) || 0) > 0, managing: managing.has(id),
                 total: summaries.size, scopeMode: current[0], selected: id ? this.meta(id) : null,
                 sessions: items.map(r => ({ id: r.id, title: r.title, scope: r.scope, updatedAt: r.updatedAt, archived: r.archived, imported: r.imported,
@@ -131,7 +131,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
             const previous = records.get(id); if (!previous || closed || previous.imported || previous.archived) throw Error('NOT_READY');
             const receipt = validateReceipt(value), receipts = previous.receipts || [];
             if (receipts.some(r => r.operationId === receipt.operationId)) return;
-            const next = validateRecord({ ...previous, version: Math.max(4, previous.version), receipts: [...receipts, receipt], required: [...new Set([...previous.required, ...(previous.version === 5 || receipt.version >= 2 ? receiptSources(receipt) : ['diagnostics'])])], updatedAt: now() });
+            const next = validateRecord({ ...previous, version: Math.max(4, previous.version), receipts: [...receipts, receipt], required: [...new Set([...previous.required, ...(previous.version >= 5 || receipt.version >= 2 ? receiptSources(receipt) : ['diagnostics'])])], updatedAt: now() });
             remember(next); dirty.add(id); schedule(id);
         },
         update(id, patch) {
@@ -139,6 +139,14 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
             // Only runtime-owned fields may be updated by capture/send. Metadata uses manage().
             if (Object.keys(patch).some(k => !['messages', 'status', 'title', 'required', 'contextSummary'].includes(k))) throw Error('HISTORY_INVALID');
             const next = validateRecord({ ...previous, ...patch, updatedAt: now() });
+            remember(next); dirty.add(id); schedule(id);
+        },
+        retarget(id, scope) {
+            const previous = records.get(id);
+            if (!previous || closed || previous.imported || previous.archived) throw Error('NOT_READY');
+            const next = validateRecord({ ...previous, version: 6, scope, scopeChanges: [...(previous.scopeChanges || []).slice(-31),
+                { from: previous.scope, to: scope, at: now(), messageIndex: previous.messages.length }], updatedAt: now() });
+            if (JSON.parse(next.scope)[0] !== JSON.parse(previous.scope)[0]) throw Error('HISTORY_SCOPE');
             remember(next); dirty.add(id); schedule(id);
         },
         rename(id, title) {

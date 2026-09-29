@@ -4,6 +4,7 @@ import { createPermissions } from '../../muyu/application/permissions.js';
 import { validatePermission } from '../../muyu/permissions/contract.js';
 import { createInteractionStore } from '../../muyu/interactions/store.js';
 import { createProviderModule } from '../../muyu/modules/providers/index.js';
+import { providerCatalog } from '../../muyu/modules/providers/catalog.js';
 import { assistantToolAccess } from '../../muyu/application/capabilities.js';
 
 const A = { kind: 'chat', userKey: 'user', chatKey: 'A' }, B = { ...A, chatKey: 'B' };
@@ -12,7 +13,7 @@ test('Public source catalog never probes host availability or content', () => {
     const fail = () => { throw Error('Host must not be accessed'); };
     const module = createProviderModule({ providerPort: { available: fail, read: fail }, currentTarget: fail });
     const catalog = module.handlers['muyu.provider.list']();
-    assert.equal(catalog.length, 19); assert.ok(catalog.every(p => !Object.hasOwn(p, 'available')));
+    assert.equal(catalog.length, providerCatalog.length); assert.ok(catalog.every(p => !Object.hasOwn(p, 'available')));
     assert.equal(validatePermission({ source: 'memoryConfig', reason: 'read' }).source, 'memoryConfig');
     module.dispose();
 });

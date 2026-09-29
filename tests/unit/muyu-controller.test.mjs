@@ -446,6 +446,29 @@ test('All-task browsing restores task mode; foreign history is read-only and can
     assert.equal(f.model.requests.length, 1); await f.controller.dispose();
 });
 
+test('Assistant history can continue in another ST chat with a visible switch and fresh target', async () => {
+    const f = fixture([[text('first'), done], [text('second'), done]]); await f.enable(); f.controller.setMode('assistant');
+    const id = f.controller.newSession(); f.controller.setInput('A question'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().history.filters.range, 'all');
+    f.switchChat('B');
+    assert.ok(f.controller.snapshot().history.sessions.some(row => row.id === id));
+    assert.equal(f.controller.snapshot().history.sessionId, id);
+    assert.equal(f.controller.snapshot().messages.length, 2);
+    assert.equal(f.controller.snapshot().readOnly, false);
+    assert.equal(f.controller.snapshot().switchedChat, true);
+    f.controller.setInput('B question'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().switchedChat, false);
+    assert.equal(f.controller.snapshot().messages.length, 4);
+    assert.equal(f.controller.snapshot().runs.at(-1).target.chatKey, f.host.currentTarget().chatKey);
+    assert.match(f.model.requests[1].instructions.task, /SillyTavern 聊天/);
+    const switched = JSON.parse(f.controller.exportHistory());
+    assert.equal(switched.scope, JSON.stringify(['assistant', 'chat', f.host.currentTarget().chatKey]));
+    assert.equal(switched.version, 6); assert.equal(switched.scopeChanges.length, 1);
+    f.controller.newSession();
+    assert.equal(f.controller.snapshot().history.filters.range, 'all');
+    await f.controller.dispose();
+});
+
 test('Delete waits for physical cleanup and never accepts late results or loses another draft', async () => {
     const wait = deferred(), f = fixture([() => wait.promise]); await f.enable();
     const id = f.controller.newSession(); f.controller.setInput('pending'); f.controller.send({ consent: true }); await flush();
@@ -565,6 +588,20 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
         switchChat: id => { ctx.chatId = id; events.emit('chat'); } };
 }
 const settle = async () => { for (let i = 0; i < 12; i++) await flush(); };
+
+test('Failed question restores only its text and does not replay a model or tool', async () => {
+    const f = fixture([() => { throw Error('Synthetic network failure'); }]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Original question'); f.controller.send(); await settle();
+    const before = f.controller.snapshot();
+    assert.equal(before.runs.at(-1).status, 'failed'); assert.equal(before.recovery.possibleEffects, false);
+    assert.equal(before.input, ''); assert.equal(f.model.requests.length, 1);
+    f.controller.setInput('A newer unsent draft');
+    assert.throws(() => f.controller.restoreFailedInput(before.recovery.runId), /DRAFT_EXISTS/);
+    f.controller.setInput(''); f.controller.restoreFailedInput(before.recovery.runId);
+    assert.equal(f.controller.snapshot().input, 'Original question'); assert.equal(f.model.requests.length, 1);
+    f.switchChat('B'); assert.equal(f.controller.snapshot().recovery, null);
+    await f.controller.dispose();
+});
 
 test('Original-history reads stay in the active session and cannot undo an omitted-history choice', async () => {
     const readAttempt = tool('muyu.history.read', { index: 1, fingerprint: 'placeholder', start: 0 });

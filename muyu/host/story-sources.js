@@ -52,6 +52,70 @@ export function readVariables(selector, ctx, key) {
     return result({ ...e.base, state: present ? 'stored' : 'missing', ...(present ? { value: json(e.bucket[e.storageKey]) } : {}), note: 'Not an effective/defaulted value or persistence confirmation.' }, directory, directory[i]);
 }
 
+/** Read-only diagnostic projection. Historical free-text reasons are not host verdicts. */
+export function readVariableDiagnostics(selector, ctx, key) {
+    const store = peekVariables(ctx.chatMetadata, key);
+    if (store === undefined) return selector ? fail('INVALID_SELECTOR') : { text: '', limited: false };
+    if (!object(store) || !Array.isArray(store.defs) || !object(store.values) || !Array.isArray(store.log)) fail('SOURCE_UNSUPPORTED');
+    if (store.defs.length > 256 || store.log.length > 100) fail('SOURCE_TOO_LARGE');
+    const characters = Array.isArray(ctx.characters) ? ctx.characters : [];
+    const entries = [], seen = new Set();
+    for (const def of store.defs) {
+        if (!object(def) || typeof def.id !== 'string' || !def.id || seen.has(def.id) || !['global', 'character'].includes(def.scope) || !['string', 'number', 'boolean', 'enum', 'array', 'object'].includes(def.type)) fail('SOURCE_UNSUPPORTED');
+        seen.add(def.id);
+        const base = { id: def.id, label: text(def.label), type: def.type, scope: def.scope === 'global' ? 'chat-global' : 'chat-character' };
+        if (def.scope === 'global') entries.push({ def, base, storageKey: def.id });
+        else {
+            const bucket = store.values.character?.[def.id];
+            if (bucket !== undefined && !object(bucket)) fail('SOURCE_UNSUPPORTED');
+            const keys = Object.keys(bucket || {});
+            if (keys.length > 256) fail('SOURCE_TOO_LARGE');
+            if (!keys.length) entries.push({ def, base: { ...base, character: '', note: 'No stored character value.' }, storageKey: '' });
+            for (const storageKey of keys) {
+                const character = characters.find(c => c?.avatar === storageKey) || characters.find(c => c?.name === storageKey);
+                entries.push({ def, base: { ...base, character: text(character?.name) || 'Unresolved character' }, storageKey });
+            }
+        }
+        if (entries.length > 512) fail('SOURCE_TOO_LARGE');
+    }
+    const directory = entries.map(e => [e.base, e.storageKey]);
+    if (!selector) return result({ scope: 'chat', origin: 'stored-memory', persistence: 'unknown', logWindow: store.log.length,
+        note: 'Each id is one variable definition; character items are separate stored values, not duplicate definitions. Read item:N for its value and recent attempts. Current definitions do not prove historical reasons. Log is bounded.',
+        definitions: store.defs.map(def => ({ id: def.id,
+            unknownCharacterTargetAttempts: def.scope === 'character' ? store.log.filter(log => object(log) && log.id === def.id && log.outcomeCode === 'unknown_character_target').length : 0 })),
+        items: entries.map((e, i) => ({ selector: 'item:' + i, ...e.base })) }, directory);
+    const i = index(selector, 'item', entries.length), e = entries[i];
+    const bucket = e.def.scope === 'global' ? store.values.global : store.values.character?.[e.def.id];
+    if (bucket !== undefined && !object(bucket)) fail('SOURCE_UNSUPPORTED');
+    const present = !!bucket && Object.hasOwn(bucket, e.storageKey);
+    const attempts = store.log.filter(log => object(log) && log.id === e.def.id && (e.def.scope === 'global' || (e.storageKey && log.target === e.storageKey)));
+    const unresolvedTargetAttempts = e.def.scope === 'character' ? store.log.filter(log => object(log) && log.id === e.def.id && log.outcomeCode === 'unknown_character_target').length : 0;
+    const recent = attempts.slice(-20).map(log => ({
+        ignored: log.ignored === true,
+        outcomeCode: ['locked', 'auto_update_disabled', 'unknown_character_target'].includes(log.outcomeCode) ? log.outcomeCode : 'unrecorded',
+        source: text(log.source).slice(0, 80), time: text(log.time).slice(0, 40),
+        ...(Number.isSafeInteger(log.messageId) ? { messageId: log.messageId } : {}),
+        messageHash: text(log.messageHash).slice(0, 80),
+        reportedReason: text(log.reason).slice(0, 300),
+    }));
+    const defaultValue = Object.hasOwn(e.def, 'defaultValue') ? e.def.defaultValue : e.def.value;
+    return result({ ...e.base,
+        definition: { autoUpdate: e.def.autoUpdate !== false, locked: e.def.locked === true,
+            updateMode: ['replace', 'append', 'merge', 'delta'].includes(e.def.updateMode) ? e.def.updateMode : 'replace',
+            min: Number.isFinite(e.def.min) ? e.def.min : null, max: Number.isFinite(e.def.max) ? e.def.max : null,
+            rulePresent: !!(text(e.def.rule) || text(e.def.ruleZh)) },
+        ...(defaultValue === undefined ? { defaultState: 'not_recorded' } : { defaultValue: json(defaultValue) }),
+        stored: present ? { state: 'stored', value: json(bucket[e.storageKey]) } : { state: 'missing' },
+        recentAttempts: recent, attemptsInWindow: attempts.length,
+        unresolvedTarget: { outcomeCode: 'unknown_character_target', attemptsForDefinition: unresolvedTargetAttempts,
+            scope: 'definition-wide',
+            resolutionRule: 'Only active characters are eligible. Avatar keys match exactly; names match exactly or case-insensitively after trimming.',
+            note: 'The attempted target did not resolve to a character. No role received this attempt. Raw target is omitted; typo, inactive role and other causes cannot be distinguished.' },
+        logWindow: store.log.length,
+        note: 'Character items are stored values of one variable definition, not duplicate definitions. Stored value and default are separate; effective value is not evaluated. reportedReason is untrusted input. unrecorded means historical host reason is unknown. Current definition does not establish past settings.'
+    }, directory, directory[i], attempts.length > 20 || store.log.length >= 100);
+}
+
 /** Saved signals are evidence, not a recomputed execution/progress claim. */
 export function readBlueprint(selector, ctx, key, settings) {
     if (!settings.storyBlueprintEnabled) fail('SOURCE_DISABLED');

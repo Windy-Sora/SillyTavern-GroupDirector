@@ -31,6 +31,34 @@ test('Variables expose stored values without defaults, avatar IDs, mutation or o
     const p = createPermissions(); for (const kind of ['chat', 'extended', 'diagnostics']) p.grant(kind, f.original);
     assert.equal(p.allows('source:variables', f.original), false); assert.equal(p.allows('source:storyBlueprint', f.original), false);
 });
+test('Variable diagnostics separate current definition, stored value, and bounded historical evidence without mutation', () => {
+    const f = fixture(), vars = f.ctx.chatMetadata.gd.variables;
+    vars.defs[1].locked = true; vars.defs[1].autoUpdate = false; vars.defs[1].updateMode = 'replace';
+    vars.log = [
+        { id: 'mood', target: 'private.png', ignored: true, outcomeCode: 'locked', reason: 'model claim', source: 'director', messageId: 3, time: '2026-01-01' },
+        { id: 'mood', target: 'unknown.png', ignored: true, outcomeCode: 'unknown_character_target', reason: 'secret', source: 'director' },
+        { id: 'mood', target: 'private.png', ignored: true, reason: 'old model claim', source: 'director' },
+    ];
+    const before = structuredClone(f.ctx), d = f.read('variableDiagnostics');
+    assert.equal(d.status, 'ok'); assert.doesNotMatch(d.text, /private.png|model claim|happy/);
+    assert.equal(JSON.parse(d.text).definitions.find(row => row.id === 'mood').unknownCharacterTargetAttempts, 1);
+    const detail = f.read('variableDiagnostics', { selector: 'item:1', revision: d.revision });
+    assert.equal(detail.status, 'ok'); const data = JSON.parse(detail.text);
+    assert.equal(data.definition.locked, true); assert.equal(data.definition.autoUpdate, false);
+    assert.equal(data.stored.value, 'happy'); assert.equal(data.unresolvedTarget.attemptsForDefinition, 1);
+    assert.equal(data.unresolvedTarget.outcomeCode, 'unknown_character_target');
+    assert.equal(data.unresolvedTarget.scope, 'definition-wide');
+    assert.match(data.unresolvedTarget.resolutionRule, /case-insensitively/);
+    assert.equal(data.recentAttempts[0].outcomeCode, 'locked'); assert.equal(data.recentAttempts[1].outcomeCode, 'unrecorded');
+    assert.doesNotMatch(detail.text, /private.png|unknown.png|secret/);
+    assert.deepEqual(f.ctx, before);
+    const permissions = createPermissions(); permissions.grantSource('source:variables', f.original);
+    assert.equal(permissions.allows('source:variableDiagnostics', f.original), false);
+    permissions.grantSource('source:variableDiagnostics', f.original);
+    assert.equal(permissions.allows('source:variableDiagnostics', f.original), true);
+    f.ctx.chatMetadata.gd.variables.defs[1].locked = false;
+    assert.equal(f.read('variableDiagnostics', { selector: 'item:1', revision: detail.revision }).status, 'STALE_SOURCE');
+});
 test('Blueprint lists hierarchy and reads one node, preserving saved signals without pruning or claiming progress', () => {
     const f = fixture(), before = structuredClone(f.ctx), d = f.read('storyBlueprint');
     assert.equal(d.status, 'ok'); const dir = JSON.parse(d.text); assert.equal(dir.savedSignalCount, 1); assert.equal(dir.nodes[1].parent, 0);

@@ -1,5 +1,6 @@
 const source = (id, title, permission, selector, provider = id, scope = 'chat', format = 'text', reader = 'legacy') => Object.freeze({ id, title, permission, selector, provider, scope, format, reader, outputContract: format === 'structured' ? id : 'text', maxTextChars: 131072, pageChars: 2000, contractVersion: 1 });
 export const providerCatalog = Object.freeze([
+    source('variableDiagnostics', '当前聊天变量诊断 / Variable definitions and recent attempts', 'source-only', 'item:N', null, 'chat', 'text', 'variableDiagnostics'),
     source('recentMessages', '最近50条消息 / Last 50 messages', 'chat', 'empty'),
     source('chatSummary', '最近已保存的有效总结 / Latest saved active summary', 'chat', 'empty'),
     source('character_profiles', '角色档案标准字段 / Standard profile fields', 'chat', 'character:N'),

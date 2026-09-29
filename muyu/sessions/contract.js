@@ -9,9 +9,9 @@ export function historyScope(mode, target) {
     return JSON.stringify([mode, target?.kind || 'none', target?.kind === 'chat' ? target.chatKey : null]);
 }
 export function validateRecord(value) {
-    if (value && ![1, 2, 3, 4, 5].includes(value.version)) throw Error('HISTORY_VERSION');
+    if (value && ![1, 2, 3, 4, 5, 6].includes(value.version)) throw Error('HISTORY_VERSION');
     // This boundary accepts only the fixed versioned DTO, including on reads from local storage.
-    const fields = ['version', 'id', 'revision', 'scope', 'title', 'createdAt', 'updatedAt', 'messages', 'required', 'status', ...(value?.version >= 2 ? ['archived', 'imported'] : []), ...(value?.version >= 3 ? ['contextSummary'] : []), ...(value?.version >= 4 ? ['receipts'] : [])];
+    const fields = ['version', 'id', 'revision', 'scope', 'title', 'createdAt', 'updatedAt', 'messages', 'required', 'status', ...(value?.version >= 2 ? ['archived', 'imported'] : []), ...(value?.version >= 3 ? ['contextSummary'] : []), ...(value?.version >= 4 ? ['receipts'] : []), ...(value?.version >= 6 ? ['scopeChanges'] : [])];
     if (!value || Object.keys(value).some(k => !fields.includes(k)) || fields.some(k => !Object.hasOwn(value, k))) throw Error('HISTORY_INVALID');
     if (value.version >= 2 && (typeof value.archived !== 'boolean' || typeof value.imported !== 'boolean')) throw Error('HISTORY_INVALID');
     if (value.version >= 4) {
@@ -19,6 +19,11 @@ export function validateRecord(value) {
         value.receipts.forEach(validateReceipt);
         if (value.receipts.some(r => r.version >= 2 ? receiptSources(r).some(source => !value.required?.includes(source)) : !value.required?.includes('diagnostics') && !value.required?.includes('source:memoryConfig'))) throw Error('HISTORY_INVALID');
     }
+    if (value.version >= 6 && (!Array.isArray(value.scopeChanges) || value.scopeChanges.length > 32 || value.scopeChanges.some(change =>
+        !change || Object.keys(change).sort().join(',') !== 'at,from,messageIndex,to' ||
+        ![change.at, change.messageIndex].every(n => Number.isSafeInteger(n) && n >= 0) ||
+        change.messageIndex > value.messages?.length ||
+        ![change.from, change.to].every(scope => typeof scope === 'string' && scope.length <= 4096 && scope.startsWith('["assistant",'))))) throw Error('HISTORY_INVALID');
     if (value.version >= 3 && value.contextSummary !== null) {
         const s = value.contextSummary;
         if (!s || Object.keys(s).sort().join(',') !== 'createdAt,fingerprint,text,through' || !Number.isSafeInteger(s.through) || s.through < 2 || s.through > 256 || typeof s.fingerprint !== 'string' || !/^\d+:\d+:\d+$/.test(s.fingerprint) || s.fingerprint.length > 50 || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 6000 || !Number.isSafeInteger(s.createdAt) || s.createdAt < 0) throw Error('HISTORY_INVALID');
@@ -26,11 +31,11 @@ export function validateRecord(value) {
     if (!validHistoryId(value.id) || !Number.isSafeInteger(value.revision) || value.revision < 0) throw Error('HISTORY_INVALID');
     if (typeof value.scope !== 'string' || value.scope.length > 4096 || typeof value.title !== 'string' || value.title.length > 100) throw Error('HISTORY_INVALID');
     let scope; try { scope = JSON.parse(value.scope); } catch { throw Error('HISTORY_INVALID'); }
-    if (!Array.isArray(scope) || scope.length !== 3 || !['chat', 'memory', 'director', 'draft', ...(value.version === 5 ? ['assistant'] : [])].includes(scope[0]) || !['chat', 'global'].includes(scope[1]) || (scope[1] === 'chat' ? typeof scope[2] !== 'string' || !scope[2] : scope[2] !== null)) throw Error('HISTORY_INVALID');
+    if (!Array.isArray(scope) || scope.length !== 3 || !['chat', 'memory', 'director', 'draft', ...(value.version >= 5 ? ['assistant'] : [])].includes(scope[0]) || !['chat', 'global'].includes(scope[1]) || (scope[1] === 'chat' ? typeof scope[2] !== 'string' || !scope[2] : scope[2] !== null)) throw Error('HISTORY_INVALID');
     if (scope[0] !== 'assistant' && (scope[0] === 'draft') !== (scope[1] === 'global')) throw Error('HISTORY_INVALID');
     if (![value.createdAt, value.updatedAt].every(n => Number.isSafeInteger(n) && n >= 0)) throw Error('HISTORY_INVALID');
     if (!['idle', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted'].includes(value.status)) throw Error('HISTORY_INVALID');
-    if (!Array.isArray(value.required) || value.required.length > 3 + permissionSources.length + 64 || new Set(value.required).size !== value.required.length || value.required.some(k => !['diagnostics', 'chat', 'extended', ...permissionSources].includes(k) && !(value.version === 5 && parseExecutionSource(k)))) throw Error('HISTORY_INVALID');
+    if (!Array.isArray(value.required) || value.required.length > 3 + permissionSources.length + 64 || new Set(value.required).size !== value.required.length || value.required.some(k => !['diagnostics', 'chat', 'extended', ...permissionSources].includes(k) && !(value.version >= 5 && parseExecutionSource(k)))) throw Error('HISTORY_INVALID');
     if (!Array.isArray(value.messages) || value.messages.length > HISTORY_LIMITS.messages) throw Error('HISTORY_CAPACITY');
     for (const m of value.messages) {
         if (!m || Object.keys(m).some(k => !['role', 'content', 'runId'].includes(k)) || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 32768 || typeof m.runId !== 'string' || m.runId.length > 150) throw Error('HISTORY_INVALID');
@@ -41,13 +46,13 @@ export function validateRecord(value) {
     return structuredClone(normalized);
 }
 export function summarizeRecord(record) {
-    const { messages, required, contextSummary, receipts, ...summary } = record;
+    const { messages, required, contextSummary, receipts, scopeChanges, ...summary } = record;
     return { ...summary, count: messages.length, bytes: historyBytes(record) };
 }
 export function validateSummary(summary) {
     if (!summary || Object.keys(summary).some(k => !['version', 'id', 'revision', 'scope', 'title', 'createdAt', 'updatedAt', 'status', 'count', 'bytes', 'archived', 'imported'].includes(k))) throw Error('HISTORY_INVALID');
     const { count, bytes, ...record } = summary;
-    const normalized = validateRecord({ ...record, messages: [], required: [], ...(record.version >= 3 ? { contextSummary: null } : {}), ...(record.version >= 4 ? { receipts: [] } : {}) });
+    const normalized = validateRecord({ ...record, messages: [], required: [], ...(record.version >= 3 ? { contextSummary: null } : {}), ...(record.version >= 4 ? { receipts: [] } : {}), ...(record.version >= 6 ? { scopeChanges: [] } : {}) });
     if (!Number.isSafeInteger(count) || count < 0 || count > HISTORY_LIMITS.messages || !Number.isSafeInteger(bytes) || bytes < 0 || bytes > HISTORY_LIMITS.recordBytes) throw Error('HISTORY_INVALID');
     return { ...structuredClone(summary), version: normalized.version, archived: normalized.archived, imported: normalized.imported };
 }

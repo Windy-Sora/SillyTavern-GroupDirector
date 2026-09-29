@@ -3,7 +3,7 @@ import { assertActive, ExecutionError } from '../core/execution.js';
 import { validateConnection } from './connection.js';
 import { createHttpTransport } from './http-transport.js';
 import { modelError } from './errors.js';
-import { measurePayload } from '../context/policy.js';
+import { MAX_MANUAL_INPUT_TOKENS, measurePayload } from '../context/policy.js';
 import { renderInstructions } from '../instructions/contract.js';
 
 const fail = () => { throw modelError('MODEL_PROTOCOL_ERROR'); };
@@ -125,7 +125,7 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
                 if (!privateHistory) { privateHistory = new Map(); if (context) histories.set(context, privateHistory); }
                 const { payload, byName } = prepare(request, config, privateHistory);
                 const measured = measurePayload(payload);
-                if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > 128000)) fail();
+                if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > MAX_MANUAL_INPUT_TOKENS)) fail();
                 if (measured.requestBytes > 1048576 || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
                 const { events, usage, reasoning, signature } = decode(await post(config, payload, signal), byName, config);
                 assertActive(signal);

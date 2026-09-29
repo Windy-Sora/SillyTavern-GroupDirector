@@ -482,7 +482,7 @@ test('Every supported field declares read dependencies; unknown read tools fail 
 });
 test('Settings catalog is public without host reads; unauthorized reads never enter host', async () => {
     let reads = 0; const module = createSettingsModule({ getSettings: () => { reads++; return DEFAULT_SETTINGS; }, getTarget: () => target });
-    const permissions = createPermissions(), broker = createToolBroker({ registry: module.registry, handlers: module.handlers, target, runId: 'r', signal: new AbortController().signal, maxCalls: 4, allowedTools: module.registry.list().map(d => d.id),
+    const permissions = createPermissions(), broker = createToolBroker({ registry: module.registry, handlers: module.handlers, target, runId: 'r', signal: new AbortController().signal, maxCalls: 8, allowedTools: module.registry.list().map(d => d.id),
         policy: ({ definition, args }) => assistantToolAccess(definition, args, target, 't', permissions).decision });
     const catalog = await broker.call({ toolId: 'muyu.settings.catalog', version: 1, callId: '1', args: {} });
     assert.equal(catalog.ok, true); assert.equal(reads, 0);
@@ -496,6 +496,13 @@ test('Settings catalog is public without host reads; unauthorized reads never en
         assert.equal(contract.ok, true);
         assert.ok(JSON.parse(contract.data.text).some(row => row.id === field));
     }
+    const exact = await broker.call({ toolId: 'muyu.settings.contract', version: 1, callId: '5', args: { fields: ['topN', 'providerTimeoutMs', 'memoryMaxEntries'] } });
+    assert.equal(exact.ok, true);
+    assert.deepEqual(JSON.parse(exact.data.text).map(row => row.id), ['topN', 'providerTimeoutMs', 'memoryMaxEntries']);
+    assert.ok(exact.data.text.length < 6000, 'Exact-field contract must stay substantially smaller than a full-domain query');
+    assert.equal(JSON.parse(exact.data.text).find(row => row.id === 'memoryMaxEntries').schema.minimum, 10);
+    assert.equal((await broker.call({ toolId: 'muyu.settings.contract', version: 1, callId: '6', args: { domain: 'director', fields: ['memoryMaxEntries'] } })).ok, false);
+    assert.equal((await broker.call({ toolId: 'muyu.settings.contract', version: 1, callId: '7', args: {} })).ok, false);
     assert.equal(reads, 0);
     module.dispose();
 });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createPermissions } from '../../muyu/application/permissions.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
 import { createProviderModule } from '../../muyu/modules/providers/index.js';
+import { providerCatalog } from '../../muyu/modules/providers/catalog.js';
 import { createCredentialStore } from '../../muyu/host/credentials.js';
 import { validateJson } from '../../muyu/core/json-contract.js';
 
@@ -34,7 +35,7 @@ test('Permissions are connection-local, chat-specific, revocable and public docs
 test('Provider directory is metadata-only; trusted pure readers do not initialize or mutate metadata', () => {
     const f = fixture(), before = structuredClone(f.ctx);
     const catalog = f.module.handlers['muyu.provider.list']();
-    assert.equal(catalog.length, 19); validateJson(f.module.registry.get('muyu.provider.list').outputSchema, catalog); assert.doesNotMatch(JSON.stringify(catalog), /Alice|hello|a.png/);
+    assert.equal(catalog.length, providerCatalog.length); validateJson(f.module.registry.get('muyu.provider.list').outputSchema, catalog); assert.doesNotMatch(JSON.stringify(catalog), /Alice|hello|a.png/);
     assert.match(f.read().text, /hello/); assert.equal(f.read({ id: 'chatSummary' }).text, 'summary');
     for (const id of ['charMemory', 'character_profiles']) {
         const directory = f.read({ id }); assert.match(directory.text, /character:0 Alice/); assert.doesNotMatch(JSON.stringify(directory), /a.png/);

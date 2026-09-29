@@ -5,9 +5,9 @@ export const MODE_LLM = 'llm';
 
 export const DEFAULT_SETTINGS = {
     muyuInstructionConfig: { enabled: false, text: '' },
-    muyuContextConfig: { inputTokens: 32000, recentTurns: 12, autoSummary: false },
+    muyuContextConfig: { inputTokens: null, recentTurns: 12, autoSummary: false },
     muyuRunConfig: { modelCalls: 6, toolCalls: 16, timeMs: 120000, maxTokens: 8192, providerBytes: 24000 },
-    muyuHistoryEnabled: false,
+    muyuHistoryEnabled: true,
     mode: MODE_FORMULA,
     topN: 1,
     scoreWeights: {
