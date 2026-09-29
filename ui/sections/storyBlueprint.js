@@ -79,10 +79,18 @@ registerSection('storyBlueprint', function (ctx) {
         $c('story-blueprint-level').val(settings.storyBlueprintProgressionLevel ?? 0);
         $c('story-blueprint-var').val(storyBlueprintSystem.getCompletionVariable());
         $c('story-blueprint-max-nodes').val(settings.storyBlueprintMaxNodes ?? 8);
-        $c('story-blueprint-prompt').val(settings.storyBlueprintPrompt || storyBlueprintSystem.getDefaultPrompt());
-        $c('story-blueprint-continue-prompt').val(settings.storyBlueprintContinuePrompt || storyBlueprintSystem.getDefaultContinuePrompt());
-        $c('story-blueprint-schema').val(settings.storyBlueprintJsonSchema || storyBlueprintSystem.getDefaultSchema());
-        $c('story-blueprint-template').val(settings.storyBlueprintProviderTemplate || storyBlueprintSystem.getDefaultTemplate());
+        const defaultPrompt = storyBlueprintSystem.getDefaultPrompt();
+        const defaultContinuePrompt = storyBlueprintSystem.getDefaultContinuePrompt();
+        $c('story-blueprint-prompt').data?.('gdDefaultPrompt', defaultPrompt);
+        $c('story-blueprint-continue-prompt').data?.('gdDefaultPrompt', defaultContinuePrompt);
+        $c('story-blueprint-prompt').val(settings.storyBlueprintPrompt || defaultPrompt);
+        $c('story-blueprint-continue-prompt').val(settings.storyBlueprintContinuePrompt || defaultContinuePrompt);
+        const defaultSchema = storyBlueprintSystem.getDefaultSchema();
+        const defaultTemplate = storyBlueprintSystem.getDefaultTemplate();
+        $c('story-blueprint-schema').data?.('gdDefaultSchema', defaultSchema);
+        $c('story-blueprint-template').data?.('gdDefaultTemplate', defaultTemplate);
+        $c('story-blueprint-schema').val(settings.storyBlueprintJsonSchema || defaultSchema);
+        $c('story-blueprint-template').val(settings.storyBlueprintProviderTemplate || defaultTemplate);
         $c('story-blueprint-level-row').toggle((settings.storyBlueprintProgressionMode || 'leaf') === 'level');
     }
 
@@ -543,7 +551,7 @@ registerSection('storyBlueprint', function (ctx) {
     });
 
     $c('story-blueprint-reset-progress').on('click', async () => {
-        if (!await callGenericPopup(langZh() ? '重置故事蓝图进度？' : 'Reset Story Blueprint progress?', POPUP_TYPE.CONFIRM)) return;
+        if (!await callGenericPopup(langZh() ? '仅重置当前推进模式／层级的进度？其他模式进度会保留。' : 'Reset progress only for the current mode and level? Other tracks will remain.', POPUP_TYPE.CONFIRM)) return;
         storyBlueprintSystem.resetProgress();
         refresh();
     });

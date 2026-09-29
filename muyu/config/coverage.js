@@ -8,7 +8,7 @@ const groups = {
     director: 'mode topN llmContextDepth llmPrompt llmMaxSpeakers llmRespectOrder llmCharDescMode llmCharDescLength llmScriptEnabled llmScriptPrompt llmScriptWrapper llmJsonSchema llmJsonSchemaHint llmHistoryEnabled llmScriptContinuity llmScriptContinuityMode llmScriptContinuityCount llmScriptContinuityWrapper llmScriptContinuityHistoryWrapper llmWorldInfoEnabled llmWorldInfoWrapper templateMaxPasses templateRecursive templateDebugPlaceholders providerTimeoutMs forceSpeakMode forceSpeakPrompt llmScriptPosition',
     formula: 'scoreWeights recentMessageCount consecutivePenalty triggerEnabled triggerScore initiativeEnabled initiativeBaseScore',
     summary: 'knowledgeText summaryEnabled summaryReusePrevious summaryPrompt autoSummaryEnabled autoSummaryInterval',
-    storyBlueprint: 'storyBlueprintEnabled storyBlueprintAutoContinue storyBlueprintProgressionMode storyBlueprintProgressionLevel storyBlueprintCompletionVariable storyBlueprintMaxNodes storyBlueprintPrompt storyBlueprintContinuePrompt storyBlueprintJsonSchema storyBlueprintProviderTemplate storyBlueprintLibraries',
+    storyBlueprint: 'storyBlueprintEnabled storyBlueprintAutoContinue storyBlueprintProgressionMode storyBlueprintProgressionLevel storyBlueprintCompletionVariable storyBlueprintCompletionVariableGuard storyBlueprintMaxNodes storyBlueprintPrompt storyBlueprintContinuePrompt storyBlueprintJsonSchema storyBlueprintProviderTemplate storyBlueprintLibraries',
     critique: 'critiqueEnabled critiqueReusePrevious critiquePrompt critiqueSchema autoCritiqueEnabled autoCritiqueInterval',
     worldBook: 'worldBookSourceMode worldBookSelection worldBookMaxEntries',
     general: 'identityPrompt debugLogging lang',
@@ -23,12 +23,14 @@ export const dynamicSettings = Object.freeze({
     uiState: 'ui/sections/dashboard.js',
 });
 const special = new Set('agentConfigs customPrompts scriptExecutors customAgents profileLibraries npcLibraries storyBlueprintLibraries providerReferenceList providerReferenceDeletedDefaultIds'.split(' '));
+// Explicitly deferred by product decision; not an authorization problem.
+const deferred = new Set(['scriptExecutors']);
 export function configurationCoverage() {
     return Object.entries(groups).flatMap(([owner, list]) => list.split(' ').map(key => {
         const fields = configFields.filter(id => id === key || id.startsWith(key + '.'));
         const value = DEFAULT_SETTINGS[key];
         return { key, owner, type: Array.isArray(value) ? 'array' : typeof value, scope: 'global',
-            status: fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
+            status: key === 'storyBlueprintCompletionVariableGuard' ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
             secret: key === 'agentConfigs', executable: key === 'scriptExecutors',
             writer: fields.length ? 'muyu/host/config-write.js' : null,
             contract: fields.map(fieldDefinition),
@@ -39,5 +41,6 @@ export function assertConfigurationCoverage() {
     const keys = configurationCoverage().map(row => row.key);
     if (new Set(keys).size !== keys.length || keys.length !== Object.keys(DEFAULT_SETTINGS).length || Object.keys(DEFAULT_SETTINGS).some(key => !keys.includes(key))) throw Error('CONFIG_COVERAGE_DRIFT');
     if (Object.keys(DEFAULT_SETTINGS.scoreWeights).some(key => !configFields.includes('scoreWeights.' + key))) throw Error('CONFIG_COVERAGE_DRIFT');
+    if ([...deferred].some(key => configFields.includes(key))) throw Error('CONFIG_DEFERRED_WRITE_DRIFT');
     return keys.length;
 }

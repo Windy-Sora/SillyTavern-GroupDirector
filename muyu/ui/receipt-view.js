@@ -28,13 +28,15 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
                 node('small', t('仅是读取时的内存值，不证明持久化，也不改变原回执。', 'In-memory values at read time only; not proof of persistence. Original receipt unchanged.'), actions);
             }
             if (state.readOnly) continue;
-            const b = node('button', t('让暮羽解释结果', 'Ask Muyu to explain'), actions); b.type = 'button'; b.className = 'menu_button';
-            b.disabled = state.busy || state.resetting || !state.enabled || state.context?.omitHistory || !(state.canReadConfig ?? state.permissions?.diagnostics);
-            b.onclick = () => act(() => controller.explainReceipt(r.operationId));
-            const verify = node('button', t('核对当前配置', 'Check current settings'), actions); verify.type = 'button'; verify.className = 'menu_button';
-            verify.disabled = state.busy || state.resetting || !state.enabled || !(state.canCheckReceipts?.[r.operationId] ?? state.canReadConfig ?? state.permissions?.diagnostics);
-            verify.onclick = () => act(() => controller.checkReceipt(r.operationId));
+            if (r.version !== 3 && r.version !== 4 && r.version !== 5) {
+                const b = node('button', t('让暮羽解释结果', 'Ask Muyu to explain'), actions); b.type = 'button'; b.className = 'menu_button';
+                b.disabled = state.busy || state.resetting || !state.enabled || state.context?.omitHistory || !(state.canReadConfig ?? state.permissions?.diagnostics);
+                b.onclick = () => act(() => controller.explainReceipt(r.operationId));
+                const verify = node('button', t('核对当前配置', 'Check current settings'), actions); verify.type = 'button'; verify.className = 'menu_button';
+                verify.disabled = state.busy || state.resetting || !state.enabled || !(state.canCheckReceipts?.[r.operationId] ?? state.canReadConfig ?? state.permissions?.diagnostics);
+                verify.onclick = () => act(() => controller.checkReceipt(r.operationId));
+            }
         }
-        node('small', t('快捷入口需要有效的配置读取授权；也可直接问暮羽，由它按需申请。解释使用模型预算；核对只在本地读取，不调用模型、不重新应用配置。', 'Shortcuts need active config access; you can also ask Muyu to request it. Explanation uses the model budget; checking reads locally without model calls or reapplying settings.'));
+        node('small', t('解释快捷入口需要相应资料授权；也可直接问暮羽按需申请。解释使用模型预算；配置核对只在本地读取，不重新应用。', 'Explanation shortcuts need the relevant read grant; Muyu can request it on demand. Explanation uses model budget; configuration checks read locally without reapplying.'));
     } };
 }

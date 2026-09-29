@@ -14,7 +14,7 @@ export function createWorkspace({ maxArtifacts = 32, maxVersions = 16, maxBytes 
     }
     return Object.freeze({
         create({ id, sessionId, taskId, sourceRunId = null, kind, content }) {
-            if (![id, sessionId, taskId].every(x => typeof x === 'string' && x.length > 0) || !['report', 'config-draft'].includes(kind) || (sourceRunId !== null && typeof sourceRunId !== 'string')) throw new TypeError('Invalid artifact');
+            if (![id, sessionId, taskId].every(x => typeof x === 'string' && x.length > 0) || !['report', 'config-draft', 'task-plan', 'variable-draft', 'task-bundle', 'profile-draft'].includes(kind) || (sourceRunId !== null && typeof sourceRunId !== 'string')) throw new TypeError('Invalid artifact');
             if (records.has(id)) throw new Error('DUPLICATE_ARTIFACT');
             if (records.size >= maxArtifacts) throw new Error('WORKSPACE_FULL');
             return save(id, [copyJson({ id, sessionId, taskId, sourceRunId, kind, revision: 1, content, validation: null })]);

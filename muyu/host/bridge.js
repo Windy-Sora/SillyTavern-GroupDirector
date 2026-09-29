@@ -1,5 +1,5 @@
 /** Page-local identity only; no names or raw identity strings enter model requests. */
-export function createHostBridge({ getContext, getSettings, extensionKey, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, configWriter, memoryLimitPort, getGuards = () => ({}), pageId = globalThis.crypto.randomUUID() }) {
+export function createHostBridge({ getContext, getSettings, extensionKey, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, getGuards = () => ({}), pageId = globalThis.crypto.randomUUID() }) {
     const userKey = 'page:' + pageId;
     const globalTarget = Object.freeze({ kind: 'global', userKey });
     function currentTarget() {
@@ -15,7 +15,7 @@ export function createHostBridge({ getContext, getSettings, extensionKey, provid
         return { kind: 'chat', userKey, chatKey: JSON.stringify([...owner, chatId]) };
     }
     return Object.freeze({
-        currentTarget, globalTarget, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, configWriter, memoryLimitPort,
+        currentTarget, globalTarget, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort,
         configTarget: () => currentTarget() || globalTarget,
         getSettings,
         memoryPorts: Object.freeze({ extensionKey, getTarget: currentTarget, getSettings,

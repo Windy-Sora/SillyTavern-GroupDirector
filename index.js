@@ -1,11 +1,12 @@
 import { eventSource, event_types } from '../../../events.js';
-import { extension_settings, getContext } from '../../../extensions.js';
+import { extension_settings, extensionNames, extensionTypes, getContext } from '../../../extensions.js';
 import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
 import { groups, selected_group } from '../../../group-chats.js';
 import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, selected_world_info, world_info } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
+import { user_avatar } from '../../../personas.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
 import { registerProvider, unregisterProvider, getProviders, getAvailablePlaceholders } from './provider-registry.js';
 import { renderPrompt, setProviderTimeoutDefault } from './prompt-renderer.js';
@@ -98,6 +99,7 @@ import { createUserProviderLoader } from './systems/user-provider-loader.js';
 import { createPostSpeechSystem } from './systems/post-speech-system.js';
 import { createConfirmedPostSpeechChatSave } from './systems/post-speech-save-confirmation.js';
 import { runAutoMemoryTargets } from './systems/auto-memory-coordinator.js';
+import { migrateLegacyDirectorOutputFormat, renderDirectorOutputFormat } from './systems/director-output-format.js';
 
 // Migrate legacy settings (v0.3 → v0.4)
 let loaded = extension_settings[EXT_KEY] || {};
@@ -109,13 +111,8 @@ delete loaded.directorLlmEnabled;
 delete loaded.directorLlmModel;
 if (loaded.directorLlmPrompt && !loaded.llmPrompt) loaded.llmPrompt = loaded.directorLlmPrompt;
 delete loaded.directorLlmPrompt;
-if (typeof loaded.llmJsonSchema === 'string'
-    && !loaded.llmJsonSchema.includes('{{storyBlueprintDoneField}}')
-    && /"global"\s*:\s*\{\s*\}/.test(loaded.llmJsonSchema)) {
-    loaded.llmJsonSchema = loaded.llmJsonSchema.replace(
-        /"global"\s*:\s*\{\s*\}/,
-        '"global": { {{storyBlueprintDoneField}} }',
-    );
+if (typeof loaded.llmJsonSchema === 'string') {
+    loaded.llmJsonSchema = migrateLegacyDirectorOutputFormat(loaded.llmJsonSchema);
 }
 
 let settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
@@ -279,6 +276,7 @@ async function saveSettingsConfirmed() {
     try {
         await saveSettingsHost();
         if (!confirmed) throw new Error('Settings persistence was not confirmed');
+        return { confirmed: true };
     } finally {
         eventSource.removeListener(event_types.SETTINGS_UPDATED, onSaved);
     }
@@ -311,6 +309,11 @@ const saveStoryBlueprintChatConfirmed = createConfirmedChatMetadataSave({
     ...confirmedChatSaveDependencies,
     selectValue: metadata => metadata[EXT_KEY]?.storyBlueprint ?? null,
     label: 'Story Blueprint',
+});
+const saveVariablesChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.variables ?? null,
+    label: 'Muyu completion variable',
 });
 
 const variableSystem = createVariableSystem({
@@ -686,7 +689,7 @@ const postSpeechSystem = createPostSpeechSystem({
 
 // ─── PostSpeech Executor ─────────────────────────────────────────────
 const postSpeechExecutor = createExecutor({
-    blocking: settings.postSpeechBlocking !== false,
+    getBlocking: () => settings.postSpeechBlocking !== false,
     log,
     resolveCapability: capabilityId => CapabilityRegistry.get(capabilityId),
     onExecuted: (capId, result) => {
@@ -2548,17 +2551,12 @@ It is OK to assign none (empty array) or different entries to different characte
 }
 
 function buildJsonSchema() {
-    const scriptField = settings.llmScriptEnabled
-        ? ',\n  "scripts": {\n    "NameOfFirstSpeaker": "short imperative stage direction",\n    "NameOfSecondSpeaker": "short imperative stage direction"\n  }'
-        : '';
-    const storyBlueprintDoneField = settings.storyBlueprintEnabled
-        ? `\n      "${storyBlueprintSystem.getCompletionVariable()}": false\n    `
-        : '';
-    const schema = settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema;
-    return schema
-        .replace(/\{\{scriptField\}\}/g, scriptField)
-        .replace(/\{\{storyBlueprintDoneField\}\}/g, storyBlueprintDoneField)
-        .replace(/\{\{llmJsonSchema\}\}/g, '');
+    return renderDirectorOutputFormat({
+        text: settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema,
+        scriptEnabled: settings.llmScriptEnabled,
+        storyBlueprintEnabled: settings.storyBlueprintEnabled,
+        completionVariable: settings.storyBlueprintEnabled ? storyBlueprintSystem.getCompletionVariable() : '',
+    });
 }
 
 
@@ -2639,6 +2637,7 @@ registerCharacterCritique(() => critiqueSystem.getActiveCharacterCritiqueData())
 registerCharCritique(() => critiqueSystem.getActiveCharacterCritiqueData());
 registerIdentity(settings);
 registerCharMemory({
+    getRenderTemplate: () => settings.memoryRenderTemplate || '',
     getMemoriesForAll: () => {
         const result = {};
         const stats = memorySystem.getStats();
@@ -2696,6 +2695,20 @@ customAgentSystem.refreshProviders();
 eventSource.on(event_types.APP_READY, async () => {
     const deps = {
         muyuProviderBindings, getMuyuProviders: getProviders, saveMuyuCredentials: saveSettingsConfirmed,
+        getMuyuSelectedPersona: () => user_avatar,
+        getMuyuExtensionDirectory: () => ({ names: extensionNames, types: extensionTypes,
+            disabled: Array.isArray(extension_settings.disabledExtensions) ? extension_settings.disabledExtensions : null }),
+        getMuyuWorldBookState: () => {
+            const context = getContext();
+            const selectedCharacter = context.characters?.[context.characterId];
+            const avatar = selectedCharacter?.avatar;
+            const fileName = typeof avatar === 'string' ? avatar.replace(/\.[^/.]+$/, '') : null;
+            const additional = fileName && Array.isArray(world_info?.charLore)
+                ? world_info.charLore.find(entry => entry?.name === fileName)?.extraBooks : [];
+            return { names: world_names, global: selected_world_info, chat: getChatMetadata()?.world_info,
+                characterPrimary: selectedCharacter?.data?.extensions?.world, characterAdditional: additional,
+                persona: power_user?.persona_description_lorebook };
+        },
         getMuyuAccount: async () => {
             const account = await import('../../../user.js');
             return { enabled: account.accountsEnabled, handle: account.currentUser?.handle, created: account.currentUser?.created };
@@ -2710,7 +2723,7 @@ eventSource.on(event_types.APP_READY, async () => {
             generationType: roundGenerateType,
             canFinalize: roundOrchestrator.canFinalize({ manualGenerationInProgress: manualGenInProgress, generationStopped }),
         }),
-        settings, EXT_KEY, chat_metadata, getChatMetadata, saveChatConditional, saveSettings,
+        settings, EXT_KEY, chat_metadata, getChatMetadata, saveChatConditional, saveVariablesChatConfirmed, saveSettings,
         getCurrentGroup, getDefaultLlmPrompt, generateProfilesBatch, getProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,

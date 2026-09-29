@@ -10,18 +10,34 @@
 
 当前为“运行已注册 Provider”阶段：用户可继续使用既有导入/注册机制提供脚本；暮羽尚不创建、编辑、导入或测试新脚本。未来写码流程应先产出独立草稿、运行隔离测试、展示代码和预期权限，再经用户显式批准导入；导入后的脚本依旧走上述具体版本执行审批。隔离测试与真实宿主执行必须标明不同环境，不能凭 `readOnly` 声明认定无副作用。
 
-对照静态资产，`assets/providers` 含约43个 Provider ID，启动实际注册由 manifest、其他模块和用户资产共同决定，以运行时 discover 为准。固定只读目录目前11类；NPC 的 `npcList` 可经通用执行读取，世界书相关 `worldBooks`/`gdWorldBooks*` 会运行扫描器，执行前应向用户说明范围及可能的延迟。`dice`/`randomDice` 生成随机结果，`systemTime`/`moonPhase` 依赖当前时间，不能当作已保存剧情证据；角色和变量类旧 render 可能读到不同于固定只读来源的有效值或完整数据。以上分类来自当前源码核对，不能推断用户脚本行为。
+对照静态资产，`assets/providers` 含约43个 Provider ID，启动实际注册由 manifest、其他模块和用户资产共同决定，以运行时 discover 为准。固定只读目录目前19类；NPC 的 `npcList` 可经通用执行读取，旧世界书 Provider `worldBooks`/`gdWorldBooks*` 会运行扫描器；新增固定只读世界书来源不运行该扫描器。`dice`/`randomDice` 生成随机结果，`systemTime`/`moonPhase` 依赖当前时间，不能当作已保存剧情证据；角色和变量类旧 render 可能读到不同于固定只读来源的有效值或完整数据。以上分类来自当前源码核对，不能推断用户脚本行为。
 
 下文“尚未开放任意 render”是固定只读目录阶段的历史说明，适用于 `muyu.provider.read`，不适用于新执行工具。
 
 ## 来源适配与剧情试点（2026-09-24，当前）
 
-固定目录现有 **11 个来源**：既有九个来源行为保留，新增 variables 与 storyBlueprint。两者均为 chat / text，permission 为 source-only：旧 chat/extended/diagnostics 整包授权不自动扩大。它们通过同一个 list/read 工具、按来源申请、历史依赖和聊天隔离，不增加任务分类或写工具。
+固定目录现有 **19 个来源**：既有九个来源行为保留，另有 variables、storyBlueprint 与八个 ST 只读来源。新增来源使用 source-only：旧 chat/extended/diagnostics 整包授权不自动扩大。它们通过同一个 list/read 工具、按来源申请和历史依赖，不增加任务分类或写工具。
 
 - variables：空 selector 读取变量与已存储角色值目录，item:N 读取具体存储值。global 明确映射为 chat-global，不是插件全局配置。没有存储值返回 missing，不代入 defaultValue，不执行规则、强制类型转换或有效值计算。角色存储键仅作内部版本证据，不导出头像路径；无法解析的名称标为 Unresolved character。定义最多256个、每变量角色键最多256个、展开目录最多512项；不读取变量日志、默认值或维护规则。
 - storyBlueprint：关闭功能返回 SOURCE_DISABLED；未存储蓝图返回 empty。概况给节点层级及已存完成信号数量，node:N 返回该节点 content、子节点引用与该节点的原始信号白名单。不会运行 normalize、prune、推进或保存；不计算当前推进位置、不把信号解释为执行成功。目录明确标为不完整（省略根级自定义元数据）；详情省略额外节点字段时标 truncated。树最多512节点、16层，信号最多1024条。仅支持现有规范化存储形态，旧形态不在读取时迁移。
+- stChat：chat 范围，当前聊天的类型、名称、消息数及群组成员数，不含消息正文或原始 ID。
+- stCharacters / stGroups：global 范围，当前连接可见的角色／群组名称目录。空 selector 返回前40项及总数；先取目录 revision，随后以 `search:NAME` 查名称，最多20项。只显示用于区分同名项的目录索引与名称；索引不是详情选择器。不显示角色卡、头像路径、群组 ID 或成员列表。原始目录身份只用作私有 revision 证据；至多2048项。全局持续授权限当前连接，不代表所有资料均可读。
 
-新来源的 text 是分页的 JSON 文本，需拼齐页面后理解完整文档；继续沿用2000 UTF-16单元/页、不切代理对、字节预算和版本核验。变量值和节点 content 使用有界 JSON 复制：最多16层、4096访问节点、数组1024项、单字符串32768字符、整体32768 UTF-8字节；不支持或超过详情复制边界返回 SOURCE_UNSUPPORTED，目录/总投影超界返回 SOURCE_TOO_LARGE。不得把拒绝返回解释为无数据。
+ST 聊天与名称三来源由即时 `getContext()` 白名单投影，不执行 Provider render，也不把“当前可见”解释为“正在群聊中”或“已注入提示词”。
+
+### 世界书异步来源（2026-09-29）
+
+- `stWorldBooks`：chat 范围，书名目录、`search:NAME` 及当前全局／聊天／当前选中角色／Persona 的绑定线索。最多512本，概况显示前80本，搜索最多20本。`promptInjection=unknown`：绑定不证明某条世界书实际进入过提示词。
+- `stWorldBookEntries`：global 范围，授权范围明确是**整个世界书资源库**。空 selector 获取书名目录；携带其 revision 用 `book:N` 异步加载单书的条目目录；携带该目录 revision 用 `search:N:QUERY` 搜索该书的注释、关键词及正文，或用 `entry:N:M` 精确读取一条的原始正文。目录最多显示80条，搜索最多20条，单书最多1024条；正文不执行宏、递归匹配或注入判断。
+- 两个来源独立授权。目录读取不调用 `loadWorldInfo`；单书与条目读取使用 ST 原有 `loadWorldInfo`，可能命中宿主缓存。因此 readAt 是本次观察时间，不证明磁盘持久化或最新注入。读取等待上限10秒；底层 ST 加载不支持由本适配器强行中止，但目标变化、取消或任务结束后的迟到结果不会发布。失败不向模型泄漏宿主错误正文。
+
+### 预设、Persona 与扩展目录（2026-09-29）
+
+- `stPresets`：global 范围。固定八类：kobold、novel、textgenerationwebui、openai、context、instruct、sysprompt、reasoning。空 selector 给类别及当前 UI 选择；`mode:N` 列出该类别最多80个名称，携带其 revision 可用 `search:N:QUERY` 查最多20个名称。只调用宿主预设管理器的 `getAllPresets` / `getSelectedPresetName`，不调用返回设置正文的方法；管理器未初始化显示 unavailable，不能解释为预设为空。当前选择是 UI 观察值，不证明下次生成一定使用它。
+- `stPersonas`：chat 范围。名称目录与 `search:NAME`，显示当前选中、默认和本聊天锁定标记。头像 ID 只作私有 revision 证据，不发送给模型；不读 Persona 描述／Prompt、连接规则或头像文件。最多1024项。
+- `stExtensions`：global 范围。已发现扩展 ID、local/global/system 类型、配置上是否启用，支持 `search:NAME`。`runtimeActive=unknown`，因为此 ST 版本未公开可直接读取的运行集合；“配置启用”不证明加载成功。仅从宿主设置取 `disabledExtensions` 白名单字段，不返回原始 `extension_settings`、密钥、manifest 或错误正文。最多1024项。
+
+variables 与 storyBlueprint 的 text 是分页的 JSON 文本；ST 三来源是有界文本目录。需要时拼齐页面再理解完整内容；继续沿用2000 UTF-16单元/页、不切代理对、字节预算和版本核验。变量值和节点 content 使用有界 JSON 复制：最多16层、4096访问节点、数组1024项、单字符串32768字符、整体32768 UTF-8字节；不支持或超过详情复制边界返回 SOURCE_UNSUPPORTED，目录/总投影超界返回 SOURCE_TOO_LARGE。不得把拒绝返回解释为无数据。
 
 ### 内部扩展规范
 
@@ -96,13 +112,13 @@ Agent → ToolBroker → modules/providers → host/providers → 既有业务�
 
 撤销立即阻止新调用、取消任务并等待物理清理，然后清空运行上下文、产物及未发送输入，打开空白会话；保留其他已授予权限。历史仓库保留只读记录，但继续旧会话必须重新满足记录所需数据类别，不能把旧回答中的资料绕过授权再次外发。界面提前告知此范围。不能撤回已经发送给服务的数据。详见 [会话仓库](../../sessions/README.md)。
 
-## 可选密钥持久化
+## 密钥持久化与自动启用
 
-默认关闭。使用插件 `agentConfigs['muyu-assistant']` 存储 endpoint/model/thinking/apiKey，沿用配置档导出的 stripApiKeys 路径。不是本机加密保险箱：酒馆设置在宿主存储，同源脚本、服务器管理员及完整备份可能读取。不要分享完整酒馆设置。
+连接表单默认勾选“记住 API Key”和“下次打开时自动启用”，可关闭；自动启用必须保存密钥。使用插件 `agentConfigs['muyu-assistant']` 存储 endpoint/model/thinking/apiKey/autoConnect，沿用配置档导出的 stripApiKeys 路径。不是本机加密保险箱：酒馆设置在宿主存储，同源脚本、服务器管理员及完整备份可能读取。不要分享完整酒馆设置。旧版已保存密钥没有 autoConnect 标记，不会自动启用。
 
-密码框留空时仅对完全相同 endpoint 复用；不同 endpoint 必须提供新密钥。公开控制器快照只有保存状态及连接元数据，密码不填回 DOM、不进入工具或过程。读取保存记录不会自动启用连接或授权。
+密码框留空时仅对完全相同 endpoint 复用；不同 endpoint 必须提供新密钥。公开控制器快照只有保存状态及连接元数据，密码不填回 DOM、不进入工具或过程。只有明确保存 autoConnect 的连接会在插件加载时启用；不会主动调用模型、恢复资料授权或执行旧任务。
 
-“清除已保存密钥”删除持久记录，不关闭当前内存连接；禁用关闭当前连接，不删除持久密钥。取消勾选后启用连接会删除原保存记录。写入通过宿主确认保存，失败报告安全错误，不声称已保存；无保存记录且未勾选时不发起设置写入。
+“清除已保存密钥”删除持久记录，不关闭当前内存连接；禁用关闭当前连接并关闭下次自动启用，不删除持久密钥。取消“记住 API Key”后启用连接会删除原保存记录。写入通过宿主确认保存，失败报告安全错误，不声称已保存；无保存记录且未勾选时不发起设置写入。
 
 ## 手工验收
 

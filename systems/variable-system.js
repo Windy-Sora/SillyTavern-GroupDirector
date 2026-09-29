@@ -27,7 +27,7 @@ const BUILTIN_TEMPLATES = [
     { id: 'inventory', label: 'Inventory', labelZh: '随身物品', scope: 'character', type: 'array', value: [], rule: 'Track only items this character carries that matter to the story or current scene.', ruleZh: '只记录该角色随身携带且对剧情或当前场景有意义的物品。', updateMode: 'append', showInDashboard: false },
 ];
 
-function slugifyId(input) {
+export function slugifyId(input) {
     return String(input || '')
         .trim()
         .toLowerCase()
@@ -181,7 +181,7 @@ function ensureStore(chatMetadata, EXT_KEY) {
     return vars;
 }
 
-function normalizeDefinition(def = {}) {
+export function normalizeDefinition(def = {}) {
     const id = slugifyId(def.id || def.label || 'unnamed_variable');
     const type = ['string', 'number', 'boolean', 'enum', 'object', 'array'].includes(def.type) ? def.type : 'string';
     const scope = def.scope === 'character' ? 'character' : 'global';

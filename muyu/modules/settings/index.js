@@ -8,9 +8,9 @@ const string = { type: 'string', maxLength: 24000 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const strings = { type: 'array', items: { type: 'string', enum: configFields }, maxItems: configFields.length };
 // JSON text keeps the global tool schema small; the domain owner validates its contents.
-const output = object({ text: string, candidateId: { type: 'string', maxLength: 100 } });
+const output = { type: 'object', properties: { text: string, candidateId: { type: 'string', maxLength: 100 }, applyRequested: { type: 'boolean' } }, required: ['text', 'candidateId'], additionalProperties: false };
 
-export function createSettingsModule({ getSettings, getTarget, memoryLimitPort }) {
+export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, completionVariablePort }) {
     const registry = createToolRegistry(), handlers = {}, runs = new Map(); let disposed = false;
     function target(expected) {
         const actual = getTarget();
@@ -30,6 +30,20 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort }
         if (existingPlan) { memoryLimitPort.assertFresh(existingPlan); return existingPlan; }
         return memoryLimitPort.plan(target, changes.memoryMaxEntries);
     }
+    function inspectCompletionVariable(changes, target, baseline, existingPlan = null) {
+        if (!Object.hasOwn(changes, 'storyBlueprintCompletionVariable')) {
+            if (existingPlan) throw Error('INVALID_DRAFT');
+            return null;
+        }
+        if (Object.keys(changes).length !== 1 || !completionVariablePort) throw Error('COMPLETION_VARIABLE_REQUIRES_SEPARATE_DRAFT');
+        if (existingPlan) { completionVariablePort.assertFresh(existingPlan); return existingPlan; }
+        return completionVariablePort.plan(target, baseline.storyBlueprintCompletionVariable, changes.storyBlueprintCompletionVariable);
+    }
+    function withCompletionImpact(preview, plan) {
+        if (!plan) return preview;
+        return copyJson({ ...preview, impact: { scope: 'current-chat', newVariableId: plan.newId, initialValue: false, oldVariable: 'retained' },
+            notice: '仅预览，未应用。先在当前聊天创建并确认保存值为 false 的新变量，再保存影响所有聊天的全局名称；旧变量保留。其他聊天只会在下次使用时检查，遇到同名冲突将停止推进。' });
+    }
     function withMemoryImpact(preview, plan) {
         if (!plan) return preview;
         return copyJson({ ...preview, impact: { scope: 'current-chat', remove: plan.total, characters: plan.counts },
@@ -40,29 +54,31 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort }
         registry.register({ id, version: 1, description, inputSchema, outputSchema: output, scope: 'global', effect: 'read', dataClasses: ['settings-whitelist'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
         handlers[id] = (args, ctx) => { if (disposed) throw Error('MODULE_DISPOSED'); assertActive(ctx.signal); return handler(args, ctx); };
     }
-    register('muyu.settings.catalog', '列出当前可编辑配置领域和字段，以及尚未接入的配置键；目录不读取配置值，不代表全部配置已接入。', object({}), () => ({ candidateId: '', text: JSON.stringify({ version: 2,
+    register('muyu.settings.catalog', '列出当前可编辑配置领域和字段，以及尚未接入或暂缓的配置键；deferred 表示暮羽暂不支持修改，不能靠额外授权解锁。目录不读取配置值。', object({}), () => ({ candidateId: '', text: JSON.stringify({ version: 2,
         supported: configDomains.map(domain => ({ domain, fields: configFields.filter(id => fieldDefinition(id).domain === domain) })),
-        pending: configurationCoverage().filter(row => row.status !== 'supported').map(({ key, owner, status }) => ({ key, owner, status })), dynamicPending: Object.keys(dynamicSettings),
+        pending: configurationCoverage().filter(row => row.status !== 'supported' && row.status !== 'internal').map(({ key, owner, status }) => ({ key, owner, status })), dynamicPending: Object.keys(dynamicSettings),
     }) }));
     register('muyu.settings.contract', '按领域查询字段类型、限制、生效时机；scope=global影响所有聊天。未指定字段保持原值，不填默认值；Prompt是文本，不能当JSON解析。', object({ domain: { type: 'string', enum: configDomains } }), ({ domain }) => ({ candidateId: '', text: JSON.stringify(configFields.filter(id => fieldDefinition(id).domain === domain).map(fieldDefinition)) }));
     register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields) }) }));
-    register('muyu.settings.preview', '生成已登记配置的局部changes草稿，不应用。先查领域契约；评分使用scoreWeights.mention等精确字段名。memoryMaxEntries单独预览须有当前聊天，并同时需要memoryConfig与memoryDiagnostics读取授权；configSettings授权不能代替。缺读取授权时宿主自动暂停原调用并申请精确来源，获准后原样续接；不要自行猜测来源。不隐式开启功能。变更会替代本轮此前候选，失败会清除候选。', object({ changes: configChangesSchema }), ({ changes }, ctx) => {
+    register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries需单独处理。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         if (run.candidate?.content.memoryPrunePlan) memoryLimitPort?.forget(run.candidate.content.memoryPrunePlan);
+        if (run.candidate?.content.completionVariablePlan) completionVariablePort?.forget(run.candidate.content.completionVariablePlan);
         run.candidate = null;
         const fields = dependencyFields(Object.keys(changes)), baseline = read(ctx.target, fields);
         const basePreview = previewSettings({ baseline, changes });
-        let plan, content;
+        let plan, completionPlan, content;
         try {
             plan = inspectMemoryLimit(changes, ctx.target);
-            const preview = withMemoryImpact(basePreview, plan);
-            content = copyJson({ module: 'settings-config', producedByRunId: ctx.runId, baseline, requestedChanges: changes, preview, ...(plan ? { memoryPrunePlan: plan } : {}) });
+            completionPlan = inspectCompletionVariable(changes, ctx.target, baseline);
+            const preview = withCompletionImpact(withMemoryImpact(basePreview, plan), completionPlan);
+            content = copyJson({ module: 'settings-config', producedByRunId: ctx.runId, baseline, requestedChanges: changes, preview, ...(plan ? { memoryPrunePlan: plan } : {}), ...(completionPlan ? { completionVariablePlan: completionPlan } : {}) });
             // Reserve envelope space for artifact, validation and operation metadata.
             if (new TextEncoder().encode(JSON.stringify(content)).length > 24000) throw Error('DRAFT_TOO_LARGE');
-        } catch (error) { if (plan) memoryLimitPort?.forget(plan); throw error; }
+        } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); throw error; }
         const candidateId = 'settings:' + crypto.randomUUID();
-        const result = copyJson({ candidateId, text: JSON.stringify(content.preview) });
-        run.candidate = { candidateId, content }; return result;
+        const result = copyJson({ candidateId, text: JSON.stringify(apply ? { ...content.preview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : content.preview) });
+        run.candidate = { candidateId, content }; return { ...result, ...(apply ? { applyRequested: true } : {}) };
     });
     registry.seal();
     function verifyContent(content, expectedTarget) {
@@ -71,7 +87,8 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort }
         const baseline = read(expectedTarget, fields);
         if (jsonKey(baseline) !== jsonKey(content.baseline)) throw Error('STALE_BASELINE');
         const plan = inspectMemoryLimit(changes, expectedTarget, content.memoryPrunePlan);
-        if (jsonKey(withMemoryImpact(previewSettings({ baseline, changes }), plan)) !== jsonKey(content.preview)) throw Error('INVALID_DRAFT');
+        const completionPlan = inspectCompletionVariable(changes, expectedTarget, baseline, content.completionVariablePlan);
+        if (jsonKey(withCompletionImpact(withMemoryImpact(previewSettings({ baseline, changes }), plan), completionPlan)) !== jsonKey(content.preview)) throw Error('INVALID_DRAFT');
     }
     return { registry, handlers,
         bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidate: null }); },
@@ -87,6 +104,6 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort }
             verifyContent(a.content, run.target);
             return app.validateArtifact(id, revision, { contractVersion: 2, structural: 'passed', semantic: a.content.preview.semantic, intent: 'requires_user_review', baseline: 'matched-at-validation' });
         },
-        forgetRun(id) { const run = runs.get(id); if (run?.candidate?.content.memoryPrunePlan) memoryLimitPort?.forget(run.candidate.content.memoryPrunePlan); runs.delete(id); }, dispose() { disposed = true; runs.clear(); memoryLimitPort?.clear(); },
+        forgetRun(id) { const run = runs.get(id); if (run?.candidate?.content.memoryPrunePlan) memoryLimitPort?.forget(run.candidate.content.memoryPrunePlan); if (run?.candidate?.content.completionVariablePlan) completionVariablePort?.forget(run.candidate.content.completionVariablePlan); runs.delete(id); }, dispose() { disposed = true; runs.clear(); memoryLimitPort?.clear(); completionVariablePort?.clear(); },
     };
 }

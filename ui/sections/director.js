@@ -53,7 +53,7 @@ registerSection('director', function (ctx) {
     });
 
     // JSON Schema
-    $c('llm-json-schema').val(settings.llmJsonSchema || DEFAULT_SETTINGS.llmJsonSchema);
+    $c('llm-json-schema').val(settings.llmJsonSchema ?? DEFAULT_SETTINGS.llmJsonSchema);
     $c('llm-json-schema').on('input', () => { settings.llmJsonSchema = $c('llm-json-schema').val(); saveSettings(); });
     $c('llm-json-schema-reset').on('click', () => {
         settings.llmJsonSchema = DEFAULT_SETTINGS.llmJsonSchema;

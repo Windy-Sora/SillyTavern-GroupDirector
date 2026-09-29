@@ -9,19 +9,34 @@ function settingsSources(fields) {
 // One application contract for tool effects, required grants and history dependencies.
 // Tool definitions own wire schemas; handlers own business validation.
 const capabilities = Object.freeze({
-    ...Object.fromEntries(['muyu.provider.list', 'muyu.provider.discover', 'muyu.knowledge.list', 'muyu.knowledge.read', 'muyu.config.contract', 'muyu.context.list', 'muyu.context.read', 'muyu.interaction.ask', 'muyu.permission.request', 'muyu.settings.catalog', 'muyu.settings.contract'].map(id => [id, { effect: 'read', sources: () => [] }])),
+    ...Object.fromEntries(['muyu.provider.list', 'muyu.provider.discover', 'muyu.knowledge.list', 'muyu.knowledge.read', 'muyu.config.contract', 'muyu.context.list', 'muyu.context.read', 'muyu.interaction.ask', 'muyu.permission.request', 'muyu.settings.catalog', 'muyu.settings.contract', 'muyu.task.plan', 'muyu.profile.preview'].map(id => [id, { effect: 'read', sources: () => [] }])),
     'muyu.settings.read': { effect: 'read', sources: args => settingsSources(args.fields || []) },
     'muyu.settings.preview': { effect: 'read', sources: args => {
         const fields = Object.keys(args.changes || {}), sources = settingsSources(fields);
-        return sources && fields.includes('memoryMaxEntries') ? [...sources, 'source:memoryDiagnostics'] : sources;
+        if (!sources) return null;
+        return [...sources, ...(fields.includes('memoryMaxEntries') ? ['source:memoryDiagnostics'] : []),
+            ...(fields.includes('storyBlueprintCompletionVariable') ? ['source:variables'] : [])];
     } },
     'muyu.provider.read': { effect: 'read', sources: args => permissionSource(args.id) ? [sourceKey(args.id)] : null },
+    'muyu.variables.preview': { effect: 'read', sources: () => ['source:variables'] },
+    'muyu.task.preview': { effect: 'read', sources: args => {
+        let fields = [];
+        try { if (args.settingsJson !== undefined) fields = Object.keys(JSON.parse(args.settingsJson)); } catch { return null; }
+        const settings = fields.length ? settingsSources(fields) : [];
+        if (!settings) return null;
+        return [...new Set([...settings, ...((args.variables || []).length ? ['source:variables'] : [])])];
+    } },
     'muyu.provider.execute': { effect: 'external', sources: args => [executionSource(args.id, args.revision)] },
     'muyu.provider.result': { effect: 'read', sources: args => [executionSource(args.id, args.revision)] },
     'muyu.memory.inspect': { effect: 'read', sources: () => ['source:memoryConfig', 'source:memoryDiagnostics'] },
     'muyu.director.inspect': { effect: 'read', sources: () => ['source:directorDiagnostics'] },
     'muyu.config.preview': { effect: 'read', sources: () => ['source:memoryConfig'] },
 });
+
+/** Explicit policy registration; never infer grants from a tool definition. */
+export function toolCapability(toolId) {
+    return capabilities[toolId] || null;
+}
 
 export function requiredSources(toolId, args = {}) {
     return capabilities[toolId]?.sources(args) ?? null;

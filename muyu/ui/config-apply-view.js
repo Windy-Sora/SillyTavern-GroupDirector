@@ -11,8 +11,12 @@ export function renderConfigApply({ doc, card, artifact, state, controller, act,
     if (r.status === 'pending') {
         node('strong', t('确认应用上方这份修改？', 'Apply exactly the changes above?'));
         node('p', t('影响所有聊天。修改模式、Prompt或自动功能可能影响后续生成及费用。未列出的字段不修改。', 'Affects all chats. Mode, prompt or automation changes may affect future generation and costs. Unlisted fields stay unchanged.'));
+        const proposed = artifact.content.preview.manifest?.settings || {};
+        if (proposed.postSpeechMessageEnabled === true) node('strong', t('消息后策略启用后，每条合格角色消息可能增加一次模型调用，并可能执行已注册的 Capability（包括用户扩展）。', 'Enabling the per-message policy may add one model call per eligible character message and execute registered Capabilities, including user extensions.'));
+        if (proposed.postSpeechRoundEnabled === true) node('strong', t('轮次后策略启用后，每个合格轮次可能增加一次模型调用，并可能执行已注册的 Capability（包括用户扩展）。', 'Enabling the per-round policy may add one model call per eligible round and execute registered Capabilities, including user extensions.'));
         node('small', t('只批准此版本一次。保存开始后无法保证取消；不会自动回滚，也不提供一键撤销。', 'Approves this revision once. Saving cannot reliably be cancelled; no automatic rollback or one-click undo.'));
         if (artifact.content.memoryPrunePlan) node('strong', t(`当前聊天预计删除 ${artifact.content.memoryPrunePlan.total} 条最旧记忆；全局设置与聊天裁剪会分别保存，可能部分完成。`, `This chat may lose ${artifact.content.memoryPrunePlan.total} oldest memories. Global settings and chat pruning save separately and may partially complete.`));
+        if (artifact.content.completionVariablePlan) node('strong', t(`先在当前聊天创建 ${artifact.content.completionVariablePlan.newId}=false 并确认保存，再保存全局名称；旧变量保留。其他聊天不会立即迁移。`, `First create and confirm ${artifact.content.completionVariablePlan.newId}=false in this chat, then save the global name. The old variable stays; other chats are not migrated immediately.`));
         button(t('应用这份修改', 'Apply these changes'), () => controller.approveConfigApply(r.id), disabled);
         button(t('取消应用', 'Cancel application'), () => controller.cancelConfigApply(r.id), disabled);
         return;

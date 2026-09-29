@@ -95,6 +95,23 @@ test('profile rendering degrades later entries to summaries when the token budge
     } finally { console.log = originalLog; }
 });
 
+test('profile render template changes the next injection but not stored profiles or schema hash', () => {
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+        const { system, settings } = fixture();
+        const profile = ready('alice.png', 'Alice', 'Existing');
+        system.getProfiles()['alice.png'] = profile;
+        const schemaHash = system.computeProfileSchemaHash();
+        settings.profileRenderTemplate = '{{name}} / {{summary}} / {{unknown}}';
+        assert.equal(system.buildCharacterProfilesText(), 'Alice / Existing / {{unknown}}');
+        assert.equal(system.computeProfileSchemaHash(), schemaHash);
+        assert.equal(profile.profile.summary, 'Existing');
+        settings.profileRenderTemplate = '';
+        assert.match(system.buildCharacterProfilesText(), /^- Alice: Existing/);
+    } finally { console.log = originalLog; }
+});
+
 test('profile rendering returns empty output for disabled, pending, and failed stores', () => {
     const original = { log: console.log, warn: console.warn };
     console.log = () => {};
@@ -135,6 +152,7 @@ test('profile placeholder validation reports unknown generator and render tokens
         assert.match(warning.value, /\{\{mystery\}\}/);
         system.validateAndWarnProfilePlaceholders('render');
         assert.match(warning.value, /\{\{unknown\}\}/);
+        assert.match(warning.value, /remain literal/);
         assert.equal(warning.value.match(/\{\{unknown\}\}/g).length, 1);
 
         values['#gd-profile-render-template'] = '{{name}} {{summary}}';

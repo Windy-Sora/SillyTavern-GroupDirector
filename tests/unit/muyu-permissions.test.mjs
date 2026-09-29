@@ -12,7 +12,7 @@ test('Public source catalog never probes host availability or content', () => {
     const fail = () => { throw Error('Host must not be accessed'); };
     const module = createProviderModule({ providerPort: { available: fail, read: fail }, currentTarget: fail });
     const catalog = module.handlers['muyu.provider.list']();
-    assert.equal(catalog.length, 11); assert.ok(catalog.every(p => !Object.hasOwn(p, 'available')));
+    assert.equal(catalog.length, 19); assert.ok(catalog.every(p => !Object.hasOwn(p, 'available')));
     assert.equal(validatePermission({ source: 'memoryConfig', reason: 'read' }).source, 'memoryConfig');
     module.dispose();
 });

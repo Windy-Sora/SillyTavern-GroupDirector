@@ -192,6 +192,9 @@ test('trace ring buffer clamps its size and tracing stays opt-in', async t => {
     silenceConsole(t);
     AgentTrace.clear();
     AgentTrace.setMax(1);
+    AgentTrace.setMax(100000);
+    assert.equal(AgentTrace.getMax(), 200);
+    AgentTrace.setMax(1);
     t.after(() => {
         AgentTrace.clear();
         AgentTrace.setMax(50);

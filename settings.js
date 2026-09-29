@@ -92,6 +92,7 @@ LLM 可以将本轮观察到的任何值得持久化的信息放入其中，例�
     storyBlueprintProgressionMode: 'leaf',
     storyBlueprintProgressionLevel: 0,
     storyBlueprintCompletionVariable: 'gd_story_chapter_done',
+    storyBlueprintCompletionVariableGuard: '',
     storyBlueprintMaxNodes: 8,
     storyBlueprintPrompt: '',
     storyBlueprintContinuePrompt: '',

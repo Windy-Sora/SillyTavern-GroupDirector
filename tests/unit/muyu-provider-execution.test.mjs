@@ -44,6 +44,15 @@ test('Registered user Provider is discovered without rendering and runs only aft
     await c.dispose();
 });
 
+test('Full access executes an available registered Provider without an authorization handoff', async () => {
+    const f = fixture(({ run }) => [run(), [text('done'), done]]); await f.enable();
+    f.controller.setFullAccess(true); f.controller.setInput('run my provider'); f.controller.send(); await settle();
+    assert.equal(f.called(), 1);
+    assert.equal(f.controller.snapshot().interaction, null);
+    assert.equal(f.model.requests.length, 2);
+    await f.controller.dispose();
+});
+
 test('Denied execution and replaced versions never call render; failed render does not expose error text', async () => {
     const f = fixture(); await f.enable(); const c = f.controller;
     c.setInput('use'); c.send(); await settle(); c.answerPermission(c.snapshot().interaction.id, 'deny'); await settle();

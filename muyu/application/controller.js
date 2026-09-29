@@ -1,6 +1,9 @@
 import { jsonKey } from '../core/json-contract.js';
 import { createApplication } from './service.js';
 import { createConfigActions } from '../actions/config-apply.js';
+import { createVariableActions } from '../actions/variable-apply.js';
+import { createTaskBundleActions } from '../actions/task-bundle-apply.js';
+import { createProfileActions } from '../actions/profile-save.js';
 import { sourcePermission } from '../modules/providers/catalog.js';
 import { checkReceiptConfig } from './config-check.js';
 import { assistantToolAccess, permissionApprovalCurrent, permissionRequestAllowed, permissionRequestAlreadyGranted, toolAvailableInMode } from './capabilities.js';
@@ -24,13 +27,13 @@ import { PERMISSION_TOOL, MAX_INTERACTIONS, permissionSources, sourceKey, permis
 /** Lifetime is the extension instance, not a DOM panel. Grants belong to a connection/chat. */
 export function createMuyuController({ host, createModel = createChatCompletionsModel }) {
     let app, builtins, model, connection = null, running, appUnsubscribe, disposed = false, resetting = false;
-    let mode = 'assistant', error = null, pinnedTarget = null;
+    let mode = 'assistant', error = null, pinnedTarget = null, fullAccess = false;
     let runConfig = host.runConfig?.read() || { ...RUN_DEFAULTS }, savingRunConfig = false;
     let contextConfig = host.contextConfig?.read() || { ...CONTEXT_DEFAULTS }, savingContextConfig = false, compacting = null;
     const omittedViews = new Set();
     const compactResults = new Map();
     let instructionConfig = host.instructionConfig?.read() || { ...INSTRUCTION_DEFAULTS }, instructionDraft = { ...instructionConfig }, savingInstructions = false;
-    const permissions = createPermissions();
+    const permissions = createPermissions({ fullAccess: () => fullAccess });
     const requiredPermission = () => mode === 'chat' ? 'chat' : 'diagnostics';
     const category = definition => definition.dataClasses.includes('public-knowledge') ? 'public' : definition.dataClasses.includes('chat-content') ? 'chat' : 'diagnostics';
     const listeners = new Set(), sessions = new Map(), inputs = new Map(), intentions = new Map(), notices = new Map();
@@ -43,18 +46,43 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const scrollPositions = new Map();
     const emit = () => { for (const fn of [...listeners]) { try { fn(); } catch { /* Detached views cannot control tasks. */ } } };
     const live = () => { if (disposed) throw new Error('CONTROLLER_DISPOSED'); };
-    const recordedActions = new Map(), explanations = new Map(), actionOwners = new Map();
-    const actions = createConfigActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.configWriter, changed: () => { captureReceipts(); emit(); } });
+    const recordedActions = new Map(), explanations = new Map(), actionOwners = new Map(), approvedPlans = new Set(), declinedPlans = new Set(), invalidPlans = new Set();
+    const autoActions = [], autoPlans = [];
+    const actionChanged = () => { captureReceipts(); emit(); queueMicrotask(flushAutoActions); };
+    const actions = createConfigActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.configWriter, changed: actionChanged });
+    const variableActions = createVariableActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.variableWriter, changed: actionChanged });
+    const bundleActions = createTaskBundleActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.bundleWriter, changed: actionChanged });
+    const profileActions = createProfileActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.profileWriter, changed: actionChanged });
+    function flushAutoActions() {
+        if (!fullAccess || !app || resetting || disposed || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy) return;
+        const plan = autoPlans.shift();
+        if (plan) {
+            try { api.approveTaskPlanReads(plan.id, plan.revision); }
+            catch { notices.set(plan.sessionId, 'RESULT_NEEDS_REVIEW'); emit(); }
+            return;
+        }
+        const next = autoActions.shift();
+        if (!next) return;
+        try {
+            const artifact = app.getArtifact(next.id);
+            if (artifact.revision !== next.revision || artifact.sessionId !== next.sessionId || artifact.kind !== next.kind ||
+                jsonKey(next.target) !== jsonKey(['config-draft', 'profile-draft'].includes(next.kind) ? host.globalTarget : host.currentTarget())) throw Error('ACTION_STALE');
+            const coordinator = next.kind === 'config-draft' ? actions : next.kind === 'variable-draft' ? variableActions : next.kind === 'profile-draft' ? profileActions : bundleActions;
+            const record = coordinator.prepare(next.id, next.revision);
+            actionOwners.set(record.id, next.owner);
+            void coordinator.approve(record.id).then(() => queueMicrotask(flushAutoActions));
+        } catch { notices.set(next.sessionId, 'RESULT_NEEDS_REVIEW'); emit(); queueMicrotask(flushAutoActions); }
+    }
     const targetFor = () => mode === 'assistant' ? pinnedTarget || host.currentTarget() || host.globalTarget : taskCatalog[mode].scope === 'chat' ? host.currentTarget() : host.globalTarget;
     const receiptAllowed = (receipt, target) => mode !== 'assistant' ? permissions.allows('diagnostics', target) : receiptSources(receipt).every(source => {
-        const scoped = source === 'source:memoryDiagnostics' ? host.currentTarget() : target;
+        const scoped = ['source:memoryDiagnostics', 'source:variables'].includes(source) ? host.currentTarget() : target;
         return (!receipt.memoryPrune || source !== 'source:memoryDiagnostics' || scoped?.chatKey === receipt.memoryPrune.chatKey) && permissions.allows(source, scoped);
     });
     const configAllowed = (target, taskId = null) => {
         if (mode !== 'assistant') return permissions.allows('diagnostics', target, taskId);
         const receipts = receiptsFor(selectedId());
         const sources = receipts.length ? [...new Set(receipts.flatMap(receiptSources))] : ['source:memoryConfig'];
-        return sources.every(source => permissions.allows(source, source === 'source:memoryDiagnostics' ? host.currentTarget() : target, taskId));
+        return sources.every(source => permissions.allows(source, ['source:memoryDiagnostics', 'source:variables'].includes(source) ? host.currentTarget() : target, taskId));
     };
     const scopeKey = () => historyScope(mode, targetFor());
     const selectedId = () => viewedId || sessions.get(scopeKey());
@@ -62,7 +90,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const library = createSessionLibrary({ port: host.history, changed: emit });
     const views = new Map();
     function captureReceipts() {
-        for (const action of actions.list()) {
+        for (const action of [...actions.list(), ...variableActions.list(), ...bundleActions.list(), ...profileActions.list()]) {
             const owner = actionOwners.get(action.id) || [...runtimeSessions].find(([, runtimeId]) => runtimeId === action.sessionId)?.[0];
             if (owner) actionOwners.set(action.id, owner);
             if (!receiptStatuses.includes(action.status) || recordedActions.has(action.id)) continue;
@@ -103,8 +131,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
         emit();
     }
     async function manageSession(id, action, value) {
-        live(); if (resetting || checking || actions.busy || !library.meta(id)) throw Error('NOT_READY');
-        if (action !== 'rename') actions.invalidate();
+        live(); if (resetting || checking || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || !library.meta(id)) throw Error('NOT_READY');
+        if (action !== 'rename') { actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); }
         resetting = true; selectionEpoch++; emit();
         try {
             const runtimeId = runtimeSessions.get(id);
@@ -155,20 +183,26 @@ export function createMuyuController({ host, createModel = createChatCompletions
         const taskUsage = taskRuns.reduce((sum, run) => { const b = run.process?.budget; if (b) for (const k of ['modelCalls', 'toolCalls', 'inputTokens', 'outputTokens', 'elapsedMs']) sum[k] += b[k] || 0; return sum; }, { segments: taskRuns.length, modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 });
         return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly,
             interaction: isReadOnly ? null : interaction, taskUsage,
-            enabled: !!model, resetting, mode, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
+            enabled: !!model, resetting, mode, fullAccess, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
             permissions: permissions.snapshot(targetFor()), sourceGrants: permissions.sourceGrants(targetFor()), canReadConfig: configAllowed(targetFor()), canCheckReceipts: Object.fromEntries(receiptsFor(selectedId()).map(r => [r.operationId, receiptAllowed(r, host.globalTarget)])), savedConnection: host.credentials?.describe() || null,
             runConfig: { ...runConfig }, savingRunConfig,
             contextConfig: { ...contextConfig }, savingContextConfig,
             instructionSettings: { saved: { ...instructionConfig }, draft: { ...instructionDraft }, saving: savingInstructions, dirty: JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft) },
             context: { turns: plan.turns, omitted: plan.omitted, summaryUsed: plan.summaryUsed, estimatedTokens: plan.estimatedTokens, omitHistory: omittedViews.has(viewKey()), summary: record?.contextSummary?.text || '', summaryStale: !!record?.contextSummary && !usableSummary(record.contextSummary, record.messages), compacting: !!compacting && compacting.id === id, progress: compactState?.progress || null, usage: compactState?.usage || null },
-            busy: !!checking || actions.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued'), draining: !!compacting?.finished || !!state?.draining,
+            busy: !!checking || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued'), draining: !!compacting?.finished || !!state?.draining,
             occupiedElsewhere: !!compacting && compacting.id !== id || !!state?.activeRunId && state.runs.find(r => r.id === state.activeRunId)?.sessionId !== sessionId,
             messages: session?.messages || record?.messages || [], runs: state?.runs.filter(r => r.sessionId === sessionId) || [],
             history: { ...library.snapshot(scopeKey(), id, { ...historyFilters, chatKey: host.currentTarget()?.chatKey }), filters: { ...historyFilters }, restoredStatus: !session ? record?.status : null,
                 missingPermissions: (record?.required || []).filter(kind => !permissions.allows(kind, targetFor())),
                 omitted: plan.omitted },
             artifacts: isReadOnly ? [] : state?.artifacts.filter(a => a.sessionId === sessionId) || [],
+            approvedPlans: isReadOnly ? [] : [...approvedPlans],
+            declinedPlans: isReadOnly ? [] : [...declinedPlans],
+            invalidPlans: isReadOnly ? [] : [...invalidPlans],
             configActions: isReadOnly ? [] : actions.list().filter(a => a.sessionId === sessionId), canApplyConfig: !!host.configWriter,
+            variableActions: isReadOnly ? [] : variableActions.list().filter(a => a.sessionId === sessionId), canApplyVariable: !!host.variableWriter,
+            bundleActions: isReadOnly ? [] : bundleActions.list().filter(a => a.sessionId === sessionId), canApplyBundle: !!host.bundleWriter,
+            profileActions: isReadOnly ? [] : profileActions.list().filter(a => a.sessionId === sessionId), canSaveProfile: !!host.profileWriter,
             receipts: receiptsFor(id), receiptRecordFailed: [...recordedActions.values()].some(e => e.id === id && e.failed),
             configChecks: Object.fromEntries(receiptsFor(id).filter(r => configChecks.has(r.operationId)).map(r => [r.operationId, structuredClone(configChecks.get(r.operationId))])),
             receiptExplanations: Object.fromEntries([...explanations].map(([key, runId]) => [key, state?.runs.find(r => r.id === runId)?.status || 'interrupted'])),
@@ -177,7 +211,10 @@ export function createMuyuController({ host, createModel = createChatCompletions
     }
     function assemble() {
         actions.clear();
-        actionOwners.clear();
+        variableActions.clear();
+        bundleActions.clear();
+        profileActions.clear();
+        actionOwners.clear(); approvedPlans.clear(); declinedPlans.clear(); invalidPlans.clear();
         for (const [key, entry] of recordedActions) if (!entry.failed) recordedActions.delete(key);
         explanations.clear();
         configChecks.clear();
@@ -211,6 +248,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
                     if (!allowedTools.includes(definition.id)) return false;
                     if (intent.mode === 'assistant') {
                         const taskId = options.identity.taskId;
+                        if (['muyu.settings.preview', 'muyu.variables.preview', 'muyu.task.preview'].includes(definition.id) && args.apply === true && !fullAccess) return 'full_access_required';
+                        if (definition.id === 'muyu.profile.preview' && args.save === true && !fullAccess) return 'full_access_required';
                         if (definition.id === PERMISSION_TOOL) return permissionRequestAllowed(args, target, taskId, permissions, host.providerPort) ? true
                             : permissionRequestAlreadyGranted(args, target, taskId, permissions, host.providerPort) ? 'permission_request_invalid' : false;
                         const access = assistantToolAccess(definition, args, target, taskId, permissions, host.providerPort);
@@ -232,8 +271,13 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 },
                 onEvent: event => {
                     options.onEvent(event);
-                    if (['tool.completed', 'tool.failed'].includes(event.type) && ['muyu.config.preview', 'muyu.settings.preview'].includes(event.payload.toolId)) intent.candidateId = event.payload.result.data?.candidateId || null;
+                    if (['tool.completed', 'tool.failed'].includes(event.type) && builtins.candidateTool(event.payload.toolId)) {
+                        const candidateId = event.payload.result.data?.candidateId;
+                        intent.candidate = event.payload.result.ok && candidateId ? { toolId: event.payload.toolId, candidateId } : null;
+                        intent.autoApplyCandidateId = fullAccess && event.payload.result.ok && event.payload.result.data?.applyRequested === true ? candidateId : null;
+                    }
                     if (event.type === 'tool.completed' && event.payload.result?.ok) intent.completedTools.add(event.payload.toolId);
+                    if (event.type === 'tool.failed') intent.failedTool = true;
                     if (event.type === 'run.finished' && ['CONTEXT_LIMIT', 'MODEL_NETWORK_ERROR', 'MODEL_AUTH_ERROR', 'MODEL_RATE_LIMIT', 'MODEL_SERVICE_ERROR', 'MODEL_HISTORY_UNAVAILABLE', 'MODEL_OUTPUT_TRUNCATED', 'TIMEOUT', 'BUDGET_EXCEEDED'].includes(event.payload.error)) intent.failure = event.payload.error;
                 },
             });
@@ -249,18 +293,27 @@ export function createMuyuController({ host, createModel = createChatCompletions
                     if (run?.status === 'succeeded' && intent && !intent.explanation) {
                         const notice = builtins.tasks[intent.mode].publish(app, event.runId, intent);
                         if (notice) notices.set(run.sessionId, notice);
+                        if (fullAccess && intent.candidate?.toolId === 'muyu.task.plan') {
+                            const plan = app.snapshot().artifacts.find(a => a.sourceRunId === event.runId && a.kind === 'task-plan');
+                            if (plan) autoPlans.push({ id: plan.id, revision: plan.revision, sessionId: plan.sessionId });
+                        }
+                        if (fullAccess && !intent.failedTool && intent.autoApplyCandidateId && intent.autoApplyCandidateId === intent.candidate?.candidateId) {
+                            const artifact = app.snapshot().artifacts.find(a => a.sourceRunId === event.runId && ['config-draft', 'variable-draft', 'task-bundle', 'profile-draft'].includes(a.kind));
+                            if (artifact) autoActions.push({ id: artifact.id, revision: artifact.revision, kind: artifact.kind, sessionId: artifact.sessionId, target: ['config-draft', 'profile-draft'].includes(artifact.kind) ? host.globalTarget : run.target, owner: [...runtimeSessions].find(([, runtimeId]) => runtimeId === run.sessionId)?.[0] });
+                        }
                     }
                 } catch { notices.set(run.sessionId, 'RESULT_NEEDS_REVIEW'); }
                 finally { builtins.forgetRun(event.runId); intentions.delete(event.runId); }
             }
-            if (event.type === 'queue.released') running = null;
+            if (event.type === 'queue.released') { running = null; queueMicrotask(flushAutoActions); }
             if (event.type === 'run.settled' || event.type === 'run.started') capture();
             emit();
         }).unsubscribe;
     }
     async function stopAndDrain() {
+        autoActions.length = 0; autoPlans.length = 0;
         if (checking) { checking.abort.abort(); await checking.promise; }
-        actions.invalidate(); await actions.drain();
+        actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); await Promise.all([actions.drain(), variableActions.drain(), bundleActions.drain(), profileActions.drain()]);
         if (!app) return;
         if (compacting) running?.cancel();
         for (const r of app.snapshot().runs) app.cancel(r.id);
@@ -276,14 +329,15 @@ export function createMuyuController({ host, createModel = createChatCompletions
         if (!candidate || usableSummary(record.contextSummary, record.messages) && candidate.through <= record.contextSummary.through) return null;
         return { ...candidate, tail: planContext(record.messages.slice(candidate.through), null, config).messages };
     }
-    function clear() { actions.clear(); selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); notices.clear(); continuations.clear(); permissions.clear(); }
+    function clear() { actions.clear(); variableActions.clear(); bundleActions.clear(); profileActions.clear(); autoActions.length = 0; autoPlans.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); notices.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
     const api = {
         snapshot,
+        setFullAccess(enabled) { live(); if (!model || resetting || snapshot().busy) throw Error('NOT_READY'); fullAccess = enabled === true; if (!fullAccess) { autoActions.length = 0; autoPlans.length = 0; } emit(); },
         explainReceipt(id) { return send({ explanation: id }); },
         async checkReceipt(id) {
             live(); const s = snapshot(), receipt = s.receipts.find(r => r.operationId === id);
-            if (!model || resetting || s.busy || s.readOnly || !receipt) throw Error('NOT_READY');
+            if (!model || resetting || s.busy || s.readOnly || !receipt || receipt.version >= 3) throw Error('NOT_READY');
             if (!receiptAllowed(receipt, host.globalTarget)) throw Error('CONSENT_REQUIRED');
             const owner = selectedId(), target = host.globalTarget, abort = new AbortController();
             const job = { abort, promise: null }; checking = job;
@@ -305,6 +359,59 @@ export function createMuyuController({ host, createModel = createChatCompletions
             return actions.approve(id);
         },
         cancelConfigApply(id) { live(); if (resetting || !snapshot().configActions.some(r => r.id === id)) throw Error('ACTION_STALE'); actions.cancel(id); },
+        prepareVariableApply(id, revision) {
+            live(); const s = snapshot();
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !s.artifacts.some(a => a.id === id && a.revision === revision && a.kind === 'variable-draft')) throw Error('ACTION_STALE');
+            return variableActions.prepare(id, revision);
+        },
+        approveVariableApply(id) {
+            live(); const s = snapshot();
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !s.variableActions.some(a => a.id === id && a.status === 'pending')) throw Error('ACTION_STALE');
+            return variableActions.approve(id);
+        },
+        cancelVariableApply(id) { live(); if (resetting || !snapshot().variableActions.some(a => a.id === id)) throw Error('ACTION_STALE'); variableActions.cancel(id); },
+        prepareBundleApply(id, revision) {
+            live(); const s = snapshot();
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !s.artifacts.some(a => a.id === id && a.revision === revision && a.kind === 'task-bundle')) throw Error('ACTION_STALE');
+            return bundleActions.prepare(id, revision);
+        },
+        approveBundleApply(id) {
+            live(); const s = snapshot();
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !s.bundleActions.some(a => a.id === id && a.status === 'pending')) throw Error('ACTION_STALE');
+            return bundleActions.approve(id);
+        },
+        cancelBundleApply(id) { live(); if (resetting || !snapshot().bundleActions.some(a => a.id === id)) throw Error('ACTION_STALE'); bundleActions.cancel(id); },
+        prepareProfileSave(id, revision) {
+            live(); const s = snapshot();
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !s.artifacts.some(a => a.id === id && a.revision === revision && a.kind === 'profile-draft')) throw Error('ACTION_STALE');
+            return profileActions.prepare(id, revision);
+        },
+        approveProfileSave(id) {
+            live(); const s = snapshot();
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !s.profileActions.some(a => a.id === id && a.status === 'pending')) throw Error('ACTION_STALE');
+            return profileActions.approve(id);
+        },
+        cancelProfileSave(id) { live(); if (resetting || !snapshot().profileActions.some(a => a.id === id)) throw Error('ACTION_STALE'); profileActions.cancel(id); },
+        approveTaskPlanReads(id, revision) {
+            live(); const s = snapshot(), artifact = s.artifacts.find(a => a.id === id && a.revision === revision);
+            if (!model || resetting || s.busy || s.readOnly || mode !== 'assistant' || !artifact || artifact.kind !== 'task-plan' || approvedPlans.has(id) || declinedPlans.has(id) || invalidPlans.has(id) ||
+                artifact.validation?.intent !== 'read-scope-review' ||
+                jsonKey(artifact.content.target) !== jsonKey(artifact.content.target.kind === 'chat' ? host.currentTarget() : host.globalTarget) ||
+                !app.snapshot().tasks.some(task => task.id === artifact.taskId && task.status === 'awaiting_acceptance')) throw Error('TASK_PLAN_STALE');
+            const sources = artifact.content.plan.sources.map(source => sourceKey(source));
+            const result = permissions.grantTaskSources(sources, artifact.content.target, artifact.taskId,
+                () => send({ planArtifactId: id }));
+            approvedPlans.add(id); emit(); return result;
+        },
+        declineTaskPlanReads(id, revision) {
+            live(); const s = snapshot(), artifact = s.artifacts.find(a => a.id === id && a.revision === revision);
+            if (resetting || s.busy || s.readOnly || mode !== 'assistant' || !artifact || artifact.kind !== 'task-plan' || approvedPlans.has(id) || declinedPlans.has(id) || invalidPlans.has(id) ||
+                artifact.validation?.intent !== 'read-scope-review' ||
+                !app.snapshot().tasks.some(task => task.id === artifact.taskId && task.status === 'awaiting_acceptance')) throw Error('TASK_PLAN_STALE');
+            declinedPlans.add(id);
+            permissions.forgetTask(artifact.content.target, artifact.taskId);
+            emit();
+        },
         setInteractionDraft(id, value) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); app.setInteractionDraft(id, value); },
         answerInteraction(id) { return api.send({ interactionId: id }); },
         answerPermission(id, decision) {
@@ -403,12 +510,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
             live(); if (resetting) throw new Error('RESETTING');
             const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
             const next = createModel({ connection: resolved }); resetting = true; emit();
-            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? resolved : null); live(); clear(); model = next; connection = { endpoint: config.endpoint, model: config.model, thinking: config.thinking !== false }; assemble(); error = null; }
+            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, autoConnect: config.autoConnect === true } : null); live(); const draft = inputs.get(viewKey()) || ''; clear(); model = next; connection = { endpoint: config.endpoint, model: config.model, thinking: config.thinking !== false, remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
             finally { resetting = false; emit(); }
         },
-        async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); clear(); inputs.clear(); } finally { resetting = false; emit(); } },
+        async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); await host.credentials?.setAutoConnect?.(false); clear(); inputs.clear(); } finally { resetting = false; emit(); } },
         send({ consent, fields, artifactId, interactionId } = {}) { return send({ consent, fields, artifactId, interactionId }); },
-        stop() { live(); checking?.abort.abort(); actions.invalidate(); if (compacting) running?.cancel(); if (app) { app.invalidateInteractions(); for (const t of app.snapshot().tasks) permissions.forgetTask(app.snapshot().sessions.find(s => s.id === t.sessionId)?.target, t.id); for (const r of app.snapshot().runs) app.cancel(r.id); } emit(); },
+        stop() { live(); autoActions.length = 0; autoPlans.length = 0; checking?.abort.abort(); actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const t of state.tasks) permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); for (const r of state.runs) app.cancel(r.id); } emit(); },
         revalidate(id, revision) { live(); if (!app || resetting || snapshot().busy) throw new Error('NOT_READY');
             if (!['draft', 'assistant'].includes(mode) || !snapshot().artifacts.some(a => a.id === id && a.revision === revision)) throw new Error('INVALID_ARTIFACT');
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }
@@ -416,7 +523,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         },
         async dispose() { if (disposed) return; disposed = true; unsubscribeHost(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); await library.close(); },
     };
-    function send({ consent, fields = [], artifactId = null, interactionId = null, permissionDecision = null, explanation = null } = {}) {
+    function send({ consent, fields = [], artifactId = null, planArtifactId = null, interactionId = null, permissionDecision = null, explanation = null } = {}) {
             live(); if (!app || resetting || snapshot().busy || snapshot().history.loading) throw new Error('NOT_READY');
             if (readOnly(library.get(selectedId()))) throw Error('HISTORY_READ_ONLY');
             const request = snapshot().interaction;
@@ -424,14 +531,18 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const continuation = interactionId && request?.id === interactionId && request.status === 'pending' ? continuations.get(request.taskId) : null;
             if (interactionId && (!continuation || continuation.mode !== mode)) throw Error('INTERACTION_STALE');
             if (continuation && (request.kind === 'permission') !== (permissionDecision !== null)) throw Error('INTERACTION_STALE');
-            if (continuation) { fields = continuation.fields; artifactId = continuation.artifact?.id || null; }
+            if (continuation) {
+                fields = continuation.fields;
+                artifactId = continuation.artifact?.kind === 'config-draft' ? continuation.artifact.id : null;
+                planArtifactId = continuation.artifact?.kind === 'task-plan' ? continuation.artifact.id : null;
+            }
             const target = targetFor(); if (!target) throw new Error('CHAT_REQUIRED');
             if (consent === true && mode !== 'assistant') permissions.grant(requiredPermission(), host.currentTarget());
             else if (mode === 'chat') permissions.declineChat(target);
             if (!['chat', 'assistant'].includes(mode) && !permissions.allows(requiredPermission(), host.currentTarget())) throw new Error('CONSENT_REQUIRED');
             if (explanation && (omittedViews.has(viewKey()) || !configAllowed(target) || !receiptsFor(selectedId()).some(r => r.operationId === explanation))) throw Error('HISTORY_PERMISSION_REQUIRED');
             if (!explanation) builtins.tasks[mode].validate?.(fields);
-            syncTarget(false); const key = viewKey(), input = explanation ? '请解释操作回执 ' + explanation + ' 的结果、保存确认情况及注意事项。不要重新执行操作。' : continuation ? permissionDecision !== null ? permissionAnswer(request, permissionDecision) : describeAnswer(request, request.draft) : inputs.get(key) || ''; if (!input.trim()) throw new Error('EMPTY_INPUT');
+            syncTarget(false); const key = viewKey(), input = explanation ? '请解释操作回执 ' + explanation + ' 的结果、保存确认情况及注意事项。不要重新执行操作。' : continuation ? permissionDecision !== null ? permissionAnswer(request, permissionDecision) : describeAnswer(request, request.draft) : planArtifactId ? '应用已批准此任务方案列出的读取来源。请继续只读核对并更新方案；尚无任何写入权限，不要声称已应用。' : inputs.get(key) || ''; if (!input.trim()) throw new Error('EMPTY_INPUT');
             let id = selectedId();
             if (!id) { id = library.create(scopeKey()); sessions.set(scopeKey(), id); }
             const record = library.get(id); library.assertRoom(id);
@@ -440,7 +551,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const historyStart = autoHistoryOmitted ? record.messages.length : continuation?.autoHistoryOmitted ? 0 : continuation?.historyStart ?? (omittedViews.has(key) ? record.messages.length : 0);
             const omitHistory = historyStart > 0 || !continuation && omittedViews.has(key);
             if (!omitHistory && record.required.some(kind => !permissions.allows(kind, target, continuation ? request.taskId : null))) throw Error('HISTORY_PERMISSION_REQUIRED');
-            if (omitHistory && artifactId) throw Error('INVALID_ARTIFACT');
+            if (omitHistory && (artifactId || planArtifactId)) throw Error('INVALID_ARTIFACT');
             let sessionId = runtimeSessions.get(id);
             if (!sessionId) {
                 if (runtimeSessions.size >= 8) {
@@ -449,21 +560,30 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 }
                 sessionId = app.createSession(target, record.messages); runtimeSessions.set(id, sessionId);
             }
-            const artifact = artifactId ? app.getArtifact(artifactId) : null;
-            if (artifact && (!['draft', 'assistant'].includes(mode) || artifact.sessionId !== sessionId || artifact.kind !== 'config-draft')) throw new Error('INVALID_ARTIFACT');
+            const artifact = artifactId || planArtifactId ? app.getArtifact(artifactId || planArtifactId) : null;
+            if (artifact && (!['draft', 'assistant'].includes(mode) || artifact.sessionId !== sessionId || artifact.kind !== (planArtifactId ? 'task-plan' : 'config-draft'))) throw new Error('INVALID_ARTIFACT');
             // Task policy has one owner: the composed instruction channel, not a duplicate user constraint.
-            const instructions = explanation ? composeReceiptInstructions(instructionConfig) : composeInstructions(mode, instructionConfig);
+            const baseInstructions = explanation ? composeReceiptInstructions(instructionConfig) : composeInstructions(mode, instructionConfig);
+            const instructions = fullAccess && mode === 'assistant' && !explanation ? { ...baseInstructions, task: baseInstructions.task + '\n本连接已由用户在界面开启全权限模式：资料读取和已注册 Provider 执行无需再申请授权，不要调用授权工具。若用户明确要求直接修改，使用相应 preview 工具并在同一次调用中设 apply=true；宿主将在本轮成功结束后校验并执行，真实结果以操作回执为准，不要提前声称已保存。若用户要求只预览、不要应用或只读，绝不设置 apply=true。不要为了省事扩张字段、目标、工具或预算；高风险 Provider 仍需确认其与用户意图相符。' } : baseInstructions;
             if (continuation?.artifact && artifact.revision !== continuation.artifact.revision) throw Error('STALE_DRAFT');
             const contextPlan = planContext(record.messages.slice(historyStart), omitHistory ? null : record.contextSummary, contextConfig, false);
             const result = continuation ? permissionDecision !== null ? app.answerPermission(interactionId, permissionDecision) : app.answerInteraction(interactionId, request.draft) : artifact ? { taskId: artifact.taskId, runId: app.continueTask(artifact.taskId, input) } : app.submit(sessionId, input, []);
             const receipts = !omitHistory && configAllowed(target, result.taskId) ? receiptsFor(id).filter(r => !explanation || r.operationId === explanation).slice(-3) : [];
             if (explanation) explanations.set(explanation, result.runId);
-            intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, candidateId: null, completedTools: new Set(), autoHistoryOmitted, instructions: autoHistoryOmitted ? { ...instructions, task: instructions.task + '\n部分历史因缺少资料授权未发送，本轮不据此猜测历史；必要时可逐项申请：' + missing.join(', ') } : instructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
+            intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, candidate: null, completedTools: new Set(), autoHistoryOmitted, instructions: autoHistoryOmitted ? { ...instructions, task: instructions.task + '\n部分历史因缺少资料授权未发送，本轮不据此猜测历史；必要时可逐项申请：' + missing.join(', ') } : instructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
                 compaction: !omitHistory && contextConfig.autoSummary && contextPlan.omitted > 0 ? candidateFor(record, contextConfig) : null });
             omittedViews.delete(key);
             const granted = mode === 'assistant' ? [] : ['diagnostics', 'chat', 'extended', ...permissionSources.filter(source => !['source:memoryConfig', 'source:memoryDiagnostics', 'source:directorDiagnostics'].includes(source))].filter(kind => permissions.allows(kind, target, result.taskId));
             library.update(id, { title: record.title || input.slice(0, 80), required: [...new Set([...record.required, ...granted])] });
-            capture(); if (!continuation && !explanation) { inputs.set(key, ''); inputs.set(viewKey(), ''); } notices.delete(sessionId); error = null; emit(); return result;
+            capture(); if (!continuation && !explanation && !planArtifactId) { inputs.set(key, ''); inputs.set(viewKey(), ''); } notices.delete(sessionId); error = null; emit(); return result;
     }
+    try {
+        const saved = host.credentials?.restoreAutoConnection?.();
+        if (saved) {
+            model = createModel({ connection: saved });
+            connection = { endpoint: saved.endpoint, model: saved.model, thinking: saved.thinking !== false, remembered: true, autoConnect: true };
+            assemble();
+        }
+    } catch { model = null; connection = null; }
     return Object.freeze(api);
 }

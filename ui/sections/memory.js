@@ -17,10 +17,10 @@ registerSection('memory', function (ctx) {
     $c('memory-enabled').prop('checked', settings.memoryEnabled ?? false);
     $section.toggle(settings.memoryEnabled ?? false);
     $c('memory-token-budget').val(settings.memoryTokenBudget ?? 2000);
-    $c('memory-prompt').val(settings.memoryPrompt || DEFAULT_MEMORY_PROMPT);
-    $c('memory-json-schema').val(settings.memoryJsonSchema || DEFAULT_MEMORY_SCHEMA);
-    $c('memory-render-template').val(settings.memoryRenderTemplate || DEFAULT_MEMORY_RENDER);
-    $c('memory-compress-prompt').val(settings.memoryCompressPrompt || DEFAULT_MEMORY_COMPRESS_PROMPT);
+    $c('memory-prompt').data('gdDefaultPrompt', DEFAULT_MEMORY_PROMPT).val(settings.memoryPrompt || DEFAULT_MEMORY_PROMPT);
+    $c('memory-json-schema').data('gdDefaultSchema', DEFAULT_MEMORY_SCHEMA).val(settings.memoryJsonSchema || DEFAULT_MEMORY_SCHEMA);
+    $c('memory-render-template').data('gdDefaultTemplate', DEFAULT_MEMORY_RENDER).val(settings.memoryRenderTemplate || DEFAULT_MEMORY_RENDER);
+    $c('memory-compress-prompt').data('gdDefaultPrompt', DEFAULT_MEMORY_COMPRESS_PROMPT).val(settings.memoryCompressPrompt || DEFAULT_MEMORY_COMPRESS_PROMPT);
     $c('memory-keep-recent').val(settings.memoryKeepRecent ?? 5);
     $c('memory-max-entries').val(settings.memoryMaxEntries ?? 200);
 

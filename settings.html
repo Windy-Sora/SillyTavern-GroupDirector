@@ -260,9 +260,9 @@
                         <span data-i18n="jsonSchemaCard">高级：JSON 输出格式</span>
                     </div>
                     <div class="gd-card-body">
-                        <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="jsonSchemaHint"><code>{{scriptField}}</code> 在启用剧本时替换为 scripts 字段，<code>{{storyBlueprintDoneField}}</code> 在启用故事蓝图时替换为完成变量字段；禁用时清空。</small>
+                        <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="jsonSchemaHint">这是给模型看的输出格式提示，不是原生 JSON Schema。<code>{{scriptField}}</code> 和 <code>{{storyBlueprintDoneField}}</code> 按功能开关替换；留空表示不提供提示，点“默认”才恢复内置文本。</small>
                         <textarea id="gd-llm-json-schema" class="text_pole textarea_compact" rows="10" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
-                        <small style="color:#ff9800;display:block;margin-top:4px;" data-i18n="jsonSchemaWarning">⚠ 如果你在 Director Prompt 中指示 LLM 返回额外字段，请务必在此 Schema 模板中添加对应字段，否则 LLM 返回的字段将被忽略。</small>
+                        <small style="color:#ff9800;display:block;margin-top:4px;" data-i18n="jsonSchemaWarning">⚠ Director 和 LLM 强制发言共用此提示；缺少 speakers 数组说明会影响选人。格式提示不保证模型按此输出。</small>
                         <span class="menu_button menu_button_icon" id="gd-llm-json-schema-reset" style="margin-top:4px;">
                             <i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span>
                         </span>
@@ -319,8 +319,10 @@
                             <input type="number" id="gd-llm-script-continuity-count" class="text_pole" min="0" max="100" step="1">
                             <label for="gd-llm-script-continuity-wrapper" data-i18n="continuityWrapper">包装模板（仅上一轮）</label>
                             <textarea id="gd-llm-script-continuity-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                            <small style="color:var(--grey70a);display:block;" data-i18n="continuityWrapperHint">使用 {{previousPlan}} 插入上一份计划；留空会直接插入计划 JSON，不恢复出厂说明。</small>
                             <label for="gd-llm-script-continuity-history-wrapper" data-i18n="continuityHistoryWrapper">包装模板（完整历史）</label>
                             <textarea id="gd-llm-script-continuity-history-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                            <small style="color:var(--grey70a);display:block;" data-i18n="continuityHistoryWrapperHint">使用 {{previousPlans}} 插入计划列表；留空会直接插入 JSON。轮数 0 表示全部历史。</small>
                         </div>
 
                     </div>
@@ -339,6 +341,7 @@
                             </label>
                             <label for="gd-llm-world-info-wrapper" data-i18n="worldInfoWrapperShort">包装模板</label>
                             <textarea id="gd-llm-world-info-wrapper" class="text_pole textarea_compact" rows="2" style="width:100%;"></textarea>
+                            <small class="gd-hint" data-i18n="worldInfoWrapperHint">用 {{worldInfo}} 指定正文位置；空白时直接使用正文。此模板也会影响其他使用世界书 Provider 的 Prompt。</small>
                         </div>
                         <label for="gd-knowledge-text" data-i18n="knowledgeShort">知识库</label>
                         <textarea id="gd-knowledge-text" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
@@ -533,9 +536,11 @@
                         <textarea id="gd-memory-prompt" class="text_pole textarea_compact" rows="6" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-memory-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <label for="gd-memory-json-schema" data-i18n="memoryJsonSchemaTitle">JSON Schema</label>
+                        <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="memoryJsonSchemaHint">仅支持 memories 数组及 event/mood 字段；非空时校验之后的提取结果，不改变已有记忆。</small>
                         <textarea id="gd-memory-json-schema" class="text_pole textarea_compact" rows="4" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-memory-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <label for="gd-memory-render-template" data-i18n="memoryRenderTemplateTitle">渲染模板</label>
+                        <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="memoryRenderTemplateHint">仅控制之后 {{charMemory}} 的文本；空串保留旧版分组格式，不影响 {{charMemoryCurrent}}。</small>
                         <textarea id="gd-memory-render-template" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                         <span class="menu_button menu_button_icon" id="gd-memory-render-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="resetBtn">默认</span></span>
                         <label for="gd-memory-compress-prompt" data-i18n="memoryCompressPromptLabel">压缩 Prompt</label>
@@ -821,10 +826,12 @@
                     <label for="gd-story-blueprint-continue-prompt" data-i18n="storyBlueprintContinuePrompt">续写 Prompt</label>
                     <textarea id="gd-story-blueprint-continue-prompt" class="text_pole textarea_compact" rows="3" style="width:100%;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-story-blueprint-continue-prompt-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintContinuePromptReset">默认续写 Prompt</span></span>
-                    <label for="gd-story-blueprint-schema" data-i18n="storyBlueprintSchema">蓝图 JSON Schema / 输出格式</label>
+                    <label for="gd-story-blueprint-schema" data-i18n="storyBlueprintSchema">蓝图输出格式说明</label>
+                    <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="storyBlueprintSchemaHint">作为文本附在生成与续写 Prompt 后；不执行 JSON Schema 校验。</small>
                     <textarea id="gd-story-blueprint-schema" class="text_pole textarea_compact" rows="7" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
-                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintSchemaReset">默认 Schema</span></span>
+                    <span class="menu_button menu_button_icon" id="gd-story-blueprint-schema-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintSchemaReset">默认输出格式</span></span>
                     <label for="gd-story-blueprint-template" data-i18n="storyBlueprintTemplate">Provider 注入模板</label>
+                    <small style="color:var(--grey70a);display:block;margin-bottom:2px;" data-i18n="storyBlueprintTemplateHint">仅替换蓝图数据的点分路径；不执行其他 Provider。</small>
                     <textarea id="gd-story-blueprint-template" class="text_pole textarea_compact" rows="8" style="width:100%;font-family:monospace;font-size:0.82em;"></textarea>
                     <span class="menu_button menu_button_icon" id="gd-story-blueprint-template-reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="storyBlueprintTemplateReset">默认模板</span></span>
                     <label for="gd-story-blueprint-provider-preview" data-i18n="storyBlueprintProviderPreview">Provider 预览：{{storyBlueprintCurrent}}</label>

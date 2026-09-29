@@ -43,6 +43,17 @@ export function createSourcePermissions() {
             // Enqueue is synchronous. No observer callback runs between commit and rollback.
             try { return continuation(); } catch (error) { if (old) map.set(id, old); else map.delete(id); throw error; }
         },
+        grantTaskSources(sources, target, taskId, continuation) {
+            const id = taskKey(target, taskId);
+            if (!id || !Array.isArray(sources) || sources.length > 12 || new Set(sources).size !== sources.length ||
+                sources.some(source => !permissionSources.includes(source) || source === 'source:providerExecution' || !scope(source, target) || contains(denied, id, source)) ||
+                typeof continuation !== 'function') throw Error('INVALID_TASK_SCOPE');
+            if (!tasks.has(id) && tasks.size >= 1024) throw Error('PERMISSION_CAPACITY');
+            const old = tasks.get(id), next = new Set(old);
+            for (const source of sources) next.add(source);
+            tasks.set(id, next);
+            try { return continuation(); } catch (error) { if (old) tasks.set(id, old); else tasks.delete(id); throw error; }
+        },
         revoke(source, target) {
             chats.get(scope(source, target))?.delete(source);
             for (const map of [tasks, denied]) for (const [id, values] of map) if (scope(source, JSON.parse(JSON.parse(id)[0])) === scope(source, target)) values.delete(source);

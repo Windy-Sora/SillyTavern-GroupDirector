@@ -8,12 +8,154 @@ import { createCredentialStore } from '../../muyu/host/credentials.js';
 import { RUN_DEFAULTS } from '../../muyu/core/budget.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
+import { createVariableDraftPort } from '../../muyu/host/variable-draft.js';
+import { createVariableWriter } from '../../muyu/host/variable-write.js';
+import { createTaskBundleDraftPort } from '../../muyu/host/task-bundle-draft.js';
+import { createTaskBundleWriter } from '../../muyu/host/task-bundle-write.js';
+import { createProfileWriter } from '../../muyu/host/profile-write.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subject.mjs';
 
 const tool = (toolId, args = {}) => ({ type: 'tool_call_complete', call: { toolId, callId: 'c1', version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
 
 const ask = () => tool('muyu.interaction.ask', { question: 'Which part?', options: ['Frequency', 'Content'] });
+const taskPlan = () => tool('muyu.task.plan', { goal: '建立当前聊天金币系统', scope: 'mixed',
+    sources: ['configSettings', 'variables'], steps: [
+        { kind: 'read', title: '核对现状', detail: '只读现有变量与配置' },
+        { kind: 'variables', title: '创建金币余额', detail: '当前尚无变量写入工具' },
+        { kind: 'settings', title: '预览激活设置', detail: '另需配置草稿与单次批准' },
+    ], unknowns: ['是否已有同名变量'] });
+test('Task plan reviews two read sources once, resumes same task and never grants write authority', async () => {
+    const f = fixture([[taskPlan(), done], [text('只读方案'), done],
+        [tool('muyu.settings.read', { fields: ['mode'] }), done], [text('仍未修改'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('给本聊天建立金币系统并激活');
+    f.controller.send(); await settle();
+    const before = f.controller.snapshot(), plan = before.artifacts.find(a => a.kind === 'task-plan');
+    assert.ok(plan); assert.deepEqual(plan.content.plan.sources, ['configSettings', 'variables']);
+    assert.equal(before.configActions.length, 0); assert.equal(f.reads(), 0);
+    assert.equal(JSON.parse(f.controller.exportHistory()).required.includes('source:variables'), false);
+    f.controller.setInput('保留的未发送草稿');
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    assert.equal(f.controller.snapshot().input, '保留的未发送草稿');
+    assert.ok(f.reads() > 0);
+    assert.equal(f.controller.snapshot().approvedPlans.includes(plan.id), true);
+    assert.equal(f.controller.snapshot().configActions.length, 0);
+    assert.throws(() => f.controller.approveTaskPlanReads(plan.id, plan.revision), /TASK_PLAN_STALE/);
+    assert.equal(JSON.parse(f.controller.exportHistory()).required.includes('source:configSettings'), true);
+    f.switchChat('B');
+    assert.equal(f.controller.snapshot().artifacts.length, 0);
+    await f.controller.dispose();
+});
+test('Declining a task plan does not resume it or authorize its read sources', async () => {
+    const f = fixture([[taskPlan(), done], [text('只读方案'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('建立金币系统');
+    f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    assert.ok(plan);
+    const calls = f.model.requests.length;
+    f.controller.declineTaskPlanReads(plan.id, plan.revision);
+    assert.equal(f.model.requests.length, calls);
+    assert.equal(f.reads(), 0);
+    assert.equal(f.controller.snapshot().declinedPlans.includes(plan.id), true);
+    assert.throws(() => f.controller.approveTaskPlanReads(plan.id, plan.revision), /TASK_PLAN_STALE/);
+    await f.controller.dispose();
+});
+test('Stopped plan cannot regrant reads; approved plan produces an unapplied variable draft', async () => {
+    const draftArgs = { action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0, min: 0,
+        rule: '有明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' };
+    const stopped = fixture([[taskPlan(), done], [text('方案'), done]]);
+    await stopped.enable(); stopped.controller.setMode('assistant'); stopped.controller.setInput('金币系统'); stopped.controller.send(); await settle();
+    const oldPlan = stopped.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    stopped.controller.stop();
+    assert.ok(stopped.controller.snapshot().invalidPlans.includes(oldPlan.id));
+    assert.throws(() => stopped.controller.approveTaskPlanReads(oldPlan.id, oldPlan.revision), /TASK_PLAN_STALE/);
+    await stopped.controller.dispose();
+
+    const f = fixture([[taskPlan(), done], [text('方案'), done], [tool('muyu.variables.preview', draftArgs), done], [text('草稿未应用'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    const draft = f.controller.snapshot().artifacts.find(a => a.kind === 'variable-draft');
+    assert.ok(draft); assert.equal(draft.content.definition.id, 'party_gold');
+    assert.equal(f.ctx.chatMetadata.gd, undefined);
+    assert.equal(f.controller.snapshot().configActions.length, 0);
+    assert.equal(f.controller.revalidate(draft.id, draft.revision).validation.writes, 'separate-approval-required');
+    f.ctx.chatMetadata.gd = { variables: { defs: [{ id: 'party_gold', scope: 'global', type: 'number', defaultValue: 0 }], values: { global: {}, character: {} }, log: [] } };
+    assert.throws(() => f.controller.revalidate(draft.id, draft.revision), /STALE_DRAFT/);
+    await f.controller.dispose();
+});
+test('One explicit variable approval saves once and records a chat-scoped historical receipt', async () => {
+    let saves = 0;
+    const draftArgs = { action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0, min: 0,
+        rule: '有明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' };
+    const f = fixture([[taskPlan(), done], [text('方案'), done], [tool('muyu.variables.preview', draftArgs), done], [text('草稿'), done]],
+        { variableSaveConfirmed: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    const draft = f.controller.snapshot().artifacts.find(a => a.kind === 'variable-draft');
+    assert.ok(draft); assert.equal(f.ctx.chatMetadata.gd, undefined);
+    const action = f.controller.prepareVariableApply(draft.id, draft.revision);
+    assert.equal(saves, 0); assert.equal(f.ctx.chatMetadata.gd, undefined);
+    await f.controller.approveVariableApply(action.id);
+    assert.equal(saves, 1); assert.equal(f.ctx.chatMetadata.gd.variables.values.global.party_gold, 0);
+    const receipt = f.controller.snapshot().receipts.find(r => r.operationId === action.id);
+    assert.equal(receipt.version, 3); assert.equal(receipt.variableId, 'party_gold'); assert.equal(receipt.status, 'applied_confirmed'); assert.equal(receipt.chatSave, 'confirmed');
+    assert.ok(JSON.parse(f.controller.exportHistory()).required.includes('source:variables'));
+    assert.throws(() => f.controller.approveVariableApply(action.id), /ACTION_STALE/);
+    await assert.rejects(f.controller.checkReceipt(action.id), /NOT_READY/);
+    await f.controller.dispose();
+});
+test('One task-bundle approval executes exact variable and global setting steps without further approvals', async () => {
+    let chatSaves = 0, settingsSaves = 0;
+    const plan = { ...taskPlan().call.args, sources: ['memoryConfig', 'variables'] };
+    const bundle = { variables: [{ action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0,
+        rule: '仅在明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' }], settingsJson: '{"memoryEnabled":false}' };
+    const f = fixture([[tool('muyu.task.plan', plan), done], [text('方案'), done],
+        [tool('muyu.task.preview', bundle), done], [text('整单草稿'), done]],
+    { variableSaveConfirmed: async () => { chatSaves++; }, bundleSaveSettings: async () => { settingsSaves++; return { confirmed: true }; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('建立金币系统'); f.controller.send(); await settle();
+    const planArtifact = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    f.controller.approveTaskPlanReads(planArtifact.id, planArtifact.revision); await settle();
+    const draft = f.controller.snapshot().artifacts.find(a => a.kind === 'task-bundle');
+    assert.ok(draft); assert.equal(chatSaves, 0); assert.equal(settingsSaves, 0);
+    const action = f.controller.prepareBundleApply(draft.id, draft.revision);
+    await f.controller.approveBundleApply(action.id);
+    assert.equal(chatSaves, 1); assert.equal(settingsSaves, 1); assert.equal(f.settings.memoryEnabled, false);
+    const receipt = f.controller.snapshot().receipts.find(row => row.operationId === action.id);
+    assert.equal(receipt.version, 4); assert.equal(receipt.status, 'applied_confirmed');
+    assert.deepEqual(receipt.steps.map(row => row.status), ['applied_confirmed', 'applied_confirmed']);
+    assert.throws(() => f.controller.approveBundleApply(action.id), /ACTION_STALE/);
+    await f.controller.dispose();
+});
+test('Plan read scope survives a clarification handoff within the same task only', async () => {
+    const draftArgs = { action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0,
+        rule: '有明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' };
+    const f = fixture([[taskPlan(), done], [text('方案'), done], [ask(), done], [tool('muyu.variables.preview', draftArgs), done], [text('仅预览'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    const question = f.controller.snapshot().interaction;
+    assert.equal(question.kind, 'clarification');
+    f.controller.setInteractionDraft(question.id, '队伍共享金币');
+    f.controller.answerInteraction(question.id); await settle();
+    assert.ok(f.controller.snapshot().artifacts.some(a => a.kind === 'variable-draft'));
+    assert.equal(f.controller.snapshot().taskUsage.segments, 3);
+    assert.equal(f.ctx.chatMetadata.gd, undefined);
+    await f.controller.dispose();
+});
+test('Plan budget exhaustion cannot publish an incomplete candidate or run an unbudgeted preview', async () => {
+    const f = fixture([[taskPlan(), done], [tool('muyu.variables.preview', { action: 'create', id: 'party_gold' }), done]], {
+        runConfig: { read: () => ({ ...RUN_DEFAULTS, modelCalls: 2, toolCalls: 1 }) },
+    });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
+    const state = f.controller.snapshot();
+    assert.equal(state.artifacts.length, 0);
+    assert.equal(state.runs[0].status, 'failed');
+    assert.equal(state.runs[0].process.budget.reason, 'tool_calls');
+    assert.equal(f.ctx.chatMetadata.gd, undefined);
+    await f.controller.dispose();
+});
 test('Ordinary chat queries config only with diagnostics permission; history cannot bypass revocation', async () => {
     let f, reads = 0;
     const port = createProviderPort({ getSettings: () => { reads++; return f.settings; }, getContext: () => f.ctx, extensionKey: 'gd' });
@@ -389,7 +531,15 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
     const events = new EventEmitter(), settings = { memoryEnabled: true, autoMemoryEnabled: true, autoMemoryInterval: 10, autoMemorySpeakers: false };
     const ctx = { groupId: 'g', chatId: 'A', groups: [{ id: 'g', members: ['private-avatar'] }], chat: [{ mes: 'PRIVATE_BODY' }], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };
     let reads = 0;
-    const host = createHostBridge({ getContext: () => ctx, getSettings: () => { reads++; return settings; }, extensionKey: 'gd', pageId: 'test', ...extraHost });
+    let host;
+    const variableDraftPort = createVariableDraftPort({ getTarget: () => host?.currentTarget(), getMetadata: () => ctx.chatMetadata, extensionKey: 'gd' });
+    const variableWriter = extraHost.variableSaveConfirmed && createVariableWriter({ draftPort: variableDraftPort,
+        getTarget: () => host?.currentTarget(), getMetadata: () => ctx.chatMetadata, extensionKey: 'gd', saveChatConfirmed: extraHost.variableSaveConfirmed });
+    const getSettings = () => { reads++; return settings; };
+    const bundleDraftPort = createTaskBundleDraftPort({ getTarget: () => host?.currentTarget(), getSettings, variableDraftPort });
+    const configWriter = extraHost.bundleSaveSettings ? createConfigWriter({ getSettings, saveSettings: extraHost.bundleSaveSettings, isBusy: () => false }) : extraHost.configWriter;
+    const bundleWriter = variableWriter && configWriter && createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget: () => host?.currentTarget(), variableWriter, configWriter });
+    host = createHostBridge({ getContext: () => ctx, getSettings, extensionKey: 'gd', pageId: 'test', ...extraHost, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter });
     const model = scriptedModel(steps), configs = [];
     const controller = createMuyuController({ host, createModel: config => { configs.push(config); return model; } });
     controller.setMode('memory');
@@ -398,6 +548,104 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
         switchChat: id => { ctx.chatId = id; events.emit('chat'); } };
 }
 const settle = async () => { for (let i = 0; i < 12; i++) await flush(); };
+
+test('Generated config profile needs one UI approval, records a save-only receipt and leaves active settings alone', async () => {
+    const profileSettings = { mode: 'off', topN: 1, configProfiles: [] }; let saves = 0;
+    const profileWriter = createProfileWriter({ getSettings: () => profileSettings, saveSettings: async () => { saves++; return { confirmed: true }; }, getDrawerKeys: () => ({}) });
+    const args = { name: 'Two speakers', description: 'For group pacing', settingsJson: '{"mode":"formula","topN":2}' };
+    const f = fixture([[tool('muyu.profile.preview', args), done], [text('Profile preview ready'), done]], { profileWriter });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Create a reusable profile; preview first'); f.controller.send(); await settle();
+    const draft = f.controller.snapshot().artifacts.find(a => a.kind === 'profile-draft');
+    assert.ok(draft); assert.equal(saves, 0); assert.equal(profileSettings.configProfiles.length, 0);
+    assert.equal(f.controller.revalidate(draft.id, draft.revision).validation.writes, 'profile-save-only');
+    const action = f.controller.prepareProfileSave(draft.id, draft.revision);
+    assert.equal(saves, 0);
+    await f.controller.approveProfileSave(action.id);
+    assert.equal(saves, 1); assert.equal(profileSettings.mode, 'off'); assert.equal(profileSettings.topN, 1);
+    assert.deepEqual(profileSettings.configProfiles[0].settings, { mode: 'formula', topN: 2 });
+    const receipt = f.controller.snapshot().receipts.find(r => r.operationId === action.id);
+    assert.equal(receipt.version, 5); assert.equal(receipt.status, 'saved_confirmed'); assert.equal(receipt.persistence, 'confirmed');
+    assert.throws(() => f.controller.approveProfileSave(action.id), /ACTION_STALE/);
+    await f.controller.dispose();
+});
+
+test('Full access saves an explicitly requested profile, but never auto-saves a preview-only profile', async () => {
+    const profileSettings = { configProfiles: [] }; let saves = 0;
+    const profileWriter = createProfileWriter({ getSettings: () => profileSettings, saveSettings: async () => { saves++; return { confirmed: true }; }, getDrawerKeys: () => ({}) });
+    const f = fixture([[tool('muyu.profile.preview', { name: 'Preview', settingsJson: '{"topN":2}' }), done], [text('Preview only'), done],
+        [tool('muyu.profile.preview', { name: 'Saved', settingsJson: '{"topN":3}', save: true }), done], [text('Save requested'), done]], { profileWriter });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('Preview a reusable profile only'); f.controller.send(); await settle();
+    assert.equal(saves, 0); assert.equal(f.controller.snapshot().profileActions.length, 0);
+    f.controller.setInput('Create and save another profile'); f.controller.send(); await settle();
+    assert.equal(saves, 1); assert.deepEqual(profileSettings.configProfiles.map(p => p.name), ['Saved']);
+    await f.controller.dispose();
+});
+
+test('A profile tool cannot request direct saving outside full-access mode', async () => {
+    const profileSettings = { configProfiles: [] }; let saves = 0;
+    const profileWriter = createProfileWriter({ getSettings: () => profileSettings, saveSettings: async () => { saves++; return { confirmed: true }; }, getDrawerKeys: () => ({}) });
+    const f = fixture([[tool('muyu.profile.preview', { name: 'Denied', settingsJson: '{"topN":2}', save: true }), done], [text('No direct save'), done]], { profileWriter });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Save directly'); f.controller.send(); await settle();
+    assert.equal(saves, 0); assert.equal(profileSettings.configProfiles.length, 0);
+    assert.equal(f.controller.snapshot().artifacts.some(a => a.kind === 'profile-draft'), false);
+    await f.controller.dispose();
+});
+
+test('Full access directly grants reads and applies only an explicitly requested preview without approval calls', async () => {
+    let saves = 0;
+    const f = fixture([[tool('muyu.settings.preview', { changes: { autoMemoryInterval: 15 }, apply: true }), done], [text('等待操作回执'), done]],
+        { bundleSaveSettings: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('把自动记忆间隔改成 15'); f.controller.send(); await settle();
+    assert.equal(f.model.requests.length, 2);
+    assert.equal(f.controller.snapshot().interaction, null);
+    assert.equal(f.settings.autoMemoryInterval, 15, JSON.stringify({ artifacts: f.controller.snapshot().artifacts, actions: f.controller.snapshot().configActions, notice: f.controller.snapshot().notice, process: f.controller.snapshot().runs.at(-1)?.process }));
+    assert.equal(saves, 1);
+    assert.equal(f.controller.snapshot().configActions.length, 1);
+    assert.equal(f.controller.snapshot().configActions[0].status, 'applied_unconfirmed');
+    await f.controller.dispose();
+});
+
+test('Full access respects preview-only intent and reconnect turns the mode off', async () => {
+    let saves = 0;
+    const f = fixture([[tool('muyu.settings.preview', { changes: { autoMemoryInterval: 15 } }), done], [text('只预览'), done]],
+        { bundleSaveSettings: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('只预览，不要应用'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().artifacts.some(a => a.kind === 'config-draft'), true);
+    assert.equal(f.controller.snapshot().configActions.length, 0);
+    assert.equal(f.settings.autoMemoryInterval, 10); assert.equal(saves, 0);
+    await f.enable(); assert.equal(f.controller.snapshot().fullAccess, false);
+    await f.controller.dispose();
+});
+
+test('Without full access a model cannot request direct application', async () => {
+    let saves = 0;
+    const f = fixture([[tool('muyu.settings.preview', { changes: { autoMemoryInterval: 15 }, apply: true }), done], [text('未应用'), done]],
+        { bundleSaveSettings: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('修改间隔'); f.controller.send(); await settle();
+    assert.equal(f.settings.autoMemoryInterval, 10); assert.equal(saves, 0);
+    assert.equal(f.controller.snapshot().configActions.length, 0);
+    await f.controller.dispose();
+});
+
+test('Full access continues a task plan and executes one bounded bundle without permission handoffs', async () => {
+    let chatSaves = 0, settingsSaves = 0;
+    const bundle = { variables: [{ action: 'create', id: 'party_gold', label: 'Party gold', initialValue: 0,
+        rule: 'Update on explicit transaction', autoUpdate: true, injectMode: 'always', updateMode: 'delta' }],
+    settingsJson: '{"memoryEnabled":false}', apply: true };
+    const f = fixture([[taskPlan(), done], [text('继续'), done], [tool('muyu.task.preview', bundle), done], [text('等待操作回执'), done]],
+        { variableSaveConfirmed: async () => { chatSaves++; }, bundleSaveSettings: async () => { settingsSaves++; return { confirmed: true }; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('建立金币系统并启用'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().interaction, null);
+    assert.equal(f.controller.snapshot().approvedPlans.length, 1);
+    assert.equal(f.controller.snapshot().bundleActions[0]?.status, 'applied_confirmed');
+    assert.equal(chatSaves, 1); assert.equal(settingsSaves, 1);
+    assert.equal(f.settings.memoryEnabled, false);
+    await f.controller.dispose();
+});
 
 test('Instruction edits are draft-only, pinned at send time and not duplicated into task/user/history data', async () => {
     const gate = deferred(), saved = [];
@@ -571,6 +819,25 @@ test('Saved credentials restore only on explicit configure, stay out of snapshot
     await g.controller.configure({ endpoint: 'https://saved.test/chat/completions', apiKey: '', model: 'm', rememberKey: true });
     assert.equal(g.configs.at(-1).connection.apiKey, 'SYNTHETIC_KEY');
     await g.controller.forgetCredential(); assert.equal(g.controller.snapshot().savedConnection, null); await g.controller.dispose();
+});
+
+test('Opted-in connection auto-enables after restart without restoring grants, and disable persists opt-out', async () => {
+    const settings = {}; let saves = 0;
+    const credentials = createCredentialStore({ getSettings: () => settings, saveSettings: () => saves++ });
+    const f = fixture(undefined, { credentials });
+    f.controller.setInput('unsent question');
+    await f.controller.configure({ endpoint: 'https://saved.test/chat/completions', apiKey: 'SYNTHETIC_KEY', model: 'm', rememberKey: true, autoConnect: true });
+    assert.equal(f.controller.snapshot().input, 'unsent question');
+    f.controller.grantPermission('diagnostics'); await f.controller.dispose();
+    const g = fixture(undefined, { credentials });
+    assert.equal(g.controller.snapshot().enabled, true);
+    assert.equal(g.controller.snapshot().permissions.diagnostics, false);
+    assert.doesNotMatch(JSON.stringify(g.controller.snapshot()), /SYNTHETIC_KEY/);
+    assert.equal(g.configs[0].connection.apiKey, 'SYNTHETIC_KEY');
+    await g.controller.disable(); assert.equal(credentials.describe().autoConnect, false);
+    await g.controller.dispose();
+    const h = fixture(undefined, { credentials }); assert.equal(h.controller.snapshot().enabled, false);
+    assert.ok(saves >= 2); await h.controller.dispose();
 });
 
 test('Director mode publishes a safe report under chat ownership and cannot use memory-state tools', async () => {

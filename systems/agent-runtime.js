@@ -46,7 +46,7 @@ export const AgentTrace = {
     /** Get current ring buffer max size. */
     getMax: () => _maxTraces,
     /** Set ring buffer max size. */
-    setMax: (n) => { const v = Number(n); _maxTraces = Number.isFinite(v) ? Math.max(1, Math.floor(v)) : 50; if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
+    setMax: (n) => { const v = Number(n); _maxTraces = Number.isFinite(v) ? Math.min(200, Math.max(1, Math.floor(v))) : 50; if (traceBuffer.length > _maxTraces) traceBuffer.splice(0, traceBuffer.length - _maxTraces); },
 };
 
 /**

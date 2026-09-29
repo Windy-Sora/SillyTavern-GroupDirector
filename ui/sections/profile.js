@@ -12,8 +12,12 @@ registerSection('profile', function (ctx) {
     const defaultGeneratorPrompt = getDefaultProfileGeneratorPrompt();
     $c('profile-generator-prompt').val(settings.profileGeneratorPrompt || defaultGeneratorPrompt);
     $c('profile-generator-prompt').data?.('gdDefaultPrompt', defaultGeneratorPrompt);
-    $c('profile-json-schema').val(settings.profileJsonSchema || getDefaultProfileSchema());
-    $c('profile-render-template').val(settings.profileRenderTemplate || getDefaultProfileRenderTemplate());
+    const defaultProfileSchema = getDefaultProfileSchema();
+    $c('profile-json-schema').val(settings.profileJsonSchema || defaultProfileSchema);
+    $c('profile-json-schema').data?.('gdDefaultSchema', defaultProfileSchema);
+    const defaultProfileRenderTemplate = getDefaultProfileRenderTemplate();
+    $c('profile-render-template').val(settings.profileRenderTemplate || defaultProfileRenderTemplate);
+    $c('profile-render-template').data?.('gdDefaultTemplate', defaultProfileRenderTemplate);
     $('#gd-profile-section').toggle(settings.profileEnabled);
 
     $c('profile-enabled').on('input', () => {

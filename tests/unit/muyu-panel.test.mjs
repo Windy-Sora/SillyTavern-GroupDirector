@@ -39,6 +39,7 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
         deleteSession(id) { state.history.sessions = state.history.sessions.filter(s => s.id !== id); state.history.sessionId = ''; emit(); },
         setHistoryEnabled(value) { state.history.enabled = value; emit(); }, retryHistory() { state.history.error = null; emit(); },
         configure(config) { configs.push(config); state.enabled = true; emit(); }, disable() { state.enabled = false; emit(); }, stop() { stops++; state.busy = false; emit(); },
+        setFullAccess(enabled) { state.fullAccess = enabled; emit(); },
     };
     const all = (el = root) => [el, ...el.children.flatMap(e => all(e))];
     // A settings editor now also uses textarea; existing interaction cases target the composer.
@@ -47,10 +48,111 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
     mount(); return { root, state, controller, listeners, sent, configs, emit, find, all, mount, stops: () => stops };
 }
 
+test('Full-access switch confirms once and keeps a warning visible outside settings', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    f.state.enabled = true; f.emit();
+    const toggle = f.all().find(e => e.tag === 'input' && e.parent?.textContent?.includes('Full-access mode'));
+    assert.ok(toggle); assert.equal(toggle.checked, false);
+    let accepted = false; f.root.ownerDocument.defaultView = { confirm: () => accepted };
+    toggle.checked = true; toggle.onchange(); assert.equal(f.state.fullAccess, undefined); assert.equal(toggle.checked, false);
+    accepted = true; toggle.checked = true; toggle.onchange(); assert.equal(f.state.fullAccess, true);
+    const warning = f.all().find(e => e.className === 'gd-muyu-full-access-warning');
+    assert.equal(warning.hidden, false); assert.equal(warning.parent.className, 'gd-muyu-chat');
+    toggle.checked = false; toggle.onchange(); assert.equal(f.state.fullAccess, false); assert.equal(warning.hidden, true);
+    f.root.__gdMuyuDispose();
+});
+
 function managedHistory() {
     return { available: true, enabled: true, loading: false, pending: 0, error: null, dirty: false, sessionId: 'old', persisted: true,
         selected: { id: 'old', title: 'Title', archived: false }, sessions: [{ id: 'old', title: 'Title' }], missingPermissions: [], omitted: 0 };
 }
+
+test('Task plan card distinguishes unavailable writes and offers one explicit read decision', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    let approvals = 0, declines = 0;
+    f.state.artifacts = [{ id: 'plan-1', revision: 1, kind: 'task-plan', content: { plan: {
+        goal: 'Create a coin system', sources: ['configSettings', 'variables'], unknowns: ['Existing balance?'],
+        steps: [{ kind: 'read', title: 'Inspect', detail: 'Read settings', availability: 'read-only' },
+            { kind: 'variables', title: 'Create balance', detail: 'Needs a write port', availability: 'not-available' }],
+    } } }];
+    f.controller.approveTaskPlanReads = () => { approvals++; f.state.approvedPlans = ['plan-1']; f.emit(); };
+    f.controller.declineTaskPlanReads = () => { declines++; f.state.declinedPlans = ['plan-1']; f.emit(); };
+    f.emit();
+    assert.ok(f.all().some(e => e.textContent?.includes('Create balance · Not available yet')));
+    assert.ok(f.all().some(e => e.textContent?.includes('not any write')));
+    await f.find('button', 'Decline reads').click();
+    assert.equal(declines, 1); assert.equal(approvals, 0);
+    assert.equal(f.find('button', 'Allow reads and continue planning'), undefined);
+    f.state.declinedPlans = []; f.emit();
+    await f.find('button', 'Allow reads and continue planning').click();
+    assert.equal(approvals, 1); assert.equal(f.find('button', 'Decline reads'), undefined);
+    f.root.__gdMuyuDispose();
+});
+
+test('Generated profile card is save-only and needs a separate confirmation', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let writes = 0;
+    f.state.canSaveProfile = true;
+    f.state.artifacts = [{ id: 'profile-1', revision: 1, kind: 'profile-draft', content: {
+        name: 'Two speakers', description: 'Group pacing', settings: { mode: 'formula', topN: 2 }, warnings: [],
+    } }];
+    f.controller.prepareProfileSave = () => { f.state.profileActions = [{ id: 'save-1', artifactId: 'profile-1', revision: 1, status: 'pending' }]; f.emit(); };
+    f.controller.approveProfileSave = () => { writes++; f.state.profileActions[0].status = 'saved_confirmed'; f.emit(); };
+    f.emit();
+    assert.ok(f.all().some(e => e.textContent?.includes('Saving does not change active settings')));
+    await f.find('button', 'Review and save to My Profiles').click(); assert.equal(writes, 0);
+    f.root.__gdMuyuDispose(); f.mount(); assert.equal(writes, 0);
+    await f.find('button', 'Save this profile').click(); assert.equal(writes, 1);
+    assert.equal(f.find('button', 'Save this profile'), undefined);
+    f.root.__gdMuyuDispose();
+});
+
+test('Variable draft card shows exact preview with revalidation but no apply action', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let checks = 0;
+    f.state.artifacts = [{ id: 'variable-1', revision: 1, kind: 'variable-draft', content: { preview: {
+        id: 'party_gold', diff: [{ field: 'autoUpdate', before: false, after: true }],
+    } } }];
+    f.controller.revalidate = () => { checks++; };
+    f.emit();
+    assert.ok(f.all().some(e => e.textContent?.includes('Current-chat variable: party_gold')));
+    assert.ok(f.all().some(e => e.textContent?.includes('changed or saved nothing')));
+    assert.equal(f.find('button', 'Review and apply'), undefined);
+    await f.find('button', 'Revalidate').click(); assert.equal(checks, 1);
+    f.root.__gdMuyuDispose();
+});
+
+test('Variable application requires a second explicit click and never executes on remount', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let writes = 0;
+    f.state.canApplyVariable = true;
+    f.state.artifacts = [{ id: 'variable-1', revision: 1, kind: 'variable-draft', content: { preview: {
+        id: 'party_gold', diff: [{ field: 'autoUpdate', before: false, after: true }],
+    } } }];
+    f.controller.prepareVariableApply = () => { f.state.variableActions = [{ id: 'op', artifactId: 'variable-1', revision: 1, status: 'pending' }]; f.emit(); };
+    f.controller.approveVariableApply = () => { writes++; f.state.variableActions[0].status = 'applied_confirmed'; f.emit(); };
+    f.emit(); await f.find('button', 'Review and apply variable').click(); assert.equal(writes, 0);
+    f.root.__gdMuyuDispose(); f.mount(); assert.equal(writes, 0);
+    await f.find('button', 'Apply this variable change').click(); assert.equal(writes, 1);
+    assert.equal(f.find('button', 'Apply this variable change'), undefined);
+    f.root.__gdMuyuDispose();
+});
+
+test('Operation bundle shows ordered scopes and requires one exact approval after review', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let writes = 0;
+    f.state.canApplyBundle = true;
+    f.state.artifacts = [{ id: 'bundle-1', revision: 1, kind: 'task-bundle', content: {
+        variables: [{ preview: { id: 'party_gold', diff: [{ field: 'defaultValue', before: null, after: 0 }] } }],
+        settings: { preview: { diff: [{ field: 'memoryEnabled', before: 'true', after: 'false' }], warnings: [] } },
+    } }];
+    f.controller.prepareBundleApply = () => { f.state.bundleActions = [{ id: 'bundle-op', artifactId: 'bundle-1', revision: 1, status: 'pending' }]; f.emit(); };
+    f.controller.approveBundleApply = () => { writes++; f.state.bundleActions[0].status = 'applied_confirmed'; f.emit(); };
+    f.emit();
+    assert.ok(f.all().some(e => e.textContent?.includes('Current-chat variable: party_gold')));
+    assert.ok(f.all().some(e => e.textContent?.includes('Global settings: affects all chats')));
+    await f.find('button', 'Review and apply bundle').click(); assert.equal(writes, 0);
+    f.root.__gdMuyuDispose(); f.mount(); assert.equal(writes, 0);
+    await f.find('button', 'Approve and run bundle').click(); assert.equal(writes, 1);
+    assert.equal(f.find('button', 'Approve and run bundle'), undefined);
+    f.root.__gdMuyuDispose();
+});
 
 for (const lang of ['zh', 'en']) test(`Unified composer has no task picker, field checklist or broad permission toggles (${lang})`, async () => {
     const f = fixture(lang, true, { initialMode: 'assistant' });
@@ -355,9 +457,9 @@ test('History status distinguishes loading, conflicts, permission gates and inte
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
 
-test('Classic view defaults closed and disabled; mount/close/rebuild never starts work or leaks subscriptions', () => {
+test('Classic view defaults closed; mount/close/rebuild never starts work or leaks subscriptions', () => {
     const f = fixture(); const shell = f.find('details');
-    assert.equal(f.listeners.size, 0); assert.equal(f.find('button', '发送').disabled, true);
+    assert.equal(f.listeners.size, 0); assert.equal(f.find('button', '发送').disabled, false);
     shell.toggle(true); shell.toggle(true); assert.equal(f.listeners.size, 1);
     f.find('textarea').value = 'unsaved'; f.find('textarea').oninput();
     shell.toggle(false); assert.equal(f.listeners.size, 0);
@@ -474,14 +576,37 @@ test('Saved permission sends directly once, survives view remount and can be rev
     checkbox.checked = false; await checkbox.onchange(); assert.equal(f.state.permissions.diagnostics, false);
 });
 
-test('Remember-key option is opt-in; saved key is not placed in password input and forget clears status', async () => {
+test('Auto-enable defaults on, keeps credentials private, and can be switched off', async () => {
     const f = fixture('zh', true), remember = f.all().find(e => e.type === 'checkbox' && e.parent.textContent?.startsWith('记住 API'));
-    assert.equal(remember.checked, false); remember.checked = true;
+    const auto = f.all().find(e => e.type === 'checkbox' && e.parent.textContent?.startsWith('下次打开时自动'));
+    assert.equal(remember.checked, true); assert.equal(auto.checked, true);
     f.all().find(e => e.type === 'password').value = 'SYNTHETIC'; await f.find('button', '启用此连接').click();
-    assert.equal(f.configs[0].rememberKey, true); assert.equal(f.all().find(e => e.type === 'password').value, '');
+    assert.equal(f.configs[0].rememberKey, true); assert.equal(f.configs[0].autoConnect, true); assert.equal(f.all().find(e => e.type === 'password').value, '');
     f.state.savedConnection = { remembered: true, endpoint: 'https://saved.test/chat/completions', model: 'saved', thinking: true }; f.mount();
     assert.equal(f.all().find(e => e.type === 'password').value, ''); assert.equal(f.all().find(e => e.type === 'url').value, 'https://saved.test/chat/completions');
+    assert.equal(f.all().find(e => e.type === 'checkbox' && e.parent.textContent?.startsWith('下次打开时自动')).checked, false);
     await f.find('button', '清除已保存密钥').click(); assert.equal(f.state.savedConnection, null);
+});
+
+test('Sending without a connection prompts for setup and keeps the unsent message', async () => {
+    const f = fixture('zh', true, { initialMode: 'assistant' });
+    const settings = f.all().find(e => e.className === 'gd-muyu-settings');
+    const input = f.find('textarea'), send = f.find('button', '发送');
+    assert.equal(send.disabled, false);
+    const popup = [], previousToastr = globalThis.toastr;
+    globalThis.toastr = { warning: value => popup.push(value) };
+    try { input.value = '还没配置的提问'; await send.click(); }
+    finally { globalThis.toastr = previousToastr; }
+    assert.equal(settings.hidden, false); assert.match(f.all().find(e => e.attrs.role === 'alert').textContent, /消息已保留/);
+    assert.equal(popup.length, 1);
+    assert.equal(f.state.input, '还没配置的提问'); assert.equal(f.sent.length, 0);
+    const key = f.all().find(e => e.type === 'password'); key.value = 'SYNTHETIC';
+    f.controller.configure = () => { throw Error('CREDENTIAL_SAVE_FAILED'); };
+    await f.find('button', '启用此连接').click(); assert.equal(key.value, 'SYNTHETIC'); assert.equal(input.value, '还没配置的提问');
+    f.controller.configure = config => { f.configs.push(config); f.state.enabled = true; f.emit(); };
+    await f.find('button', '启用此连接').click();
+    assert.equal(settings.hidden, true); assert.equal(input.value, '还没配置的提问');
+    f.root.__gdMuyuDispose();
 });
 
 test('Extended story context has its own opt-in control and scope summary', async () => {

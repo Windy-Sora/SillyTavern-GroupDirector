@@ -11,6 +11,10 @@ import { createSettingsLayout } from './settings-layout.js';
 import { createInteractionView } from './interaction-view.js';
 import { createPermissionView } from './permission-view.js';
 import { renderConfigApply } from './config-apply-view.js';
+import { renderVariableApply } from './variable-apply-view.js';
+import { renderTaskBundleApply } from './task-bundle-apply-view.js';
+import { renderProfileSave } from './profile-save-view.js';
+import { permissionTitle } from '../permissions/contract.js';
 import { createReceiptView } from './receipt-view.js';
 
 /** Safe Markdown view. The controller owns all state and execution. */
@@ -33,14 +37,20 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const back = button(t('返回聊天', 'Back to chat'), connection);
     const settingsLayout = createSettingsLayout({ doc, root: connection, lang });
     node('h3', t('连接与隐私', 'Connection and privacy'), settingsLayout.pages.connection);
-    node('p', t('模型只读并生成草稿；已登记配置由你逐份确认应用。记忆上限可能裁剪当前聊天旧记忆，需单独预览和批准。批准不跨刷新保留。', 'The model reads and drafts only. You explicitly approve each registered setting change. The memory limit may prune old entries in this chat and requires its own preview and approval. Approvals never survive reload.'), settingsLayout.pages.connection);
+    node('p', t('默认模式下，模型只读并生成草稿，配置由你逐份确认应用。全权限模式开启后，可直接执行已登记修改与 Provider；记忆上限可能裁剪当前聊天旧记忆。授权不跨连接或刷新保留。', 'Normally the model reads and drafts; you approve each change. Full-access mode can directly execute registered changes and Providers. The memory limit may prune this chat. Full access does not survive reconnection or reload.'), settingsLayout.pages.connection);
     node('p', t('输入及已授权资料会发送至下方服务。更换连接会取消任务并清除运行产物和授权，历史记录仍可查看。', 'Input and authorized data go to this service. Reconnecting cancels tasks and clears live artifacts/grants; history remains available.'), settingsLayout.pages.connection);
     const endpoint = field(t('完整接口地址', 'Full endpoint'), 'url', settingsLayout.pages.connection); endpoint.value = 'https://api.deepseek.com/chat/completions';
     const model = field(t('模型', 'Model'), 'text', settingsLayout.pages.connection); model.value = 'deepseek-flash';
     const key = field(t('API 密钥', 'API key'), 'password', settingsLayout.pages.connection); key.autocomplete = 'off';
-    const rememberKey = field(t('记住 API Key（可选，默认关闭）', 'Remember API key (optional, off by default)'), 'checkbox', settingsLayout.pages.connection);
-    rememberKey.checked = !!controller.snapshot().savedConnection;
-    node('small', t('保存在酒馆插件设置中，未加密，同源脚本及酒馆备份可能读取。仅复用到相同接口地址；不会自动连接或授予资料权限。', 'Stored unencrypted in ST extension settings; same-origin scripts and ST backups may access it. Reused only at the same endpoint; never auto-connects or grants data access.'), settingsLayout.pages.connection);
+    const initialConnection = controller.snapshot().connection;
+    const savedConnection = controller.snapshot().savedConnection;
+    const rememberKey = field(t('记住 API Key', 'Remember API key'), 'checkbox', settingsLayout.pages.connection);
+    rememberKey.checked = initialConnection ? initialConnection.remembered !== false : true;
+    const autoConnect = field(t('下次打开时自动启用此连接（默认开启）', 'Enable this connection automatically next time (on by default)'), 'checkbox', settingsLayout.pages.connection);
+    autoConnect.checked = initialConnection ? initialConnection.autoConnect === true : savedConnection ? savedConnection.autoConnect === true : true;
+    rememberKey.onchange = () => { if (!rememberKey.checked) autoConnect.checked = false; };
+    autoConnect.onchange = () => { if (autoConnect.checked) rememberKey.checked = true; };
+    node('small', t('自动启用需要记住 API Key。密钥保存在酒馆插件设置中，未加密，同源脚本及酒馆备份可能读取；仅复用到相同接口地址。自动启用不会恢复资料授权，也不会主动发送消息。', 'Automatic enablement requires remembering the API key. It is stored unencrypted in ST extension settings; same-origin scripts and backups may access it. Reused only at the same endpoint. Auto-enable does not restore data grants or send messages.'), settingsLayout.pages.connection);
     const savedKeyStatus = node('small', '', settingsLayout.pages.connection), forgetKey = button(t('清除已保存密钥', 'Forget saved key'), settingsLayout.pages.connection);
     const thinking = field(t('开启 DeepSeek 思考', 'Enable DeepSeek thinking'), 'checkbox', settingsLayout.pages.connection); thinking.checked = true;
     const connect = button(t('启用此连接', 'Enable connection'), settingsLayout.pages.connection), disable = button(t('禁用连接', 'Disable connection'), settingsLayout.pages.connection);
@@ -50,6 +60,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const diagnosticPermission = field(t('插件诊断信息（白名单配置、匿名统计与运行状态）', 'Plugin diagnostics (whitelist settings, anonymous counts and state)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const chatPermission = field(t('当前聊天资料（消息、总结、档案、记忆正文及名称）', 'Current chat data (messages, summary, profiles, memories and names)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const extendedPermission = field(t('扩展剧情上下文（当前已加载历史分段读取、参聊角色卡、导演历史账本正文）', 'Extended story context (loaded chat history in ranges, participant cards, director ledger bodies)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
+    const fullAccessToggle = field(t('全权限模式（危险，默认关闭）', 'Full-access mode (dangerous, off by default)'), 'checkbox', settingsLayout.pages.data);
+    node('small', t('开启后，本连接内的资料读取、已注册 Provider 代码执行及暮羽明确提出的配置／整单写入无需逐次确认。代码可能联网、修改数据或产生费用；保存可能部分完成且无法可靠撤销。仍受工具白名单、当前聊天范围和预算限制。更换连接或刷新即关闭。', 'While enabled, reads, registered Provider code execution, and Muyu-requested settings/bundle writes need no per-action approval. Code may access the network, change data or incur costs; saves may partially complete and cannot reliably be undone. Tool allowlists, chat scope and budgets still apply. Reconnection or reload turns it off.'), settingsLayout.pages.data);
     const budgetSettings = node('details', '', settingsLayout.pages.limits); node('summary', t('运行与预算', 'Execution budgets'), budgetSettings);
     node('p', t('保存后从下一轮生效，不改变正在执行的任务。模型调用上限包含最后一次无工具收尾。增加预算可能增加费用；超时最高120秒。', 'Saved settings apply to the next run only. Model-call limit includes final answer-only closure. Higher budgets may cost more; deadline is capped at 120 seconds.'), budgetSettings);
     const budgetFields = Object.entries({ modelCalls: t('模型调用次数', 'Model calls'), toolCalls: t('工具调用次数', 'Tool calls'), timeMs: t('单轮超时（秒）', 'Run timeout (seconds)'), maxTokens: t('单次模型输出上限（Token）', 'Output tokens per model call'), providerBytes: t('资料读取预算（UTF-8字节）', 'Provider data budget (UTF-8 bytes)') }).map(([name, label]) => {
@@ -80,6 +92,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang });
     const interactionView = createInteractionView({ doc, parent: transcript, controller, act, lang });
     const permissionView = createPermissionView({ doc, parent: transcript, settings: settingsLayout.pages.data, controller, act, lang });
+    const fullAccessBanner = node('small', t('⚠ 全权限模式已开启：暮羽可读取资料、执行 Provider 并直接应用其请求的修改；请留意任务和操作回执。', '⚠ Full-access mode: Muyu may read data, execute Providers and apply requested changes without further confirmation. Watch task progress and receipts.'), chat);
+    fullAccessBanner.className = 'gd-muyu-full-access-warning'; fullAccessBanner.hidden = true;
     const composer = node('div', '', chat); composer.className = 'gd-muyu-composer';
     const status = node('p', '', composer); status.className = 'gd-muyu-chat-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
     const permissionSummary = button('', toolContent); permissionSummary.className += ' gd-muyu-permission-summary';
@@ -168,12 +182,14 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         instructionView.render(s);
         interactionView.render(s);
         permissionView.render(s);
+        fullAccessToggle.checked = s.fullAccess === true; fullAccessToggle.disabled = !s.enabled || s.resetting || s.busy;
+        fullAccessBanner.hidden = s.fullAccess !== true;
         const config = s.runConfig || RUN_DEFAULTS, configSignature = JSON.stringify(config);
         if (configSignature !== lastRunConfig) { for (const f of budgetFields) f.input.value = String(config[f.name] / f.scale); lastRunConfig = configSignature; }
         saveBudget.disabled = resetBudget.disabled = !!s.savingRunConfig || s.resetting;
         const view = s.viewToken;
         if (view !== lastView) { resetAuthorization(); lastView = view; }
-        if (s.connection && JSON.stringify(s.connection) !== lastConnection) { endpoint.value = s.connection.endpoint; model.value = s.connection.model; thinking.checked = s.connection.thinking; lastConnection = JSON.stringify(s.connection); }
+        if (s.connection && JSON.stringify(s.connection) !== lastConnection) { endpoint.value = s.connection.endpoint; model.value = s.connection.model; thinking.checked = s.connection.thinking; rememberKey.checked = s.connection.remembered !== false; autoConnect.checked = s.connection.autoConnect === true; lastConnection = JSON.stringify(s.connection); }
         activeConnection.textContent = s.connection ? t('当前请求目标：', 'Active request destination: ') + s.connection.model + ' · ' + s.connection.endpoint : '';
         const task = taskCatalog[s.mode], granted = s.permissions?.[s.mode === 'chat' ? 'chat' : 'diagnostics'] === true;
         consentText.textContent = s.mode === 'chat' ? t(...task.consent) : t('允许本连接会话内读取记忆与导演白名单配置、匿名统计、运行状态和所选配置草稿；不含角色身份或聊天正文', 'Allow whitelist memory/director settings, anonymous counts, runtime state and selected drafts for this connection session; no character identities or chat bodies');
@@ -184,9 +200,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         permissionSummary.textContent = t('可读取：', 'Access: ') + [t('内置资料', 'Built-in docs'), ...(s.permissions?.diagnostics ? [t('诊断信息', 'Diagnostics')] : []), ...(s.permissions?.chat ? [t('当前聊天资料', 'This chat')] : [])].join(' · ');
         if (s.permissions?.extended) permissionSummary.textContent += t(' · 扩展剧情上下文', ' · Extended story context');
         if (unified) permissionSummary.textContent = t('资料权限 · ', 'Data access · ') + (s.sourceGrants?.length ? t('已允许 ', 'Allowed: ') + s.sourceGrants.length + t(' 项', ' sources') : t('需要时由暮羽申请', 'Muyu asks when needed'));
+        if (s.fullAccess) permissionSummary.textContent = t('⚠ 全权限模式已开启', '⚠ Full-access mode enabled');
         savedKeyStatus.textContent = s.savedConnection ? t('已保存密钥；相同接口可留空使用。', 'Saved key available; leave blank for the same endpoint.') : t('未保存密钥', 'No saved key');
         forgetKey.disabled = !s.savedConnection || s.resetting;
-        if (!lastConnection && s.savedConnection && !s.connection) { endpoint.value = s.savedConnection.endpoint; model.value = s.savedConnection.model; thinking.checked = s.savedConnection.thinking; rememberKey.checked = true; lastConnection = 'saved'; }
+        if (!lastConnection && s.savedConnection && !s.connection) { endpoint.value = s.savedConnection.endpoint; model.value = s.savedConnection.model; thinking.checked = s.savedConnection.thinking; rememberKey.checked = true; autoConnect.checked = s.savedConnection.autoConnect === true; lastConnection = 'saved'; }
         status.textContent = [s.enabled ? t('已启用', 'Enabled') : t('未启用', 'Disabled'), (unified ? s.targetKind === 'chat' : task.scope === 'chat') ? t('绑定：当前聊天', 'Bound to current chat') : t('绑定：全局会话', 'Bound to global conversation'), s.resetting || s.draining ? t('等待上游清理…', 'Waiting for cleanup…') : s.busy ? t('运行中…', 'Running…') : t('空闲', 'Idle'), notices[s.notice] || ''].filter(Boolean).join(' · ');
         const latestProcess = s.runs.at(-1)?.process;
         usageText.textContent = formatBudget(latestProcess?.budget, lang);
@@ -200,7 +217,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (s.interaction?.status === 'pending') status.textContent = s.interaction.kind === 'permission' ? t('等待资料授权 · 请选择允许或拒绝', 'Waiting for data access · Allow or deny') : t('等待你的回答 · 请在上方问题卡中补充，或取消澄清', 'Waiting for your answer · Use the question card above, or cancel clarification');
         if (s.interaction?.kind === 'permission' && s.interaction.status === 'pending') status.textContent = t('等待读取授权 · 可允许、拒绝并继续，或取消任务', 'Waiting for read permission · Allow, deny and continue, or cancel task');
         input.disabled = !!s.readOnly;
-        send.disabled = !s.enabled || s.readOnly || s.busy || s.resetting || s.history?.loading || task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
+        send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
         if (s.interaction?.status === 'pending') { send.disabled = true; resetAuthorization(); }
         confirm.disabled = send.disabled; stop.hidden = !!s.readOnly || !s.busy && !s.resetting;
         if (s.readOnly) { stop.disabled = true; resetAuthorization(); }
@@ -236,12 +253,71 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         cards.replaceChildren(); const selected = follow.value; follow.replaceChildren(); const none = node('option', t('新任务', 'New task'), follow); none.value = '';
         for (const artifact of s.artifacts) {
             const card = node('section', '', cards); card.className = 'gd-muyu-card';
-            node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
+            node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'task-plan' ? t('任务方案', 'Task plan') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
             if (artifact.kind === 'report') {
                 for (const f of artifact.content.findings) node('p', `${f.kind} · ${f.code}: ${f.text}`, card);
                 node('small', t('这是生成时的证据快照，不是实时状态。', 'Snapshot at generation time, not live state.'), card);
                 const director = artifact.content.module === 'director';
                 button(director ? t('前往导演设置', 'Open director settings') : t('前往记忆设置', 'Open memory settings'), card).onclick = director ? navigateDirector : navigateMemory;
+            } else if (artifact.kind === 'task-plan') {
+                const plan = artifact.content.plan;
+                const availability = {
+                    'read-only': t('仅可读取', 'Read only'),
+                    'draft-only': t('仅可预览草稿', 'Draft preview only'),
+                    'single-draft-approval-required': t('需单份草稿另行批准', 'Separate approval for one draft'),
+                    'bundle-or-separate-draft-approval-required': t('需精确整单或单份草稿另行批准', 'Separate approval for an exact bundle or draft'),
+                    'not-available': t('当前不可执行', 'Not available yet'),
+                    'separate-code-approval-required': t('代码操作需另行审批', 'Code action requires separate approval'),
+                };
+                node('p', plan.goal, card);
+                node('small', t('仅规划，未读取下列资料，也未修改任何内容。预计操作并非当前已具备的写入能力。', 'Proposal only: the sources below have not been read, and nothing was changed. Proposed work is not a write capability.'), card);
+                for (const step of plan.steps) node('p', `${step.title} · ${availability[step.availability] || step.availability}: ${step.detail}`, card);
+                if (plan.risks?.length) node('p', t('风险：', 'Risks: ') + plan.risks.join('；'), card);
+                if (plan.unknowns.length) node('p', t('待核实：', 'Unknowns: ') + plan.unknowns.join('；'), card);
+                node('p', t('本任务拟读取：', 'Sources requested for this task: ') + (plan.sources.map(permissionTitle).join('；') || t('无', 'None')), card);
+                const reviewed = s.approvedPlans?.includes(artifact.id);
+                const declined = s.declinedPlans?.includes(artifact.id);
+                const invalid = s.invalidPlans?.includes(artifact.id);
+                node('small', invalid ? t('任务已停止，本方案不能再用于授权。', 'Task stopped; this plan can no longer grant access.') : reviewed ? t('本次已允许读取上述来源；任务结束后授权失效，未授予写入权限。', 'These sources were allowed for this task; access expires when the task ends, and no write permission was granted.') : declined ? t('已拒绝本方案的资料读取；不会继续执行或改用其他来源。', 'Reads for this plan were declined; it will not continue or use alternate sources.') : t('批准只允许本任务读取列出的来源并继续核对，不批准任何修改；切换聊天或连接后失效。', 'Approval permits only these sources for this task and continues review, not any write. It expires on chat or connection change.'), card);
+                if (!reviewed && !declined && !invalid) {
+                    const approve = button(t('允许读取并继续规划', 'Allow reads and continue planning'), card);
+                    approve.disabled = s.busy || s.resetting || s.readOnly;
+                    approve.onclick = () => act(() => controller.approveTaskPlanReads(artifact.id, artifact.revision));
+                    const decline = button(t('不允许读取', 'Decline reads'), card);
+                    decline.disabled = s.busy || s.resetting || s.readOnly;
+                    decline.onclick = () => act(() => controller.declineTaskPlanReads(artifact.id, artifact.revision));
+                }
+            } else if (artifact.kind === 'task-bundle') {
+                node('small', t('仅预览，未修改内容。执行顺序：当前聊天变量 → 全局配置。', 'Preview only; no changes yet. Order: current-chat variables → global settings.'), card);
+                for (const variable of artifact.content.variables) {
+                    node('strong', t('当前聊天变量：', 'Current-chat variable: ') + variable.preview.id, card);
+                    for (const diff of variable.preview.diff) node('p', `${diff.field}: ${JSON.stringify(diff.before)} → ${JSON.stringify(diff.after)}`, card);
+                }
+                if (artifact.content.settings) {
+                    node('strong', t('全局配置：影响所有聊天', 'Global settings: affects all chats'), card);
+                    for (const diff of artifact.content.settings.preview.diff) node('p', `${diff.field}: ${diff.before} → ${diff.after}`, card);
+                    for (const warning of artifact.content.settings.preview.warnings) node('p', warning, card);
+                }
+                const recheck = button(t('重新校验整单', 'Revalidate bundle'), card); recheck.disabled = s.busy || s.resetting;
+                recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
+                renderTaskBundleApply({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'profile-draft') {
+                node('p', artifact.content.name, card);
+                if (artifact.content.description) node('small', artifact.content.description, card);
+                for (const [field, value] of Object.entries(artifact.content.settings)) node('p', `${field}: ${JSON.stringify(value)}`, card);
+                for (const warning of artifact.content.warnings) node('small', warning, card);
+                node('small', t('这是一份可复用的局部配置档；保存到库不会修改当前设置。以后应用配置档时，以上字段将影响所有聊天，未列出的字段保持不变。', 'Reusable partial profile. Saving does not change active settings. Applying it later affects all chats for the listed fields; omitted fields stay unchanged.'), card);
+                const recheck = button(t('重新校验配置档', 'Revalidate profile'), card); recheck.disabled = s.busy || s.resetting;
+                recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
+                renderProfileSave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'variable-draft') {
+                const preview = artifact.content.preview;
+                node('p', t('当前聊天变量：', 'Current-chat variable: ') + preview.id, card);
+                for (const diff of preview.diff) node('p', `${diff.field}: ${JSON.stringify(diff.before)} → ${JSON.stringify(diff.after)}`, card);
+                node('small', t('草稿本身未修改或保存变量；应用前须核对并单独确认。', 'The draft itself changed or saved nothing; review and confirm separately before applying.'), card);
+                const recheck = button(t('重新校验', 'Revalidate'), card); recheck.disabled = s.busy || s.resetting;
+                recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
+                renderVariableApply({ doc, card, artifact, state: s, controller, act, lang });
             } else {
                 for (const d of artifact.content.preview.diff) node('p', `${d.field}: ${d.before} → ${d.after}`, card);
                 const operation = s.configActions?.find(r => r.artifactId === artifact.id && r.revision === artifact.revision);
@@ -276,6 +352,13 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (!input.value.trim()) throw new Error('EMPTY_INPUT');
         controller.setInput(input.value);
         const s = controller.snapshot();
+        if (!s.enabled) {
+            showSettings(true, 'connection');
+            const notice = t('请先配置并启用模型接口；刚才输入的消息已保留，返回聊天后可直接发送。', 'Configure and enable a model connection first. Your unsent message is preserved; return to chat to send it.');
+            errors.textContent = notice;
+            globalThis.toastr?.warning?.(notice);
+            return;
+        }
         if (s.mode === 'assistant' || s.mode === 'chat' || s.mode !== 'draft' && s.permissions?.diagnostics) { controller.send(); resetAuthorization(); }
         else { authorization.hidden = false; confirm.focus?.(); }
     });
@@ -284,11 +367,20 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     diagnosticPermission.onchange = () => act(() => diagnosticPermission.checked ? controller.grantPermission('diagnostics') : controller.revokePermission('diagnostics'));
     chatPermission.onchange = () => act(() => chatPermission.checked ? controller.grantPermission('chat') : controller.revokePermission('chat'));
     extendedPermission.onchange = () => act(() => extendedPermission.checked ? controller.grantPermission('extended') : controller.revokePermission('extended'));
-    forgetKey.onclick = () => act(async () => { await controller.forgetCredential(); rememberKey.checked = false; key.value = ''; });
+    fullAccessToggle.onchange = () => {
+        const enabled = fullAccessToggle.checked;
+        if (enabled) {
+            let confirmed = false;
+            try { confirmed = doc.defaultView?.confirm?.(t('危险：暮羽将无需逐次确认即可读取当前聊天资料、执行已注册 Provider 代码，并应用其提出的配置与整单修改。代码可能联网、产生费用或更改数据；保存可能无法撤销。仅本连接有效。确定开启？', 'Danger: Muyu may read chat data, execute registered Provider code, and apply proposed settings/bundle changes without further confirmation. Code may use the network, incur costs or change data; saves may not be reversible. This connection only. Enable?')) === true; } catch { /* Fail closed if confirmation is unavailable. */ }
+            if (!confirmed) { fullAccessToggle.checked = false; return; }
+        }
+        act(() => controller.setFullAccess(enabled));
+    };
+    forgetKey.onclick = () => act(async () => { await controller.forgetCredential(); rememberKey.checked = false; autoConnect.checked = false; key.value = ''; });
     cancelAuth.onclick = () => { resetAuthorization(); input.focus?.(); };
     stop.onclick = () => act(() => controller.stop());
-    connect.onclick = () => act(async () => { const apiKey = key.value; key.value = ''; await controller.configure({ endpoint: endpoint.value.trim(), apiKey, model: model.value.trim(), profile: 'deepseek', thinking: thinking.checked, supportsTools: true, rememberKey: rememberKey.checked }); if (!disposed) showSettings(false); });
-    disable.onclick = () => act(() => controller.disable());
+    connect.onclick = () => act(async () => { const apiKey = key.value; await controller.configure({ endpoint: endpoint.value.trim(), apiKey, model: model.value.trim(), profile: 'deepseek', thinking: thinking.checked, supportsTools: true, rememberKey: rememberKey.checked, autoConnect: autoConnect.checked && rememberKey.checked }); key.value = ''; if (!disposed) showSettings(false); });
+    disable.onclick = () => act(async () => { await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
     const dispose = () => { if (disposed) return; disposed = true; if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };

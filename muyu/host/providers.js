@@ -3,6 +3,9 @@ import { providerCatalog } from '../modules/providers/catalog.js';
 import { readExtendedSource } from './extended-sources.js';
 import { readMemoryConfig } from './config-read.js';
 import { readVariables, readBlueprint } from './story-sources.js';
+import { readStSource } from './st-sources.js';
+import { readWorldBookOverview, readWorldBookEntries } from './st-world-books.js';
+import { readStPresets, readStPersonas, readStExtensions } from './st-directories.js';
 import { copyJson } from '../core/json-contract.js';
 import { contextRequirements, missingContext, providerContext } from './provider-context.js';
 import { getTrustedProviderDigest } from '../../systems/user-provider-loader.js';
@@ -10,7 +13,7 @@ export { providerCatalog } from '../modules/providers/catalog.js';
 const text = value => typeof value === 'string' ? value : '';
 const bounded = value => { if (value.length > 131072) throw Error('SOURCE_TOO_LARGE'); return value; };
 /** Fixed built-in identities captured by the extension, not discovered from model input. */
-export function createProviderPort({ getContext, getSettings, extensionKey, bindings = [], getProviders, trustedDigest = getTrustedProviderDigest }) {
+export function createProviderPort({ getContext, getSettings, extensionKey, bindings = [], getProviders, worldBooks, stDirectories, trustedDigest = getTrustedProviderDigest }) {
     const trusted = new Map(bindings.map(p => [p.id, { object: p, render: p.render, enabled: p.enabled }]));
     const exposed = new Map();
     const stableDigest = (p, requirements) => {
@@ -60,6 +63,12 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
     }
     function available(id) {
         const source = providerCatalog.find(p => p.id === id);
+        if (source?.reader === 'st') return typeof getContext === 'function';
+        if (source?.reader === 'stWorldBooks') return typeof worldBooks?.getState === 'function';
+        if (source?.reader === 'stWorldBookEntries') return typeof worldBooks?.getState === 'function' && typeof worldBooks?.load === 'function';
+        if (source?.reader === 'stPresets') return typeof getContext === 'function';
+        if (source?.reader === 'stPersonas') return typeof getContext === 'function';
+        if (source?.reader === 'stExtensions') return typeof stDirectories?.getExtensions === 'function';
         if (source && source.reader !== 'legacy') return typeof getSettings === 'function' && typeof getContext === 'function';
         id = providerCatalog.find(p => p.id === id)?.provider;
         const saved = trusted.get(id), current = getProviders?.().find(p => p.id === id);
@@ -109,6 +118,12 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         memoryConfig: (_id, selector) => { if (selector) throw Error('INVALID_SELECTOR'); return { data: readMemoryConfig(getSettings) }; },
         variables: (_id, selector) => readVariables(selector, getContext(), extensionKey),
         storyBlueprint: (_id, selector) => readBlueprint(selector, getContext(), extensionKey, getSettings()),
+        st: (id, selector) => readStSource(id, selector, getContext()),
+        stWorldBooks: (_id, selector) => readWorldBookOverview(selector, worldBooks?.getState),
+        stWorldBookEntries: (_id, selector) => readWorldBookEntries(selector, worldBooks?.getState, worldBooks?.load),
+        stPresets: (_id, selector) => readStPresets(selector, getContext),
+        stPersonas: (_id, selector) => readStPersonas(selector, getContext, stDirectories?.getSelectedPersona),
+        stExtensions: (_id, selector) => readStExtensions(selector, stDirectories?.getExtensions),
     });
     function read(id, selector) {
         const source = providerCatalog.find(p => p.id === id);

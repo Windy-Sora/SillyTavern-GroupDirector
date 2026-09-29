@@ -14,7 +14,7 @@ export function importedRecord(source, now = Date.now()) {
     return validateRecord({ ...record, id: crypto.randomUUID(), revision: 0, createdAt: now, updatedAt: now,
         imported: true, archived: false, status: record.status === 'running' ? 'interrupted' : record.status,
         // Not grants, and not trusted as a claim about the original data's provenance.
-        required: [...new Set(['diagnostics', 'chat', 'extended', ...(record.receipts || []).filter(r => r.version === 2).flatMap(receiptSources)])] });
+        required: [...new Set(['diagnostics', 'chat', 'extended', ...(record.receipts || []).filter(r => r.version >= 2).flatMap(receiptSources)])] });
 }
 export function exportHistoryRecord(record, format = 'json') {
     const r = validateRecord(record);

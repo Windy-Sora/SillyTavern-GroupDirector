@@ -131,7 +131,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
             const previous = records.get(id); if (!previous || closed || previous.imported || previous.archived) throw Error('NOT_READY');
             const receipt = validateReceipt(value), receipts = previous.receipts || [];
             if (receipts.some(r => r.operationId === receipt.operationId)) return;
-            const next = validateRecord({ ...previous, version: Math.max(4, previous.version), receipts: [...receipts, receipt], required: [...new Set([...previous.required, ...(previous.version === 5 || receipt.version === 2 ? receiptSources(receipt) : ['diagnostics'])])], updatedAt: now() });
+            const next = validateRecord({ ...previous, version: Math.max(4, previous.version), receipts: [...receipts, receipt], required: [...new Set([...previous.required, ...(previous.version === 5 || receipt.version >= 2 ? receiptSources(receipt) : ['diagnostics'])])], updatedAt: now() });
             remember(next); dirty.add(id); schedule(id);
         },
         update(id, patch) {

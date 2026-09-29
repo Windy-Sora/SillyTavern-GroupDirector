@@ -429,7 +429,7 @@ function buildCharacterProfilesText() {
 }
 
 function validateTemplatePlaceholders(template, knownKeys) {
-    const found = template.match(/\{\{[a-zA-Z_]+\}\}/g) || [];
+    const found = template.match(/\{\{[^{}]*\}\}/g) || [];
     const unknowns = [...new Set(found)].filter(p => !knownKeys.has(p));
     return unknowns;
 }
@@ -448,8 +448,12 @@ function validateAndWarnProfilePlaceholders(type) {
     if (unknowns.length > 0) {
         const lang = settings.lang || 'zh';
         $warn.text(lang === 'zh'
-            ? `警告：未知占位符 ${unknowns.join(', ')}，将渲染为空。`
-            : `Warning: unknown placeholders ${unknowns.join(', ')}. They will render as empty.`).show();
+            ? (type === 'generator'
+                ? `提示：未识别的角色字段 ${unknowns.join(', ')}；若是 Provider 占位符，请确认已注册。`
+                : `警告：未知占位符 ${unknowns.join(', ')} 将原样保留在注入文本中。`)
+            : (type === 'generator'
+                ? `Unrecognized character fields ${unknowns.join(', ')}; if these are Provider placeholders, ensure they are registered.`
+                : `Unknown placeholders ${unknowns.join(', ')} remain literal in the injected text.`)).show();
     } else {
         $warn.hide();
     }

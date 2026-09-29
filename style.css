@@ -1181,6 +1181,7 @@
 .gd-muyu-composer textarea { min-height: 56px; max-height: 140px; resize: vertical; }
 .gd-muyu-composer .gd-muyu-actions { justify-content: flex-end; }
 .gd-muyu-chat-status { font-size: .75em; opacity: .75; max-height: 4em; overflow: auto; }
+.gd-muyu-full-access-warning:not([hidden]) { display: block; margin: 4px 0 8px; padding: 6px 9px; border: 1px solid #b65b2d; border-radius: 8px; background: color-mix(in srgb, #b65b2d 14%, transparent); color: var(--SmartThemeBodyColor, #eee); font-size: .72em; line-height: 1.4; }
 .gd-muyu-welcome { max-width: 440px; margin: 24px auto; padding: 24px 10px; text-align: center; }
 .gd-muyu-welcome h3 { font-size: 1.2em; font-weight: 600; }
 .gd-muyu-interaction { border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 14px; padding: 14px; margin: 12px 0; overflow-wrap: anywhere; }

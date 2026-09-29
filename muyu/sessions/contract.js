@@ -17,7 +17,7 @@ export function validateRecord(value) {
     if (value.version >= 4) {
         if (!Array.isArray(value.receipts) || value.receipts.length > 64 || new Set(value.receipts.map(r => r.operationId)).size !== value.receipts.length) throw Error('HISTORY_INVALID');
         value.receipts.forEach(validateReceipt);
-        if (value.receipts.some(r => r.version === 2 ? receiptSources(r).some(source => !value.required?.includes(source)) : !value.required?.includes('diagnostics') && !value.required?.includes('source:memoryConfig'))) throw Error('HISTORY_INVALID');
+        if (value.receipts.some(r => r.version >= 2 ? receiptSources(r).some(source => !value.required?.includes(source)) : !value.required?.includes('diagnostics') && !value.required?.includes('source:memoryConfig'))) throw Error('HISTORY_INVALID');
     }
     if (value.version >= 3 && value.contextSummary !== null) {
         const s = value.contextSummary;
