@@ -21,24 +21,24 @@ export function createProfileDraftModule() {
         if (disposed) throw Error('MODULE_DISPOSED');
         const run = runs.get(ctx.runId);
         if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
-        run.candidate = null;
         const input = validateJson(inputSchema, args);
         const content = prepareGeneratedProfile({ name: input.name, description: input.description || '', changes: JSON.parse(input.settingsJson) });
+        if (run.candidates.size >= 16) throw Error('PROFILE_PREVIEW_LIMIT');
         const candidateId = 'profile:' + crypto.randomUUID();
-        run.candidate = { candidateId, content };
+        run.candidates.set(candidateId, content);
         return { candidateId, text: JSON.stringify({ name: content.name, description: content.description, settings: content.settings,
             warnings: content.warnings, state: 'preview_only', activeSettingsChanged: false,
             ...(input.save ? { automaticSave: 'requested; check the save result after this run' } : {}) }),
             ...(input.save ? { applyRequested: true } : {}) };
     } };
     return { registry, handlers,
-        bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidate: null }); },
+        bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidates: new Map() }); },
         transferRun(from, identity) { const run = runs.get(from); if (!run) return; if (runs.has(identity.id) || run.taskId !== identity.taskId || jsonKey(run.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); runs.delete(from); runs.set(identity.id, run); },
         publishDraft(app, id, candidateId) {
             const run = runs.get(id), state = app.snapshot().runs.find(row => row.id === id);
-            if (!run?.candidate || run.candidate.candidateId !== candidateId || state?.status !== 'succeeded' || state.taskId !== run.taskId || jsonKey(state.target) !== jsonKey(run.target)) throw Error('INVALID_CANDIDATE_SOURCE');
-            const artifact = app.createArtifact({ taskId: run.taskId, sourceRunId: id, kind: 'profile-draft', content: run.candidate.content });
-            runs.delete(id); return artifact;
+            if (!run?.candidates.has(candidateId) || state?.status !== 'succeeded' || state.taskId !== run.taskId || jsonKey(state.target) !== jsonKey(run.target)) throw Error('INVALID_CANDIDATE_SOURCE');
+            const artifact = app.createArtifact({ taskId: run.taskId, sourceRunId: id, kind: 'profile-draft', content: run.candidates.get(candidateId) });
+            run.candidates.delete(candidateId); if (!run.candidates.size) runs.delete(id); return artifact;
         },
         validateSaved(app, id, revision) {
             const artifact = app.getArtifact(id), state = app.snapshot().runs.find(row => row.id === artifact.sourceRunId);

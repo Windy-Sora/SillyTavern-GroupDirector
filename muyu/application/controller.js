@@ -39,6 +39,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const listeners = new Set(), sessions = new Map(), inputs = new Map(), intentions = new Map(), notices = new Map();
     const runtimeSessions = new Map();
     const continuations = new Map();
+    const releaseContinuation = taskId => { const pending = continuations.get(taskId); if (pending) { continuations.delete(taskId); builtins?.forgetRun(pending.sourceRunId); } };
     const configChecks = new Map();
     let checking = null;
     let selectionEpoch = 0, viewedId = null, viewSequence = 0;
@@ -115,9 +116,9 @@ export function createMuyuController({ host, createModel = createChatCompletions
     function unloadRuntime(sessionId) {
         const ownedTasks = app.snapshot().tasks.filter(t => t.sessionId === sessionId).map(t => t.id);
         app.unloadSession(sessionId);
-        for (const id of ownedTasks) { const pending = continuations.get(id); if (pending) builtins.forgetRun(pending.sourceRunId); continuations.delete(id); permissions.forgetTask(null, id); }
+        for (const id of ownedTasks) { releaseContinuation(id); permissions.forgetTask(null, id); }
     }
-    function syncTarget(changed = true) { selectionEpoch++; if (changed) { viewedId = null; pinnedTarget = null; } if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { builtins.forgetRun(pending.sourceRunId); continuations.delete(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
+    function syncTarget(changed = true) { selectionEpoch++; if (changed) { viewedId = null; pinnedTarget = null; } if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { releaseContinuation(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
     function readOnly(record) {
         if (!record) return false;
         const [task, kind] = JSON.parse(record.scope);
@@ -146,7 +147,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             if (action !== 'rename' && runtimeId && app) {
                 app.invalidateInteractions(runtimeId);
                 const state = app.snapshot(), activeHere = state.runs.find(r => r.id === state.activeRunId)?.sessionId === runtimeId;
-                for (const task of state.tasks.filter(row => row.sessionId === runtimeId)) { const pending = continuations.get(task.id); if (pending) { builtins.forgetRun(pending.sourceRunId); continuations.delete(task.id); permissions.forgetTask(null, task.id); } }
+                for (const task of state.tasks.filter(row => row.sessionId === runtimeId)) { if (continuations.has(task.id)) { releaseContinuation(task.id); permissions.forgetTask(null, task.id); } }
                 for (const run of state.runs) if (run.sessionId === runtimeId) app.cancel(run.id);
                 if (activeHere && running) await Promise.all([running.completion, running.drained]);
                 live(); capture();
@@ -287,10 +288,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
                     if (['tool.completed', 'tool.failed'].includes(event.type) && builtins.candidateTool(event.payload.toolId)) {
                         const candidateId = event.payload.result.data?.candidateId;
                         if (event.payload.result.ok && candidateId) {
-                            intent.candidates.set(event.payload.toolId, { toolId: event.payload.toolId, candidateId });
-                            if (fullAccess && event.payload.result.data?.applyRequested === true) intent.autoApplyCandidates.set(event.payload.toolId, candidateId);
-                            else intent.autoApplyCandidates.delete(event.payload.toolId);
-                        } else { intent.candidates.delete(event.payload.toolId); intent.autoApplyCandidates.delete(event.payload.toolId); }
+                            const key = event.payload.toolId === 'muyu.profile.preview' ? candidateId : event.payload.toolId;
+                            intent.candidates.set(key, { toolId: event.payload.toolId, candidateId });
+                            if (fullAccess && event.payload.result.data?.applyRequested === true) intent.autoApplyCandidates.set(key, candidateId);
+                            else intent.autoApplyCandidates.delete(key);
+                        } else if (event.payload.toolId !== 'muyu.profile.preview') { intent.candidates.delete(event.payload.toolId); intent.autoApplyCandidates.delete(event.payload.toolId); }
                     }
                     if (event.type === 'tool.completed' && event.payload.result?.ok) intent.completedTools.add(event.payload.toolId);
                     if (event.type === 'tool.failed') intent.failedTool = true;
@@ -305,19 +307,20 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 try {
                     if (run?.status === 'failed' && intent?.failure) notices.set(run.sessionId, intent.failure);
                     if (run?.status === 'yielded' && intent) continuations.set(run.taskId, { mode: intent.mode, fields: [...intent.fields], artifact: intent.artifact, runConfig: { ...intent.runConfig }, historyStart: intent.historyStart, autoHistoryOmitted: intent.autoHistoryOmitted, sourceRunId: event.runId, candidates: [...intent.candidates], autoApplyCandidates: [...intent.autoApplyCandidates], completedTools: [...intent.completedTools], failedTool: intent.failedTool });
-                    else if (run) { continuations.delete(run.taskId); permissions.forgetTask(run.target, run.taskId); }
+                    else if (run) { releaseContinuation(run.taskId); permissions.forgetTask(run.target, run.taskId); }
                     if (run?.status === 'succeeded' && intent && !intent.explanation) {
-                        const notice = builtins.tasks[intent.mode].publish(app, event.runId, intent);
+                        const publication = builtins.tasks[intent.mode].publish(app, event.runId, intent);
+                        const notice = typeof publication === 'string' ? publication : publication?.notice;
+                        const published = publication?.published;
                         if (notice) notices.set(run.sessionId, notice);
                         if (fullAccess && intent.candidates.has('muyu.task.plan')) {
-                            const plan = app.snapshot().artifacts.find(a => a.sourceRunId === event.runId && a.kind === 'task-plan');
+                            const plan = published?.get(intent.candidates.get('muyu.task.plan').candidateId);
                             if (plan) autoPlans.push({ id: plan.id, revision: plan.revision, sessionId: plan.sessionId });
                         }
                         if (fullAccess && !intent.failedTool) {
-                            const kinds = { 'muyu.config.preview': 'config-draft', 'muyu.settings.preview': 'config-draft', 'muyu.variables.preview': 'variable-draft', 'muyu.task.preview': 'task-bundle', 'muyu.profile.preview': 'profile-draft' };
-                            for (const [toolId, candidateId] of intent.autoApplyCandidates) {
-                                if (intent.candidates.get(toolId)?.candidateId !== candidateId) continue;
-                                const artifact = app.snapshot().artifacts.find(a => a.sourceRunId === event.runId && a.kind === kinds[toolId] && (toolId !== 'muyu.settings.preview' || a.content?.module === 'settings-config') && (toolId !== 'muyu.config.preview' || a.content?.module === 'memory-config'));
+                            for (const [key, candidateId] of intent.autoApplyCandidates) {
+                                if (intent.candidates.get(key)?.candidateId !== candidateId) continue;
+                                const artifact = published?.get(candidateId);
                                 if (artifact) autoActions.push({ id: artifact.id, revision: artifact.revision, kind: artifact.kind, sessionId: artifact.sessionId, target: ['config-draft', 'profile-draft'].includes(artifact.kind) ? host.globalTarget : run.target, owner: [...runtimeSessions].find(([, runtimeId]) => runtimeId === run.sessionId)?.[0] });
                             }
                         }
@@ -440,7 +443,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             if (decision !== 'deny' && !permissionApprovalCurrent(r, host.providerPort)) throw Error('INTERACTION_STALE');
             return permissions.decide(r, decision, () => send({ interactionId: id, permissionDecision: decision }));
         },
-        cancelInteraction(id) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); const request = snapshot().interaction; app.cancelInteraction(id); continuations.delete(request.taskId); permissions.forgetTask(request.target, request.taskId); emit(); },
+        cancelInteraction(id) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); const request = snapshot().interaction; app.cancelInteraction(id); releaseContinuation(request.taskId); permissions.forgetTask(request.target, request.taskId); emit(); },
         setInstructionDraft(value) { live(); instructionDraft = validateInstructionDraft(value); emit(); },
         discardInstructionDraft() { live(); instructionDraft = { ...instructionConfig }; emit(); },
         resetInstructionDraft() { live(); instructionDraft = { ...INSTRUCTION_DEFAULTS }; emit(); },
@@ -538,7 +541,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         },
         async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); await host.credentials?.setAutoConnect?.(false); clear(); inputs.clear(); } finally { resetting = false; emit(); } },
         send({ consent, fields, artifactId, interactionId } = {}) { return send({ consent, fields, artifactId, interactionId }); },
-        stop() { live(); autoActions.length = 0; autoPlans.length = 0; checking?.abort.abort(); actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const pending of continuations.values()) builtins.forgetRun(pending.sourceRunId); continuations.clear(); for (const t of state.tasks) permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); for (const r of state.runs) app.cancel(r.id); } emit(); },
+        stop() { live(); autoActions.length = 0; autoPlans.length = 0; checking?.abort.abort(); actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); for (const r of state.runs) app.cancel(r.id); } emit(); },
         revalidate(id, revision) { live(); if (!app || resetting || snapshot().busy) throw new Error('NOT_READY');
             if (!['draft', 'assistant'].includes(mode) || !snapshot().artifacts.some(a => a.id === id && a.revision === revision)) throw new Error('INVALID_ARTIFACT');
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }

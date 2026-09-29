@@ -63,12 +63,12 @@ export function createBuiltins(host) {
         assistant: { module: null,
             bind(identity, intent) { unified.set(identity.id, { identity, intent, bound: false }); settings.bindRun(identity); taskPlan.bindRun(identity); variables.bindRun(identity); bundle.bindRun(identity); profiles.bindRun(identity); },
             publish(app, id, intent) {
-                let failed = false;
+                let failed = false; const published = new Map();
                 const publish = fn => { try { fn(); } catch { failed = true; } };
                 if (intent.completedTools?.has('muyu.memory.inspect')) publish(() => memory.publishReport(app, id));
                 if (intent.completedTools?.has('muyu.director.inspect')) publish(() => director.publishReport(app, id));
-                for (const candidate of intent.candidates?.values() || []) publish(() => artifacts.publish(app, id, candidate));
-                return failed ? 'RESULT_NEEDS_REVIEW' : null;
+                for (const candidate of intent.candidates?.values() || []) publish(() => published.set(candidate.candidateId, artifacts.publish(app, id, candidate)));
+                return { notice: failed ? 'RESULT_NEEDS_REVIEW' : null, published };
             },
         },
         chat: { module: providers, publish: () => null },
