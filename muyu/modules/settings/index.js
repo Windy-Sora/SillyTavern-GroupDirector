@@ -1,5 +1,5 @@
 import { copyJson, jsonKey } from '../../core/json-contract.js';
-import { assertActive } from '../../core/execution.js';
+import { assertActive, ExecutionError } from '../../core/execution.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { configFields, configDomains, configChangesSchema, dependencyFields, fieldDefinition, previewSettings, readSettingsFields, selectedFields } from '../../config/registry.js';
 import { configurationCoverage, dynamicSettings } from '../../config/coverage.js';
@@ -26,7 +26,8 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             if (existingPlan) throw Error('INVALID_DRAFT');
             return null;
         }
-        if (Object.keys(changes).length !== 1 || !memoryLimitPort) throw Error('MEMORY_LIMIT_REQUIRES_SEPARATE_DRAFT');
+        if (Object.keys(changes).length !== 1) throw new ExecutionError('MEMORY_LIMIT_REQUIRES_SEPARATE_DRAFT');
+        if (!memoryLimitPort) throw Error('MEMORY_LIMIT_UNAVAILABLE');
         if (existingPlan) { memoryLimitPort.assertFresh(existingPlan); return existingPlan; }
         return memoryLimitPort.plan(target, changes.memoryMaxEntries);
     }
@@ -35,7 +36,8 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             if (existingPlan) throw Error('INVALID_DRAFT');
             return null;
         }
-        if (Object.keys(changes).length !== 1 || !completionVariablePort) throw Error('COMPLETION_VARIABLE_REQUIRES_SEPARATE_DRAFT');
+        if (Object.keys(changes).length !== 1) throw new ExecutionError('COMPLETION_VARIABLE_REQUIRES_SEPARATE_DRAFT');
+        if (!completionVariablePort) throw Error('COMPLETION_VARIABLE_UNAVAILABLE');
         if (existingPlan) { completionVariablePort.assertFresh(existingPlan); return existingPlan; }
         return completionVariablePort.plan(target, baseline.storyBlueprintCompletionVariable, changes.storyBlueprintCompletionVariable);
     }
@@ -60,7 +62,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
     }) }));
     register('muyu.settings.contract', '按领域查询字段类型、限制、生效时机；scope=global影响所有聊天。未指定字段保持原值，不填默认值；Prompt是文本，不能当JSON解析。', object({ domain: { type: 'string', enum: configDomains } }), ({ domain }) => ({ candidateId: '', text: JSON.stringify(configFields.filter(id => fieldDefinition(id).domain === domain).map(fieldDefinition)) }));
     register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields) }) }));
-    register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries需单独处理。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
+    register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         if (run.candidate?.content.memoryPrunePlan) memoryLimitPort?.forget(run.candidate.content.memoryPrunePlan);
         if (run.candidate?.content.completionVariablePlan) completionVariablePort?.forget(run.candidate.content.completionVariablePlan);

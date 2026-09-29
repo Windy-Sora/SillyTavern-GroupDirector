@@ -40,7 +40,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const runtimeSessions = new Map();
     const continuations = new Map();
     const releaseContinuation = taskId => { const pending = continuations.get(taskId); if (pending) { continuations.delete(taskId); builtins?.forgetRun(pending.sourceRunId); } };
-    const configChecks = new Map();
+    const configChecks = new Map(), autoConfigChecks = [];
     let checking = null;
     let selectionEpoch = 0, viewedId = null, viewSequence = 0;
     let historyFilters = { range: 'current', archive: 'active', task: '', query: '' };
@@ -49,13 +49,13 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const live = () => { if (disposed) throw new Error('CONTROLLER_DISPOSED'); };
     const recordedActions = new Map(), explanations = new Map(), actionOwners = new Map(), approvedPlans = new Set(), declinedPlans = new Set(), invalidPlans = new Set();
     const autoActions = [], autoPlans = [];
-    const actionChanged = () => { captureReceipts(); emit(); queueMicrotask(flushAutoActions); };
+    const actionChanged = () => { captureReceipts(); emit(); queueMicrotask(flushAutoActions); queueMicrotask(flushAutoConfigChecks); };
     const actions = createConfigActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.configWriter, changed: actionChanged });
     const variableActions = createVariableActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.variableWriter, changed: actionChanged });
     const bundleActions = createTaskBundleActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.bundleWriter, changed: actionChanged });
     const profileActions = createProfileActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.profileWriter, changed: actionChanged });
     function flushAutoActions() {
-        if (!fullAccess || !app || resetting || disposed || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy) return;
+        if (!fullAccess || !app || resetting || disposed || checking || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy) return;
         const plan = autoPlans.shift();
         if (plan) {
             try { api.approveTaskPlanReads(plan.id, plan.revision); }
@@ -106,7 +106,37 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const entry = { id, receipt: actionReceipt(action), failed: false };
             recordedActions.set(action.id, entry);
             try { library.recordReceipt(id, entry.receipt); } catch { entry.failed = true; }
+            if (action.id.startsWith('apply:') && entry.receipt.version === 2 && entry.receipt.diff.length &&
+                !entry.receipt.memoryPrune && !entry.receipt.completionVariable &&
+                ['applied_confirmed', 'applied_unconfirmed', 'outcome_unknown'].includes(entry.receipt.status)) {
+                autoConfigChecks.push({ owner: id, receipt: entry.receipt, target: action.target });
+            }
         }
+    }
+    function runConfigCheck(owner, receipt, target, allowed) {
+        const abort = new AbortController(), job = { id: receipt.operationId, abort, promise: null };
+        checking = job;
+        configChecks.set(receipt.operationId, { state: 'reading', fields: [], readAt: '', persistence: 'unknown' });
+        const work = checkReceiptConfig({ builtins, target, receipt, limit: runConfig.providerBytes, signal: abort.signal,
+            allowed: () => !disposed && !resetting && !abort.signal.aborted && !!library.get(owner) && allowed(),
+        }).then(result => { configChecks.set(receipt.operationId, result); }, () => {
+            configChecks.set(receipt.operationId, { state: 'unknown', fields: [], readAt: '', persistence: 'unknown' });
+        });
+        job.promise = work.finally(() => { if (checking === job) checking = null; emit(); queueMicrotask(flushAutoConfigChecks); queueMicrotask(flushAutoActions); });
+        emit();
+        return job.promise;
+    }
+    function flushAutoConfigChecks() {
+        if (!autoConfigChecks.length || !app || disposed || resetting || checking || actions.busy || autoActions.length) return;
+        const { owner, receipt, target } = autoConfigChecks.shift();
+        const record = library.get(owner);
+        if (!record || record.imported || record.archived || jsonKey(target) !== jsonKey(host.globalTarget)) return queueMicrotask(flushAutoConfigChecks);
+        const allowed = () => receiptSources(receipt).every(source => permissions.allows(source, target));
+        if (!allowed()) {
+            configChecks.set(receipt.operationId, { state: 'permission_required', fields: [], readAt: '', persistence: 'unknown' });
+            emit(); queueMicrotask(flushAutoConfigChecks); return;
+        }
+        void runConfigCheck(owner, receipt, target, allowed);
     }
     function receiptsFor(id) {
         const receipts = new Map((library.get(id)?.receipts || []).map(r => [r.operationId, r]));
@@ -237,7 +267,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         actionOwners.clear(); approvedPlans.clear(); declinedPlans.clear(); invalidPlans.clear();
         for (const [key, entry] of recordedActions) if (!entry.failed) recordedActions.delete(key);
         explanations.clear();
-        configChecks.clear();
+        configChecks.clear(); autoConfigChecks.length = 0;
         pinnedTarget = null;
         selectionEpoch++;
         viewedId = null;
@@ -368,7 +398,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         if (!candidate || usableSummary(record.contextSummary, record.messages) && candidate.through <= record.contextSummary.through) return null;
         return { ...candidate, tail: planContext(record.messages.slice(candidate.through), null, config).messages };
     }
-    function clear() { actions.clear(); variableActions.clear(); bundleActions.clear(); profileActions.clear(); autoActions.length = 0; autoPlans.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); notices.clear(); continuations.clear(); permissions.clear(); }
+    function clear() { actions.clear(); variableActions.clear(); bundleActions.clear(); profileActions.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
     const api = {
         snapshot,
@@ -378,14 +408,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
             live(); const s = snapshot(), receipt = s.receipts.find(r => r.operationId === id);
             if (!model || resetting || s.busy || s.readOnly || !receipt || receipt.version >= 3) throw Error('NOT_READY');
             if (!receiptAllowed(receipt, host.globalTarget)) throw Error('CONSENT_REQUIRED');
-            const owner = selectedId(), target = host.globalTarget, abort = new AbortController();
-            const job = { abort, promise: null }; checking = job;
-            configChecks.set(id, { state: 'reading', fields: [], readAt: '', persistence: 'unknown' });
-            job.promise = checkReceiptConfig({ builtins, target, receipt, limit: runConfig.providerBytes, signal: abort.signal,
-                allowed: () => !disposed && !resetting && !abort.signal.aborted && receiptAllowed(receipt, target) && !!library.get(owner) && !readOnly(library.get(owner)),
-            }).then(result => { configChecks.set(id, result); }, () => { configChecks.set(id, { state: 'unknown', fields: [], readAt: '', persistence: 'unknown' }); });
-            emit();
-            try { await job.promise; } finally { if (checking === job) checking = null; emit(); }
+            const owner = selectedId(), target = host.globalTarget;
+            await runConfigCheck(owner, receipt, target, () => receiptAllowed(receipt, target) && !readOnly(library.get(owner)));
         },
         prepareConfigApply(id, revision) {
             live(); const s = snapshot();
@@ -395,7 +419,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
         approveConfigApply(id) {
             live(); const s = snapshot();
             if (!model || resetting || s.busy || s.readOnly || !['draft', 'assistant'].includes(mode) || !s.configActions.some(r => r.id === id)) throw Error('ACTION_STALE');
-            return actions.approve(id);
+            return actions.approve(id).then(async result => {
+                // The UI's awaited approval includes its own deterministic check; a
+                // later explicit check remains available for observing subsequent edits.
+                if (checking?.id === id) await checking.promise;
+                return result;
+            });
         },
         cancelConfigApply(id) { live(); if (resetting || !snapshot().configActions.some(r => r.id === id)) throw Error('ACTION_STALE'); actions.cancel(id); },
         prepareVariableApply(id, revision) {
@@ -557,7 +586,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         },
         async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); await host.credentials?.setAutoConnect?.(false); clear(); inputs.clear(); } finally { resetting = false; emit(); } },
         send({ consent, fields, artifactId, interactionId } = {}) { return send({ consent, fields, artifactId, interactionId }); },
-        stop() { live(); autoActions.length = 0; autoPlans.length = 0; checking?.abort.abort(); actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); for (const r of state.runs) app.cancel(r.id); } emit(); },
+        stop() { live(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; checking?.abort.abort(); actions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); for (const r of state.runs) app.cancel(r.id); } emit(); },
         revalidate(id, revision) { live(); if (!app || resetting || snapshot().busy) throw new Error('NOT_READY');
             if (!['draft', 'assistant'].includes(mode) || !snapshot().artifacts.some(a => a.id === id && a.revision === revision)) throw new Error('INVALID_ARTIFACT');
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }

@@ -22,7 +22,7 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
             if (status) node('small', t(...(labels[status] || ['解释状态未知', 'Explanation status unknown'])) + t('；不改变操作结果', '; does not change the operation result'), actions).setAttribute('role', 'status');
             const check = state.configChecks?.[r.operationId];
             if (check) {
-                const checks = { reading: ['正在核对', 'Checking'], matched: ['读取时与提议值一致', 'Matched proposed values at read time'], different: ['读取时与提议值不一致', 'Different from proposed values at read time'], unknown: ['无法核对', 'Unable to verify'] };
+                const checks = { reading: ['正在核对', 'Checking'], matched: ['读取时与提议值一致', 'Matched proposed values at read time'], different: ['读取时与提议值不一致', 'Different from proposed values at read time'], unknown: ['无法核对', 'Unable to verify'], permission_required: ['尚未核对：需要配置读取授权', 'Not checked: settings read permission required'] };
                 node('p', t(...(checks[check.state] || checks.unknown)) + (check.readAt ? ' · ' + check.readAt : ''), actions).setAttribute('role', 'status');
                 for (const field of check.fields) node('small', `${field.field}: ${field.actual || t('未知', 'unknown')} · ${t('提议', 'proposed')} ${field.expected}`, actions);
                 node('small', t('仅是读取时的内存值，不证明持久化，也不改变原回执。', 'In-memory values at read time only; not proof of persistence. Original receipt unchanged.'), actions);

@@ -73,8 +73,11 @@ export function createToolBroker({ registry, handlers, runId, target, allowedToo
             return remember({ ok: true, data: output });
         } catch (error) {
             assertActive(signal);
-            // Even trusted handler exceptions never donate text or error codes to the model.
-            return remember(safeFailure(error instanceof ExecutionError && error.code === 'TIMEOUT' ? 'TIMEOUT' : 'TOOL_FAILED', 'unknown'));
+            // Only these closed, read-only preview contract errors are safe to disclose.
+            // Other handler exceptions may contain secrets or have unknown effects.
+            const splitDraft = d.id === 'muyu.settings.preview' && error instanceof ExecutionError &&
+                ['MEMORY_LIMIT_REQUIRES_SEPARATE_DRAFT', 'COMPLETION_VARIABLE_REQUIRES_SEPARATE_DRAFT'].includes(error.code);
+            return remember(safeFailure(splitDraft ? error.code : error instanceof ExecutionError && error.code === 'TIMEOUT' ? 'TIMEOUT' : 'TOOL_FAILED', splitDraft ? 'not_started' : 'unknown'));
         }
     }
     return Object.freeze({
