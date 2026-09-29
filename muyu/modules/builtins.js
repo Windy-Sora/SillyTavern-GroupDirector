@@ -67,7 +67,7 @@ export function createBuiltins(host) {
                 const publish = fn => { try { fn(); } catch { failed = true; } };
                 if (intent.completedTools?.has('muyu.memory.inspect')) publish(() => memory.publishReport(app, id));
                 if (intent.completedTools?.has('muyu.director.inspect')) publish(() => director.publishReport(app, id));
-                if (intent.candidate) publish(() => artifacts.publish(app, id, intent.candidate));
+                for (const candidate of intent.candidates?.values() || []) publish(() => artifacts.publish(app, id, candidate));
                 return failed ? 'RESULT_NEEDS_REVIEW' : null;
             },
         },
@@ -77,10 +77,13 @@ export function createBuiltins(host) {
         draft: { module: draft,
             validate(fields) { if (!Array.isArray(fields) || !fields.length || fields.some(f => !memoryFields.includes(f)) || new Set(fields).size !== fields.length) throw Error('FIELD_SCOPE_REQUIRED'); },
             bind(identity, intent) { draft.bindRun({ runId: identity.id, taskId: identity.taskId, target: identity.target, allowedFields: intent.fields, previousArtifact: intent.artifact }); },
-            publish(app, id, intent) { if (!intent.candidate || intent.candidate.toolId !== 'muyu.config.preview') return 'NO_CANDIDATE'; artifacts.publish(app, id, intent.candidate); return null; },
+            publish(app, id, intent) { const candidate = intent.candidates?.get('muyu.config.preview'); if (!candidate) return 'NO_CANDIDATE'; artifacts.publish(app, id, candidate); return null; },
         },
     };
     for (const task of Object.values(tasks)) task.tools = task.module ? [...shared, ...task.module.registry.list().map(d => d.id)] : registry.list().map(d => d.id);
     tasks.chat.tools.push(...permission.registry.list().map(d => d.id));
-    return { registry, handlers, tasks, candidateTool: artifacts.produces, bindBudget: (id, limit) => providers.bindRun(id, limit), resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };
+    return { registry, handlers, tasks, candidateTool: artifacts.produces,
+        transferRun(from, identity, intent) { const previous = unified.get(from); if (previous) { unified.delete(from); unified.set(identity.id, { ...previous, identity, intent }); } for (const module of modules) if (module !== providers) module.transferRun?.(from, identity); },
+        bindBudget: (id, limit, from = null) => from ? providers.transferRun(from, id, limit) : providers.bindRun(id, limit),
+        resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };
 }

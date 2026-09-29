@@ -28,6 +28,7 @@ export function createPermissions({ fullAccess = () => false } = {}) {
         deniedExecution: (target, taskId, providerId, providerRevision) => !fullAccess() && sources.deniedExecution(target, taskId, providerId, providerRevision),
         decide: (request, decision, continuation) => sources.decide(request, decision, continuation),
         grantTaskSources: (grants, target, taskId, continuation) => sources.grantTaskSources(grants, target, taskId, continuation),
+        grantSource: (source, target) => sources.grantSource(source, target),
         forgetTask: (target, taskId) => sources.forgetTask(target, taskId),
         grant(kind, target) {
             if (kind === 'diagnostics') diagnostics = true;

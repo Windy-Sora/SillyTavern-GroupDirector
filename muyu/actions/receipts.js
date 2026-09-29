@@ -10,6 +10,7 @@ const schemaV2 = { ...schema, properties: { ...schema.properties, version: { typ
     memoryPrune: object({ chatKey: text(4096), settingsSave: { type: 'string', enum: ['not_started', 'confirmed', 'unconfirmed', 'error'] }, status: { type: 'string', enum: ['not_started', 'not_needed', 'pruned', 'skipped', 'outcome_unknown'] }, planned: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER }, removed: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER } }),
     completionVariable: object({ chatKey: text(4096), chatSave: { type: 'string', enum: ['not_started', 'confirmed', 'unknown'] }, settingsSave: { type: 'string', enum: ['not_started', 'confirmed', 'unconfirmed', 'error'] } }) } };
 const variableFields = ['id', 'scope', 'type', 'defaultValue', 'label', 'rule', 'autoUpdate', 'injectMode', 'updateMode', 'min', 'max', 'showInDashboard'];
+const receiptValue = (value, limit) => { const serialized = JSON.stringify(value); return serialized.length <= limit ? serialized : `[omitted ${serialized.length} characters; inspect the original draft]`; };
 const schemaV3 = object({ version: { type: 'integer', enum: [3] }, operationId: text(100), artifactId: text(100), variableId: text(64),
     revision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }, at: { type: 'integer', minimum: 0, maximum: 8640000000000000 },
     status: { type: 'string', enum: receiptStatuses },
@@ -54,7 +55,7 @@ export function actionReceipt(action) {
         persistence: action.result?.persistence || 'not_started' });
     if (action.content?.module === 'task-bundle') {
         const planned = [...action.content.variables.map(row => ({ kind: 'variable', id: row.preview.id,
-            diff: row.preview.diff.map(d => ({ field: d.field, before: JSON.stringify(d.before), after: JSON.stringify(d.after) })) })),
+            diff: row.preview.diff.map(d => ({ field: d.field, before: receiptValue(d.before, 24000), after: receiptValue(d.after, 24000) })) })),
         ...(action.content.settings ? [{ kind: 'settings', id: 'global-settings', diff: action.content.settings.preview.diff }] : [])];
         return validateReceipt({ version: 4, operationId: action.id, artifactId: action.artifactId, revision: action.revision,
             at: Date.now(), status: action.status, steps: planned.map((step, index) => {
@@ -66,7 +67,7 @@ export function actionReceipt(action) {
     }
     if (action.content?.module === 'variable-draft') return validateReceipt({ version: 3, operationId: action.id, artifactId: action.artifactId, variableId: action.content.preview.id,
         revision: action.revision, at: Date.now(), status: action.status,
-        diff: action.content.preview.diff.map(d => ({ field: d.field, before: JSON.stringify(d.before), after: JSON.stringify(d.after) })),
+        diff: action.content.preview.diff.map(d => ({ field: d.field, before: receiptValue(d.before, 1000), after: receiptValue(d.after, 1000) })),
         saveError: action.result?.saveError === true, changed: action.result?.changed === true, chatSave: action.result?.chatSave || 'not_started' });
     return validateReceipt({ ...(action.content.preview.contractVersion === 2 ? { version: 2 } : {}), operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status,
         diff: action.content.preview.diff, saveError: action.result?.saveError === true, changed: action.result?.changed === true,

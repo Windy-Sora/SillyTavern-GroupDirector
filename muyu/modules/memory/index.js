@@ -42,6 +42,7 @@ export function createMemoryModule({ reader, maxReports = 128 }) {
             reports.delete(runId); return result;
         },
         forgetRun(runId) { reports.delete(runId); },
+        transferRun(from, identity) { const report = reports.get(from); if (!report) return; if (reports.has(identity.id) || jsonKey(report.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); reports.delete(from); reports.set(identity.id, report); },
         dispose() { disposed = true; reports.clear(); },
     });
 }

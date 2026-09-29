@@ -24,6 +24,12 @@ export function createSourcePermissions() {
         },
         denied(source, target, taskId) { return contains(denied, taskKey(target, taskId), source); },
         list(target) { return permissionSources.filter(source => contains(chats, scope(source, target), source)); },
+        grantSource(source, target) {
+            const id = scope(source, target);
+            if (!permissionSources.includes(source) || source === 'source:providerExecution' || !id) throw Error('INVALID_PERMISSION');
+            if (!chats.has(id) && chats.size >= 1024) throw Error('PERMISSION_CAPACITY');
+            const next = new Set(chats.get(id)); next.add(source); chats.set(id, next);
+        },
         decide(request, decision, continuation) {
             validatePermission({ source: request.source, reason: request.reason, ...(request.source === 'providerExecution' ? { providerId: request.providerId, providerRevision: request.providerRevision } : {}) });
             const scopeId = scope(sourceKey(request.source), request.target);

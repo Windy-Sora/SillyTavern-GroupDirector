@@ -40,5 +40,6 @@ export function createDirectorModule({ ports }) {
     return { registry, handlers: { 'muyu.director.inspect': (_, ctx) => { if (reports.size >= 128 && !reports.has(ctx.runId)) throw Error('REPORT_CAPACITY'); const result = report(read(ctx.target)); reports.set(ctx.runId, { target: copyJson(ctx.target), report: result }); return copyJson(result); } },
         publishReport(app, runId) { const saved = reports.get(runId); if (!saved || jsonKey(read(saved.target)) !== jsonKey(saved.report.state)) throw Error('STALE_EVIDENCE'); const r = app.snapshot().runs.find(r => r.id === runId); if (r?.status !== 'succeeded' || jsonKey(r.target) !== jsonKey(saved.target)) throw Error('INVALID_SOURCE'); return app.createArtifact({ taskId: r.taskId, sourceRunId: runId, kind: 'report', content: saved.report }); },
         forgetRun: id => reports.delete(id), dispose: () => { disposed = true; reports.clear(); },
+        transferRun(from, identity) { const report = reports.get(from); if (!report) return; if (reports.has(identity.id) || jsonKey(report.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); reports.delete(from); reports.set(identity.id, report); },
     };
 }

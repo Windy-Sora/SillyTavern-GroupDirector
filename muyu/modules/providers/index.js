@@ -129,6 +129,7 @@ export function createProviderModule(host) {
     }
     return { registry,
         bindRun(id, limit) { if (!Number.isInteger(limit) || limit < 6000 || limit > 96000 || runs.has(id) || runs.size >= 128) throw Error('INVALID_PROVIDER_BUDGET'); runs.set(id, newRun(limit)); },
+        transferRun(from, id, limit) { const run = runs.get(from); if (!run || runs.has(id) || !Number.isInteger(limit) || limit < 6000 || limit > 96000) throw Error('INVALID_PROVIDER_BUDGET'); runs.delete(from); run.limit = Math.min(run.limit, limit); run.exhausted ||= run.bytes >= run.limit; runs.set(id, run); },
         usage(id) { const r = runs.get(id); return { used: r?.bytes || 0, limit: r?.limit || 0, exhausted: r?.exhausted || false }; },
         handlers: {
         'muyu.provider.list': publicProviderCatalog,

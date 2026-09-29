@@ -76,6 +76,7 @@ export function createConfigDraftModule({ getSettings, getTarget, maxRuns = 128 
             return app.validateArtifact(artifactId, expectedRevision, { contractVersion: 1, structural: result.structural, semantic: result.semantic, intent: result.intent, baseline: jsonKey(baseline) });
         },
         forgetRun(runId) { records.delete(runId); },
+        transferRun(from, identity) { const record = records.get(from); if (!record) return; if (records.has(identity.id) || record.taskId !== identity.taskId || jsonKey(record.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); records.delete(from); records.set(identity.id, record); },
         dispose() { disposed = true; records.clear(); },
     });
 }

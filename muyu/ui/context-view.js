@@ -1,5 +1,6 @@
 import { CONTEXT_DEFAULTS } from '../context/policy.js';
 import { formatBudget } from './budget-view.js';
+import { permissionTitle } from '../permissions/contract.js';
 
 /** View only. Summary text is plain reference data; no operation comes from model output. */
 export function createContextView({ doc, settings, parent, controller, act, lang }) {
@@ -19,6 +20,8 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     const details = node('details', '', parent); details.className = 'gd-muyu-context'; node('summary', t('上下文', 'Context'), details);
     details.open = true;
     const counts = node('p', '', details), usage = node('p', '', details);
+    const recovery = node('div', '', details), recoveryNote = node('small', '', recovery), source = node('select', '', recovery), grant = button(t('允许所选历史资料', 'Allow selected history source'), recovery);
+    grant.onclick = () => act(() => controller.grantHistoryPermission(source.value));
     const omit = field(t('本次不携带旧历史（不撤销工具资料授权）', 'Omit history this send (does not revoke tool access)'), 'checkbox', details);
     omit.onchange = () => act(() => controller.setOmitHistory(omit.checked));
     const preview = node('details', '', details); node('summary', t('查看历史摘要', 'View history summary'), preview); const summary = node('p', '', preview);
@@ -39,6 +42,13 @@ export function createContextView({ doc, settings, parent, controller, act, lang
         compact.disabled ||= !s.enabled; clear.disabled ||= !ctx.summary;
         omit.disabled = s.readOnly || s.busy || s.resetting; omit.checked = !!ctx.omitHistory;
         counts.textContent = `${t('计划携带完整问答', 'Planned complete turns')}: ${ctx.turns || 0} · ${t('未覆盖消息', 'Uncovered messages')}: ${ctx.omitted || 0}\n${t('历史部分估算', 'History estimate')}: ${ctx.estimatedTokens || 0} tokens · ${t('摘要', 'Summary')}: ${ctx.summaryStale ? t('来源变化，不使用', 'Stale; not used') : ctx.summaryUsed ? t('使用中', 'In use') : t('未使用', 'Not used')}`;
+        const missing = (s.history?.missingPermissions || []).filter(kind => !kind.startsWith('source:providerExecution'));
+        recovery.hidden = !missing.length || s.readOnly;
+        recoveryNote.textContent = ctx.permissionOmitted ? t('本次因历史资料授权到期，将不发送此前问答。可逐项允许所需来源后再发送；只影响本连接，不会发送消息或修改内容。', 'Earlier turns will not be sent because their source grants expired. Allow exact sources before sending if needed; this affects only this connection and sends nothing now.') : t('历史所需资料尚未授权；可逐项允许后再发送。', 'History sources need permission; you may allow them individually before sending.');
+        const selected = source.value; source.replaceChildren();
+        for (const kind of missing) { const option = node('option', kind.startsWith('source:') ? permissionTitle(kind.slice(7)) : kind, source); option.value = kind; }
+        source.value = missing.includes(selected) ? selected : missing[0] || '';
+        grant.disabled = s.busy || s.resetting || s.interaction?.status === 'pending' || !missing.length;
         summary.textContent = ctx.summary || t('暂无摘要', 'No summary');
         const last = s.runs?.at(-1)?.process, actual = last?.context;
         usage.textContent = actual ? `${t('最近请求估算／预算', 'Last request estimate / budget')}: ${actual.estimatedTokens}/${actual.inputTokenLimit ?? c.inputTokens} tokens · ${actual.requestBytes} B\n${t('实际保留历史消息', 'Retained historical messages')}: ${actual.historicalMessages ?? '?'}\n${t('消息／工具定义／工具结果／思考回传字节（分项存在包含关系）', 'Message / tool definition / tool result / reasoning bytes (overlapping categories)')}: ${actual.messageBytes}/${actual.toolDefinitionBytes}/${actual.toolResultBytes}/${actual.reasoningBytes}\n${t('实际 Token 见本轮开销；估算非实测', 'Actual tokens appear under run usage; estimates are not measurements')}` : '';
