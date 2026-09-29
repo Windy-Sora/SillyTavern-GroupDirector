@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { createHostBridge } from '../../muyu/host/bridge.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
+import { createMemoryLimitPort } from '../../muyu/host/memory-limit.js';
 import { scriptedModel, text, done, flush } from './helpers/muyu-subject.mjs';
 
 const call = (toolId, args, callId = crypto.randomUUID()) => ({ type: 'tool_call_complete', call: { toolId, args, callId, version: 1 } });
@@ -14,8 +15,10 @@ function fixture(steps) {
     const settings = { mode: 'formula', topN: 1, memoryMaxEntries: 200 };
     const context = { chatId: 'A', groupId: 'g', groups: [{ id: 'g', members: [] }], chat: [], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };
     let saves = 0;
-    const host = createHostBridge({ getSettings: () => settings, getContext: () => context, extensionKey: 'gd',
-        configWriter: createConfigWriter({ getSettings: () => settings, isBusy: () => false,
+    let host;
+    const memoryLimitPort = createMemoryLimitPort({ getTarget: () => host.currentTarget(), getMetadata: () => context.chatMetadata, extensionKey: 'gd', memorySystem: { pruneAfter: async () => {} } });
+    host = createHostBridge({ getSettings: () => settings, getContext: () => context, extensionKey: 'gd', memoryLimitPort,
+        configWriter: createConfigWriter({ getSettings: () => settings, isBusy: () => false, memoryLimitPort,
             saveSettings: async () => { saves++; return { confirmed: true }; } }) });
     const model = scriptedModel(steps);
     const controller = createMuyuController({ host, createModel: () => model });
@@ -77,5 +80,62 @@ test('A mixed memory-limit preview returns a safe split hint and can be correcte
         assert.equal(f.controller.snapshot().artifacts.length, 1);
         assert.equal(f.saves(), 0);
         assert.equal(f.settings.topN, 1);
+    } finally { await f.controller.dispose(); }
+});
+
+test('Split settings previews publish both independent drafts without applying either', async () => {
+    const f = fixture([[call('muyu.settings.preview', { changes: { memoryMaxEntries: 10, topN: 2 } }), done],
+        [call('muyu.settings.preview', { changes: { memoryMaxEntries: 10 } }), done],
+        [call('muyu.settings.preview', { changes: { topN: 2 } }), done], [text('两份草稿'), done]]);
+    try {
+        await f.start('分别预览记忆上限 10 与 topN 2，不要应用');
+        const artifacts = f.controller.snapshot().artifacts;
+        assert.equal(artifacts.length, 2);
+        assert.deepEqual(artifacts.map(a => a.content.requestedChanges), [{ memoryMaxEntries: 10 }, { topN: 2 }]);
+        assert.equal(f.settings.memoryMaxEntries, 200); assert.equal(f.settings.topN, 1); assert.equal(f.saves(), 0);
+    } finally { await f.controller.dispose(); }
+});
+
+test('A later preview of the same field replaces its earlier draft', async () => {
+    const f = fixture([[call('muyu.settings.preview', { changes: { topN: 2 } }), done],
+        [call('muyu.settings.preview', { changes: { topN: 3 } }), done], [text('修订草稿'), done]]);
+    try {
+        await f.start('预览 topN 2，然后改成 3');
+        assert.deepEqual(f.controller.snapshot().artifacts.map(a => a.content.requestedChanges), [{ topN: 3 }]);
+        assert.equal(f.saves(), 0);
+    } finally { await f.controller.dispose(); }
+});
+
+test('Revising a memory-limit draft does not publish its obsolete prune plan', async () => {
+    const f = fixture([[call('muyu.settings.preview', { changes: { memoryMaxEntries: 10 } }), done],
+        [call('muyu.settings.preview', { changes: { memoryMaxEntries: 11 } }), done], [text('修订记忆草稿'), done]]);
+    try {
+        await f.start('先预览记忆上限 10，随后改为 11');
+        assert.deepEqual(f.controller.snapshot().artifacts.map(a => a.content.requestedChanges), [{ memoryMaxEntries: 11 }]);
+        assert.equal(f.settings.memoryMaxEntries, 200); assert.equal(f.saves(), 0);
+    } finally { await f.controller.dispose(); }
+});
+
+test('A corrected side-effect-free split error allows the requested automatic apply', async () => {
+    const f = fixture([[call('muyu.settings.preview', { changes: { memoryMaxEntries: 10, topN: 2 }, apply: true }), done],
+        [call('muyu.settings.preview', { changes: { topN: 2 }, apply: true }), done], [text('先完成 topN'), done]]);
+    try {
+        await f.start('把记忆上限改成 10、topN 改成 2，先完成能做的部分');
+        const state = f.controller.snapshot();
+        assert.equal(f.settings.topN, 2); assert.equal(f.settings.memoryMaxEntries, 200);
+        assert.equal(f.saves(), 1); assert.equal(state.receipts.length, 1);
+        assert.equal(state.notice, null);
+    } finally { await f.controller.dispose(); }
+});
+
+test('An unrelated tool failure still blocks automatic apply and explains manual review', async () => {
+    const f = fixture([[call('muyu.settings.preview', { changes: { topN: 2 }, apply: true }), done],
+        [call('muyu.settings.contract', { domain: 'not-a-domain' }), done], [text('请检查草稿'), done]]);
+    try {
+        await f.start('把 topN 改成 2');
+        const state = f.controller.snapshot();
+        assert.equal(f.settings.topN, 1); assert.equal(f.saves(), 0);
+        assert.equal(state.artifacts.length, 1); assert.equal(state.receipts.length, 0);
+        assert.equal(state.notice, 'AUTO_APPLY_REQUIRES_REVIEW');
     } finally { await f.controller.dispose(); }
 });

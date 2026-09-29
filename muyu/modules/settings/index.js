@@ -8,7 +8,7 @@ const string = { type: 'string', maxLength: 24000 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const strings = { type: 'array', items: { type: 'string', enum: configFields }, maxItems: configFields.length };
 // JSON text keeps the global tool schema small; the domain owner validates its contents.
-const output = { type: 'object', properties: { text: string, candidateId: { type: 'string', maxLength: 100 }, applyRequested: { type: 'boolean' } }, required: ['text', 'candidateId'], additionalProperties: false };
+const output = { type: 'object', properties: { text: string, candidateId: { type: 'string', maxLength: 100 }, applyRequested: { type: 'boolean' }, replacedCandidateIds: { type: 'array', items: { type: 'string', maxLength: 100 }, maxItems: 16 } }, required: ['text', 'candidateId'], additionalProperties: false };
 
 export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, completionVariablePort }) {
     const registry = createToolRegistry(), handlers = {}, runs = new Map(); let disposed = false;
@@ -64,9 +64,13 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
     register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields) }) }));
     register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
-        if (run.candidate?.content.memoryPrunePlan) memoryLimitPort?.forget(run.candidate.content.memoryPrunePlan);
-        if (run.candidate?.content.completionVariablePlan) completionVariablePort?.forget(run.candidate.content.completionVariablePlan);
-        run.candidate = null;
+        const replacedCandidateIds = [];
+        for (const [id, candidate] of run.candidates) {
+            if (!Object.keys(changes).some(field => Object.hasOwn(candidate.content.requestedChanges, field))) continue;
+            if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan);
+            if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan);
+            run.candidates.delete(id); replacedCandidateIds.push(id);
+        }
         const fields = dependencyFields(Object.keys(changes)), baseline = read(ctx.target, fields);
         const basePreview = previewSettings({ baseline, changes });
         let plan, completionPlan, content;
@@ -80,7 +84,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); throw error; }
         const candidateId = 'settings:' + crypto.randomUUID();
         const result = copyJson({ candidateId, text: JSON.stringify(apply ? { ...content.preview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : content.preview) });
-        run.candidate = { candidateId, content }; return { ...result, ...(apply ? { applyRequested: true } : {}) };
+        run.candidates.set(candidateId, { candidateId, content }); return { ...result, replacedCandidateIds, ...(apply ? { applyRequested: true } : {}) };
     });
     registry.seal();
     function verifyContent(content, expectedTarget) {
@@ -93,13 +97,14 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         if (jsonKey(withCompletionImpact(withMemoryImpact(previewSettings({ baseline, changes }), plan), completionPlan)) !== jsonKey(content.preview)) throw Error('INVALID_DRAFT');
     }
     return { registry, handlers,
-        bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidate: null }); },
-        transferRun(from, identity) { const run = runs.get(from); if (!run) return; if (runs.has(identity.id) || run.taskId !== identity.taskId || jsonKey(run.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); runs.delete(from); if (run.candidate) run.candidate.content.producedByRunId = identity.id; runs.set(identity.id, run); },
+        bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidates: new Map() }); },
+        transferRun(from, identity) { const run = runs.get(from); if (!run) return; if (runs.has(identity.id) || run.taskId !== identity.taskId || jsonKey(run.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); runs.delete(from); for (const candidate of run.candidates.values()) candidate.content.producedByRunId = identity.id; runs.set(identity.id, run); },
         publishDraft(app, id, candidateId) {
             const r = runs.get(id), run = app.snapshot().runs.find(item => item.id === id);
-            if (!r?.candidate || r.candidate.candidateId !== candidateId || run?.status !== 'succeeded' || run.taskId !== r.taskId || jsonKey(run.target) !== jsonKey(r.target)) throw Error('INVALID_CANDIDATE_SOURCE');
-            verifyContent(r.candidate.content, r.target);
-            const a = app.createArtifact({ taskId: r.taskId, sourceRunId: id, kind: 'config-draft', content: r.candidate.content }); runs.delete(id); return a;
+            const candidate = r?.candidates.get(candidateId);
+            if (!candidate || run?.status !== 'succeeded' || run.taskId !== r.taskId || jsonKey(run.target) !== jsonKey(r.target)) throw Error('INVALID_CANDIDATE_SOURCE');
+            verifyContent(candidate.content, r.target);
+            const a = app.createArtifact({ taskId: r.taskId, sourceRunId: id, kind: 'config-draft', content: candidate.content }); r.candidates.delete(candidateId); return a;
         },
         validateSaved(app, id, revision) {
             const a = app.getArtifact(id), run = app.snapshot().runs.find(r => r.id === a.content.producedByRunId);
@@ -107,6 +112,6 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             verifyContent(a.content, run.target);
             return app.validateArtifact(id, revision, { contractVersion: 2, structural: 'passed', semantic: a.content.preview.semantic, intent: 'requires_user_review', baseline: 'matched-at-validation' });
         },
-        forgetRun(id) { const run = runs.get(id); if (run?.candidate?.content.memoryPrunePlan) memoryLimitPort?.forget(run.candidate.content.memoryPrunePlan); if (run?.candidate?.content.completionVariablePlan) completionVariablePort?.forget(run.candidate.content.completionVariablePlan); runs.delete(id); }, dispose() { disposed = true; runs.clear(); memoryLimitPort?.clear(); completionVariablePort?.clear(); },
+        forgetRun(id) { const run = runs.get(id); for (const candidate of run?.candidates.values() || []) { if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan); if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan); } runs.delete(id); }, dispose() { disposed = true; runs.clear(); memoryLimitPort?.clear(); completionVariablePort?.clear(); },
     };
 }

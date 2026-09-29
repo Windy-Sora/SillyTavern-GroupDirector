@@ -334,14 +334,25 @@ export function createMuyuController({ host, createModel = createChatCompletions
                     if (['tool.completed', 'tool.failed'].includes(event.type) && builtins.candidateTool(event.payload.toolId)) {
                         const candidateId = event.payload.result.data?.candidateId;
                         if (event.payload.result.ok && candidateId) {
-                            const key = event.payload.toolId === 'muyu.profile.preview' ? candidateId : event.payload.toolId;
+                            const key = ['muyu.profile.preview', 'muyu.settings.preview'].includes(event.payload.toolId) ? candidateId : event.payload.toolId;
+                            if (event.payload.toolId === 'muyu.settings.preview') {
+                                for (const replaced of event.payload.result.data?.replacedCandidateIds || []) { intent.candidates.delete(replaced); intent.autoApplyCandidates.delete(replaced); }
+                                intent.recoverablePreviewFailure = false;
+                            }
                             intent.candidates.set(key, { toolId: event.payload.toolId, candidateId });
                             if (fullAccess && event.payload.result.data?.applyRequested === true) intent.autoApplyCandidates.set(key, candidateId);
                             else intent.autoApplyCandidates.delete(key);
-                        } else if (event.payload.toolId !== 'muyu.profile.preview') { intent.candidates.delete(event.payload.toolId); intent.autoApplyCandidates.delete(event.payload.toolId); }
+                        } else if (event.payload.toolId !== 'muyu.profile.preview') {
+                            for (const [key, candidate] of intent.candidates) if (candidate.toolId === event.payload.toolId) { intent.candidates.delete(key); intent.autoApplyCandidates.delete(key); }
+                        }
                     }
                     if (event.type === 'tool.completed' && event.payload.result?.ok) intent.completedTools.add(event.payload.toolId);
-                    if (event.type === 'tool.failed') intent.failedTool = true;
+                    if (event.type === 'tool.failed') {
+                        const safeSplit = event.payload.toolId === 'muyu.settings.preview' && event.payload.result?.effectState === 'not_started' &&
+                            ['MEMORY_LIMIT_REQUIRES_SEPARATE_DRAFT', 'COMPLETION_VARIABLE_REQUIRES_SEPARATE_DRAFT'].includes(event.payload.result?.error?.code);
+                        if (safeSplit) intent.recoverablePreviewFailure = true;
+                        else intent.failedTool = true;
+                    }
                     if (event.type === 'run.finished' && ['CONTEXT_LIMIT', 'MODEL_NETWORK_ERROR', 'MODEL_AUTH_ERROR', 'MODEL_RATE_LIMIT', 'MODEL_SERVICE_ERROR', 'MODEL_HISTORY_UNAVAILABLE', 'MODEL_OUTPUT_TRUNCATED', 'TIMEOUT', 'BUDGET_EXCEEDED'].includes(event.payload.error)) intent.failure = event.payload.error;
                 },
             });
@@ -352,7 +363,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 const intent = intentions.get(event.runId), run = app.snapshot().runs.find(r => r.id === event.runId);
                 try {
                     if (run?.status === 'failed' && intent?.failure) notices.set(run.sessionId, intent.failure);
-                    if (run?.status === 'yielded' && intent) continuations.set(run.taskId, { mode: intent.mode, fields: [...intent.fields], artifact: intent.artifact, runConfig: { ...intent.runConfig }, historyStart: intent.historyStart, autoHistoryOmitted: intent.autoHistoryOmitted, sourceRunId: event.runId, candidates: [...intent.candidates], autoApplyCandidates: [...intent.autoApplyCandidates], completedTools: [...intent.completedTools], failedTool: intent.failedTool });
+                    if (run?.status === 'yielded' && intent) continuations.set(run.taskId, { mode: intent.mode, fields: [...intent.fields], artifact: intent.artifact, runConfig: { ...intent.runConfig }, historyStart: intent.historyStart, autoHistoryOmitted: intent.autoHistoryOmitted, sourceRunId: event.runId, candidates: [...intent.candidates], autoApplyCandidates: [...intent.autoApplyCandidates], completedTools: [...intent.completedTools], failedTool: intent.failedTool, recoverablePreviewFailure: intent.recoverablePreviewFailure });
                     else if (run) { releaseContinuation(run.taskId); permissions.forgetTask(run.target, run.taskId); }
                     if (run?.status === 'succeeded' && intent && !intent.explanation) {
                         const publication = builtins.tasks[intent.mode].publish(app, event.runId, intent);
@@ -363,7 +374,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
                             const plan = published?.get(intent.candidates.get('muyu.task.plan').candidateId);
                             if (plan) autoPlans.push({ id: plan.id, revision: plan.revision, sessionId: plan.sessionId });
                         }
-                        if (fullAccess && !intent.failedTool) {
+                        if (fullAccess && !notice && (intent.failedTool || intent.recoverablePreviewFailure) && intent.autoApplyCandidates.size) notices.set(run.sessionId, 'AUTO_APPLY_REQUIRES_REVIEW');
+                        if (fullAccess && !intent.failedTool && !intent.recoverablePreviewFailure) {
                             for (const [key, candidateId] of intent.autoApplyCandidates) {
                                 if (intent.candidates.get(key)?.candidateId !== candidateId) continue;
                                 const artifact = published?.get(candidateId);
@@ -640,7 +652,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const result = continuation ? permissionDecision !== null ? app.answerPermission(interactionId, permissionDecision) : app.answerInteraction(interactionId, request.draft) : artifact ? { taskId: artifact.taskId, runId: app.continueTask(artifact.taskId, input) } : app.submit(sessionId, input, []);
             const receipts = !omitHistory && configAllowed(target, result.taskId) ? receiptsFor(id).filter(r => !explanation || r.operationId === explanation).slice(-3) : [];
             if (explanation) explanations.set(explanation, result.runId);
-            intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, resumeFrom: continuation?.sourceRunId || null, candidates: new Map(continuation?.candidates || []), autoApplyCandidates: new Map(continuation?.autoApplyCandidates || []), completedTools: new Set(continuation?.completedTools || []), failedTool: continuation?.failedTool || false, autoHistoryOmitted, instructions: scopedInstructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
+            intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, resumeFrom: continuation?.sourceRunId || null, candidates: new Map(continuation?.candidates || []), autoApplyCandidates: new Map(continuation?.autoApplyCandidates || []), completedTools: new Set(continuation?.completedTools || []), failedTool: continuation?.failedTool || false, recoverablePreviewFailure: continuation?.recoverablePreviewFailure || false, autoHistoryOmitted, instructions: scopedInstructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
                 compaction: !omitHistory && contextConfig.autoSummary && contextPlan.omitted > 0 ? candidateFor(record, contextConfig) : null });
             omittedViews.delete(key);
             const granted = mode === 'assistant' ? [] : ['diagnostics', 'chat', 'extended', ...permissionSources.filter(source => !['source:memoryConfig', 'source:memoryDiagnostics', 'source:directorDiagnostics'].includes(source))].filter(kind => permissions.allows(kind, target, result.taskId));

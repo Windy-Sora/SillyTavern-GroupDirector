@@ -154,6 +154,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         BUDGET_EXCEEDED: t('已达到任务预算，未继续调用。', 'Run budget reached; no further calls.'),
         NO_CANDIDATE: t('模型未提交有效配置候选，未生成可用草稿。', 'No valid configuration candidate was submitted.'),
         RESULT_NEEDS_REVIEW: t('未能发布可信产物，证据可能缺失或已变化，请重新排查或生成。', 'Could not publish a verified artifact; evidence may be missing or changed. Run again.'),
+        AUTO_APPLY_REQUIRES_REVIEW: t('本轮有未解决的工具失败，已保留草稿但未自动应用；请检查后手动确认。', 'A tool failure remains unresolved. Drafts were kept but not applied automatically; review and confirm them manually.'),
     };
     function showError(error) {
         const code = error?.message;
