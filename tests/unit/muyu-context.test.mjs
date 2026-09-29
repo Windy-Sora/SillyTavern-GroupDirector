@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONTEXT_DEFAULTS, estimateTokens, measurePayload, validateContextConfig } from '../../muyu/context/policy.js';
 import { planContext, fingerprint, summaryCandidate, usableSummary } from '../../muyu/context/planner.js';
+import { compactionRequest } from '../../muyu/context/compaction.js';
+import { createHistoryModule } from '../../muyu/modules/history/index.js';
+import { copyJson } from '../../muyu/core/json-contract.js';
 import { createContextConfigStore } from '../../muyu/host/context-config.js';
 import { validateRecord, summarizeRecord } from '../../muyu/sessions/contract.js';
 import { startMuyuRun } from '../../muyu/composition.js';
@@ -47,6 +50,56 @@ test('Planner preserves complete recent turns, ignores orphans and never splits 
     source.at(-1).content = '中'.repeat(15000); assert.equal(planContext(source, null, config).turns, 0);
     assert.equal(planContext(history(), null, config, true).messages.length, 0);
     assert.ok(estimateTokens('中'.repeat(100)) > estimateTokens('a'.repeat(100)));
+});
+
+test('A long recent answer uses a large configured window or one whole-turn summary', () => {
+    const messages = [{ role: 'user', content: 'Draft a plan', runId: 'long' }, { role: 'assistant', content: '中'.repeat(9000), runId: 'long' }];
+    const large = { inputTokens: 128000, recentTurns: 12, autoSummary: false };
+    assert.equal(planContext(messages, null, large).turns, 1);
+    assert.equal(planContext(messages, null, large).omitted, 0);
+    const normal = { ...large, inputTokens: 32000, autoSummary: true };
+    assert.equal(planContext(messages, null, normal).turns, 0);
+    const candidate = summaryCandidate(messages, normal);
+    assert.equal(candidate?.through, 2);
+    assert.equal(candidate.messages[1].content, messages[1].content);
+    copyJson(compactionRequest(candidate, normal.inputTokens).messages[0]);
+});
+
+test('A summary request carries a whole long turn through bounded ordered segments', () => {
+    const source = [{ role: 'user', content: '请梳理', runId: 'long' }, { role: 'assistant', content: '长段落😀'.repeat(5600), runId: 'long' }];
+    const setting = { inputTokens: 128000, recentTurns: 2, autoSummary: true };
+    const item = summaryCandidate(source, setting);
+    assert.equal(item?.through, 2);
+    const request = compactionRequest(item, setting.inputTokens);
+    assert.ok(request.messages.length > 3);
+    for (const message of request.messages) copyJson(message);
+    const segments = request.messages.slice(1).map(message => JSON.parse(message.content));
+    for (const [index, original] of source.entries()) {
+        const parts = segments.filter(part => part.sourceIndex === index);
+        assert.equal(parts[0].start, 0);
+        assert.equal(parts.at(-1).end, original.content.length);
+        assert.equal(parts.map(part => part.text).join(''), original.content);
+        for (let n = 1; n < parts.length; n++) assert.equal(parts[n - 1].end, parts[n].start);
+    }
+    assert.deepEqual(JSON.parse(compactionRequest({ messages: [{ role: 'user', content: '' }] }, setting.inputTokens).messages[1].content),
+        { sourceIndex: 0, role: 'user', start: 0, end: 0, total: 0, text: '' });
+});
+
+test('Original history tool is paged, bounded, stale-checked and guarded at each read', () => {
+    const messages = [{ role: 'user', content: '旧问题' }, { role: 'assistant', content: '答案😀'.repeat(1200) }];
+    let allowed = true;
+    const module = createHistoryModule({ access: () => allowed ? messages : null });
+    const ctx = { runId: 'run', target: { kind: 'chat', chatKey: 'A' } };
+    const list = module.handlers['muyu.history.list']({ offset: 0 }, ctx);
+    assert.equal(list.total, 2);
+    const first = module.handlers['muyu.history.read']({ index: 1, fingerprint: list.items[1].fingerprint, start: 0 }, ctx);
+    assert.equal(first.text.length, 4000);
+    assert.ok(first.nextOffset > 0);
+    const second = module.handlers['muyu.history.read']({ index: 1, fingerprint: list.items[1].fingerprint, start: first.nextOffset }, ctx);
+    assert.equal(first.text + second.text, messages[1].content);
+    assert.throws(() => module.handlers['muyu.history.read']({ index: 1, fingerprint: 'stale', start: 0 }, ctx), /HISTORY_STALE/);
+    allowed = false;
+    assert.throws(() => module.handlers['muyu.history.list']({ offset: 0 }, ctx), /HISTORY_UNAVAILABLE/);
 });
 
 test('Rolling summary extends a bounded contiguous prefix and invalidates when source changes', () => {
@@ -100,6 +153,11 @@ test('Initial preflight removes full old turns but current oversize input is blo
     const cfg = { ...config, inputTokens: 4096 };
     const s = run([[text('answer'), done]], { contextConfig: cfg, previousMessages: [{ role: 'user', content: 'x'.repeat(7000) }, { role: 'assistant', content: 'x'.repeat(7000) }] });
     assert.equal((await s.handle.completion).answer, 'answer'); assert.equal(s.model.requests[0].messages.length, 1);
+    const sent = s.events.find(e => e.type === 'run.context' && e.payload.phase === 'request');
+    assert.equal(sent.payload.historicalMessages, 0); assert.equal(sent.payload.trimmedHistoricalMessages, 2);
+    const process = createProcessStore(); process.create(identity.id);
+    for (const event of s.events) process.event(identity.id, event);
+    assert.equal(process.snapshot(identity.id).context.trimmedHistoricalMessages, 2);
     const large = run([], { contextConfig: cfg, input: '中'.repeat(5000) });
     assert.equal((await large.handle.completion).error, 'CONTEXT_LIMIT'); assert.equal(large.model.requests.length, 0);
 });

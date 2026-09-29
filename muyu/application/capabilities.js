@@ -9,7 +9,7 @@ function settingsSources(fields) {
 // One application contract for tool effects, required grants and history dependencies.
 // Tool definitions own wire schemas; handlers own business validation.
 const capabilities = Object.freeze({
-    ...Object.fromEntries(['muyu.provider.list', 'muyu.provider.discover', 'muyu.knowledge.list', 'muyu.knowledge.read', 'muyu.config.contract', 'muyu.context.list', 'muyu.context.read', 'muyu.interaction.ask', 'muyu.permission.request', 'muyu.settings.catalog', 'muyu.settings.contract', 'muyu.task.plan', 'muyu.profile.preview'].map(id => [id, { effect: 'read', sources: () => [] }])),
+    ...Object.fromEntries(['muyu.provider.list', 'muyu.provider.discover', 'muyu.knowledge.list', 'muyu.knowledge.read', 'muyu.config.contract', 'muyu.context.list', 'muyu.context.read', 'muyu.history.list', 'muyu.history.read', 'muyu.interaction.ask', 'muyu.permission.request', 'muyu.settings.catalog', 'muyu.settings.contract', 'muyu.task.plan', 'muyu.profile.preview'].map(id => [id, { effect: 'read', sources: () => [] }])),
     'muyu.settings.read': { effect: 'read', sources: args => settingsSources(args.fields || []) },
     'muyu.settings.preview': { effect: 'read', sources: args => {
         const fields = Object.keys(args.changes || {}), sources = settingsSources(fields);

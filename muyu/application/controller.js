@@ -178,6 +178,16 @@ export function createMuyuController({ host, createModel = createChatCompletions
             if (JSON.stringify(record.messages) !== JSON.stringify(session.messages) || record.status !== status) library.update(id, { messages: session.messages, status });
         }
     }
+    function historyAccess(runId, target) {
+        const intent = intentions.get(runId);
+        if (!intent || intent.mode !== 'assistant' || intent.explanation || intent.historyStart !== 0 || intent.autoHistoryOmitted ||
+            selectedId() !== intent.historyId || jsonKey(targetFor()) !== jsonKey(target) || !intent.sourceMessages?.length) return null;
+        const current = library.get(intent.historyId);
+        if (!current || readOnly(current) || current.scope !== historyScope('assistant', target) ||
+            current.required.some(source => !permissions.allows(source, target, app.snapshot().runs.find(run => run.id === runId)?.taskId)) ||
+            fingerprint(current.messages.slice(0, intent.sourceMessages.length)) !== fingerprint(intent.sourceMessages)) return null;
+        return intent.sourceMessages;
+    }
     function snapshot() {
         const id = selectedId(), state = app?.snapshot(), sessionId = runtimeSessions.get(id), record = library.get(id);
         if (!views.has(viewKey())) views.set(viewKey(), ++viewSequence);
@@ -232,7 +242,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         selectionEpoch++;
         viewedId = null;
         sessions.clear(); runtimeSessions.clear(); intentions.clear(); notices.clear(); continuations.clear();
-        builtins = createBuiltins(host);
+        builtins = createBuiltins({ ...host, historyAccess });
         const { registry, handlers } = builtins;
         app = createApplication({ currentTarget: host.currentTarget(), maxSessions: 8, maxTasks: 1024, maxRuns: 1024, startRun: options => {
             const intent = intentions.get(options.identity.id);
@@ -241,6 +251,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const clarificationCount = currentTask?.clarifications || 0, interactionCount = currentTask?.interactionCount || 0;
             const task = builtins.tasks[intent.mode], allowedTools = (intent.explanation ? [] : task.tools).filter(id =>
                 toolAvailableInMode(id, intent.mode) &&
+                (!id.startsWith('muyu.history.') || intent.mode === 'assistant' && (intent.contextPlan.omitted > 0 || intent.contextPlan.summaryUsed)) &&
                 (id !== CLARIFICATION_TOOL || clarificationCount < MAX_CLARIFICATIONS && interactionCount < MAX_INTERACTIONS) &&
                 (id !== PERMISSION_TOOL || interactionCount < MAX_INTERACTIONS) &&
                 (intent.mode === 'assistant' || id === 'muyu.provider.read' || permissions.allows(category(registry.get(id)), options.identity.target)));
@@ -262,6 +273,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                     if (!allowedTools.includes(definition.id)) return false;
                     if (intent.mode === 'assistant') {
                         const taskId = options.identity.taskId;
+                        if (definition.id.startsWith('muyu.history.') && !historyAccess(options.identity.id, target)) return false;
                         if (['muyu.settings.preview', 'muyu.variables.preview', 'muyu.task.preview'].includes(definition.id) && args.apply === true && !fullAccess) return 'full_access_required';
                         if (definition.id === 'muyu.profile.preview' && args.save === true && !fullAccess) return 'full_access_required';
                         if (definition.id === PERMISSION_TOOL) return permissionRequestAllowed(args, target, taskId, permissions, host.providerPort) ? true
@@ -348,7 +360,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         library.update(id, { contextSummary: summary }); emit();
     }
     function candidateFor(record, config) {
-            const candidate = summaryCandidate(record.messages, config, record.contextSummary);
+        const candidate = summaryCandidate(record.messages, config, record.contextSummary);
         if (!candidate || usableSummary(record.contextSummary, record.messages) && candidate.through <= record.contextSummary.through) return null;
         return { ...candidate, tail: planContext(record.messages.slice(candidate.through), null, config).messages };
     }
@@ -590,10 +602,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const instructions = fullAccess && mode === 'assistant' && !explanation ? { ...baseInstructions, task: baseInstructions.task + '\n本连接已由用户在界面开启全权限模式：资料读取和已注册 Provider 执行无需再申请授权，不要调用授权工具。若用户明确要求直接修改，使用相应 preview 工具并在同一次调用中设 apply=true；宿主将在本轮成功结束后校验并执行，真实结果以操作回执为准，不要提前声称已保存。若用户要求只预览、不要应用或只读，绝不设置 apply=true。不要为了省事扩张字段、目标、工具或预算；高风险 Provider 仍需确认其与用户意图相符。' } : baseInstructions;
             if (continuation?.artifact && artifact.revision !== continuation.artifact.revision) throw Error('STALE_DRAFT');
             const contextPlan = planContext(record.messages.slice(historyStart), omitHistory ? null : record.contextSummary, contextConfig, false);
+            const historyNote = !omitHistory && contextPlan.omitted > 0 ? '\n部分历史原文因上下文预算未携带；摘要如有也只是参考。不要猜测缺失的步骤、数值或当前宿主状态，应明确说明缺口。' : '';
+            const scopedInstructions = autoHistoryOmitted || historyNote ? { ...instructions, task: instructions.task + (autoHistoryOmitted ? '\n部分历史因缺少资料授权未发送，本轮不据此猜测历史；必要时可逐项申请：' + missing.join(', ') : '') + historyNote } : instructions;
             const result = continuation ? permissionDecision !== null ? app.answerPermission(interactionId, permissionDecision) : app.answerInteraction(interactionId, request.draft) : artifact ? { taskId: artifact.taskId, runId: app.continueTask(artifact.taskId, input) } : app.submit(sessionId, input, []);
             const receipts = !omitHistory && configAllowed(target, result.taskId) ? receiptsFor(id).filter(r => !explanation || r.operationId === explanation).slice(-3) : [];
             if (explanation) explanations.set(explanation, result.runId);
-            intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, resumeFrom: continuation?.sourceRunId || null, candidates: new Map(continuation?.candidates || []), autoApplyCandidates: new Map(continuation?.autoApplyCandidates || []), completedTools: new Set(continuation?.completedTools || []), failedTool: continuation?.failedTool || false, autoHistoryOmitted, instructions: autoHistoryOmitted ? { ...instructions, task: instructions.task + '\n部分历史因缺少资料授权未发送，本轮不据此猜测历史；必要时可逐项申请：' + missing.join(', ') } : instructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
+            intentions.set(result.runId, { mode, explanation, receipts, consent, fields: [...fields], artifact, resumeFrom: continuation?.sourceRunId || null, candidates: new Map(continuation?.candidates || []), autoApplyCandidates: new Map(continuation?.autoApplyCandidates || []), completedTools: new Set(continuation?.completedTools || []), failedTool: continuation?.failedTool || false, autoHistoryOmitted, instructions: scopedInstructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
                 compaction: !omitHistory && contextConfig.autoSummary && contextPlan.omitted > 0 ? candidateFor(record, contextConfig) : null });
             omittedViews.delete(key);
             const granted = mode === 'assistant' ? [] : ['diagnostics', 'chat', 'extended', ...permissionSources.filter(source => !['source:memoryConfig', 'source:memoryDiagnostics', 'source:directorDiagnostics'].includes(source))].filter(kind => permissions.allows(kind, target, result.taskId));

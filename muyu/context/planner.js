@@ -1,4 +1,5 @@
 import { bytes, estimateTokens, CONTEXT_DEFAULTS } from './policy.js';
+import { compactionRequest } from './compaction.js';
 
 // Change detector only, never an authorization or authenticity check.
 export function fingerprint(value) {
@@ -26,7 +27,9 @@ export function planContext(messages, summary, config = CONTEXT_DEFAULTS, omit =
     const turns = completeTurns(messages.slice(start)), selected = [];
     let size = 0;
     // Reserve space for the actual question, instructions, tool definitions and subsequent results.
-    const limit = Math.min(12000, Math.floor(config.inputTokens * 0.45));
+    // Keep the default window conservative, but let larger configured windows carry
+    // a complete long answer instead of silently treating 12k as a universal cap.
+    const limit = Math.min(Math.floor(config.inputTokens * 0.45), Math.max(12000, Math.floor(config.inputTokens * 0.25)));
     const head = valid ? [summaryMessage(summary.text)] : [];
     size += estimateTokens(head);
     for (const turn of turns.reverse()) {
@@ -41,11 +44,18 @@ export function planContext(messages, summary, config = CONTEXT_DEFAULTS, omit =
 export function summaryCandidate(messages, config = CONTEXT_DEFAULTS, previous = null) {
     const start = usableSummary(previous, messages) ? previous.through : 0;
     const turns = completeTurns(messages.slice(start));
-    const old = turns.slice(0, Math.max(0, turns.length - Math.min(2, config.recentTurns)));
+    const recent = Math.min(2, config.recentTurns);
+    // Normally keep recent turns verbatim. If even the latest complete turn cannot
+    // be carried, allow a single bounded summary to cover that turn as well.
+    const blockedRecent = turns.length > 0 && planContext(messages, previous, config).turns === 0;
+    const old = blockedRecent ? turns : turns.slice(0, Math.max(0, turns.length - recent));
     const selected = start ? [summaryMessage(previous.text)] : []; let through = 0;
     for (const turn of old) {
         const next = [...selected, ...turn.messages];
-        if (bytes(next) > 24000 || estimateTokens(next) > config.inputTokens * 0.6) break;
+        const request = compactionRequest({ messages: next }, config.inputTokens);
+        // Each segment must pass the model DTO contract. The aggregate still
+        // has to fit the one-call summary budget; never claim an uncovered turn.
+        if (request.messages.some(message => bytes(message) > 32768) || estimateTokens(request) > config.inputTokens * 0.6) break;
         selected.push(...turn.messages); through = start + turn.end;
     }
     return through ? { through, fingerprint: fingerprint(messages.slice(0, through)), messages: selected } : null;

@@ -6,6 +6,7 @@ import { createMuyuController } from '../../muyu/application/controller.js';
 import { ExecutionError } from '../../muyu/core/execution.js';
 import { createCredentialStore } from '../../muyu/host/credentials.js';
 import { RUN_DEFAULTS } from '../../muyu/core/budget.js';
+import { fingerprint } from '../../muyu/context/planner.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
 import { createVariableDraftPort } from '../../muyu/host/variable-draft.js';
@@ -16,7 +17,7 @@ import { createProfileWriter } from '../../muyu/host/profile-write.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subject.mjs';
 
-const tool = (toolId, args = {}) => ({ type: 'tool_call_complete', call: { toolId, callId: 'c1', version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
+const tool = (toolId, args = {}, callId = 'c1') => ({ type: 'tool_call_complete', call: { toolId, callId, version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
 
 const ask = () => tool('muyu.interaction.ask', { question: 'Which part?', options: ['Frequency', 'Content'] });
 const taskPlan = () => tool('muyu.task.plan', { goal: '建立当前聊天金币系统', scope: 'mixed',
@@ -352,6 +353,22 @@ test('Stale authorization cannot target another chat or survive cancellation', a
     f.controller.stop(); assert.throws(() => f.controller.answerPermission(next, 'task'), /STALE/);
     await f.controller.dispose();
 });
+test('Cancelling repeated permission handoffs releases module run capacity', async () => {
+    const attempts = 130;
+    const steps = Array.from({ length: attempts }, () => [tool('muyu.settings.read', { fields: ['topN'] }), done]);
+    const f = fixture(steps); await f.enable(); f.controller.setMode('assistant');
+    for (let i = 0; i < attempts; i++) {
+        if (i % 8 === 0) f.controller.newSession();
+        f.controller.setInput(`Inspect setting ${i}`); f.controller.send(); await settle();
+        const state = f.controller.snapshot();
+        assert.equal(state.interaction?.status, 'pending', `permission request ${i + 1}: ${state.notice}`);
+        assert.equal(state.interaction.kind, 'permission');
+        f.controller.cancelInteraction(state.interaction.id);
+    }
+    assert.equal(f.model.requests.length, attempts);
+    assert.equal(f.controller.snapshot().notice, null);
+    await f.controller.dispose();
+});
 test('Permission and clarification share a six-handoff ceiling', async () => {
     const sources = ['chatHistory', 'characters', 'directorLedger'];
     const steps = sources.flatMap(id => [[requestRead(id), done], [ask(), done]]); steps.push([text('finished'), done]);
@@ -549,6 +566,29 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
 }
 const settle = async () => { for (let i = 0; i < 12; i++) await flush(); };
 
+test('Original-history reads stay in the active session and cannot undo an omitted-history choice', async () => {
+    const readAttempt = tool('muyu.history.read', { index: 1, fingerprint: 'placeholder', start: 0 });
+    const omittedAttempt = tool('muyu.history.read', { index: 1, fingerprint: 'placeholder', start: 0 }, 'omitted');
+    const f = fixture([[text('PRIVATE_HISTORY_MARKER'), done], [text('second answer'), done], [tool('muyu.history.list', { offset: 0 }), done],
+        [text('listed'), done], [readAttempt, done], [text('read'), done], [omittedAttempt, done], [text('denied'), done]],
+    { contextConfig: { read: () => ({ inputTokens: 32000, recentTurns: 1, autoSummary: false }) } });
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('First question'); f.controller.send(); await settle();
+    const original = JSON.parse(f.controller.exportHistory()).messages[1];
+    readAttempt.call.args.fingerprint = fingerprint(original);
+    omittedAttempt.call.args.fingerprint = fingerprint(original);
+    f.controller.setInput('Second question'); f.controller.send(); await settle();
+    f.controller.setInput('List the original messages'); f.controller.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests[3]), /fingerprint/);
+    f.controller.setInput('Read the original answer'); f.controller.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /PRIVATE_HISTORY_MARKER/);
+    f.controller.setOmitHistory(true);
+    f.controller.setInput('Try reading omitted history'); f.controller.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /PERMISSION_DENIED/);
+    assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /PRIVATE_HISTORY_MARKER/);
+    await f.controller.dispose();
+});
+
 test('Generated config profile needs one UI approval, records a save-only receipt and leaves active settings alone', async () => {
     const profileSettings = { mode: 'off', topN: 1, configProfiles: [] }; let saves = 0;
     const profileWriter = createProfileWriter({ getSettings: () => profileSettings, saveSettings: async () => { saves++; return { confirmed: true }; }, getDrawerKeys: () => ({}) });
@@ -579,6 +619,37 @@ test('Full access saves an explicitly requested profile, but never auto-saves a 
     assert.equal(saves, 0); assert.equal(f.controller.snapshot().profileActions.length, 0);
     f.controller.setInput('Create and save another profile'); f.controller.send(); await settle();
     assert.equal(saves, 1); assert.deepEqual(profileSettings.configProfiles.map(p => p.name), ['Saved']);
+    await f.controller.dispose();
+});
+
+test('Two profile previews in one run publish independently and save only requested candidates', async () => {
+    for (const saveA of [false, true]) {
+        const profileSettings = { configProfiles: [] };
+        const profileWriter = createProfileWriter({ getSettings: () => profileSettings, saveSettings: async () => ({ confirmed: true }), getDrawerKeys: () => ({}) });
+        const f = fixture([[tool('muyu.profile.preview', { name: 'A', settingsJson: '{"topN":2}', save: saveA }, 'profile-a'),
+            tool('muyu.profile.preview', { name: 'B', settingsJson: '{"topN":3}', save: true }, 'profile-b'), done], [text('Both profiles ready'), done]], { profileWriter });
+        await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+        f.controller.setInput('Prepare two separate profiles'); f.controller.send(); await settle();
+        const state = f.controller.snapshot(), drafts = state.artifacts.filter(a => a.kind === 'profile-draft');
+        assert.deepEqual(drafts.map(a => [a.content.name, a.content.settings.topN]), [['A', 2], ['B', 3]]);
+        assert.deepEqual(profileSettings.configProfiles.map(p => [p.name, p.settings.topN]), saveA ? [['A', 2], ['B', 3]] : [['B', 3]]);
+        assert.equal(state.notice, null);
+        await f.controller.dispose();
+    }
+});
+
+test('Profile previews on either side of a permission handoff both remain publishable', async () => {
+    const f = fixture([[tool('muyu.profile.preview', { name: 'A', settingsJson: '{"topN":2}' }, 'profile-a'),
+        tool('muyu.settings.read', { fields: ['topN'] }, 'read-top-n'), done],
+    [tool('muyu.profile.preview', { name: 'B', settingsJson: '{"topN":3}' }, 'profile-b'), done], [text('Ready'), done]]);
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Prepare two profiles and inspect topN'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction;
+    assert.equal(request?.kind, 'permission');
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    const state = f.controller.snapshot();
+    assert.deepEqual(state.artifacts.filter(a => a.kind === 'profile-draft').map(a => [a.content.name, a.content.settings.topN]), [['A', 2], ['B', 3]]);
+    assert.equal(state.notice, null);
     await f.controller.dispose();
 });
 
@@ -724,6 +795,38 @@ test('Automatic summary is opt-in and uses send-time context policy; omission is
     assert.doesNotMatch(JSON.stringify(f.model.requests[6]), /PRIVATE_OLD|Historical conversation summary/);
     assert.equal(f.controller.snapshot().context.omitHistory, false); assert.equal(f.controller.snapshot().messages.length, 12);
     f.controller.clearContextSummary(); assert.equal(f.controller.snapshot().context.summary, ''); await f.controller.dispose();
+});
+
+test('A long answer is carried into the next request when the configured input budget fits', async () => {
+    const longAnswer = '中'.repeat(9000);
+    const f = fixture([[text(longAnswer), done], [text('Continue step three'), done]], {
+        contextConfig: { read: () => ({ inputTokens: 128000, recentTurns: 12, autoSummary: false }) },
+    });
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Draft a plan'); f.controller.send(); await settle();
+    f.controller.setInput('Continue step three'); f.controller.send(); await settle();
+    assert.equal(f.model.requests.length, 2);
+    assert.equal(f.model.requests[1].messages.some(m => m.content === longAnswer), true);
+    assert.equal(f.controller.snapshot().runs.at(-1).process.context.historicalMessages, 2);
+    await f.controller.dispose();
+});
+
+test('An uncarried recent long answer can be summarized once before the follow-up', async () => {
+    const longAnswer = '中'.repeat(9000);
+    const f = fixture([[text(longAnswer), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
+        contextConfig: { read: () => ({ inputTokens: 32000, recentTurns: 12, autoSummary: true }) },
+    });
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Draft a plan'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().context.turns, 0);
+    f.controller.setInput('Continue step three'); f.controller.send(); await settle();
+    assert.equal(f.model.requests.length, 3);
+    assert.deepEqual(f.model.requests[1].tools, []);
+    assert.match(f.model.requests[1].messages.slice(1).map(message => JSON.parse(message.content).text).join(''), /中{100}/);
+    assert.equal(f.controller.snapshot().context.summary, 'Step three: verify the balance');
+    assert.match(JSON.stringify(f.model.requests[2].messages), /Step three: verify the balance/);
+    assert.equal(f.controller.snapshot().runs.at(-1).process.budget.modelCalls, 2);
+    await f.controller.dispose();
 });
 
 test('Revoking permissions cancels a summary before it can be cached', async () => {

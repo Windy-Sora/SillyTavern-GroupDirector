@@ -12,6 +12,7 @@ import { createTaskPlanModule } from './task-plan/index.js';
 import { createVariableDraftModule } from './variables/index.js';
 import { createTaskBundleModule } from './task-bundle/index.js';
 import { createProfileDraftModule } from './profile-draft/index.js';
+import { createHistoryModule } from './history/index.js';
 import { createVariableDraftPort } from '../host/variable-draft.js';
 import { createTaskBundleDraftPort } from '../host/task-bundle-draft.js';
 import { createToolPlan } from './tool-plan.js';
@@ -25,12 +26,12 @@ export function createBuiltins(host) {
     const draft = createConfigDraftModule({ getSettings: host.getSettings, getTarget: host.configTarget });
     const director = createDirectorModule({ ports: host.memoryPorts });
     const settings = createSettingsModule({ getSettings: host.getSettings, getTarget: host.configTarget, memoryLimitPort: host.memoryLimitPort, completionVariablePort: host.completionVariablePort });
-    const context = createContextModule(), providers = createProviderModule(host), interaction = createInteractionModule(), permission = createPermissionModule(), taskPlan = createTaskPlanModule();
+    const context = createContextModule(), history = createHistoryModule({ access: host.historyAccess }), providers = createProviderModule(host), interaction = createInteractionModule(), permission = createPermissionModule(), taskPlan = createTaskPlanModule();
     const variablePort = host.variableDraftPort || createVariableDraftPort(host.memoryPorts);
     const variables = createVariableDraftModule({ port: variablePort });
     const bundle = createTaskBundleModule({ port: host.bundleDraftPort || createTaskBundleDraftPort({ getTarget: host.currentTarget, getSettings: host.getSettings, variableDraftPort: variablePort }) });
     const profiles = createProfileDraftModule();
-    const modules = [memory, draft, director, context, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles];
+    const modules = [memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles];
     const unified = new Map();
     const legacyPreview = (args, ctx) => {
         const run = unified.get(ctx.runId);
@@ -43,7 +44,7 @@ export function createBuiltins(host) {
     const entries = [
         { id: 'memory', module: memory },
         { id: 'legacy-draft', module: { registry: draft.registry, handlers: { ...draft.handlers, 'muyu.config.preview': legacyPreview } } },
-        { id: 'director', module: director }, { id: 'context', module: context },
+        { id: 'director', module: director }, { id: 'context', module: context }, { id: 'history', module: history },
         { id: 'providers', module: providers }, { id: 'interaction', module: interaction },
         { id: 'permission', module: permission }, { id: 'settings', module: settings }, { id: 'task-plan', module: taskPlan }, { id: 'variables', module: variables },
         { id: 'task-bundle', module: bundle },

@@ -343,7 +343,10 @@ test('Behavior editor keeps drafts through remount, rejects over-limit saves and
 });
 test('Context UI preserves settings drafts, requires summary confirmation and resets it on view change', async () => {
     const f = fixture('en', true); f.state.enabled = true; f.state.history = managedHistory();
-    f.state.context = { turns: 2, omitted: 4, summary: '<img>literal</img>', summaryUsed: true }; f.emit();
+    f.state.context = { turns: 2, omitted: 4, summary: '<img>literal</img>', summaryUsed: true };
+    f.state.runs = [{ process: { context: { estimatedTokens: 900, inputTokenLimit: 4096, requestBytes: 1800, historicalMessages: 0, trimmedHistoricalMessages: 2, messageBytes: 400, toolDefinitionBytes: 300, toolResultBytes: 0, reasoningBytes: 0 } } }]; f.emit();
+    assert.ok(f.all().some(e => e.tag === 'p' && e.textContent.includes('Some original history is not planned')));
+    assert.ok(f.all().some(e => e.tag === 'p' && e.textContent.includes('Additional historical messages removed before sending')));
     const input = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Input budget (estimated tokens)');
     input.value = '64000'; f.emit(); assert.equal(input.value, '64000');
     let calls = 0, omitted = false; f.controller.compactHistory = () => { calls++; }; f.controller.setOmitHistory = value => { omitted = value; };

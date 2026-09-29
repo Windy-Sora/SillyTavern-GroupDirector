@@ -67,6 +67,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     const requestFor = () => ({ messages: history(), tools: pinned.map(d => copyJson(d)), maxTokens, finalize: finalizing, ...(instructions ? { instructions } : {}), ...(contextConfig ? { inputTokenLimit: contextConfig.inputTokens } : {}) });
     function checkContext(request, context, trim = false) {
         if (!contextConfig) return request;
+        const plannedHistoricalMessages = historyPrefix;
         let value = model.inspect ? model.inspect(request, context) : measurePayload(request);
         while (contextConfig && trim && (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576) && historyPrefix > 0) {
             // Only pre-run historical messages are removable; never touch live tool/reasoning indices.
@@ -75,7 +76,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             value = model.inspect ? model.inspect(request, context) : measurePayload(request);
         }
         if (contextConfig) {
-            emit('run.context', { ...value, phase: 'request', historicalMessages: historyPrefix, inputTokenLimit: contextConfig.inputTokens });
+            emit('run.context', { ...value, phase: 'request', historicalMessages: historyPrefix, trimmedHistoricalMessages: plannedHistoricalMessages - historyPrefix, inputTokenLimit: contextConfig.inputTokens });
             if (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576) throw new ExecutionError('CONTEXT_LIMIT');
         }
         return request;

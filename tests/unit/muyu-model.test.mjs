@@ -40,6 +40,15 @@ test('Final payload inspection includes tools and private thinking; local contex
     assert.equal(Object.hasOwn(s.requests[0].payload, 'inputTokenLimit'), false);
 });
 
+test('Final adapter payload retains a long historical answer when the input budget fits', async () => {
+    const longAnswer = '中'.repeat(9000), s = subject([response('continued')]);
+    const input = { messages: [{ role: 'user', content: 'Draft a plan' }, { role: 'assistant', content: longAnswer },
+        { role: 'user', content: 'Continue step three' }], tools: [], inputTokenLimit: 128000 };
+    assert.ok(s.model.inspect(input, {}).estimatedTokens < input.inputTokenLimit);
+    await collect(s.model, input);
+    assert.equal(s.requests[0].payload.messages[1].content, longAnswer);
+});
+
 test('System instructions are injected once after internal indexing and preserve thinking replay through finalization', async () => {
     const s = subject([response('', [tc()], { reasoning_content: 'private thought' }), response('answer', [], { reasoning_content: 'next thought' })], { connection: { ...connection, profile: 'deepseek', thinking: true } });
     const context = {}, instructions = composeInstructions('memory', { enabled: true, text: 'Use short answers.' });

@@ -34,7 +34,7 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
             r.seq = event.seq;
             if (event.type === 'run.context') {
                 const p = event.payload || {}, value = projectContext(p);
-                if (value) r.context = { ...value, inputTokenLimit: Number.isSafeInteger(p.inputTokenLimit) ? Math.max(4096, Math.min(128000, p.inputTokenLimit)) : null, historicalMessages: Number.isSafeInteger(p.historicalMessages) ? Math.max(0, Math.min(256, p.historicalMessages)) : null };
+                if (value) r.context = { ...value, inputTokenLimit: Number.isSafeInteger(p.inputTokenLimit) ? Math.max(4096, Math.min(128000, p.inputTokenLimit)) : null, historicalMessages: Number.isSafeInteger(p.historicalMessages) ? Math.max(0, Math.min(256, p.historicalMessages)) : null, trimmedHistoricalMessages: Math.min(256, (r.context?.trimmedHistoricalMessages || 0) + (Number.isSafeInteger(p.trimmedHistoricalMessages) ? Math.max(0, Math.min(256, p.trimmedHistoricalMessages)) : 0)) };
                 if (['request', 'summarizing', 'summarized', 'summary_failed'].includes(p.phase)) r.contextPhase = p.phase;
                 if (['summarizing', 'summarized', 'summary_failed'].includes(p.phase)) r.summaryPhase = p.phase;
                 if (p.phase === 'summarizing') r.summaryUsage = { calls: 1, inputTokens: null, outputTokens: null };
