@@ -4,7 +4,7 @@ import { assertActive, bounded, createDrainTracker, ExecutionError, systemClock 
 import { projectBudget } from './budget.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
-export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, interactionPort = null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, compaction = null, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
+export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, interactionPort = null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, compaction = null, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
     let state = createRunState(identity);
     const budget = { modelCalls: 6, toolCalls: 16, corrections: 2, timeMs: 120000, ...limits };
@@ -43,7 +43,9 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     const modelContext = resume?.modelContext || Object.freeze({});
     const drain = createDrainTracker();
     const pinned = registry.list().filter(d => allowedTools.includes(d.id)).map(d => copyJson(d));
-    const broker = createBroker({ registry, handlers, runId: state.id, target: state.target, allowedTools: [...allowedTools], policy, signal, maxCalls: budget.toolCalls, clock, track: drain.track,
+    const recovery = registry.list().filter(d => trimRecoveryTools.includes(d.id) && !allowedTools.includes(d.id)).map(d => copyJson(d));
+    const activeTools = new Set(allowedTools);
+    const broker = createBroker({ registry, handlers, runId: state.id, target: state.target, allowedTools: [...allowedTools, ...recovery.map(d => d.id)], policy: call => activeTools.has(call.definition.id) && (typeof policy === 'function' ? policy(call) : false), signal, maxCalls: budget.toolCalls, clock, track: drain.track,
         onEvent: ({ type, attemptId, toolId }) => emit(type, { attemptId, toolId }) });
     const messages = resume ? resume.messages.map(copyJson) : [...initialMessages, { role: 'user', content: input }];
     if (messages.length > 512) throw new TypeError('Tool continuation too large');
@@ -69,6 +71,15 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
         if (!contextConfig) return request;
         const plannedHistoricalMessages = historyPrefix;
         let value = model.inspect ? model.inspect(request, context) : measurePayload(request);
+        if (trim && historyPrefix > 0 && recovery.length && (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576)) {
+            pinned.push(...recovery); recovery.forEach(d => activeTools.add(d.id)); request.tools = pinned.map(d => copyJson(d));
+            if (instructions && trimRecoveryNote) {
+                const field = instructions.task.length + trimRecoveryNote.length + 1 <= 4000 ? 'task' : 'base';
+                instructions = instructionPort.validate({ ...instructions, [field]: instructions[field] + '\n' + trimRecoveryNote });
+                request.instructions = instructions;
+            }
+            value = model.inspect ? model.inspect(request, context) : measurePayload(request);
+        }
         while (contextConfig && trim && (value.estimatedTokens > contextConfig.inputTokens || value.requestBytes > 1048576) && historyPrefix > 0) {
             // Only pre-run historical messages are removable; never touch live tool/reasoning indices.
             const count = messages[0]?.role === 'user' && messages[1]?.role === 'assistant' && historyPrefix >= 2 ? 2 : 1;

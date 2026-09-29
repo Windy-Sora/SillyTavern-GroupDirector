@@ -255,6 +255,9 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 (id !== CLARIFICATION_TOOL || clarificationCount < MAX_CLARIFICATIONS && interactionCount < MAX_INTERACTIONS) &&
                 (id !== PERMISSION_TOOL || interactionCount < MAX_INTERACTIONS) &&
                 (intent.mode === 'assistant' || id === 'muyu.provider.read' || permissions.allows(category(registry.get(id)), options.identity.target)));
+            const trimRecoveryTools = intent.mode === 'assistant' && !intent.explanation && intent.historyStart === 0 && !intent.autoHistoryOmitted && intent.sourceMessages.length &&
+                !intent.contextPlan.omitted && !intent.contextPlan.summaryUsed ? task.tools.filter(id => id.startsWith('muyu.history.')) : [];
+            const policyTools = new Set([...allowedTools, ...trimRecoveryTools]);
             if (intent.resumeFrom) {
                 const previous = app.snapshot().runs.find(row => row.id === intent.resumeFrom);
                 if (previous?.status !== 'yielded' || previous.taskId !== options.identity.taskId || jsonKey(previous.target) !== jsonKey(options.identity.target)) throw Error('INVALID_RUN_TRANSFER');
@@ -262,7 +265,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
             } else if (!intent.explanation) task.bind?.(options.identity, intent);
             const config = intent.runConfig;
             builtins.bindBudget(options.identity.id, config.providerBytes, intent.resumeFrom);
-            const handle = startMuyuRun({ ...options, model, registry, handlers, allowedTools,
+            const handle = startMuyuRun({ ...options, model, registry, handlers, allowedTools, trimRecoveryTools,
+                trimRecoveryNote: '部分历史原文已在发送前因上下文预算裁剪。需要具体原文时用本轮提供的 muyu.history.list/read 回读；否则说明缺口，不要猜测。',
                 previousMessages: intent.contextPlan.messages, contextConfig: intent.contextConfig, compaction: intent.compaction,
                 instructions: intent.instructions,
                 applicationResults: intent.receipts,
@@ -270,7 +274,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 limits: { modelCalls: config.modelCalls, toolCalls: config.toolCalls, timeMs: config.timeMs }, maxTokens: config.maxTokens, finalizeOnLimit: true,
                 resourceUsage: () => builtins.resourceUsage(options.identity.id),
                 policy: ({ definition, target, args }) => {
-                    if (!allowedTools.includes(definition.id)) return false;
+                    if (!policyTools.has(definition.id)) return false;
                     if (intent.mode === 'assistant') {
                         const taskId = options.identity.taskId;
                         if (definition.id.startsWith('muyu.history.') && !historyAccess(options.identity.id, target)) return false;
