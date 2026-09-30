@@ -9,7 +9,7 @@ export function historyScope(mode, target) {
     return JSON.stringify([mode, target?.kind || 'none', target?.kind === 'chat' ? target.chatKey : null]);
 }
 export function validateRecord(value) {
-    if (value && ![1, 2, 3, 4, 5, 6].includes(value.version)) throw Error('HISTORY_VERSION');
+    if (value && ![1, 2, 3, 4, 5, 6, 7].includes(value.version)) throw Error('HISTORY_VERSION');
     // This boundary accepts only the fixed versioned DTO, including on reads from local storage.
     const fields = ['version', 'id', 'revision', 'scope', 'title', 'createdAt', 'updatedAt', 'messages', 'required', 'status', ...(value?.version >= 2 ? ['archived', 'imported'] : []), ...(value?.version >= 3 ? ['contextSummary'] : []), ...(value?.version >= 4 ? ['receipts'] : []), ...(value?.version >= 6 ? ['scopeChanges'] : [])];
     if (!value || Object.keys(value).some(k => !fields.includes(k)) || fields.some(k => !Object.hasOwn(value, k))) throw Error('HISTORY_INVALID');
@@ -38,7 +38,8 @@ export function validateRecord(value) {
     if (!Array.isArray(value.required) || value.required.length > 3 + permissionSources.length + 64 || new Set(value.required).size !== value.required.length || value.required.some(k => !['diagnostics', 'chat', 'extended', ...permissionSources].includes(k) && !(value.version >= 5 && parseExecutionSource(k)))) throw Error('HISTORY_INVALID');
     if (!Array.isArray(value.messages) || value.messages.length > HISTORY_LIMITS.messages) throw Error('HISTORY_CAPACITY');
     for (const m of value.messages) {
-        if (!m || Object.keys(m).some(k => !['role', 'content', 'runId'].includes(k)) || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 32768 || typeof m.runId !== 'string' || m.runId.length > 150) throw Error('HISTORY_INVALID');
+        if (!m || Object.keys(m).some(k => !['role', 'content', 'runId', ...(value.version >= 7 ? ['origin'] : [])].includes(k)) || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 32768 || typeof m.runId !== 'string' || m.runId.length > 150 ||
+            Object.hasOwn(m, 'origin') && (m.role !== 'user' || !['question', 'continuation'].includes(m.origin))) throw Error('HISTORY_INVALID');
     }
     if (historyBytes(value) > HISTORY_LIMITS.recordBytes) throw Error('HISTORY_CAPACITY');
     const normalized = { ...value, version: value.version >= 4 ? value.version : 3, archived: value.archived ?? false, imported: value.imported ?? false, contextSummary: value.contextSummary ?? null };

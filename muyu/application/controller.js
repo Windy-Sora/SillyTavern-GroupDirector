@@ -150,7 +150,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     function unloadRuntime(sessionId) {
         const ownedTasks = app.snapshot().tasks.filter(t => t.sessionId === sessionId).map(t => t.id);
         app.unloadSession(sessionId);
-        for (const id of ownedTasks) { releaseContinuation(id); permissions.forgetTask(null, id); }
+        for (const id of ownedTasks) { releaseContinuation(id); builtins.forgetTask(id); permissions.forgetTask(null, id); }
     }
     function syncTarget(changed = true) { const retained = changed && mode === 'assistant' ? viewedId || sessions.get(observedAssistantScope) : null; selectionEpoch++; if (changed) { viewedId = retained || null; pinnedTarget = null; } observedAssistantScope = historyScope('assistant', host.currentTarget() || host.globalTarget); if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { releaseContinuation(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
     function readOnly(record) {
@@ -208,9 +208,16 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const session = state.sessions.find(s => s.id === runtimeId), record = library.get(id);
             if (!session || !record) continue;
             const latest = state.runs.filter(r => r.sessionId === runtimeId).at(-1);
+            const messages = session.messages.map(message => {
+                if (message.role !== 'user') return message;
+                const run = state.runs.find(row => row.id === message.runId);
+                const origin = run ? state.runs.find(row => row.taskId === run.taskId)?.id === run.id ? 'question' : 'continuation'
+                    : record.messages.find(row => row.runId === message.runId && row.role === 'user')?.origin;
+                return origin ? { ...message, origin } : message;
+            });
             // Persist the question as text, never a resumable request or authorization.
             const status = latest ? latest.status === 'yielded' ? 'interrupted' : ['queued', 'cancelling', 'running'].includes(latest.status) ? 'running' : latest.status : record.status;
-            if (JSON.stringify(record.messages) !== JSON.stringify(session.messages) || record.status !== status) library.update(id, { messages: session.messages, status });
+            if (JSON.stringify(record.messages) !== JSON.stringify(messages) || record.status !== status) library.update(id, { messages, status });
         }
     }
     function historyAccess(runId, target) {
@@ -238,7 +245,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         const taskUsage = taskRuns.reduce((sum, run) => { const b = run.process?.budget; if (b) for (const k of ['modelCalls', 'toolCalls', 'inputTokens', 'outputTokens', 'elapsedMs']) sum[k] += b[k] || 0; return sum; }, { segments: taskRuns.length, modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 });
         const busy = !!checking || actions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
         const switchedChat = mode === 'assistant' && !!record && !record.imported && !record.archived && record.scope !== historyScope('assistant', targetFor());
-        const recovery = recoverableQuestion({ record, messages: session?.messages || record?.messages, runs: state?.runs.filter(r => r.sessionId === sessionId) || [], readOnly: isReadOnly || switchedChat, busy });
+        const recovery = recoverableQuestion({ record, runs: state?.runs.filter(r => r.sessionId === sessionId) || [], readOnly: isReadOnly || switchedChat, busy });
         return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly, switchedChat,
             webSearch: { ...(host.webSearch?.describe() || { ...WEB_DEFAULTS, provider: 'brave', hasKey: false, remembered: false, backend: 'missing' }), enabled: webSearchEnabled, saving: savingWebSearch },
             interaction: isReadOnly || switchedChat ? null : interaction, taskUsage, recovery,

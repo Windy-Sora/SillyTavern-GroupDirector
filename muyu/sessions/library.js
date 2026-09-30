@@ -138,13 +138,14 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
             const previous = records.get(id); if (!previous || closed) throw Error('NOT_READY');
             // Only runtime-owned fields may be updated by capture/send. Metadata uses manage().
             if (Object.keys(patch).some(k => !['messages', 'status', 'title', 'required', 'contextSummary'].includes(k))) throw Error('HISTORY_INVALID');
-            const next = validateRecord({ ...previous, ...patch, updatedAt: now() });
+            const upgrade = previous.version < 7 && patch.messages?.some(message => message.origin) ? { version: 7, receipts: previous.receipts || [], scopeChanges: previous.scopeChanges || [] } : {};
+            const next = validateRecord({ ...previous, ...upgrade, ...patch, updatedAt: now() });
             remember(next); dirty.add(id); schedule(id);
         },
         retarget(id, scope) {
             const previous = records.get(id);
             if (!previous || closed || previous.imported || previous.archived) throw Error('NOT_READY');
-            const next = validateRecord({ ...previous, version: 6, scope, scopeChanges: [...(previous.scopeChanges || []).slice(-31),
+            const next = validateRecord({ ...previous, version: Math.max(6, previous.version), scope, scopeChanges: [...(previous.scopeChanges || []).slice(-31),
                 { from: previous.scope, to: scope, at: now(), messageIndex: previous.messages.length }], updatedAt: now() });
             if (JSON.parse(next.scope)[0] !== JSON.parse(previous.scope)[0]) throw Error('HISTORY_SCOPE');
             remember(next); dirty.add(id); schedule(id);

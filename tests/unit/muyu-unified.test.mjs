@@ -226,7 +226,9 @@ test('Unified global conversation asks permission, lazily drafts, confirms once 
     assert.equal(f.reads(), 0); const request = c.snapshot().interaction; assert.equal(request.source, 'memoryConfig');
     c.answerPermission(request.id, 'chat'); await settle();
     const s = c.snapshot(); assert.equal(s.notice, null); assert.equal(s.artifacts.length, 1); assert.equal(f.writes(), 0);
-    assert.equal(JSON.parse(c.exportHistory()).version, 5);
+    const history = JSON.parse(c.exportHistory());
+    assert.equal(history.version, 7);
+    assert.deepEqual(history.messages.filter(row => row.role === 'user').map(row => row.origin), ['question', 'continuation']);
     const a = s.artifacts[0], action = c.prepareConfigApply(a.id, a.revision); await c.approveConfigApply(action.id);
     assert.equal(f.writes(), 1); await c.checkReceipt(action.id); assert.equal(c.snapshot().configChecks[action.id].state, 'matched');
     f.switch('A'); await c.openSession(s.history.sessionId);

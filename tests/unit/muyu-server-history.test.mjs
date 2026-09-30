@@ -51,6 +51,39 @@ test('Server plugin registers only its private authenticated API routes', () => 
     assert.deepEqual(routes, ['get /web/health', 'post /web/search', 'get /health', 'get /records', 'get /records/:id', 'put /records/:id', 'delete /records/:id']);
 });
 
+test('Deleting migrated history survives reopening and does not retain private text on the server', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-deleted-'));
+    try {
+        const browser = createMemoryHistoryStore(), old = record();
+        await browser.create(old);
+        const dir = path.join(root, 'history');
+        const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({ muyuHistoryEnabled: true }), saveSettings: async () => {},
+            openStore: async () => browser, openServer: async () => ({ ...createFileStore(dir), close() {} }) });
+        const opened = await port.open();
+        await opened.remove(old.id, (await opened.read(old.id)).revision);
+        opened.close();
+        const reopened = await port.open();
+        assert.deepEqual(await reopened.list(), []);
+        assert.equal(await reopened.read(old.id), null);
+        assert.ok(await browser.read(old.id), 'migration backup stays intact');
+        for (const name of await fs.readdir(dir)) assert.ok(!(await fs.readFile(path.join(dir, name), 'utf8')).includes('Hello'), 'deletion marker contains no conversation');
+        const fresh = record(); await browser.create(fresh);
+        assert.deepEqual((await (await port.open()).list()).map(row => row.id), [fresh.id], 'new browser histories can still migrate');
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('Two tabs migrating the same browser history both open without overwriting the winner', async () => {
+    const browser = createMemoryHistoryStore(), old = record(); await browser.create(old);
+    const backing = createMemoryHistoryStore(); let listings = 0, release;
+    const barrier = new Promise(resolve => { release = resolve; });
+    const server = { ...backing, async list() { const rows = await backing.list(); if (++listings <= 2) { if (listings === 2) release(); await barrier; } return rows; } };
+    const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({}), saveSettings: async () => {},
+        openStore: async () => browser, openServer: async () => server });
+    const opened = await Promise.all([port.open(), port.open()]);
+    assert.equal(opened.length, 2); assert.equal((await backing.read(old.id)).revision, 1);
+    assert.equal((await backing.list()).length, 1);
+});
+
 test('HTTP adapter writes and restores a private account file without exposing an arbitrary path', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-http-'));
     try {

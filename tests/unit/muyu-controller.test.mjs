@@ -55,6 +55,21 @@ const taskPlan = () => tool('muyu.task.plan', { goal: '建立当前聊天金币�
         { kind: 'variables', title: '创建金币余额', detail: '当前尚无变量写入工具' },
         { kind: 'settings', title: '预览激活设置', detail: '另需配置草稿与单次批准' },
     ], unknowns: ['是否已有同名变量'] });
+test('Approving a task plan preserves the search budget of its successful earlier segment', async () => {
+    let calls = 0;
+    const capture = { limits: { maxSearches: 1, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { status: 'empty', provider: 'brave', query: args.query, fetchedAt: '', truncated: false, results: [] }; } };
+    const webSearch = { describe: () => ({ ...capture.limits, hasKey: true }), check: async () => {}, capture: () => capture, cancel() {} };
+    const f = fixture([[tool('muyu.web.search', { query: 'first' }, 'search1'), done], [taskPlan(), done], [text('plan'), done],
+        [tool('muyu.web.search', { query: 'second' }, 'search2'), done], [text('finished'), done]], { webSearch });
+    await f.enable(); f.controller.setMode('assistant'); await f.controller.setWebSearchEnabled(true);
+    f.controller.setInput('Plan a system'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(row => row.kind === 'task-plan');
+    assert.equal(calls, 1); f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    const runs = f.controller.snapshot().runs;
+    assert.equal(runs[0].taskId, runs[1].taskId); assert.equal(calls, 1);
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /budget_exceeded/);
+    await f.controller.dispose();
+});
 test('Task plan reviews two read sources once, resumes same task and never grants write authority', async () => {
     const f = fixture([[taskPlan(), done], [text('只读方案'), done],
         [tool('muyu.settings.read', { fields: ['mode'] }), done], [text('仍未修改'), done]]);
@@ -492,7 +507,7 @@ test('Assistant history can continue in another ST chat with a visible switch an
     assert.match(f.model.requests[1].instructions.task, /SillyTavern 聊天/);
     const switched = JSON.parse(f.controller.exportHistory());
     assert.equal(switched.scope, JSON.stringify(['assistant', 'chat', f.host.currentTarget().chatKey]));
-    assert.equal(switched.version, 6); assert.equal(switched.scopeChanges.length, 1);
+    assert.equal(switched.version, 7); assert.equal(switched.scopeChanges.length, 1);
     f.controller.newSession();
     assert.equal(f.controller.snapshot().history.filters.range, 'all');
     await f.controller.dispose();
@@ -630,6 +645,41 @@ test('Failed question restores only its text and does not replay a model or tool
     assert.equal(f.controller.snapshot().input, 'Original question'); assert.equal(f.model.requests.length, 1);
     f.switchChat('B'); assert.equal(f.controller.snapshot().recovery, null);
     await f.controller.dispose();
+});
+
+test('Repeated independent failures remain recoverable after persistence and reload', async () => {
+    const store = createMemoryHistoryStore(), history = { enabled: () => true, open: async () => store, setEnabled: async () => {} };
+    const fail = () => { throw new ExecutionError('MODEL_NETWORK_ERROR'); };
+    const f = fixture([fail, fail], { history }); await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Original question'); f.controller.send(); await settle();
+    f.controller.restoreFailedInput(f.controller.snapshot().recovery.runId); f.controller.send(); await settle();
+    const state = f.controller.snapshot(), id = state.history.sessionId;
+    assert.notEqual(state.runs[0].taskId, state.runs[1].taskId);
+    assert.equal(state.recovery.runId, state.runs[1].id);
+    await f.controller.flushHistory(); await f.controller.dispose();
+    const restored = fixture([], { history }); await restored.controller.ready; await restored.enable(); restored.controller.setMode('assistant');
+    await restored.controller.openSession(id);
+    restored.controller.restoreFailedInput(restored.controller.snapshot().recovery.runId);
+    assert.equal(restored.controller.snapshot().input, 'Original question'); assert.equal(restored.model.requests.length, 0);
+    await restored.controller.dispose();
+});
+
+test('Failed permission and clarification continuations never offer their replies as original questions', async () => {
+    for (const permission of [true, false]) {
+        const store = createMemoryHistoryStore(), history = { enabled: () => true, open: async () => store, setEnabled: async () => {} };
+        const start = permission ? readSource() : ask();
+        const f = fixture([[start, done], () => { throw new ExecutionError('MODEL_NETWORK_ERROR'); }], { history, providerPort: { read: () => ({ text: 'Protected source', limited: false }) } });
+        await f.controller.ready; await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Original goal'); f.controller.send(); await settle();
+        const interaction = f.controller.snapshot().interaction;
+        if (permission) f.controller.answerPermission(interaction.id, 'task');
+        else { f.controller.setInteractionDraft(interaction.id, 'Frequency'); f.controller.answerInteraction(interaction.id); }
+        await settle();
+        const state = f.controller.snapshot(), id = state.history.sessionId;
+        assert.equal(state.runs.at(-1).status, 'failed'); assert.equal(state.recovery, null);
+        await f.controller.flushHistory(); await f.controller.dispose();
+        const restored = fixture([], { history }); await restored.controller.ready; await restored.enable(); restored.controller.setMode('assistant'); await restored.controller.openSession(id);
+        assert.equal(restored.controller.snapshot().recovery, null); await restored.controller.dispose();
+    }
 });
 
 test('Original-history reads stay in the active session and cannot undo an omitted-history choice', async () => {

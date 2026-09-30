@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createWebSearchPort } from '../../muyu/host/web-search.js';
 import { createWebSearchModule } from '../../muyu/modules/web/index.js';
-import { WEB_DEFAULTS, WEB_TOOL, webBytes, webResult } from '../../muyu/web/contract.js';
+import { WEB_DEFAULTS, WEB_TOOL, webBytes, webResult, validateWebResult } from '../../muyu/web/contract.js';
 
 const require = createRequire(import.meta.url);
 const { createWebSearchService } = require('../../muyu/server-plugin/web-search.cjs');
@@ -79,4 +79,53 @@ test('Search limits survive task handoffs and large snippets stay within the byt
     module.transferRun('first', { id: 'second' });
     assert.equal((await search({ query: 'another' }, { ...ctx, runId: 'second' })).status, 'budget_exceeded'); assert.equal(calls, 1);
     allowed = false; assert.equal((await search({ query: 'another' }, { ...ctx, runId: 'second' })).status, 'disabled'); module.dispose();
+});
+
+test('Ten valid multibyte results are fitted after transport validation instead of rejected as invalid', async () => {
+    const raw = { ...webResult('ok', 'query'), results: Array.from({ length: 10 }, (_, i) => ({ title: '\u6587'.repeat(300), snippet: '\u6587'.repeat(1200), url: `https://example.test/${i}` })) };
+    assert.ok(webBytes(raw) > 32768);
+    const port = createWebSearchPort({ getSettings: () => ({ agentConfigs: { 'muyu-web-search': { apiKey: input.apiKey } }, muyuWebSearchConfig: { ...WEB_DEFAULTS, maxResults: 10 } }), saveSettings: async () => {}, fetcher: async () => response(raw) });
+    const module = createWebSearchModule();
+    module.bindRun({ id: 'large', taskId: 'task' }, { webSearch: port.capture(), webAllowed: () => true });
+    const fitted = await module.handlers[WEB_TOOL]({ query: 'query' }, { runId: 'large', signal: new AbortController().signal });
+    assert.equal(fitted.status, 'ok'); assert.equal(fitted.truncated, true);
+    assert.ok(fitted.results.length); assert.ok(webBytes(fitted) <= WEB_DEFAULTS.resultBytes);
+    raw.results[9].url = 'javascript:alert(1)';
+    assert.throws(() => validateWebResult(raw), /INVALID/);
+    const accessor = { ...raw }; Object.defineProperty(accessor, 'results', { enumerable: true, get() { throw Error('must not invoke'); } });
+    assert.throws(() => validateWebResult(accessor), /INVALID/);
+    module.dispose();
+});
+
+test('Search count and byte limits stay pinned when a completed segment continues the same task', async () => {
+    const module = createWebSearchModule(); let calls = 0;
+    const capture = { limits: { maxSearches: 1, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { ...result(), query: args.query }; } };
+    const signal = new AbortController().signal;
+    module.bindRun({ id: 'first', taskId: 'task' }, { webSearch: capture, webAllowed: () => true });
+    await module.handlers[WEB_TOOL]({ query: 'first' }, { runId: 'first', signal }); module.forgetRun('first');
+    module.bindRun({ id: 'next', taskId: 'task' }, { webSearch: { ...capture, limits: { ...capture.limits, maxSearches: 8 } }, webAllowed: () => true });
+    assert.equal((await module.handlers[WEB_TOOL]({ query: 'second' }, { runId: 'next', signal })).status, 'budget_exceeded');
+    assert.equal(calls, 1);
+    module.forgetTask('task'); module.forgetRun('next');
+    module.bindRun({ id: 'fresh', taskId: 'fresh-task' }, { webSearch: capture, webAllowed: () => true });
+    assert.equal((await module.handlers[WEB_TOOL]({ query: 'fresh' }, { runId: 'fresh', signal })).status, 'ok');
+    assert.equal(calls, 2); module.dispose();
+});
+
+test('Continued tasks keep captured search settings while renewed consent can disable them', async () => {
+    const module = createWebSearchModule(), requested = [];
+    const settings = { agentConfigs: { 'muyu-web-search': { apiKey: input.apiKey } }, muyuWebSearchConfig: { ...WEB_DEFAULTS, maxResults: 5 } };
+    const port = createWebSearchPort({ getSettings: () => settings, saveSettings: async () => {}, fetcher: async (_, options) => {
+        requested.push(JSON.parse(options.body).maxResults); return response(result());
+    } });
+    const signal = new AbortController().signal, search = module.handlers[WEB_TOOL]; let allowed = true;
+    module.bindRun({ id: 'first', taskId: 'task' }, { webSearch: port.capture(), webAllowed: () => true });
+    await search({ query: 'query' }, { runId: 'first', signal }); module.forgetRun('first');
+    settings.muyuWebSearchConfig = { ...WEB_DEFAULTS, maxResults: 10 };
+    module.bindRun({ id: 'next', taskId: 'task' }, { webSearch: port.capture(), webAllowed: () => allowed });
+    assert.equal((await search({ query: 'query' }, { runId: 'next', signal })).status, 'ok');
+    assert.deepEqual(requested, [5, 5]);
+    allowed = false;
+    assert.equal((await search({ query: 'query' }, { runId: 'next', signal })).status, 'disabled');
+    assert.deepEqual(requested, [5, 5]); module.dispose();
 });

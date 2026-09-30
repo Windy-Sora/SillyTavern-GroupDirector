@@ -37,7 +37,14 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
                     const existing = new Set((await server.list()).map(row => row.id));
                     for (const summary of await browser.list()) if (!existing.has(summary.id)) {
                         const record = await browser.read(summary.id);
-                        if (record) { await server.create({ ...record, revision: 0 }); existing.add(summary.id); }
+                        if (record) {
+                            try { await server.create({ ...record, revision: 0 }); }
+                            catch (error) {
+                                if (error.message !== 'HISTORY_DELETED' &&
+                                    !(error.message === 'HISTORY_CONFLICT' && await server.read(summary.id))) throw error;
+                            }
+                            existing.add(summary.id);
+                        }
                     }
                 } catch (error) {
                     if (error.message !== 'HISTORY_UNAVAILABLE') { server.close(); throw error; }

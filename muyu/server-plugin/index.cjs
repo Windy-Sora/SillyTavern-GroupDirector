@@ -23,20 +23,32 @@ function file(dir, id) {
 }
 function check(record, id) {
     if (!record || typeof record !== 'object' || Array.isArray(record) || record.id !== id || Object.keys(record).some(key => !fields.has(key)) ||
-        ![1, 2, 3, 4, 5, 6].includes(record.version) || !Number.isSafeInteger(record.revision) || record.revision < 0 ||
+        ![1, 2, 3, 4, 5, 6, 7].includes(record.version) || !Number.isSafeInteger(record.revision) || record.revision < 0 ||
         typeof record.scope !== 'string' || record.scope.length > 4096 || typeof record.title !== 'string' || record.title.length > 100 ||
         !Array.isArray(record.messages) || record.messages.length > 256 || record.messages.some(message => !message ||
-            Object.keys(message).some(key => !['role', 'content', 'runId'].includes(key)) ||
+            Object.keys(message).some(key => !['role', 'content', 'runId', ...(record.version >= 7 ? ['origin'] : [])].includes(key)) ||
             !['user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || message.content.length > 32768 ||
-            typeof message.runId !== 'string' || message.runId.length > 150) ||
+            typeof message.runId !== 'string' || message.runId.length > 150 ||
+            Object.hasOwn(message, 'origin') && (message.role !== 'user' || !['question', 'continuation'].includes(message.origin))) ||
         !Array.isArray(record.required) || record.required.length > 128 || record.required.some(value => typeof value !== 'string' || value.length > 200) ||
         typeof record.status !== 'string' ||
         Buffer.byteLength(JSON.stringify(record), 'utf8') > maxBytes) throw Error('HISTORY_INVALID');
     return record;
 }
-async function read(dir, id) {
-    try { return check(JSON.parse(await fs.readFile(file(dir, id), 'utf8')), id); }
+async function stored(dir, id) {
+    try {
+        const value = JSON.parse(await fs.readFile(file(dir, id), 'utf8'));
+        if (value?.deleted === true && value.id === id && Object.keys(value).sort().join(',') === 'deleted,id') return value;
+        return check(value, id);
+    }
     catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+async function read(dir, id) { const value = await stored(dir, id); return value?.deleted ? null : value; }
+async function replace(dir, id, value) {
+    await fs.mkdir(dir, { recursive: true });
+    const temporary = path.join(dir, `${id}.${crypto.randomUUID()}.tmp`);
+    try { await fs.writeFile(temporary, JSON.stringify(value), { flag: 'wx' }); await fs.rename(temporary, file(dir, id)); }
+    finally { await fs.unlink(temporary).catch(() => {}); }
 }
 function summary(record) {
     const { messages, required, contextSummary, receipts, scopeChanges, ...metadata } = record;
@@ -66,17 +78,15 @@ function createFileStore(dir) {
             const id = record?.id; file(dir, id);
             if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw Error('HISTORY_INVALID');
             return serialized(dir, async () => {
-                const old = await read(dir, id);
+                const old = await stored(dir, id);
+                if (old?.deleted) throw Error('HISTORY_DELETED');
                 if (!old && expectedRevision !== 0) throw Error('HISTORY_DELETED');
                 if ((old?.revision || 0) !== expectedRevision) throw Error('HISTORY_CONFLICT');
                 const next = check({ ...record, revision: expectedRevision + 1 }, id);
                 const listed = await this.list();
                 if (!old && listed.length >= 64) throw Error('HISTORY_CAPACITY');
                 if (listed.filter(row => row.id !== id).reduce((sum, row) => sum + row.bytes, 0) + summary(next).bytes > 16 * 1024 * 1024) throw Error('HISTORY_CAPACITY');
-                await fs.mkdir(dir, { recursive: true });
-                const temporary = path.join(dir, `${id}.${crypto.randomUUID()}.tmp`);
-                try { await fs.writeFile(temporary, JSON.stringify(next), { flag: 'wx' }); await fs.rename(temporary, file(dir, id)); }
-                finally { await fs.unlink(temporary).catch(() => {}); }
+                await replace(dir, id, next);
                 return next;
             });
         },
@@ -87,7 +97,8 @@ function createFileStore(dir) {
                 const old = await read(dir, id);
                 if (!old) throw Error('HISTORY_DELETED');
                 if (old.revision !== revision) throw Error('HISTORY_CONFLICT');
-                await fs.unlink(file(dir, id)); return true;
+                // Keep only an ID marker so an untouched browser backup cannot resurrect this history.
+                await replace(dir, id, { id, deleted: true }); return true;
             });
         },
     };

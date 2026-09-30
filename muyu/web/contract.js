@@ -15,12 +15,25 @@ export function validateWebConfig(value) {
 }
 export const webResult = (status, query = '') => ({ status, provider: 'brave', query, fetchedAt: '', truncated: false, results: [] });
 export function validateWebResult(value) {
-    const result = validateJson(webOutputSchema, value);
+    if (!value || typeof value !== 'object') throw Error('WEB_RESULT_INVALID');
+    const descriptors = Object.getOwnPropertyDescriptors(value), rows = descriptors.results;
+    if (!rows || !Object.hasOwn(rows, 'value') || !rows.enumerable || !Array.isArray(rows.value) || rows.value.length > 10) throw Error('WEB_RESULT_INVALID');
+    const items = Object.getOwnPropertyDescriptors(rows.value);
+    if (Reflect.ownKeys(rows.value).length !== rows.value.length + 1) throw Error('WEB_RESULT_INVALID');
+    // Validate the bounded transport envelope and each row before fitting the smaller tool DTO.
+    descriptors.results = { ...rows, value: [] };
+    const result = validateJson(webOutputSchema, Object.create(Object.getPrototypeOf(value), descriptors));
+    for (let i = 0; i < rows.value.length; i++) {
+        const item = items[i];
+        if (!item || !item.enumerable || !Object.hasOwn(item, 'value')) throw Error('WEB_RESULT_INVALID');
+        result.results.push(validateJson(webOutputSchema.properties.results.items, item.value));
+    }
     for (const row of result.results) {
         let url; try { url = new URL(row.url); } catch { throw Error('WEB_RESULT_INVALID'); }
         if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw Error('WEB_RESULT_INVALID');
     }
     if (!['ok', 'empty'].includes(result.status) && result.results.length || result.status === 'empty' && result.results.length) throw Error('WEB_RESULT_INVALID');
+    if (webBytes(result) > 131072) throw Error('WEB_RESULT_INVALID');
     return result;
 }
 export const webBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
