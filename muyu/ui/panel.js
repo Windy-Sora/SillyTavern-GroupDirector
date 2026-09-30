@@ -16,6 +16,7 @@ import { renderTaskBundleApply } from './task-bundle-apply-view.js';
 import { renderProfileSave } from './profile-save-view.js';
 import { permissionTitle } from '../permissions/contract.js';
 import { createReceiptView } from './receipt-view.js';
+import { createWebSearchView } from './web-search-view.js';
 
 /** Safe Markdown view. The controller owns all state and execution. */
 export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen } = {}) {
@@ -109,6 +110,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     inputLabel.className = 'gd-muyu-input-label'; input.setAttribute('aria-label', t('给暮羽的消息', 'Message to Muyu'));
     input.placeholder = t('向暮羽提问，或描述你想排查的问题…', 'Ask Muyu a question, or describe what needs investigating…');
     const inputToolbar = node('div', '', inputBox); inputToolbar.className = 'gd-muyu-input-toolbar';
+    const webSearchView = createWebSearchView({ doc, settings: settingsLayout.pages.connection, toolbar: inputToolbar, composer, controller, act, openSettings: () => showSettings(true, 'connection'), lang });
     const modeLabel = node('label', t('任务', 'Task'), unified ? legacyRoot : inputToolbar), mode = node('select', '', modeLabel); mode.className = 'text_pole'; modeLabel.className = 'gd-muyu-mode';
     for (const [value, task] of Object.entries(taskCatalog)) { const option = node('option', t(...task.label), mode); option.value = value; }
     const authorization = node('section', '', unified ? legacyRoot : composer); authorization.className = 'gd-muyu-authorization'; authorization.hidden = true;
@@ -140,7 +142,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (show && category) settingsLayout.select(category);
         connection.hidden = !show; workspace.hidden = chat.hidden = show; gear.setAttribute('aria-expanded', String(show)); errors.textContent = '';
         historyView.setVisible(!show);
-        resetAuthorization(); if (!show) key.value = '';
+        resetAuthorization(); if (!show) { key.value = ''; webSearchView.clearKey(); }
         (show ? back : input).focus?.();
     }
     gear.onclick = () => showSettings(connection.hidden); back.onclick = () => showSettings(false); setup.onclick = () => showSettings(true, 'connection');
@@ -162,6 +164,14 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     };
     function showError(error) {
         const code = error?.message;
+        const webErrors = {
+            WEB_KEY_REQUIRED: t('请配置独立的 Brave Search API 密钥；模型密钥不能用于搜索。', 'Configure a separate Brave Search API key; your model key cannot be used for search.'),
+            WEB_BACKEND_MISSING: t('暮羽搜索服务未加载。请安装或更新服务端插件，开启 enableServerPlugins 并重启酒馆。', 'Muyu search service is not loaded. Install/update the server plugin, enable enableServerPlugins and restart ST.'),
+            WEB_BACKEND_UNAVAILABLE: t('无法连接暮羽搜索服务，请检查酒馆服务是否运行。', 'Cannot reach the Muyu search service. Check that ST is running.'),
+            WEB_CONFIG_INVALID: t('搜索配置无效，请检查密钥与标注范围内的整数预算。', 'Invalid search settings. Check the key and integer budgets within the shown ranges.'),
+            WEB_CONFIG_SAVE_FAILED: t('搜索配置未能确认保存，请重试。', 'Search settings persistence was not confirmed. Retry.'),
+        };
+        if (webErrors[code]) { errors.textContent = webErrors[code]; return; }
         if (code?.startsWith('ACTION_') || code === 'WRITE_UNAVAILABLE') { errors.textContent = t('应用请求不可用、已处理或已过期。请检查当前草稿并重新生成预览。', 'Application request unavailable, consumed or stale. Check the draft and generate a fresh preview.'); return; }
         if (code === 'INTERACTION_PENDING') { errors.textContent = t('请先回答或取消当前澄清问题。', 'Answer or cancel the pending clarification first.'); return; }
         if (code === 'INTERACTION_STALE' || code === 'INVALID_INTERACTION_ANSWER') { errors.textContent = t('问题已失效或回答无效；请检查当前问题，回答最多2000字符。', 'The question expired or the answer is invalid; check the active question (maximum 2000 characters).'); return; }
@@ -183,6 +193,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (switchedView && scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop);
         scrollKey = s.viewKey;
         historyView.render(s);
+        webSearchView.render(s);
         contextView.render(s);
         receiptView.render(s);
         instructionView.render(s);
@@ -350,7 +361,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         else if (nearBottom && historyChanged) transcript.scrollTop = transcript.scrollHeight;
     }
     const subscribe = () => { if (!unsubscribe) unsubscribe = controller.subscribe(render).unsubscribe; render(); };
-    shell.addEventListener('toggle', () => { if (disposed) return; if (shell.open) subscribe(); else { unsubscribe?.(); unsubscribe = null; key.value = ''; } });
+    shell.addEventListener('toggle', () => { if (disposed) return; if (shell.open) subscribe(); else { unsubscribe?.(); unsubscribe = null; key.value = ''; webSearchView.clearKey(); } });
     if (standalone) subscribe();
     mode.onchange = () => act(() => controller.setMode(mode.value));
     saveBudget.onclick = () => act(async () => {
@@ -395,6 +406,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     disable.onclick = () => act(async () => { await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

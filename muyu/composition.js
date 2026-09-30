@@ -9,5 +9,5 @@ import { receiptContext } from './actions/receipts.js';
 
 /** Internal assembly only: no UI, model connection, host data or automatic tool grants. */
 export function startMuyuRun(options) {
-    return startAgentRun({ ...options, applicationContext: receiptContext(options.applicationResults || []), interactionPort, createBroker: args => createToolBroker({ ...args, externalTools: ['muyu.provider.execute'] }), instructionPort: { validate: validateInstructions }, contextPort: { measurePayload, validateContextConfig, summaryMessage, compactionRequest, collectSummary } });
+    return startAgentRun({ ...options, applicationContext: receiptContext(options.applicationResults || []), interactionPort, createBroker: args => createToolBroker({ ...args, externalTools: ['muyu.provider.execute', 'muyu.web.search'] }), instructionPort: { validate: validateInstructions }, contextPort: { measurePayload, validateContextConfig, summaryMessage, compactionRequest, collectSummary } });
 }

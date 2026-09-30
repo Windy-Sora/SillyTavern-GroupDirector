@@ -46,15 +46,15 @@ test('Server-store adapter falls back only for a missing plugin and migrates old
 
 test('Server plugin registers only its private authenticated API routes', () => {
     const routes = [];
-    const router = Object.fromEntries(['get', 'put', 'delete'].map(method => [method, (route) => routes.push(`${method} ${route}`)]));
+    const router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (route) => routes.push(`${method} ${route}`)]));
     init(router);
-    assert.deepEqual(routes, ['get /health', 'get /records', 'get /records/:id', 'put /records/:id', 'delete /records/:id']);
+    assert.deepEqual(routes, ['get /web/health', 'post /web/search', 'get /health', 'get /records', 'get /records/:id', 'put /records/:id', 'delete /records/:id']);
 });
 
 test('HTTP adapter writes and restores a private account file without exposing an arbitrary path', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-http-'));
     try {
-        const routes = new Map(), router = Object.fromEntries(['get', 'put', 'delete'].map(method => [method, (route, handler) => routes.set(`${method.toUpperCase()} ${route}`, handler)]));
+        const routes = new Map(), router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (route, handler) => routes.set(`${method.toUpperCase()} ${route}`, handler)]));
         init(router);
         const fetcher = async (url, options) => new Promise(resolve => {
             const parsed = new URL(url, 'http://st.test'), id = parsed.pathname.split('/').at(-1);

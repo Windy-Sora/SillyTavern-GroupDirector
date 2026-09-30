@@ -7,6 +7,7 @@ export const taskCatalog = Object.freeze({
     director: { label: ['排查导演', 'Diagnose director'], scope: 'chat', consent: ['本次允许发送导演白名单配置、匿名成员数量、运行状态和历史结构概况；不含角色身份、原因原文或正文', 'Allow director whitelist settings, anonymous counts, runtime state and history structure; no identities, reason text or bodies'], instructions: '先读取导演资料，再检查当前导演状态和历史概况。当前配置不是历史原因，历史记录可编辑且不证明实际执行成功。没有证据就明确无法确定。不读取正文、不重新评分、不写配置。' },
 });
 export const toolLabels = Object.freeze({
+    'muyu.web.search': ['搜索公开网页', 'Search the web'],
     'muyu.history.list': ['查看本会话原文索引', 'List session history'],
     'muyu.history.read': ['回读本会话原文', 'Read session history'],
     'muyu.profile.preview': ['预览可复用配置档', 'Preview reusable config profile'],

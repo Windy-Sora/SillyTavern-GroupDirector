@@ -3,8 +3,9 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { registerWebSearch } = require('./web-search.cjs');
 
-const info = { id: 'gd-muyu-history', name: 'Group Director Muyu History', description: 'Private per-user Muyu conversation files' };
+const info = { id: 'gd-muyu-history', name: 'Group Director Muyu Services', description: 'Private Muyu conversation files and optional web search' };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxBytes = 2 * 1024 * 1024;
 const fields = new Set(['version', 'id', 'revision', 'scope', 'title', 'createdAt', 'updatedAt', 'messages', 'required', 'status', 'archived', 'imported', 'contextSummary', 'receipts', 'scopeChanges']);
@@ -99,6 +100,7 @@ function respond(res, work) {
     });
 }
 function init(router) {
+    registerWebSearch(router);
     router.get('/health', (_req, res) => res.json({ version: 1 }));
     router.get('/records', (req, res) => respond(res, () => createFileStore(directory(req)).list()));
     router.get('/records/:id', (req, res) => respond(res, () => createFileStore(directory(req)).read(req.params.id)));

@@ -20,6 +20,35 @@ import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subje
 const tool = (toolId, args = {}, callId = 'c1') => ({ type: 'tool_call_complete', call: { toolId, callId, version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
 
 const ask = () => tool('muyu.interaction.ask', { question: 'Which part?', options: ['Frequency', 'Content'] });
+test('Globe is opt-in even in full access; enabled searches reach the model and reconnect turns it off', async () => {
+    let calls = 0, checks = 0;
+    const capture = { limits: { maxSearches: 3, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { status: 'ok', provider: 'brave', query: args.query, fetchedAt: '2026-09-30T00:00:00Z', truncated: false, results: [{ title: 'Docs', url: 'https://docs.example.test/', snippet: 'Untrusted public evidence' }] }; } };
+    const webSearch = { describe: () => ({ ...capture.limits, hasKey: true, provider: 'brave' }), check: async () => { checks++; }, capture: () => capture, cancel() {} };
+    const f = fixture([[text('offline'), done], [tool('muyu.web.search', { query: 'SillyTavern docs' }), done], [text('[Docs](https://docs.example.test/)'), done]], { webSearch });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('offline'); f.controller.send(); await settle();
+    assert.ok(!f.model.requests[0].tools.some(row => row.id === 'muyu.web.search')); assert.equal(calls, 0);
+    f.controller.setInput('keep this draft'); await f.controller.setWebSearchEnabled(true);
+    assert.equal(f.controller.snapshot().input, 'keep this draft'); assert.equal(checks, 1);
+    f.controller.send(); await settle();
+    assert.ok(f.model.requests[1].tools.some(row => row.id === 'muyu.web.search')); assert.equal(calls, 1);
+    assert.match(JSON.stringify(f.model.requests[2]), /Untrusted public evidence/);
+    assert.equal(f.controller.snapshot().interaction, null);
+    await f.enable(); assert.equal(f.controller.snapshot().webSearch.enabled, false); await f.controller.dispose();
+});
+
+test('Turning the globe off after the model request prevents its queued search from making any network call', async () => {
+    let calls = 0, cancels = 0;
+    const wait = deferred(), webSearch = { describe: () => ({ hasKey: true }), check: async () => {}, cancel() { cancels++; }, capture: () => ({ limits: { maxSearches: 3, maxResults: 5, resultBytes: 12000 }, search: async () => { calls++; throw Error('must not run'); } }) };
+    const f = fixture([() => wait.promise, [text('offline now'), done]], { webSearch });
+    await f.enable(); f.controller.setMode('assistant'); await f.controller.setWebSearchEnabled(true);
+    f.controller.setInput('search'); f.controller.send(); await flush();
+    await f.controller.setWebSearchEnabled(false);
+    wait.resolve([tool('muyu.web.search', { query: 'query' }), done]); await settle();
+    assert.equal(calls, 0); assert.ok(cancels > 0); assert.equal(f.controller.snapshot().webSearch.enabled, false);
+    await f.controller.dispose();
+});
+
 const taskPlan = () => tool('muyu.task.plan', { goal: '建立当前聊天金币系统', scope: 'mixed',
     sources: ['configSettings', 'variables'], steps: [
         { kind: 'read', title: '核对现状', detail: '只读现有变量与配置' },

@@ -62,6 +62,23 @@ test('Full-access switch confirms once and keeps a warning visible outside setti
     f.root.__gdMuyuDispose();
 });
 
+for (const lang of ['zh', 'en']) test(`Globe setup preserves the composer; toggle survives remount and turns off during a task (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }); let toggles = 0;
+    f.state.enabled = true; f.state.webSearch = { enabled: false, hasKey: false, maxSearches: 3, maxResults: 5, resultBytes: 12000, backend: 'unknown' };
+    f.controller.setWebSearchEnabled = enabled => { toggles++; f.state.webSearch.enabled = enabled; f.emit(); };
+    f.find('textarea').value = 'unsent draft'; f.find('textarea').oninput(); f.emit();
+    let globe = f.all().find(e => e.className?.includes('gd-muyu-web-toggle'));
+    await globe.click(); assert.equal(f.sent.length, 0); assert.equal(toggles, 0); assert.equal(f.state.input, 'unsent draft');
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-settings').hidden, false);
+    f.state.webSearch.hasKey = true; f.emit(); await globe.click();
+    assert.equal(toggles, 1); assert.equal(globe.getAttribute('aria-pressed'), 'true');
+    f.root.__gdMuyuDispose(); f.mount(); globe = f.all().find(e => e.className?.includes('gd-muyu-web-toggle'));
+    assert.equal(globe.getAttribute('aria-pressed'), 'true'); assert.equal(toggles, 1);
+    f.state.busy = true; f.emit(); assert.equal(globe.disabled, false); await globe.click();
+    assert.equal(f.state.webSearch.enabled, false); assert.equal(toggles, 2); assert.equal(globe.disabled, true);
+    assert.equal(f.state.input, 'unsent draft'); f.root.__gdMuyuDispose();
+});
+
 function managedHistory() {
     return { available: true, enabled: true, loading: false, pending: 0, error: null, dirty: false, sessionId: 'old', persisted: true,
         selected: { id: 'old', title: 'Title', archived: false }, sessions: [{ id: 'old', title: 'Title' }], missingPermissions: [], omitted: 0 };

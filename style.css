@@ -1174,6 +1174,12 @@
 .gd-muyu-input-toolbar .menu_button { padding: 7px 12px; margin: 0; border-radius: 12px; font-size: .85em; }
 .gd-muyu-input-toolbar .gd-muyu-send { background: var(--SmartThemeBodyColor, #eee); color: var(--SmartThemeBlurTintColor, #252530); font-weight: 600; }
 .gd-muyu-input-toolbar button:disabled { opacity: .45; }
+.gd-muyu-input-toolbar .gd-muyu-web-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto; min-width: 34px; min-height: 34px; padding: 7px 9px; color: var(--SmartThemeBodyColor, #ddd); background: transparent; border: 1px solid transparent; opacity: .7; }
+.gd-muyu-input-toolbar .gd-muyu-web-toggle[aria-pressed="true"] { color: var(--SmartThemeQuoteColor, #88b8dd); background: color-mix(in srgb, var(--SmartThemeQuoteColor, #88b8dd) 14%, transparent); border-color: color-mix(in srgb, var(--SmartThemeQuoteColor, #88b8dd) 40%, transparent); opacity: 1; }
+.gd-muyu-web-toggle:focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #88b8dd); outline-offset: 2px; }
+.gd-muyu-web-hint { display: block; font-size: .72em; opacity: .7; margin: 4px 2px 0; }
+.gd-muyu-web-settings { margin-top: 16px; }
+.gd-muyu-web-settings > summary { cursor: pointer; font-weight: 600; }
 .gd-muyu-input-hint { display: block; text-align: end; font-size: .65em; opacity: .6; margin-top: 6px; }
 .gd-muyu-composer label { margin: 5px 0; font-size: .85em; }
 .gd-muyu-composer .gd-muyu-mode { display: flex; flex-wrap: nowrap; gap: 8px; }

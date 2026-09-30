@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = {
     muyuContextConfig: { inputTokens: null, recentTurns: 12, autoSummary: false },
     muyuRunConfig: { modelCalls: 6, toolCalls: 16, timeMs: 120000, maxTokens: 8192, providerBytes: 24000 },
     muyuHistoryEnabled: true,
+    muyuWebSearchConfig: { maxSearches: 3, maxResults: 5, resultBytes: 12000 },
     mode: MODE_FORMULA,
     topN: 1,
     scoreWeights: {

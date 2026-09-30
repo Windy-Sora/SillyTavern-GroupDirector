@@ -33,6 +33,8 @@ test('Configuration coverage explicitly owns every default key and separates pen
     assert.equal(assertConfigurationCoverage(), Object.keys(DEFAULT_SETTINGS).length);
     const rows = configurationCoverage(); assert.equal(rows.find(r => r.key === 'agentConfigs').status, 'special-editor-pending');
     assert.equal(rows.find(r => r.key === 'agentConfigs').secret, true);
+    assert.equal(rows.find(r => r.key === 'muyuWebSearchConfig').status, 'internal');
+    assert.deepEqual(rows.find(r => r.key === 'muyuWebSearchConfig').fields, []);
     assert.equal(rows.find(r => r.key === 'scoreWeights').fields.length, 4);
     assert.ok(dynamicSettings.userProviders); assert.ok(dynamicSettings.uiState);
     DEFAULT_SETTINGS.newUnregisteredSetting = false;

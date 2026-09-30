@@ -4,7 +4,7 @@ import { configFields, fieldDefinition } from './registry.js';
 // Explicit inventory, not a whitelist generated from defaults. New default keys
 // must receive an owner and a deliberate support classification in tests.
 const groups = {
-    muyu: 'muyuInstructionConfig muyuContextConfig muyuRunConfig muyuHistoryEnabled',
+    muyu: 'muyuInstructionConfig muyuContextConfig muyuRunConfig muyuHistoryEnabled muyuWebSearchConfig',
     director: 'mode topN llmContextDepth llmPrompt llmMaxSpeakers llmRespectOrder llmCharDescMode llmCharDescLength llmScriptEnabled llmScriptPrompt llmScriptWrapper llmJsonSchema llmJsonSchemaHint llmHistoryEnabled llmScriptContinuity llmScriptContinuityMode llmScriptContinuityCount llmScriptContinuityWrapper llmScriptContinuityHistoryWrapper llmWorldInfoEnabled llmWorldInfoWrapper templateMaxPasses templateRecursive templateDebugPlaceholders providerTimeoutMs forceSpeakMode forceSpeakPrompt llmScriptPosition',
     formula: 'scoreWeights recentMessageCount consecutivePenalty triggerEnabled triggerScore initiativeEnabled initiativeBaseScore',
     summary: 'knowledgeText summaryEnabled summaryReusePrevious summaryPrompt autoSummaryEnabled autoSummaryInterval',
@@ -30,7 +30,7 @@ export function configurationCoverage() {
         const fields = configFields.filter(id => id === key || id.startsWith(key + '.'));
         const value = DEFAULT_SETTINGS[key];
         return { key, owner, type: Array.isArray(value) ? 'array' : typeof value, scope: 'global',
-            status: key === 'storyBlueprintCompletionVariableGuard' ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
+            status: ['storyBlueprintCompletionVariableGuard', 'muyuWebSearchConfig'].includes(key) ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
             secret: key === 'agentConfigs', executable: key === 'scriptExecutors',
             writer: fields.length ? 'muyu/host/config-write.js' : null,
             contract: fields.map(fieldDefinition),
