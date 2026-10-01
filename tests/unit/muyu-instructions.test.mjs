@@ -5,6 +5,7 @@ import { validateInstructionConfig, validateInstructionDraft, renderInstructions
 import { createInstructionConfigStore } from '../../muyu/host/instruction-config.js';
 import { startMuyuRun } from '../../muyu/composition.js';
 import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
+import { MUYU_PERSONA } from '../../muyu/instructions/persona.js';
 import { identity, registry, toolId, scriptedModel, request, call, text, done, createClock } from './helpers/muyu-subject.mjs';
 
 test('Unified assistant distinguishes chat bodies from static knowledge and describes reusable source grants', () => {
@@ -28,6 +29,24 @@ test('Long answers use readable Markdown without forcing headings onto short rep
     assert.match(base, /每段只讲一个重点/);
     assert.match(base, /字段名、字面值与占位符用行内代码/);
     assert.match(base, /不为短回答强加标题或表格/);
+});
+
+test('Owl-girl persona is shared by every answer mode and receipt explanations without changing capabilities', () => {
+    for (const mode of ['assistant', 'chat', 'draft', 'memory', 'director']) {
+        const instructions = composeInstructions(mode);
+        assert.ok(instructions.base.startsWith(MUYU_PERSONA));
+        assert.match(instructions.base, /猫头鹰娘/);
+        assert.match(instructions.base, /温柔、耐心、好奇/);
+        assert.match(instructions.base, /不每句加语气词/);
+        assert.match(instructions.base, /不卖萌淡化风险/);
+        assert.match(instructions.base, /人设只改变表达/);
+        assert.match(instructions.base, /用户要求简洁、严肃或指定格式时优先遵从/);
+        assert.equal(instructions.preference, '');
+        assert.ok(instructions.base.length <= 4000);
+    }
+    assert.ok(composeReceiptInstructions().base.startsWith(MUYU_PERSONA));
+    assert.equal(composeInstructions('assistant', { enabled: true, text: '严肃回答，不使用动作描写' }).preference, '严肃回答，不使用动作描写');
+    assert.doesNotMatch(MUYU_PERSONA, /不能读取设置|没有主动检索工具|通过ST普通聊天运行/);
 });
 
 test('Instruction config is closed and bounded; disabled text is retained locally but never composed', () => {

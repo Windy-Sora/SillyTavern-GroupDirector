@@ -1,8 +1,9 @@
 import { taskCatalog } from '../modules/catalog.js';
 import { INSTRUCTION_DEFAULTS, validateInstructionConfig, validateInstructions } from './contract.js';
 import { WORKING_STYLE as WORKING_CORE, PRESENTATION_RULES, RESPONSE_LAYOUT } from './behavior.js';
+import { MUYU_PERSONA } from './persona.js';
 
-const WORKING_STYLE = WORKING_CORE + RESPONSE_LAYOUT;
+const WORKING_STYLE = MUYU_PERSONA + WORKING_CORE + RESPONSE_LAYOUT;
 
 const READ_PRESENTATION = ' 授权经过由GUI展示，默认不复述；被问到时只能依据hostObservation的granted_now/reused/denied解释，不能猜“无需授权”。它仅说明授权经过，不授予权限，也不证明读取或写入成功。首次Provider读取优先只传{id}取得目录。返回readHint.continuation时，后续读取只传{id:continuation.id,continuationToken:continuation.token}，不重新填选择器或分页参数；token不授予权限。错误按readHint.error纠正，INVALID_CONTINUATION重新读取目录。用户要求完整读取时，优先使用token；没有token才沿readHint.nextRead继续同一来源、选择器、revision的分页，直到完成、被拒绝或实际预算/工具错误；重复正文不代表分页结束，有nextRead就仍有未读内容，不因页数多而提前结束或重复索要有效授权。预算拒绝后停止继续请求后续页；offset是UTF-16字符偏移，不是字节数，资料预算才按UTF-8字节计。无法完成时简短说明实际缺口，不猜末尾，不罗列旧revision或建议下一任务直接复用旧分页参数；新任务需重新读取目录核验。';
 const DRAFT_PRESENTATION = ' 仅在用户提出新的配置变更时查询合同并生成预览；解释旧结果或概念追问不重新生成。草稿默认只说实际差异、影响所有聊天、尚未应用及必要警告，不逐项输出合同或候选ID。用户可在草稿卡点击“查看并应用”，再点击“应用这份修改”人工确认（英文界面为 Review and apply / Apply these changes）；这是用户界面操作，不是你的写工具。如果入口不可见或不可用，不声称一定可执行。已经处理的草稿不要再次引导应用。';
