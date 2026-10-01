@@ -1,5 +1,15 @@
 # Provider 上下文与持续授权
 
+## 读取协议提示（2026-09-30）
+
+`provider.read` v2 增加可选闭合 `readHint`，区分 directory、content、structured 与 unavailable。目录不是正文；`exampleSelector` 仅演示格式，不保证对应条目存在。分页的 `nextRead` 包含同一来源、选择器、revision 与精确下一偏移；STALE_SOURCE 提示重新读取目录。所有提示仍需经过目标、权限、版本与预算核验，不能授予权限或触发执行。完整读取应跟随分页直到完成或实际限制，不把重复正文当作结束。
+
+读取支持三种互斥形态：`{id}` 获取目录/结构化来源，原 `{id,selector,revision,offset}` 接口，以及 `{id,continuationToken}`。有可确定的下一页或历史正文范围时，宿主返回 `readHint.continuation={id,token}`，模型原样引用，不再计算偏移。来源 ID 保留用于 Broker 的来源授权、历史依赖与观察记录，token 不是权限。混用 token 与旧分页字段或仅填写部分旧字段返回 INVALID_READ_ARGUMENTS，不读取数据。
+
+`continuations.js` 仅保存宿主生成的有界参数与目标身份，每个运行最多128个引用，不存正文或执行代码；引用隔离复制。相同任务授权交接时随既有 transferRun 转移，保留已用字节与原预算上限，旧运行不能使用；结束、取消或重连随运行清理，新任务不恢复 token。每次调用仍通过 Broker 授权及撤销检查，再重新读取和核验来源证据，不能用 token 返回过期快照。引用可以在同一运行重读，但仍计工具次数与字节预算；同一 call ID 的去重继续由 Broker 负责。
+
+`readHint.error` 只给静态字段、预期格式与可否纠正，不包含原始宿主异常或私有资料。INVALID_CONTINUATION 指引重新读取目录；STALE_SOURCE 指引刷新版本；BUDGET_EXCEEDED 指明停止读取。字节预算一旦因页面无法容纳而耗尽，不能跳后续较小页面绕过。容量上限不影响旧参数兼容读取，模型可使用 nextRead。
+
 ## 通用已注册 Provider 执行（2026-09-25，当前）
 
 `muyu.provider.discover({offset?})` 分页列出当前注册表中的内置与用户 Provider 的 ID、占位符、来源、版本和可选上下文需求；只取元数据，不执行 `render`。用户导入资产的版本由加载器私有保存的源码摘要与上下文声明决定，可跨刷新识别；没有可信源码摘要的其他注册 Provider 仍使用连接内版本。`muyu.provider.execute` v2 直接调用原有 `render(context, signal)`，默认取 `content`，也可选择 `data` 的有界 JSON 文本。发现目录不会授予执行权。
@@ -99,7 +109,7 @@ Agent → ToolBroker → modules/providers → host/providers → 既有业务�
 - 角色详情携带目录 revision 和 character:N；身份只用本地引用，头像路径不外发。
 - 续页携带返回的 revision/nextOffset。每个 Run 独立，不能跨 Run 复用。
 - 返回 source/status/revision/text/nextOffset/truncated/readAt，不返回宿主聊天 ID。
-- 每页至多 2000 UTF-16 单元（不切断代理对）；每 Run 默认24000 UTF-8 字节正文，可在运行预算设置中调整为6000–96000字节，发送时固定；最多16个资料快照。最近消息窗口之外需使用历史范围入口，不一次注入全部历史。
+- 每页至多 2000 UTF-16 单元（不切断代理对）；生产每 Run 默认2 MiB UTF-8 字节正文，可在运行预算设置中调整为6000–16777216字节，发送时固定；最多16个资料快照。最近消息窗口之外需使用历史范围入口，不一次注入全部历史。
 - 单资料最多 131072 字符、角色最多 256、单角色记忆最多 2048；超过限制明确 SOURCE_TOO_LARGE，不静默宣称完整。
 - 分页按完整受支持投影核对版本，不用弱哈希；目标变化/取消不发布。SOURCE_DISABLED、SOURCE_UNAVAILABLE、STALE_SOURCE、empty、预算耗尽分别处理。
 - 执行过程只存来源枚举、状态、字符数与截断标志，不复制正文、角色引用或 revision。正文不自动持久化，但模型回答可能引用它。

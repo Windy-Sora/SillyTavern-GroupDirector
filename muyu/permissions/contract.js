@@ -2,7 +2,6 @@ import { validateJson } from '../core/json-contract.js';
 import { providerCatalog } from '../modules/providers/catalog.js';
 
 export const PERMISSION_TOOL = 'muyu.permission.request';
-export const MAX_INTERACTIONS = 6;
 export const sourceKey = id => 'source:' + id;
 export const executionSource = (providerId, providerRevision) => `source:providerExecution:${providerId}:${providerRevision}`;
 export function parseExecutionSource(value) {

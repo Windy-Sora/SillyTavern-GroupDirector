@@ -35,7 +35,7 @@ test('Checking one receipt does not require unrelated receipt permissions', asyn
         c.setInput('Memory interval'); c.send(); await settle(); c.answerPermission(c.snapshot().interaction.id, 'task'); await settle();
         let a = c.snapshot().artifacts.at(-1), action = c.prepareConfigApply(a.id, a.revision);
         await c.approveConfigApply(action.id); const memoryId = action.id;
-        c.setInput('Director mode'); c.send(); await settle(); c.answerPermission(c.snapshot().interaction.id, 'chat'); await settle();
+        c.setInput('Director mode'); c.allowHistory(); c.send(); await settle(); c.answerPermission(c.snapshot().interaction.id, 'chat'); await settle();
         a = c.snapshot().artifacts.at(-1); action = c.prepareConfigApply(a.id, a.revision); await c.approveConfigApply(action.id);
         assert.equal(c.snapshot().canCheckReceipts[action.id], true);
         assert.equal(c.snapshot().canCheckReceipts[memoryId], false);
@@ -379,7 +379,8 @@ test('Story sources require separate grants before reads and protect dependent h
     c.answerPermission(c.snapshot().interaction.id, 'task'); await settle();
     assert.ok(blueprintReads > 0); assert.equal(f.writes(), 0);
     assert.deepEqual(JSON.parse(c.exportHistory()).required.sort(), ['source:storyBlueprint', 'source:variables']);
-    c.setInput('continue'); c.send(); await settle(); assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_STORY_RESULT/);
+    c.setInput('continue'); assert.throws(() => c.send(), /HISTORY_PERMISSION_REQUIRED/);
+    c.setOmitHistory(true); c.send(); await settle(); assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_STORY_RESULT/);
     await c.dispose();
 });
 
@@ -412,11 +413,13 @@ test('Denial cannot be bypassed through diagnostics or preview; plain conversati
     assert.equal(c.snapshot().interaction.status, 'denied'); assert.equal(c.snapshot().notice, null);
     assert.match(JSON.stringify(f.model.requests), /PERMISSION_DENIED/); await c.dispose();
 });
-test('Task grant expiration hides protected history until a fresh explicit grant; continuation restores it only after approval', async () => {
+test('Task grant expiration requires explicit history approval, separate from fresh source approval', async () => {
     const f = fixture([ask('memoryConfig'), read(), [text('PROTECTED_CONFIG_ANSWER'), done], ask('memoryConfig'), [text('followup'), done]]);
     await f.enable(); const c = f.controller; c.setInput('config'); c.send(); await settle(); c.answerPermission(c.snapshot().interaction.id, 'task'); await settle();
-    c.setInput('explain previous answer'); c.send(); await settle();
-    assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_CONFIG_ANSWER/);
+    c.setInput('explain previous answer'); assert.throws(() => c.send(), /HISTORY_PERMISSION_REQUIRED/);
+    c.allowHistory(); c.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_CONFIG_ANSWER/);
+    assert.equal(c.snapshot().interaction.source, 'memoryConfig');
     c.answerPermission(c.snapshot().interaction.id, 'task'); await settle();
     assert.match(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_CONFIG_ANSWER/); await c.dispose();
 });

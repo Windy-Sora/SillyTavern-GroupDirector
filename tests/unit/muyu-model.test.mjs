@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createChatCompletionsModel } from '../../muyu/model/chat-completions.js';
 import { validateConnection } from '../../muyu/model/connection.js';
 import { createHttpTransport } from '../../muyu/model/http-transport.js';
+import { probeConnection } from '../../muyu/model/connection-probe.js';
 import { startMuyuRun } from '../../muyu/composition.js';
 import { composeInstructions } from '../../muyu/instructions/compose.js';
 import { identity, registry, toolId, createClock, flush, deferred } from './helpers/muyu-subject.mjs';
@@ -12,6 +13,22 @@ const response = (content = 'answer', calls = [], extra = {}) => ({ choices: [{ 
 const tc = (id = 'c1', args = '{"n":1}') => ({ id, type: 'function', function: { name: 'muyu_tool_0', arguments: args } });
 const request = () => ({ messages: [{ role: 'user', content: 'question' }], tools: registry().list() });
 const json = data => new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+test('Connection tools use the sibling models endpoint and a bounded fixed test message', async () => {
+    const requests = [], fetchImpl = async (url, init) => {
+        requests.push({ url, ...init });
+        return json(init.method === 'GET' ? { data: [{ id: 'model-z' }, { id: 'model-a' }, { id: 'model-a' }] } : response('OK'));
+    };
+    const models = await probeConnection({ ...connection, profile: 'deepseek' }, { kind: 'models', fetchImpl });
+    assert.deepEqual(models, ['model-a', 'model-z']);
+    assert.equal(requests[0].url, 'https://model.invalid/v1/models');
+    assert.equal(requests[0].method, 'GET'); assert.equal(requests[0].body, undefined);
+    assert.equal(requests[0].headers.Authorization, 'Bearer test-only-placeholder');
+    assert.deepEqual(await probeConnection({ ...connection, profile: 'deepseek' }, { kind: 'test', fetchImpl }), { ok: true });
+    assert.equal(requests[1].url, connection.endpoint);
+    assert.equal(requests[1].method, 'POST');
+    assert.equal(JSON.parse(requests[1].body).messages[0].content, 'Reply with OK.');
+    await assert.rejects(probeConnection({ ...connection, profile: 'deepseek' }, { kind: 'models', fetchImpl: async () => json({ data: {} }) }), /MODEL_PROTOCOL_ERROR/);
+});
 async function collect(model, input = request(), context = {}) {
     return Array.fromAsync(model.run(input, { signal: new AbortController().signal, context }));
 }

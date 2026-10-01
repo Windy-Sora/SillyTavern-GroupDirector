@@ -3,12 +3,14 @@ export { toolLabels as processTools } from '../modules/catalog.js';
 import { toolLabels as processTools } from '../modules/catalog.js';
 import { providerCatalog } from '../modules/providers/catalog.js';
 import { projectBudget } from '../core/budget.js';
-import { MAX_MANUAL_INPUT_TOKENS, projectContext } from '../context/policy.js';
+import { MAX_MANUAL_INPUT_TOKENS, MAX_CONTEXT_MESSAGES, projectContext, projectCoverage } from '../context/policy.js';
 const codes = new Set(['PERMISSION_DENIED', 'INVALID_ARGUMENT', 'CALL_ID_CONFLICT', 'UNSUPPORTED_CAPABILITY', 'TARGET_UNAVAILABLE', 'UPSTREAM_PENDING', 'OUTPUT_INVALID', 'TIMEOUT', 'TOOL_FAILED', 'CANCELLED', 'BUDGET_EXCEEDED', 'MODEL_NETWORK_ERROR', 'MODEL_AUTH_ERROR', 'MODEL_RATE_LIMIT', 'MODEL_SERVICE_ERROR', 'MODEL_HTTP_ERROR', 'MODEL_PROTOCOL_ERROR', 'MODEL_HISTORY_UNAVAILABLE', 'MODEL_OUTPUT_TRUNCATED', 'MODEL_FAILED', 'START_FAILED']);
 const safeCode = value => codes.has(value) ? value : value ? 'UNKNOWN_ERROR' : null;
 codes.add('CONTEXT_LIMIT');
+codes.add('CONTEXT_INCOMPLETE');
 codes.add('PERMISSION_REQUIRED');
 codes.add('PERMISSION_REQUEST_INVALID');
+for (const code of ['PERMISSION_LIMIT', 'CLARIFICATION_LIMIT', 'INVALID_CONTINUATION']) codes.add(code);
 const elapsed = (end, start) => Math.min(86_400_000, Math.max(0, Math.round(end - start)));
 const types = new Set(['run.usage', 'model.started', 'model.completed', 'model.failed', 'tool.requested', 'tool.started', 'tool.reused', 'tool.completed', 'tool.failed', 'run.finished']);
 
@@ -34,11 +36,16 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
             r.seq = event.seq;
             if (event.type === 'run.context') {
                 const p = event.payload || {}, value = projectContext(p);
-                if (value) r.context = { ...value, inputTokenLimit: Number.isSafeInteger(p.inputTokenLimit) ? Math.max(4096, Math.min(MAX_MANUAL_INPUT_TOKENS, p.inputTokenLimit)) : null, historicalMessages: Number.isSafeInteger(p.historicalMessages) ? Math.max(0, Math.min(256, p.historicalMessages)) : null, trimmedHistoricalMessages: Math.min(256, (r.context?.trimmedHistoricalMessages || 0) + (Number.isSafeInteger(p.trimmedHistoricalMessages) ? Math.max(0, Math.min(256, p.trimmedHistoricalMessages)) : 0)) };
+                if (p.phase === 'history_coverage' && ['planned', 'skipped', 'summarized', 'fallback', 'blocked'].includes(p.status)) {
+                    const coverage = projectCoverage(p.coverage);
+                    if (coverage) r.coverage = { ...coverage, status: p.status };
+                }
+                if (value) r.context = { ...value, inputTokenLimit: Number.isSafeInteger(p.inputTokenLimit) ? Math.max(4096, Math.min(MAX_MANUAL_INPUT_TOKENS, p.inputTokenLimit)) : null, historicalMessages: Number.isSafeInteger(p.historicalMessages) ? Math.max(0, Math.min(MAX_CONTEXT_MESSAGES, p.historicalMessages)) : null, trimmedHistoricalMessages: Math.min(MAX_CONTEXT_MESSAGES, (r.context?.trimmedHistoricalMessages || 0) + (Number.isSafeInteger(p.trimmedHistoricalMessages) ? Math.max(0, Math.min(MAX_CONTEXT_MESSAGES, p.trimmedHistoricalMessages)) : 0)) };
                 if (['request', 'summarizing', 'summarized', 'summary_failed'].includes(p.phase)) r.contextPhase = p.phase;
                 if (['summarizing', 'summarized', 'summary_failed'].includes(p.phase)) r.summaryPhase = p.phase;
-                if (p.phase === 'summarizing') r.summaryUsage = { calls: 1, inputTokens: null, outputTokens: null };
-                if (p.phase === 'summary_usage' && [p.inputTokens, p.outputTokens].every(n => Number.isSafeInteger(n) && n >= 0 && n <= 1000000000)) r.summaryUsage = { calls: 1, inputTokens: p.inputTokens, outputTokens: p.outputTokens };
+                if (p.phase === 'summarizing') r.summaryUsage = { calls: Math.min(2, (r.summaryUsage?.calls || 0) + 1), reports: r.summaryUsage?.reports || 0, inputTokens: r.summaryUsage?.inputTokens ?? null, outputTokens: r.summaryUsage?.outputTokens ?? null };
+                if (p.phase === 'summary_failed') r.summaryError = safeCode(p.error);
+                if (p.phase === 'summary_usage' && [p.inputTokens, p.outputTokens].every(n => Number.isSafeInteger(n) && n >= 0 && n <= 1000000000)) r.summaryUsage = { calls: r.summaryUsage?.calls || 1, reports: Math.min(2, (r.summaryUsage?.reports || 0) + 1), inputTokens: Math.min(2000000000, (r.summaryUsage?.inputTokens || 0) + p.inputTokens), outputTokens: Math.min(2000000000, (r.summaryUsage?.outputTokens || 0) + p.outputTokens) };
                 return;
             }
             if (!types.has(event.type)) return;
@@ -53,7 +60,7 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
             if (type === 'tool.completed' && tool === 'muyu.provider.read') {
                 const d = p.result?.data;
                 if (d && providerCatalog.some(p => p.id === d.source)) {
-                    const status = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'INVALID_SELECTOR', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'].includes(d.status) ? d.status : 'UNKNOWN_ERROR';
+                    const status = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'SOURCE_UNSUPPORTED', 'INVALID_SELECTOR', 'INVALID_READ_ARGUMENTS', 'INVALID_CONTINUATION', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'].includes(d.status) ? d.status : 'UNKNOWN_ERROR';
                     row.read = { source: d.source, status, characters: d.source === 'memoryConfig' && d.data ? Math.min(2000, JSON.stringify(d.data).length) : typeof d.text === 'string' ? Math.min(2000, d.text.length) : 0, truncated: d.truncated === true };
                 }
             }

@@ -1,6 +1,6 @@
 /** Null means auto: no guessed model-token limit, only the transport byte ceiling. */
-export const CONTEXT_DEFAULTS = Object.freeze({ inputTokens: null, recentTurns: 12, autoSummary: false });
-export const MAX_REQUEST_BYTES = 1048576;
+export const CONTEXT_DEFAULTS = Object.freeze({ inputTokens: 900000, recentTurns: 12, autoSummary: false });
+export { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES, MAX_MESSAGE_BYTES } from '../core/context-limits.js';
 export const MAX_MANUAL_INPUT_TOKENS = 1000000;
 export function validateContextConfig(value) {
     if (!value || Object.keys(value).sort().join(',') !== 'autoSummary,inputTokens,recentTurns' ||
@@ -23,4 +23,15 @@ export function projectContext(value) {
     const instructionBytes = value.instructionBytes ?? 0;
     if (!Number.isSafeInteger(instructionBytes) || instructionBytes < 0 || instructionBytes > 16000000) return null;
     return { ...Object.fromEntries(keys.map(k => [k, value[k]])), instructionBytes };
+}
+
+/** Counts only: never a source fingerprint, transcript or authorization. */
+export function projectCoverage(value) {
+    const keys = ['total', 'summarized', 'raw', 'omitted', 'excluded'];
+    if (!value || !['complete', 'window', 'blocked', 'omitted'].includes(value.state) ||
+        keys.some(k => !Number.isSafeInteger(value[k]) || value[k] < 0 || value[k] > 4096) ||
+        value.summarized + value.raw + value.omitted + value.excluded !== value.total ||
+        value.state === 'complete' && (value.omitted || value.excluded) ||
+        value.state === 'blocked' && value.raw !== 0) return null;
+    return { state: value.state, ...Object.fromEntries(keys.map(k => [k, value[k]])) };
 }

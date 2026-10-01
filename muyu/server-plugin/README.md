@@ -1,5 +1,7 @@
 # 暮羽可选服务端插件
 
+2026-09-30 大上下文容量更新：每命名空间仍最多 64 会话；每会话最多 4096 条消息、32 MiB，合计 256 MiB，单条模型文本最多 2 MiB 序列化 UTF-8。容量不是默认注入量。旧记录格式不迁移；使用更大存档需同步更新服务端并重启 ST，旧服务端仍会按原容量拒绝保存，不静默分叉或删减记录。
+
 此目录只包含服务端插件代码，绝不放真实聊天记录。ST 会把前端扩展目录作为静态资源提供；私密历史不能写入这里。
 
 将本目录全部 `.cjs` 文件安装到 SillyTavern 的 `plugins/gd-muyu-history/`，在 ST 配置中开启 `enableServerPlugins`，重启 ST。服务端按已认证账户写入 `<ST data root>/<user>/.group-director/muyu/history/<namespace>/<conversation-id>.json`；不会写入聊天存档或角色卡。文件未加密，备份与磁盘访问仍需由用户管理。

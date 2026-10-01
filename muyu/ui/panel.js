@@ -1,3 +1,4 @@
+import { MAX_MESSAGE_BYTES } from '../context/policy.js';
 import { memoryFields } from '../modules/config-draft/contracts.js';
 import { createProcessView, processLabel } from './process-view.js';
 import { taskCatalog } from '../modules/catalog.js';
@@ -17,6 +18,7 @@ import { renderProfileSave } from './profile-save-view.js';
 import { permissionTitle } from '../permissions/contract.js';
 import { createReceiptView } from './receipt-view.js';
 import { createWebSearchView } from './web-search-view.js';
+import { createConnectionTools } from './connection-tools.js';
 
 /** Safe Markdown view. The controller owns all state and execution. */
 export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen } = {}) {
@@ -37,7 +39,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const connection = node('section', '', body); connection.className = 'gd-muyu-settings'; connection.hidden = true;
     const back = button(t('返回聊天', 'Back to chat'), connection);
     const settingsLayout = createSettingsLayout({ doc, root: connection, lang });
-    node('h3', t('连接与隐私', 'Connection and privacy'), settingsLayout.pages.connection);
+    node('h3', t('AI 接口配置', 'AI connection setup'), settingsLayout.pages.connection);
     node('p', t('默认模式下，模型只读并生成草稿，配置由你逐份确认应用。全权限模式开启后，可直接执行已登记修改与 Provider；记忆上限可能裁剪当前聊天旧记忆。授权不跨连接或刷新保留。', 'Normally the model reads and drafts; you approve each change. Full-access mode can directly execute registered changes and Providers. The memory limit may prune this chat. Full access does not survive reconnection or reload.'), settingsLayout.pages.connection);
     node('p', t('输入及已授权资料会发送至下方服务。更换连接会取消任务并清除运行产物和授权，历史记录仍可查看。', 'Input and authorized data go to this service. Reconnecting cancels tasks and clears live artifacts/grants; history remains available.'), settingsLayout.pages.connection);
     const endpoint = field(t('完整接口地址', 'Full endpoint'), 'url', settingsLayout.pages.connection); endpoint.value = 'https://api.deepseek.com/chat/completions';
@@ -54,6 +56,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     node('small', t('自动启用需要记住 API Key。密钥保存在酒馆插件设置中，未加密，同源脚本及酒馆备份可能读取；仅复用到相同接口地址。自动启用不会恢复资料授权，也不会主动发送消息。', 'Automatic enablement requires remembering the API key. It is stored unencrypted in ST extension settings; same-origin scripts and backups may access it. Reused only at the same endpoint. Auto-enable does not restore data grants or send messages.'), settingsLayout.pages.connection);
     const savedKeyStatus = node('small', '', settingsLayout.pages.connection), forgetKey = button(t('清除已保存密钥', 'Forget saved key'), settingsLayout.pages.connection);
     const thinking = field(t('开启 DeepSeek 思考', 'Enable DeepSeek thinking'), 'checkbox', settingsLayout.pages.connection); thinking.checked = true;
+    const connectionTools = createConnectionTools({ doc, parent: settingsLayout.pages.connection, endpoint, model, key, thinking, controller, lang });
     const connect = button(t('启用此连接', 'Enable connection'), settingsLayout.pages.connection), disable = button(t('禁用连接', 'Disable connection'), settingsLayout.pages.connection);
     node('small', t('禁用停止任务，但不删除历史；密钥请使用“清除已保存密钥”。', 'Disabling stops tasks, not history storage. Use Forget saved key to erase the saved credential.'), settingsLayout.pages.connection);
     node('h3', t('上下文与权限', 'Context and permissions'), settingsLayout.pages.data);
@@ -62,6 +65,11 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const chatPermission = field(t('当前聊天资料（消息、总结、档案、记忆正文及名称）', 'Current chat data (messages, summary, profiles, memories and names)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const extendedPermission = field(t('扩展剧情上下文（当前已加载历史分段读取、参聊角色卡、导演历史账本正文）', 'Extended story context (loaded chat history in ranges, participant cards, director ledger bodies)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const fullAccessToggle = field(t('全权限模式（危险，默认关闭）', 'Full-access mode (dangerous, off by default)'), 'checkbox', settingsLayout.pages.data);
+    const fullAccessConfirm = node('section', '', settingsLayout.pages.data); fullAccessConfirm.className = 'gd-muyu-danger-confirm'; fullAccessConfirm.hidden = true;
+    node('strong', t('确认开启全权限模式？', 'Enable full-access mode?'), fullAccessConfirm);
+    node('p', t('开启后可读取资料、执行 Provider 代码并直接应用配置；可能修改数据、产生费用，且无法可靠撤销。仅本连接有效。', 'This permits reads, Provider code execution and direct settings writes. It may change data, incur costs and cannot reliably be undone. This connection only.'), fullAccessConfirm);
+    const acceptFullAccess = button(t('我了解风险，开启', 'I understand the risk, enable'), fullAccessConfirm);
+    const cancelFullAccess = button(t('保持关闭', 'Keep disabled'), fullAccessConfirm);
     node('small', t('开启后，本连接内的资料读取、已注册 Provider 代码执行及暮羽明确提出的配置／整单写入无需逐次确认。代码可能联网、修改数据或产生费用；保存可能部分完成且无法可靠撤销。仍受工具白名单、当前聊天范围和预算限制。更换连接或刷新即关闭。', 'While enabled, reads, registered Provider code execution, and Muyu-requested settings/bundle writes need no per-action approval. Code may access the network, change data or incur costs; saves may partially complete and cannot reliably be undone. Tool allowlists, chat scope and budgets still apply. Reconnection or reload turns it off.'), settingsLayout.pages.data);
     const budgetSettings = node('details', '', settingsLayout.pages.limits); node('summary', t('运行与预算', 'Execution budgets'), budgetSettings);
     node('p', t('保存后从下一轮生效，不改变正在执行的任务。模型调用上限包含最后一次无工具收尾。增加预算可能增加费用；超时最高120秒。', 'Saved settings apply to the next run only. Model-call limit includes final answer-only closure. Higher budgets may cost more; deadline is capped at 120 seconds.'), budgetSettings);
@@ -80,6 +88,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const chat = node('div', '', workspace); chat.className = 'gd-muyu-chat';
     const historyView = createHistoryView({ doc, settings: settingsLayout.pages.data, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen });
     const setupBar = node('div', '', chat); setupBar.className = 'gd-muyu-connection-entry';
+    const setupLabel = node('strong', t('AI 接口', 'AI connection'), setupBar);
     const setup = button(t('配置连接', 'Configure connection'), setupBar);
     const tools = node('details', '', chat); tools.className = 'gd-muyu-conversation-tools';
     node('summary', t('会话工具 · 上下文与开销', 'Conversation tools · Context & usage'), tools);
@@ -102,7 +111,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const contextView = createContextView({ doc, settings: settingsLayout.pages.limits, parent: toolContent, controller, act, lang });
     const instructionView = createInstructionView({ doc, settings: settingsLayout.pages.behavior, controller, act, lang });
     const inputBox = node('div', '', composer); inputBox.className = 'gd-muyu-input-box';
-    const inputLabel = node('label', t('给暮羽的消息', 'Message to Muyu'), inputBox), input = node('textarea', '', inputLabel); input.className = 'text_pole'; input.rows = 3; input.maxLength = 16000;
+    const inputLabel = node('label', t('给暮羽的消息', 'Message to Muyu'), inputBox), input = node('textarea', '', inputLabel); input.className = 'text_pole'; input.rows = 3; input.maxLength = MAX_MESSAGE_BYTES;
     const recoveryBar = node('div', '', inputBox); recoveryBar.className = 'gd-muyu-recovery'; recoveryBar.hidden = true;
     const recoveryNote = node('small', '', recoveryBar), restoreInput = button(t('恢复失败问题到输入框', 'Restore failed question to composer'), recoveryBar);
     let recoveryRunId = null;
@@ -132,10 +141,19 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const send = button(t('发送', 'Send'), actions), stop = button(t('停止', 'Stop'), actions);
     send.className += ' gd-muyu-send'; stop.className += ' gd-muyu-stop';
     const inputHint = node('small', t('Ctrl+Enter 发送 · Enter 换行', 'Ctrl+Enter to send · Enter for a new line'), composer); inputHint.className = 'gd-muyu-input-hint';
+    const historyAuthorization = node('section', '', composer); historyAuthorization.className = 'gd-muyu-interaction'; historyAuthorization.hidden = true;
+    node('strong', t('继续对话需要确认历史外发', 'Confirm sending conversation history'), historyAuthorization);
+    const historySources = node('p', '', historyAuthorization);
+    node('small', t('旧回答可能引用这些资料。本连接内允许此会话携带已有对话；不会授权重新读取酒馆资料、修改配置或执行代码。更换连接或撤销资料权限后需重新确认。', 'Earlier answers may quote these sources. Allow this conversation’s existing history for this connection only; this does not grant fresh host reads, writes or code execution. Reconnect or revoke data access to reset.'), historyAuthorization);
+    const historyActions = node('div', '', historyAuthorization); historyActions.className = 'gd-muyu-actions';
+    const allowHistory = button(t('允许携带已有对话', 'Allow existing history'), historyActions);
+    const omitHistory = button(t('本次不带历史', 'Omit history this send'), historyActions);
+    allowHistory.onclick = () => act(() => controller.allowHistory());
+    omitHistory.onclick = () => act(() => controller.setOmitHistory(true));
     const errors = node('p', '', body); errors.setAttribute('role', 'alert');
     let unsubscribe, disposed = false, lastView = '', lastConnection = null, lastRunConfig = '';
-    const processView = createProcessView({ doc, lang }), processAnchors = new Map();
-    let historySignature = '', scrollKey = null;
+    const processView = createProcessView({ doc, lang }), processAnchors = new Map(), artifactAnchors = new Map(), planExpansion = new Map();
+    let historySignature = '', scrollKey = null, shownPermissionId = null;
     transcript.onscroll = () => { if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); };
     function resetAuthorization() { authorization.hidden = true; consent.checked = false; fields.forEach(([, f]) => { f.checked = false; }); }
     function showSettings(show, category) {
@@ -149,7 +167,9 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     permissionSummary.onclick = () => showSettings(true, 'data');
     gear.setAttribute('aria-expanded', 'false');
     const notices = {
+        HISTORY_SYNC_FAILED: t('任务已继续，但会话记录同步失败。请保留当前页面并检查日志或导出记录；不会因此撤销已批准的资料权限。', 'Task continued, but conversation record sync failed. Keep this page open and check logs or export the conversation; approved read permissions were not rolled back.'),
         CONTEXT_LIMIT: t('输入超过手动预算或请求体安全上限；未发送超限请求。可整理历史、缩短输入或调整预算。', 'Input exceeds the manual budget or request-size safety limit; the oversized request was not sent. Summarize history, shorten input or adjust the budget.'),
+        CONTEXT_INCOMPLETE: t('无法完整携带摘要之后的历史，已停止以避免遗漏你的修正。请整理历史、增加预算，或明确选择不携带历史。', 'Stopped because the full history after the summary cannot fit. Summarize history, increase the budget, or explicitly omit history.'),
         MODEL_NETWORK_ERROR: t('网络请求失败，可能涉及 CORS；不代表密钥错误。', 'Network request failed; CORS is possible. This does not establish an invalid key.'),
         MODEL_AUTH_ERROR: t('服务拒绝认证或访问，请检查密钥与权限。', 'Service rejected authentication/access. Check credentials and permissions.'),
         MODEL_RATE_LIMIT: t('服务限流，请稍后手动重试。', 'Service rate limit; retry manually later.'),
@@ -158,6 +178,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         MODEL_HISTORY_UNAVAILABLE: t('服务缺少工具思考回传所需信息，未静默关闭思考。', 'Required thinking/tool history is unavailable; thinking was not silently disabled.'),
         TIMEOUT: t('任务超时，正在等待上游清理。', 'Task timed out; awaiting upstream cleanup.'),
         BUDGET_EXCEEDED: t('已达到任务预算，未继续调用。', 'Run budget reached; no further calls.'),
+        MODEL_PROTOCOL_ERROR: t('模型响应或思考回传不符合接口协议；请检查接口与模型兼容性。', 'Model response or thinking replay violates the protocol; check endpoint/model compatibility.'),
+        MODEL_FAILED: t('模型请求在本地准备或执行阶段失败；请查看过程中的安全错误码。', 'Model request failed during local preparation or execution; check the safe process error code.'),
         NO_CANDIDATE: t('模型未提交有效配置候选，未生成可用草稿。', 'No valid configuration candidate was submitted.'),
         RESULT_NEEDS_REVIEW: t('未能发布可信产物，证据可能缺失或已变化，请重新排查或生成。', 'Could not publish a verified artifact; evidence may be missing or changed. Run again.'),
         AUTO_APPLY_REQUIRES_REVIEW: t('本轮有未解决的工具失败，已保留草稿但未自动应用；请检查后手动确认。', 'A tool failure remains unresolved. Drafts were kept but not applied automatically; review and confirm them manually.'),
@@ -199,7 +221,13 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         instructionView.render(s);
         interactionView.render(s);
         permissionView.render(s);
+        const pendingPermissionId = s.interaction?.kind === 'permission' && s.interaction.status === 'pending' ? s.interaction.id : null;
+        const newPermission = pendingPermissionId !== null && pendingPermissionId !== shownPermissionId;
+        shownPermissionId = pendingPermissionId;
         fullAccessToggle.checked = s.fullAccess === true; fullAccessToggle.disabled = !s.enabled || s.resetting || s.busy;
+        acceptFullAccess.disabled = !s.enabled || s.resetting || s.busy;
+        if (!s.enabled || s.resetting || s.fullAccess) fullAccessConfirm.hidden = true;
+        setupLabel.textContent = t('AI 接口：', 'AI connection: ') + (s.enabled ? s.connection?.model || t('已连接', 'Connected') : t('未启用', 'Not enabled'));
         fullAccessBanner.hidden = s.fullAccess !== true;
         const config = s.runConfig || RUN_DEFAULTS, configSignature = JSON.stringify(config);
         if (configSignature !== lastRunConfig) { for (const f of budgetFields) f.input.value = String(config[f.name] / f.scale); lastRunConfig = configSignature; }
@@ -240,6 +268,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
             ? t('仅复制原问题，不自动重试。此前操作结果可能不明；重新发送前请核对实际状态。', 'Copies the question only; no automatic retry. Earlier effects may be unknown, so verify actual state before sending again.')
             : t('仅复制原问题，不自动重试或恢复旧授权。可先修改，再自行发送。', 'Copies the question only; no automatic retry or restored grants. Edit it before sending if needed.');
         input.disabled = !!s.readOnly;
+        const missingHistory = s.history?.missingPermissions || [];
+        historyAuthorization.hidden = s.mode !== 'assistant' || !missingHistory.length || !!s.context?.omitHistory || s.readOnly || s.interaction?.status === 'pending';
+        historySources.textContent = missingHistory.map(source => source.startsWith('source:') ? permissionTitle(source.startsWith('source:providerExecution:') ? 'providerExecution' : source.slice(7)) : source).join('、');
+        allowHistory.disabled = omitHistory.disabled = !s.enabled || s.busy || s.resetting || s.history?.loading;
         send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
         if (s.interaction?.status === 'pending') { send.disabled = true; resetAuthorization(); }
         confirm.disabled = send.disabled; stop.hidden = !!s.readOnly || !s.busy && !s.resetting;
@@ -250,7 +282,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         const historyChanged = historySignature !== nextHistory;
         processView.retain(new Set(s.runs.map(r => r.id)));
         if (historySignature !== nextHistory) {
-            historySignature = nextHistory; history.replaceChildren(); processAnchors.clear();
+            historySignature = nextHistory; history.replaceChildren(); processAnchors.clear(); artifactAnchors.clear();
             let permissionRecord = null;
             for (const [index, message] of s.messages.entries()) {
                 const next = s.messages[index + 1];
@@ -265,6 +297,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 const author = node('strong', message.role === 'user' ? t('你：', 'You: ') : t('暮羽：', 'Muyu: '), p); author.className = 'gd-muyu-author';
                 const content = node('div', '', p); content.className = 'gd-muyu-markdown'; renderMarkdown(content, message.content);
                 if (message.role === 'user' && message.runId) processAnchors.set(message.runId, { root: node('div', '', history), child: null });
+                if (message.role === 'assistant' && message.runId && !requestPrefix) artifactAnchors.set(message.runId, node('div', '', history));
                 if (!paired) permissionRecord = null;
             }
         }
@@ -273,10 +306,32 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
             const detail = processView.update(run, s.artifacts.some(a => a.sourceRunId === run.id || a.content?.producedByRunId === run.id), s.mode !== 'chat');
             if (detail && anchor.child !== detail) { anchor.root.append(detail); anchor.child = detail; }
         }
-        cards.replaceChildren(); const selected = follow.value; follow.replaceChildren(); const none = node('option', t('新任务', 'New task'), follow); none.value = '';
+        cards.replaceChildren();
+        for (const anchor of artifactAnchors.values()) anchor.replaceChildren();
+        const planKeys = new Set(s.artifacts.filter(a => a.kind === 'task-plan').map(a => `${s.viewToken}:${a.id}`));
+        for (const key of planExpansion.keys()) if (!planKeys.has(key)) planExpansion.delete(key);
+        const selected = follow.value; follow.replaceChildren(); const none = node('option', t('新任务', 'New task'), follow); none.value = '';
         for (const artifact of s.artifacts) {
-            const card = node('section', '', cards); card.className = 'gd-muyu-card';
-            node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'task-plan' ? t('任务方案', 'Task plan') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
+            const isPlan = artifact.kind === 'task-plan';
+            const owner = isPlan ? artifactAnchors.get(artifact.sourceRunId || artifact.content?.producedByRunId) || cards : cards;
+            const wrapper = node(isPlan ? 'details' : 'section', '', owner); wrapper.className = 'gd-muyu-card' + (isPlan ? ' gd-muyu-plan' : '');
+            let card = wrapper;
+            if (isPlan) {
+                const settled = s.approvedPlans?.includes(artifact.id) || s.declinedPlans?.includes(artifact.id) || s.invalidPlans?.includes(artifact.id);
+                const key = `${s.viewToken}:${artifact.id}`, stage = `${artifact.revision}:${!!settled}`;
+                const expansion = planExpansion.get(key);
+                wrapper.open = expansion?.stage === stage ? expansion.open : !settled;
+                const currentExpansion = { stage, open: wrapper.open };
+                planExpansion.set(key, currentExpansion);
+                wrapper.addEventListener('toggle', () => {
+                    // Queued toggle events from removed cards must not overwrite the current view.
+                    if (planExpansion.get(key) === currentExpansion) currentExpansion.open = wrapper.open;
+                });
+                const summary = node('summary', '', wrapper);
+                node('strong', t('任务方案', 'Task plan') + ' · v' + artifact.revision, summary);
+                node('span', artifact.content.plan.goal, summary);
+                card = node('div', '', wrapper); card.className = 'gd-muyu-plan-body';
+            } else node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
             if (artifact.kind === 'report') {
                 for (const f of artifact.content.findings) node('p', `${f.kind} · ${f.code}: ${f.text}`, card);
                 node('small', t('这是生成时的证据快照，不是实时状态。', 'Snapshot at generation time, not live state.'), card);
@@ -292,8 +347,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                     'not-available': t('当前不可执行', 'Not available yet'),
                     'separate-code-approval-required': t('代码操作需另行审批', 'Code action requires separate approval'),
                 };
-                node('p', plan.goal, card);
-                node('small', t('仅规划，未读取下列资料，也未修改任何内容。预计操作并非当前已具备的写入能力。', 'Proposal only: the sources below have not been read, and nothing was changed. Proposed work is not a write capability.'), card);
+                node('small', t('这是规划时的方案，不代表实时执行结果或修改批准；实际进展见后续对话与操作回执。', 'This is the proposal at planning time, not a live execution result or write approval. See later replies and receipts for actual progress.'), card);
                 for (const step of plan.steps) node('p', `${step.title} · ${availability[step.availability] || step.availability}: ${step.detail}`, card);
                 if (plan.risks?.length) node('p', t('风险：', 'Risks: ') + plan.risks.join('；'), card);
                 if (plan.unknowns.length) node('p', t('待核实：', 'Unknowns: ') + plan.unknowns.join('；'), card);
@@ -357,7 +411,14 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
             }
         }
         if ([...follow.options].some(o => o.value === selected)) follow.value = selected;
-        if (switchedView) transcript.scrollTop = s.scrollTop ?? transcript.scrollHeight;
+        if (newPermission) {
+            if (!connection.hidden) {
+                connection.hidden = true; workspace.hidden = chat.hidden = false;
+                gear.setAttribute('aria-expanded', 'false'); historyView.setVisible(true);
+            }
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+        else if (switchedView) transcript.scrollTop = s.scrollTop ?? transcript.scrollHeight;
         else if (nearBottom && historyChanged) transcript.scrollTop = transcript.scrollHeight;
     }
     const subscribe = () => { if (!unsubscribe) unsubscribe = controller.subscribe(render).unsubscribe; render(); };
@@ -393,12 +454,12 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     fullAccessToggle.onchange = () => {
         const enabled = fullAccessToggle.checked;
         if (enabled) {
-            let confirmed = false;
-            try { confirmed = doc.defaultView?.confirm?.(t('危险：暮羽将无需逐次确认即可读取当前聊天资料、执行已注册 Provider 代码，并应用其提出的配置与整单修改。代码可能联网、产生费用或更改数据；保存可能无法撤销。仅本连接有效。确定开启？', 'Danger: Muyu may read chat data, execute registered Provider code, and apply proposed settings/bundle changes without further confirmation. Code may use the network, incur costs or change data; saves may not be reversible. This connection only. Enable?')) === true; } catch { /* Fail closed if confirmation is unavailable. */ }
-            if (!confirmed) { fullAccessToggle.checked = false; return; }
+            fullAccessToggle.checked = false; fullAccessConfirm.hidden = false; acceptFullAccess.focus?.(); return;
         }
         act(() => controller.setFullAccess(enabled));
     };
+    acceptFullAccess.onclick = () => act(() => { controller.setFullAccess(true); fullAccessConfirm.hidden = true; });
+    cancelFullAccess.onclick = () => { fullAccessConfirm.hidden = true; fullAccessToggle.checked = false; };
     forgetKey.onclick = () => act(async () => { await controller.forgetCredential(); rememberKey.checked = false; autoConnect.checked = false; key.value = ''; });
     cancelAuth.onclick = () => { resetAuthorization(); input.focus?.(); };
     stop.onclick = () => act(() => controller.stop());
@@ -406,6 +467,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     disable.onclick = () => act(async () => { await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

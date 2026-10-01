@@ -27,7 +27,7 @@ export function createBuiltins(host) {
     const draft = createConfigDraftModule({ getSettings: host.getSettings, getTarget: host.configTarget });
     const director = createDirectorModule({ ports: host.memoryPorts });
     const settings = createSettingsModule({ getSettings: host.getSettings, getTarget: host.configTarget, memoryLimitPort: host.memoryLimitPort, completionVariablePort: host.completionVariablePort });
-    const context = createContextModule(), history = createHistoryModule({ access: host.historyAccess }), providers = createProviderModule(host), interaction = createInteractionModule(), permission = createPermissionModule(), taskPlan = createTaskPlanModule();
+    const context = createContextModule(), history = createHistoryModule({ access: host.historyAccess, budget: host.historyReadBudget }), providers = createProviderModule(host), interaction = createInteractionModule(), permission = createPermissionModule(), taskPlan = createTaskPlanModule();
     const variablePort = host.variableDraftPort || createVariableDraftPort(host.memoryPorts);
     const variables = createVariableDraftModule({ port: variablePort });
     const bundle = createTaskBundleModule({ port: host.bundleDraftPort || createTaskBundleDraftPort({ getTarget: host.currentTarget, getSettings: host.getSettings, variableDraftPort: variablePort }) });

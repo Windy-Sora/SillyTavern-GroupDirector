@@ -1,3 +1,6 @@
+import { CONTEXT_DEFAULTS } from './muyu/context/policy.js';
+import { RUN_DEFAULTS } from './muyu/core/budget.js';
+
 export const EXT_KEY = 'group-director';
 export const MODE_OFF = 'off';
 export const MODE_FORMULA = 'formula';
@@ -5,8 +8,8 @@ export const MODE_LLM = 'llm';
 
 export const DEFAULT_SETTINGS = {
     muyuInstructionConfig: { enabled: false, text: '' },
-    muyuContextConfig: { inputTokens: null, recentTurns: 12, autoSummary: false },
-    muyuRunConfig: { modelCalls: 6, toolCalls: 16, timeMs: 120000, maxTokens: 8192, providerBytes: 24000 },
+    muyuContextConfig: { ...CONTEXT_DEFAULTS },
+    muyuRunConfig: { ...RUN_DEFAULTS },
     muyuHistoryEnabled: true,
     muyuWebSearchConfig: { maxSearches: 3, maxResults: 5, resultBytes: 12000 },
     mode: MODE_FORMULA,

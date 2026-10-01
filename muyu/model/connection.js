@@ -1,6 +1,7 @@
 /** Explicit full endpoint; never guess /v1 or silently switch providers. */
+import { RUN_DEFAULTS } from '../core/budget.js';
 export function validateConnection(config) {
-    const { endpoint, apiKey, model, profile = 'chat-completions', supportsTools = false, allowLocalHttp = false, maxTokens = 8192, thinking = profile === 'deepseek', reasoningEffort = 'high' } = config;
+    const { endpoint, apiKey, model, profile = 'chat-completions', supportsTools = false, allowLocalHttp = false, maxTokens = RUN_DEFAULTS.maxTokens, thinking = profile === 'deepseek', reasoningEffort = 'high' } = config;
     let url;
     try { url = new URL(endpoint); } catch { throw new TypeError('Invalid model endpoint'); }
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);

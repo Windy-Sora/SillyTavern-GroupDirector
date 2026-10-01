@@ -5,19 +5,21 @@ export function createPermissionView({ doc, parent, settings, controller, act, l
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, owner) => { const e = doc.createElement(tag); e.textContent = text; owner.append(e); return e; };
     const root = node('section', '', parent); root.className = 'gd-muyu-interaction'; root.hidden = true;
-    const title = node('strong', '', root), reason = node('p', '', root), scope = node('p', '', root);
-    const actions = node('div', '', root); actions.className = 'gd-muyu-actions';
+    root.setAttribute('role', 'group'); root.setAttribute('aria-label', t('暮羽资料授权', 'Muyu data permission'));
+    const card = root;
+    const title = node('strong', '', card), reason = node('p', '', card), scope = node('p', '', card);
+    const actions = node('div', '', card); actions.className = 'gd-muyu-actions';
     let current = null;
     const buttons = [['task', t('允许本任务', 'Allow this task')], ['chat', t('允许此聊天', 'Allow this chat')], ['deny', t('拒绝并继续', 'Deny and continue')]].map(([decision, text]) => {
         const b = node('button', text, actions); b.type = 'button'; b.className = 'menu_button';
         b.onclick = () => act(() => controller.answerPermission(current.id, decision)); return b;
     });
     const cancel = node('button', t('取消任务', 'Cancel task'), actions); cancel.type = 'button'; cancel.className = 'menu_button'; cancel.onclick = () => act(() => controller.cancelInteraction(current.id));
-    node('small', t('本任务授权在任务结束后失效；持续授权仅在当前连接及指定范围内复用，可在配置中撤销。读取授权不批准修改。', 'Task access expires at task end. Ongoing access lasts for this connection and stated scope; revoke it in settings. Read access does not approve changes.'), root);
+    node('small', t('本任务授权在任务结束后失效；持续授权仅在当前连接及指定范围内复用，可在配置中撤销。读取授权不批准修改。', 'Task access expires at task end. Ongoing access lasts for this connection and stated scope; revoke it in settings. Read access does not approve changes.'), card);
     const status = node('p', '', parent); status.setAttribute('role', 'status'); status.hidden = true;
     const grants = node('div', '', settings);
     let signature = '';
-    return { render(s) {
+    return { dispose() { root.remove(); }, render(s) {
         current = s.interaction?.kind === 'permission' ? s.interaction : null;
         const pending = current?.status === 'pending'; root.hidden = !pending;
         for (const b of buttons) b.disabled = !pending || s.busy || s.resetting;

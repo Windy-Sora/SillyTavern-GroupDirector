@@ -413,7 +413,7 @@ test('Cancelling repeated permission handoffs releases module run capacity', asy
     assert.equal(f.controller.snapshot().notice, null);
     await f.controller.dispose();
 });
-test('Permission and clarification share a six-handoff ceiling', async () => {
+test('Permission grants do not consume the three-clarification allowance', async () => {
     const sources = ['chatHistory', 'characters', 'directorLedger'];
     const steps = sources.flatMap(id => [[requestRead(id), done], [ask(), done]]); steps.push([text('finished'), done]);
     const f = fixture(steps); await f.enable(); f.controller.setMode('chat'); f.controller.setInput('help'); f.controller.send(); await settle();
@@ -424,9 +424,97 @@ test('Permission and clarification share a six-handoff ceiling', async () => {
         await settle();
     }
     assert.equal(f.model.requests.length, 7);
-    assert.ok(!f.model.requests.at(-1).tools.some(t => ['muyu.permission.request', 'muyu.interaction.ask'].includes(t.id)));
+    assert.ok(!f.model.requests.at(-1).tools.some(t => t.id === 'muyu.interaction.ask'));
+    assert.ok(f.model.requests.at(-1).tools.some(t => t.id === 'muyu.permission.request'));
     await f.controller.dispose();
 });
+
+test('One clarification and six distinct automatic source grants resume the original batch', async () => {
+    const ids = ['recentMessages', 'chatSummary', 'character_profiles', 'charMemory', 'chatHistory'];
+    const f = fixture([[ask(), done], [...ids.map(id => readSource(id)), tool('muyu.director.inspect'), done], [text('checked'), done]],
+        { providerPort: { read: () => ({ text: 'Synthetic evidence', limited: false }) } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Read chat and inspect director'); f.controller.send(); await settle();
+    let r = f.controller.snapshot().interaction;
+    f.controller.setInteractionDraft(r.id, 'Read then inspect'); f.controller.answerInteraction(r.id); await settle();
+    for (const id of [...ids, 'directorDiagnostics']) {
+        r = f.controller.snapshot().interaction;
+        assert.equal(r?.status, 'pending', id); assert.equal(r.source, id);
+        f.controller.answerPermission(r.id, 'task'); await settle();
+    }
+    const s = f.controller.snapshot();
+    assert.equal(s.runs.at(-1).status, 'succeeded'); assert.equal(s.messages.at(-1).content, 'checked');
+    assert.equal(f.model.requests.length, 3); // Grants resume tools, not separate model confirmations.
+    await f.controller.dispose();
+});
+
+test('One task source grant covers repeated reads of that source without a second handoff', async () => {
+    let reads = 0;
+    const second = readSource('recentMessages'); second.call.callId = 'read-again';
+    const f = fixture([[readSource('recentMessages'), second, done], [text('read twice'), done]],
+        { providerPort: { read: () => { reads++; return { text: 'Synthetic', limited: false }; } } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Read and reread'); f.controller.send(); await settle();
+    const r = f.controller.snapshot().interaction; assert.equal(reads, 0);
+    f.controller.answerPermission(r.id, 'task'); await settle();
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.equal(f.controller.snapshot().interaction.status, 'granted');
+    assert.equal(reads, 2); assert.equal(f.model.requests.length, 2);
+    const results = f.model.requests[1].messages.filter(m => m.role === 'tool');
+    assert.equal(results[0].result.hostObservation.sources[0].status, 'granted_now');
+    assert.equal(results[1].result.hostObservation.sources[0].status, 'reused');
+    assert.equal(results[0].result.hostObservation.sources[0].grantScope, 'task');
+    assert.doesNotMatch(f.controller.exportHistory(), /hostObservation|read_authorization/);
+    await f.controller.dispose();
+});
+test('Committed permission continuation survives a synchronous history capture failure without revoking its grant', async () => {
+    for (const decision of ['task', 'chat']) {
+        let reads = 0;
+        const f = fixture([[readSource('recentMessages'), done], [text('read completed'), done]],
+            { providerPort: { read: () => { reads++; return { text: 'Synthetic evidence', limited: false }; } } });
+        await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Analyze chat'); f.controller.send(); await settle();
+        const r = f.controller.snapshot().interaction, clone = globalThis.structuredClone;
+        let queued = false, injected = false;
+        globalThis.structuredClone = value => {
+            if (value?.sessions && value.runs?.at(-1)?.status === 'queued') queued = true;
+            if (queued && !injected && value?.version >= 5 && Array.isArray(value.messages)) {
+                injected = true; throw Error('HISTORY_INVALID');
+            }
+            return clone(value);
+        };
+        try { assert.doesNotThrow(() => f.controller.answerPermission(r.id, decision)); }
+        finally { globalThis.structuredClone = clone; }
+        assert.equal(injected, true);
+        await settle();
+        const s = f.controller.snapshot();
+        assert.equal(s.runs.at(-1).status, 'succeeded'); assert.equal(s.interaction.status, 'granted');
+        assert.equal(s.messages.at(-1).content, 'read completed'); assert.equal(reads, 1);
+        assert.equal(s.runs.length, 2); assert.equal(f.model.requests.length, 2);
+        await f.controller.dispose();
+    }
+});
+
+test('Failure before continuation runtime preparation cancels the queued run before grant rollback', async () => {
+    let reads = 0;
+    const f = fixture([[readSource('recentMessages'), done]],
+        { providerPort: { read: () => { reads++; return { text: 'Synthetic evidence', limited: false }; } } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Analyze chat'); f.controller.send(); await settle();
+    const r = f.controller.snapshot().interaction, clone = globalThis.structuredClone, uuid = crypto.randomUUID;
+    let creatingRun = false, injected = false;
+    crypto.randomUUID = () => { creatingRun = true; return uuid.call(crypto); };
+    globalThis.structuredClone = value => {
+        if (creatingRun && !injected && value?.version >= 5 && Array.isArray(value.messages)) {
+            injected = true; throw Error('HISTORY_INVALID');
+        }
+        return clone(value);
+    };
+    try { assert.throws(() => f.controller.answerPermission(r.id, 'task'), /HISTORY_INVALID/); }
+    finally { globalThis.structuredClone = clone; crypto.randomUUID = uuid; }
+    assert.equal(injected, true); await settle();
+    const s = f.controller.snapshot();
+    assert.equal(s.runs.at(-1).status, 'cancelled'); assert.notEqual(s.interaction.status, 'pending');
+    assert.equal(reads, 0); assert.equal(f.model.requests.length, 1);
+    await f.controller.dispose();
+});
+
 test('Clarification resumes the same task with verified answers, pinned budgets and unchanged permissions', async () => {
     const f = fixture([[ask(), done], [text('resolved'), done]]); await f.enable(); f.controller.setMode('chat');
     f.controller.setInput('help me choose'); f.controller.send(); await settle();
@@ -632,6 +720,45 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
         switchChat: id => { ctx.chatId = id; events.emit('chat'); } };
 }
 const settle = async () => { for (let i = 0; i < 12; i++) await flush(); };
+
+test('History approval preserves follow-up context without granting new host reads, and resets on reconnect', async () => {
+    const f = fixture([[readSource('variables'), done], [text('SAVED_VARIABLE_EVIDENCE'), done],
+        [readSource('variables'), done], [text('fresh read'), done]],
+        { providerPort: { read: () => ({ text: 'Synthetic variables', limited: false }) } });
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Read variables'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle();
+    f.controller.setInput('Read them again');
+    const calls = f.model.requests.length;
+    assert.throws(() => f.controller.send(), /HISTORY_PERMISSION_REQUIRED/);
+    assert.equal(f.model.requests.length, calls); assert.equal(f.controller.snapshot().input, 'Read them again');
+    assert.equal(f.controller.snapshot().context.permissionOmitted, false);
+    f.controller.allowHistory();
+    assert.deepEqual(f.controller.snapshot().history.missingPermissions, []);
+    assert.deepEqual(f.controller.snapshot().sourceGrants, []);
+    f.controller.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /SAVED_VARIABLE_EVIDENCE/);
+    assert.equal(f.controller.snapshot().interaction.source, 'variables');
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle();
+    const id = f.controller.snapshot().history.sessionId;
+    await f.enable(); await f.controller.openSession(id);
+    assert.deepEqual(f.controller.snapshot().history.missingPermissions, ['source:variables']);
+    await f.controller.dispose();
+});
+
+test('Budget failure releases sending; raising output/data budgets does not grant protected history', async () => {
+    const f = fixture([[readSource('variables'), done], () => { throw new ExecutionError('CONTEXT_LIMIT'); }, [text('recovered'), done]],
+        { providerPort: { read: () => ({ text: 'variables', limited: false }) } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Inspect variables'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle();
+    assert.equal(f.controller.snapshot().notice, 'CONTEXT_LIMIT'); assert.equal(f.controller.snapshot().busy, false);
+    await f.controller.saveRunConfig({ ...RUN_DEFAULTS, maxTokens: 32768, providerBytes: 50000 });
+    f.controller.setInput('Continue'); assert.throws(() => f.controller.send(), /HISTORY_PERMISSION_REQUIRED/);
+    f.controller.allowHistory(); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.equal(f.model.requests.at(-1).maxTokens, 32768);
+    await f.controller.dispose();
+});
 
 test('Failed question restores only its text and does not replay a model or tool', async () => {
     const f = fixture([() => { throw Error('Synthetic network failure'); }]);
@@ -840,7 +967,9 @@ test('Instruction edits are draft-only, pinned at send time and not duplicated i
     await f.enable(); f.controller.setInstructionDraft({ enabled: true, text: 'FIRST_STYLE' }); await f.controller.saveInstructions();
     f.controller.setInput('question'); f.controller.send({ consent: true }); await settle();
     f.controller.setInstructionDraft({ enabled: true, text: 'NEXT_STYLE' }); await f.controller.saveInstructions();
-    assert.equal(f.model.requests[0].instructions.preference, 'FIRST_STYLE'); assert.deepEqual(JSON.parse(f.model.requests[0].messages.at(-2).content.split('\n').slice(1).join('\n')).constraints, []);
+    assert.equal(f.model.requests[0].instructions.preference, 'FIRST_STYLE');
+    assert.equal(f.model.requests[0].messages.filter(m => m.content === 'question').length, 1);
+    assert.equal(f.model.requests[0].messages.some(m => m.content?.startsWith('Task context supplied')), false);
     gate.resolve([text('answer'), done]); await settle(); f.controller.setInput('follow up'); f.controller.send(); await settle();
     assert.equal(f.model.requests[1].instructions.preference, 'NEXT_STYLE');
     assert.doesNotMatch(f.controller.exportHistory(), /FIRST_STYLE|NEXT_STYLE/); assert.doesNotMatch(JSON.stringify(f.controller.snapshot().runs), /FIRST_STYLE|NEXT_STYLE/);
@@ -863,6 +992,55 @@ test('Instruction drafts survive chat/reconnect, failed saves and newer edits du
 async function seedTurns(f, count = 4) {
     for (let i = 0; i < count; i++) { f.controller.setInput('question ' + i); f.controller.send({ consent: true }); await settle(); }
 }
+
+test('Controller avoids unnecessary recompaction and retains all intermediate corrections', async () => {
+    const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('old budget 3700'), done],
+        [text('revision acknowledged'), done], [text('filler answer'), done], [text('4200'), done]],
+        { contextConfig: { read: () => ({ inputTokens: 64000, recentTurns: 1, autoSummary: false }), save: async () => {} } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true); await seedTurns(f);
+    await f.controller.compactHistory();
+    await f.controller.saveContextConfig({ inputTokens: 64000, recentTurns: 1, autoSummary: true });
+    for (const input of ['Revision: 4200 replaces 3700', 'Discuss another topic', 'What is the budget?']) {
+        f.controller.setInput(input); f.controller.send(); await settle();
+    }
+    const snapshot = f.controller.snapshot(), last = snapshot.runs.at(-1);
+    assert.equal(last.status, 'succeeded'); assert.equal(last.process.coverage.status, 'skipped');
+    assert.equal(last.process.coverage.omitted, 0); assert.equal(last.process.coverage.summarized, 6);
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /Revision: 4200 replaces 3700/);
+    assert.equal(snapshot.context.coverage.state, 'complete'); assert.equal(snapshot.messages.length, 14);
+    await f.controller.dispose();
+});
+
+test('Blocked controller history is recoverable only by explicit omission or a fitting context', async () => {
+    const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('old summary'), done],
+        [...Array.from({ length: 5 }, () => text('中'.repeat(4000))), done], [text('fresh answer'), done]],
+        { contextConfig: { read: () => ({ inputTokens: 32000, recentTurns: 2, autoSummary: false }) } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true); await seedTurns(f);
+    await f.controller.compactHistory(); f.controller.setInput('Long answer'); f.controller.send(); await settle();
+    const before = f.model.requests.length, rawCount = f.controller.snapshot().messages.length;
+    assert.equal(f.controller.snapshot().context.coverage.state, 'blocked');
+    f.controller.setInput('Continue'); f.controller.send(); await settle();
+    const blocked = f.controller.snapshot(); assert.equal(blocked.runs.at(-1).process.coverage.status, 'blocked');
+    assert.equal(blocked.notice, 'CONTEXT_INCOMPLETE'); assert.equal(f.model.requests.length, before);
+    f.controller.setOmitHistory(true); assert.equal(f.controller.snapshot().context.coverage.state, 'omitted');
+    f.controller.setInput('Start fresh'); f.controller.send(); await settle();
+    assert.equal(f.model.requests.length, before + 1); assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /old summary|中{100}/);
+    assert.ok(f.controller.snapshot().messages.length >= rawCount); await f.controller.dispose();
+});
+
+test('Changing context policy during a pending read never compacts the live continuation', async () => {
+    const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('reference'), done],
+        [readSource('variables'), done], [text('continued answer'), done]],
+        { contextConfig: { read: () => ({ inputTokens: 64000, recentTurns: 2, autoSummary: false }), save: async () => {} }, providerPort: { read: () => ({ text: 'Authorized variables', limited: false }) } });
+    await f.enable(); f.controller.setMode('assistant'); await seedTurns(f);
+    await f.controller.compactHistory(); f.controller.setInput('Read variables'); f.controller.send(); await settle();
+    const pending = f.controller.snapshot().interaction; assert.equal(pending.status, 'pending'); assert.equal(pending.kind, 'permission');
+    await f.controller.saveContextConfig({ inputTokens: 64000, recentTurns: 1, autoSummary: true });
+    f.controller.answerPermission(pending.id, 'task'); await settle();
+    assert.equal(f.model.requests.length, 7); assert.ok(f.model.requests.at(-1).tools.length > 0);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /Authorized variables/); await f.controller.dispose();
+});
 test('Manual context summary preserves transcript, survives stored reload and does not replay grants', async () => {
     const store = createMemoryHistoryStore(), historyPort = { enabled: () => true, open: async () => store, setEnabled: async () => {} };
     const f = fixture([...Array.from({ length: 4 }, () => [text('old answer'), done]), [text('summary reference'), done]], { history: historyPort });
@@ -899,7 +1077,7 @@ test('Deleting a manual-summary target waits for drain; no late result resurrect
 });
 
 test('Automatic summary is opt-in and uses send-time context policy; omission is one-send only', async () => {
-    const f = fixture([...Array.from({ length: 4 }, () => [text('PRIVATE_OLD'), done]), [text('summary'), done], [text('answer'), done], [text('no history'), done]], {
+    const f = fixture([...Array.from({ length: 4 }, () => [...Array.from({ length: 4 }, () => text('PRIVATE_OLD'.repeat(375))), done]), [text('summary'), done], [text('answer'), done], [text('no history'), done]], {
         contextConfig: { read: () => ({ inputTokens: 32000, recentTurns: 2, autoSummary: false }), save: async () => {} },
     });
     await f.enable(); await seedTurns(f); assert.equal(f.model.requests.length, 4);
@@ -928,8 +1106,8 @@ test('A long answer is carried into the next request when the configured input b
 });
 
 test('An uncarried recent long answer can be summarized once before the follow-up', async () => {
-    const longAnswer = '中'.repeat(9000);
-    const f = fixture([[text(longAnswer), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
+    const longAnswer = '中'.repeat(19600);
+    const f = fixture([[...Array.from({ length: 7 }, (_, i) => text(longAnswer.slice(i * 3000, (i + 1) * 3000))).filter(e => e.text), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
         contextConfig: { read: () => ({ inputTokens: 32000, recentTurns: 12, autoSummary: true }) },
     });
     await f.enable(); f.controller.setMode('assistant');

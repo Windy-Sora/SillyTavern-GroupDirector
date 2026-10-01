@@ -1,7 +1,8 @@
 /** Storage DTOs contain conversation text, never executable tasks, grants or credentials. */
 import { permissionSources, parseExecutionSource } from '../permissions/contract.js';
 import { validateReceipt, receiptSources } from '../actions/receipts.js';
-export const HISTORY_LIMITS = Object.freeze({ sessions: 64, messages: 256, recordBytes: 2 * 1024 * 1024, totalBytes: 16 * 1024 * 1024 });
+import { MAX_CONTEXT_MESSAGES, MAX_MESSAGE_BYTES } from '../context/policy.js';
+export const HISTORY_LIMITS = Object.freeze({ sessions: 64, messages: MAX_CONTEXT_MESSAGES, recordBytes: 32 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 });
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const validHistoryId = value => typeof value === 'string' && uuid.test(value);
 export const historyBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -26,7 +27,7 @@ export function validateRecord(value) {
         ![change.from, change.to].every(scope => typeof scope === 'string' && scope.length <= 4096 && scope.startsWith('["assistant",'))))) throw Error('HISTORY_INVALID');
     if (value.version >= 3 && value.contextSummary !== null) {
         const s = value.contextSummary;
-        if (!s || Object.keys(s).sort().join(',') !== 'createdAt,fingerprint,text,through' || !Number.isSafeInteger(s.through) || s.through < 2 || s.through > 256 || typeof s.fingerprint !== 'string' || !/^\d+:\d+:\d+$/.test(s.fingerprint) || s.fingerprint.length > 50 || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 6000 || !Number.isSafeInteger(s.createdAt) || s.createdAt < 0) throw Error('HISTORY_INVALID');
+        if (!s || Object.keys(s).sort().join(',') !== 'createdAt,fingerprint,text,through' || !Number.isSafeInteger(s.through) || s.through < 2 || s.through > HISTORY_LIMITS.messages || typeof s.fingerprint !== 'string' || !/^\d+:\d+:\d+$/.test(s.fingerprint) || s.fingerprint.length > 50 || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 6000 || !Number.isSafeInteger(s.createdAt) || s.createdAt < 0) throw Error('HISTORY_INVALID');
     }
     if (!validHistoryId(value.id) || !Number.isSafeInteger(value.revision) || value.revision < 0) throw Error('HISTORY_INVALID');
     if (typeof value.scope !== 'string' || value.scope.length > 4096 || typeof value.title !== 'string' || value.title.length > 100) throw Error('HISTORY_INVALID');
@@ -38,7 +39,7 @@ export function validateRecord(value) {
     if (!Array.isArray(value.required) || value.required.length > 3 + permissionSources.length + 64 || new Set(value.required).size !== value.required.length || value.required.some(k => !['diagnostics', 'chat', 'extended', ...permissionSources].includes(k) && !(value.version >= 5 && parseExecutionSource(k)))) throw Error('HISTORY_INVALID');
     if (!Array.isArray(value.messages) || value.messages.length > HISTORY_LIMITS.messages) throw Error('HISTORY_CAPACITY');
     for (const m of value.messages) {
-        if (!m || Object.keys(m).some(k => !['role', 'content', 'runId', ...(value.version >= 7 ? ['origin'] : [])].includes(k)) || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 32768 || typeof m.runId !== 'string' || m.runId.length > 150 ||
+        if (!m || Object.keys(m).some(k => !['role', 'content', 'runId', ...(value.version >= 7 ? ['origin'] : [])].includes(k)) || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || historyBytes(m.content) > MAX_MESSAGE_BYTES || typeof m.runId !== 'string' || m.runId.length > 150 ||
             Object.hasOwn(m, 'origin') && (m.role !== 'user' || !['question', 'continuation'].includes(m.origin))) throw Error('HISTORY_INVALID');
     }
     if (historyBytes(value) > HISTORY_LIMITS.recordBytes) throw Error('HISTORY_CAPACITY');

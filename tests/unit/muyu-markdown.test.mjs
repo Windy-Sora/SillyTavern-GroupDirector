@@ -21,3 +21,11 @@ test('Markdown malformed fences and oversized input remain bounded and explicitl
     const f = dom(); renderMarkdown(f.root, '```\n<img>'); assert.equal(f.all().find(e => e.tag === 'code').textContent, '<img>');
     renderMarkdown(f.root, 'a'.repeat(40000)); assert.ok(f.all().some(e => e.tag === 'small' && e.textContent.includes('truncated')));
 });
+
+test('Numbered findings keep their source numbers across explanatory paragraphs', () => {
+    const f = dom(); renderMarkdown(f.root, '1. First finding\nDetails for the first finding.\n\n2. Second finding\nMore details.\n\n5. Fifth finding\n\n- Summary');
+    const lists = f.all().filter(e => e.tag === 'ol');
+    assert.deepEqual(lists.map(e => e.attrs.start), ['1', '2', '5']);
+    assert.equal(lists[1].children[0].children[0].textContent, 'Second finding');
+    assert.equal(f.all().find(e => e.tag === 'ul').children[0].children[0].textContent, 'Summary');
+});

@@ -3,14 +3,15 @@ import { assertActive, ExecutionError } from '../core/execution.js';
 import { validateConnection } from './connection.js';
 import { createHttpTransport } from './http-transport.js';
 import { modelError } from './errors.js';
-import { MAX_MANUAL_INPUT_TOKENS, measurePayload } from '../context/policy.js';
+import { MAX_MANUAL_INPUT_TOKENS, MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES, measurePayload } from '../context/policy.js';
+import { copyModelMessage, copyModelText } from '../core/model-message.js';
 import { renderInstructions } from '../instructions/contract.js';
 
 const fail = () => { throw modelError('MODEL_PROTOCOL_ERROR'); };
 const callId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
 
 function prepare(request, connection, privateHistory) {
-    if (!Array.isArray(request.tools) || request.tools.length > 64 || !Array.isArray(request.messages) || !request.messages.length || request.messages.length > 512) fail();
+    if (!Array.isArray(request.tools) || request.tools.length > 64 || !Array.isArray(request.messages) || !request.messages.length || request.messages.length > MAX_CONTEXT_MESSAGES) fail();
     if (request.tools.length && !connection.supportsTools) throw modelError('UNSUPPORTED_CAPABILITY');
     const byId = new Map(), byName = new Map();
     // Sorted ordinal names avoid collisions and provider-specific punctuation limits.
@@ -23,7 +24,7 @@ function prepare(request, connection, privateHistory) {
     });
     const pending = new Set();
     const messages = request.messages.map((raw, index) => {
-        const m = copyJson(raw);
+        const m = copyModelMessage(raw);
         if (m.role === 'tool') {
             if (!pending.delete(m.callId)) fail();
             return { role: 'tool', tool_call_id: m.callId, content: JSON.stringify(m.result) };
@@ -87,7 +88,13 @@ function decode(data, byName, connection) {
     const calls = m.tool_calls ?? [];
     if (!Array.isArray(calls) || calls.length > 64 || (choice.finish_reason === 'tool_calls') !== (calls.length > 0)) fail();
     const seen = new Set(), events = [];
-    if (content) events.push(copyJson({ type: 'text_delta', text: content }));
+    copyModelText(content);
+    // Small events retain the existing observer/DTO boundary, even for long answers.
+    for (let start = 0; start < content.length;) {
+        let end = Math.min(content.length, start + 4000);
+        if (end < content.length && /[\uD800-\uDBFF]/.test(content[end - 1])) end--;
+        events.push(copyJson({ type: 'text_delta', text: content.slice(start, end) })); start = end;
+    }
     for (const c of calls) {
         const tool = byName.get(c.function?.name);
         if (!tool || c.type !== 'function' || !callId(c.id) || seen.has(c.id) || typeof c.function.arguments !== 'string') fail();
@@ -126,7 +133,7 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
                 const { payload, byName } = prepare(request, config, privateHistory);
                 const measured = measurePayload(payload);
                 if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > MAX_MANUAL_INPUT_TOKENS)) fail();
-                if (measured.requestBytes > 1048576 || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
+                if (measured.requestBytes > MAX_REQUEST_BYTES || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
                 const { events, usage, reasoning, signature } = decode(await post(config, payload, signal), byName, config);
                 assertActive(signal);
                 if (config.thinking) {

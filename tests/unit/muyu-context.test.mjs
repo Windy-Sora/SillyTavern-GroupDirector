@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONTEXT_DEFAULTS, estimateTokens, measurePayload, validateContextConfig } from '../../muyu/context/policy.js';
+import { CONTEXT_DEFAULTS, estimateTokens, measurePayload, validateContextConfig, projectCoverage } from '../../muyu/context/policy.js';
 import { planContext, fingerprint, summaryCandidate, usableSummary } from '../../muyu/context/planner.js';
 import { compactionRequest } from '../../muyu/context/compaction.js';
+import { ExecutionError } from '../../muyu/core/execution.js';
 import { createHistoryModule } from '../../muyu/modules/history/index.js';
 import { copyJson } from '../../muyu/core/json-contract.js';
 import { createContextConfigStore } from '../../muyu/host/context-config.js';
@@ -23,6 +24,82 @@ function run(steps, extra = {}) {
 }
 const candidate = () => { const messages = history(), c = summaryCandidate(messages, config); return { ...c, tail: planContext(messages.slice(c.through), null, config).messages }; };
 
+test('Coverage counts distinguish a raw window, continuous summary tail, blocking and explicit omission', () => {
+    const source = history(), old = { through: 2, fingerprint: fingerprint(source.slice(0, 2)), text: 'old', createdAt: 1 };
+    assert.deepEqual(planContext(source, null, config).coverage, { state: 'complete', total: 16, summarized: 0, raw: 16, omitted: 0, excluded: 0 });
+    assert.deepEqual(planContext(source, old, config).coverage, { state: 'complete', total: 16, summarized: 2, raw: 14, omitted: 0, excluded: 0 });
+    const blocked = planContext(history(2000), { ...old, fingerprint: fingerprint(history(2000).slice(0, 2)) }, config).coverage;
+    assert.equal(blocked.state, 'blocked'); assert.equal(blocked.raw, 0); assert.ok(projectCoverage(blocked));
+    assert.deepEqual(planContext(source, old, config, true).coverage, { state: 'omitted', total: 16, summarized: 0, raw: 0, omitted: 0, excluded: 16 });
+    source[0].content = 'edited'; assert.equal(planContext(source, old, config).coverage.summarized, 0);
+});
+
+test('Coverage projection is closed and rejects impossible counts rather than recording private data', () => {
+    const safe = { state: 'complete', total: 4, summarized: 2, raw: 2, omitted: 0, excluded: 0 };
+    assert.deepEqual(projectCoverage({ ...safe, text: 'PRIVATE', fingerprint: 'PRIVATE' }), safe);
+    for (const patch of [{ total: 3 }, { raw: -1 }, { state: 'PRIVATE' }, { state: 'blocked' }, { total: 5000 }, { raw: NaN }]) assert.equal(projectCoverage({ ...safe, ...patch }), null);
+});
+
+test('A claimed summary prefix includes failed-turn originals between complete turns', () => {
+    const source = history(); source.splice(2, 0, { role: 'user', content: 'Cancelled question revised the constraint to 4200', runId: 'cancelled' });
+    const candidate = summaryCandidate(source, config);
+    assert.deepEqual(candidate.messages, source.slice(0, candidate.through).map(({ role, content }) => ({ role, content })));
+    assert.match(JSON.stringify(candidate.messages), /4200/);
+    const old = { through: 2, fingerprint: fingerprint(source.slice(0, 2)), text: 'old', createdAt: 1 };
+    const extension = summaryCandidate(source, config, old);
+    assert.deepEqual(extension.messages.slice(1), source.slice(2, extension.through).map(({ role, content }) => ({ role, content })));
+});
+
+test('BUG-STRESS-1: failed or skipped extension retains every correction after the old summary', async () => {
+    const source = history(10); source[4].content = 'Budget revised to 4200; disregard 3700';
+    const old = { through: 2, fingerprint: fingerprint(source.slice(0, 2)), text: 'Budget 3700', createdAt: 1 };
+    const plan = planContext(source, old, config), c = summaryCandidate(source, config, old);
+    assert.equal(plan.omitted, 0); assert.equal(plan.needsSummary, false);
+    assert.equal(plan.messages.length, 19);
+    const compaction = { ...c, tail: source.slice(c.through).map(({ role, content }) => ({ role, content })) };
+    for (const skip of [false, true]) {
+        const s = run(skip ? [[text('answer'), done]] : [() => { throw Error('summary failed'); }, [text('answer'), done]],
+            { previousMessages: plan.messages, protectedHistory: plan.protectedHistory, compaction, limits: { modelCalls: skip ? 2 : 4 } });
+        assert.equal((await s.handle.completion).answer, 'answer'); await s.handle.drained;
+        assert.match(JSON.stringify(s.model.requests.at(-1)), /4200/);
+        assert.deepEqual(s.model.requests.at(-1).messages.slice(0, 19), plan.messages);
+    }
+});
+
+test('An uncarryable summary tail stops instead of dispatching a history-gap answer', async () => {
+    const source = history(2000), old = { through: 2, fingerprint: fingerprint(source.slice(0, 2)), text: 'old', createdAt: 1 };
+    const plan = planContext(source, old, config); assert.equal(plan.historyBlocked, true);
+    const s = run([], { previousMessages: plan.messages, protectedHistory: true, historyBlocked: true, limits: { modelCalls: 2 } });
+    assert.equal((await s.handle.completion).error, 'CONTEXT_INCOMPLETE'); assert.equal(s.model.requests.length, 0);
+    const model = scriptedModel([]); model.inspect = req => ({ ...measurePayload(req), estimatedTokens: 999999 });
+    const full = planContext(history(), { through: 2, fingerprint: fingerprint(history().slice(0, 2)), text: 'old', createdAt: 1 }, config);
+    const trim = run([], { model, previousMessages: full.messages, protectedHistory: true });
+    assert.equal((await trim.handle.completion).error, 'CONTEXT_INCOMPLETE'); assert.equal(model.requests.length, 0);
+});
+
+test('Truncated automatic summary retries once with a fresh context and reserves an answer call', async () => {
+    const contexts = [], requests = [], released = [];
+    const model = { async *run(req, { context }) {
+        contexts.push(context); requests.push(req);
+        if (requests.length === 1) throw new ExecutionError('MODEL_OUTPUT_TRUNCATED');
+        yield text(requests.length === 2 ? 'summary' : 'answer'); yield done;
+    }, releaseContext: value => released.push(value) };
+    const s = run([], { model, compaction: candidate(), maxTokens: 8192, limits: { modelCalls: 3 } });
+    assert.equal((await s.handle.completion).answer, 'answer'); await s.handle.drained;
+    assert.deepEqual(requests.map(r => r.maxTokens), [4096, 8192, 8192]);
+    assert.notEqual(contexts[0], contexts[1]); assert.ok(released.includes(contexts[0]));
+    const process = createProcessStore(); process.create(identity.id); s.events.forEach(e => process.event(identity.id, e));
+    assert.equal(process.snapshot(identity.id).summaryUsage.calls, 2);
+    const capped = run([() => { throw new ExecutionError('MODEL_OUTPUT_TRUNCATED'); }, [text('answer'), done]], { compaction: candidate(), maxTokens: 256 });
+    assert.equal((await capped.handle.completion).answer, 'answer'); assert.equal(capped.model.requests.length, 2);
+});
+
+test('A partial successful summary never drops an oversized remaining tail', async () => {
+    const c = candidate(); c.tail = Array.from({ length: 3841 }, () => ({ role: 'user', content: 'raw' }));
+    const saved = [], s = run([[text('summary'), done]], { compaction: c, onSummary: value => saved.push(value) });
+    assert.equal((await s.handle.completion).error, 'CONTEXT_INCOMPLETE'); assert.equal(saved.length, 1); assert.equal(s.model.requests.length, 1);
+});
+
 test('Operation facts survive summary replacement as bounded independent application data', async () => {
     const receipt = { operationId: 'op', artifactId: 'a', revision: 1, at: 1, status: 'outcome_unknown', diff: [], saveError: true, changed: true };
     const s = run([[text('summary'), done], [text('answer'), done]], { previousMessages: planContext(history(), null, config).messages, compaction: candidate(), applicationResults: [receipt] });
@@ -37,7 +114,7 @@ test('Operation facts survive summary replacement as bounded independent applica
 
 test('Context config has closed bounds and persistence failure restores the previous policy', async () => {
     for (const patch of [{ inputTokens: 1 }, { inputTokens: 1000001 }, { recentTurns: 25 }, { autoSummary: 1 }, { injected: true }]) assert.throws(() => validateContextConfig({ ...config, ...patch }));
-    assert.equal(validateContextConfig(CONTEXT_DEFAULTS).inputTokens, null);
+    assert.equal(validateContextConfig(CONTEXT_DEFAULTS).inputTokens, 900000);
     assert.equal(validateContextConfig({ ...config, inputTokens: 1000000 }).inputTokens, 1000000);
     const settings = {}; let fails = false;
     const store = createContextConfigStore({ getSettings: () => settings, saveSettings: async () => { if (fails) throw Error('private'); } });
@@ -48,7 +125,7 @@ test('Context config has closed bounds and persistence failure restores the prev
 test('Automatic input budget does not guess the model window but retains the request byte guard', async () => {
     const inspect = request => ({ ...measurePayload(request), estimatedTokens: 35886 });
     const autoModel = scriptedModel([[text('answer'), done]]); autoModel.inspect = inspect;
-    const auto = run([], { model: autoModel, contextConfig: CONTEXT_DEFAULTS });
+    const auto = run([], { model: autoModel, contextConfig: { ...CONTEXT_DEFAULTS, inputTokens: null } });
     assert.equal((await auto.handle.completion).answer, 'answer');
     assert.equal(autoModel.requests[0].inputTokenLimit, undefined);
     const manualModel = scriptedModel([]); manualModel.inspect = inspect;
@@ -56,7 +133,7 @@ test('Automatic input budget does not guess the model window but retains the req
     assert.equal((await manual.handle.completion).error, 'CONTEXT_LIMIT');
     assert.equal(manualModel.requests.length, 0);
     const hugeModel = scriptedModel([]);
-    hugeModel.inspect = request => ({ ...measurePayload(request), estimatedTokens: 100, requestBytes: 1048577 });
+    hugeModel.inspect = request => ({ ...measurePayload(request), estimatedTokens: 100, requestBytes: 8388609 });
     const huge = run([], { model: hugeModel, contextConfig: CONTEXT_DEFAULTS });
     assert.equal((await huge.handle.completion).error, 'CONTEXT_LIMIT');
     assert.equal(hugeModel.requests.length, 0);
@@ -70,9 +147,9 @@ test('Process projection preserves manual input limits above the old 128k ceilin
 
 test('Planner preserves complete recent turns, ignores orphans and never splits oversized turns', () => {
     const source = history(), p = planContext(source, null, config);
-    assert.deepEqual(p.messages.map(m => m.content), ['Q6', 'A6', 'Q7', 'A7']); assert.equal(p.omitted, 12);
+    assert.deepEqual(p.messages.map(m => m.content), history().map(m => m.content)); assert.equal(p.omitted, 0);
     const orphan = [...source, { role: 'user', content: 'failed', runId: 'failed' }]; assert.deepEqual(planContext(orphan, null, config).messages, p.messages);
-    source.at(-1).content = '中'.repeat(15000); assert.equal(planContext(source, null, config).turns, 0);
+    source.at(-1).content = '中'.repeat(22000); assert.equal(planContext(source, null, config).turns, 0);
     assert.equal(planContext(history(), null, config, true).messages.length, 0);
     assert.ok(estimateTokens('中'.repeat(100)) > estimateTokens('a'.repeat(100)));
 });
@@ -82,7 +159,7 @@ test('A long recent answer uses a large configured window or one whole-turn summ
     const large = { inputTokens: 128000, recentTurns: 12, autoSummary: false };
     assert.equal(planContext(messages, null, large).turns, 1);
     assert.equal(planContext(messages, null, large).omitted, 0);
-    const normal = { ...large, inputTokens: 32000, autoSummary: true };
+    const normal = { ...large, inputTokens: 15000, autoSummary: true };
     assert.equal(planContext(messages, null, normal).turns, 0);
     const candidate = summaryCandidate(messages, normal);
     assert.equal(candidate?.through, 2);
@@ -151,14 +228,14 @@ test('Automatic summary has no tools, counts against run budget, and preserves o
     assert.equal(result.answer, 'answer'); assert.equal(result.budget.modelCalls, 2); assert.equal(saved.length, 1);
     assert.deepEqual(s.model.requests[0].tools, []); assert.match(s.model.requests[1].messages[0].content, /summary/);
     assert.equal(s.model.requests[0].maxTokens, 256);
-    assert.deepEqual(previousMessages.map(m => m.content), ['Q6', 'A6', 'Q7', 'A7']);
+    assert.deepEqual(previousMessages.map(m => m.content), history().map(m => m.content));
     assert.equal(s.clock.pending, 0);
 });
 
 test('Summary failure falls back; insufficient call budget skips summary, never spends an extra call', async () => {
     const prior = planContext(history(), null, config).messages;
     const s = run([() => { throw Error('private failure'); }, [text('fallback'), done]], { previousMessages: prior, compaction: candidate() });
-    assert.equal((await s.handle.completion).answer, 'fallback'); assert.deepEqual(s.model.requests[1].messages.slice(0, 4), prior);
+    assert.equal((await s.handle.completion).answer, 'fallback'); assert.deepEqual(s.model.requests[1].messages.slice(0, prior.length), prior);
     assert.ok(s.events.some(e => e.payload.phase === 'summary_failed'));
     const small = run([[text('direct'), done]], { previousMessages: prior, compaction: candidate(), limits: { modelCalls: 2 } });
     assert.equal((await small.handle.completion).budget.modelCalls, 1); assert.ok(small.model.requests[0].tools.length);

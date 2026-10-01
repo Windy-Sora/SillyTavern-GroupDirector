@@ -87,7 +87,7 @@ test('Import is a new read-only record, rejects authority/unknown fields and exp
     assert.equal(parseHistoryImport(exportHistoryRecord(imported)).imported, true);
     assert.throws(() => parseHistoryImport(JSON.stringify({ ...source, apiKey: 'secret' })), /HISTORY_INVALID/);
     assert.throws(() => parseHistoryImport('{"__proto__":{}}'), /HISTORY_INVALID/);
-    assert.throws(() => parseHistoryImport('x'.repeat(2097153)), /HISTORY_CAPACITY/);
+    assert.throws(() => parseHistoryImport('x'.repeat(33554433)), /HISTORY_CAPACITY/);
     const f = fixture(); await f.library.ready; const id = f.library.import(JSON.stringify(source));
     assert.throws(() => f.library.assertRoom(id), /HISTORY_READ_ONLY/); assert.equal(f.library.get(id).revision, 0); await f.library.close();
 });

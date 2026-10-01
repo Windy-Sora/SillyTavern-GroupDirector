@@ -14,6 +14,18 @@ const { createFileStore, init } = require('../../muyu/server-plugin/index.cjs');
 const scope = JSON.stringify(['assistant', 'chat', 'A']);
 const record = () => validateRecord({ version: 5, id: crypto.randomUUID(), revision: 0, scope, title: 'Hello', createdAt: 1, updatedAt: 1, messages: [{ role: 'user', content: 'Hello', runId: 'r' }], required: [], status: 'succeeded', archived: false, imported: false, contextSummary: null, receipts: [] });
 
+test('Private file store agrees with the large-context archive contract', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-large-store-'));
+    try {
+        const store = createFileStore(root), input = record();
+        input.messages = Array.from({ length: 400 }, (_, n) => ({ role: n % 2 ? 'assistant' : 'user', content: '中'.repeat(n === 0 ? 100000 : 2000), runId: String(Math.floor(n / 2)) }));
+        const first = await store.create(validateRecord(input));
+        assert.equal(first.messages.length, 400);
+        assert.equal((await store.read(input.id)).messages[0].content.length, 100000);
+        assert.ok((await store.list())[0].bytes > 2 * 1024 * 1024);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test('Private file store persists, reloads, rejects stale writes and confines IDs', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-store-'));
     try {

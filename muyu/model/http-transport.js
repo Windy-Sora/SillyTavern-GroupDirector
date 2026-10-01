@@ -1,10 +1,12 @@
 import { assertActive, ExecutionError } from '../core/execution.js';
 import { modelError, httpError } from './errors.js';
+import { MAX_REQUEST_BYTES } from '../context/policy.js';
 
 /** No racing away from fetch/read/cancel: the caller's drain must represent all local work. */
-export function createHttpTransport({ fetchImpl = globalThis.fetch, maxRequestBytes = 1048576, maxResponseBytes = 262144 } = {}) {
+export function createHttpTransport({ fetchImpl = globalThis.fetch, maxRequestBytes = MAX_REQUEST_BYTES, maxResponseBytes = 262144, method = 'POST' } = {}) {
+    if (!['POST', 'GET'].includes(method)) throw new TypeError('Invalid transport method');
     if (typeof fetchImpl !== 'function') throw new TypeError('Missing fetch');
-    for (const n of [maxRequestBytes, maxResponseBytes]) if (!Number.isSafeInteger(n) || n < 1 || n > 1048576) throw new TypeError('Invalid transport limit');
+    if (!Number.isSafeInteger(maxRequestBytes) || maxRequestBytes < 1 || maxRequestBytes > MAX_REQUEST_BYTES || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > 1048576) throw new TypeError('Invalid transport limit');
     return async function post(connection, payload, signal) {
         assertActive(signal);
         const body = JSON.stringify(payload);
@@ -17,8 +19,8 @@ export function createHttpTransport({ fetchImpl = globalThis.fetch, maxRequestBy
         };
         try {
             const response = await fetchImpl(connection.endpoint, {
-                method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connection.apiKey}` },
-                body, signal, redirect: 'error', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
+                method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${connection.apiKey}` },
+                ...(method === 'POST' ? { body } : {}), signal, redirect: 'error', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
             });
             if (response.body) reader = response.body.getReader();
             signal.addEventListener('abort', cancel, { once: true });

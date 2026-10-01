@@ -1,5 +1,5 @@
-export const RUN_DEFAULTS = Object.freeze({ modelCalls: 6, toolCalls: 16, timeMs: 120000, maxTokens: 8192, providerBytes: 24000 });
-export const RUN_RANGES = Object.freeze({ modelCalls: [2, 16], toolCalls: [1, 64], timeMs: [10000, 120000], maxTokens: [256, 32768], providerBytes: [6000, 96000] });
+export const RUN_DEFAULTS = Object.freeze({ modelCalls: 12, toolCalls: 48, timeMs: 120000, maxTokens: 32768, providerBytes: 2 * 1024 * 1024 });
+export const RUN_RANGES = Object.freeze({ modelCalls: [2, 16], toolCalls: [1, 64], timeMs: [10000, 120000], maxTokens: [256, 32768], providerBytes: [6000, 16 * 1024 * 1024] });
 export function validateRunConfig(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== Object.keys(RUN_DEFAULTS).length) throw Error('INVALID_RUN_CONFIG');
     const out = {};

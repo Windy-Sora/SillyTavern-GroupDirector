@@ -72,7 +72,7 @@ test('Storage scope cannot be rebound, future schema is rejected and capacity do
     await assert.rejects(f.library.load(id, historyScope('chat', { kind: 'chat', chatKey: 'B' })), /HISTORY_SCOPE/);
     for (let i = 1; i < HISTORY_LIMITS.sessions; i++) f.library.create(scope);
     assert.throws(() => f.library.create(scope), /HISTORY_CAPACITY/); assert.ok(f.library.get(id));
-    f.library.update(id, { messages: Array.from({ length: 128 }, (_, n) => pair(String(n))).flat() });
+    f.library.update(id, { messages: Array.from({ length: HISTORY_LIMITS.messages / 2 }, (_, n) => pair(String(n))).flat() });
     assert.throws(() => f.library.assertRoom(id), /HISTORY_CAPACITY/); await f.library.close();
 });
 

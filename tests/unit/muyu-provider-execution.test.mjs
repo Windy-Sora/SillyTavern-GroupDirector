@@ -39,7 +39,8 @@ test('Registered user Provider is discovered without rendering and runs only aft
     c.answerPermission(request.id, 'task'); await settle();
     assert.equal(f.called(), 1); assert.equal(c.snapshot().runs.at(-1).status, 'succeeded');
     assert.ok(JSON.parse(c.exportHistory()).required.includes(`source:providerExecution:myNotes:${f.revision}`));
-    c.setInput('followup'); c.send(); await settle();
+    c.setInput('followup'); assert.throws(() => c.send(), /HISTORY_PERMISSION_REQUIRED/);
+    c.setOmitHistory(true); c.send(); await settle();
     assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /PRIVATE_PROVIDER_RESULT|summarized/);
     await c.dispose();
 });
@@ -76,11 +77,14 @@ test('Provider port supports async user render and rejects stale registration af
     await assert.rejects(result, /OUTCOME_UNKNOWN/);
 });
 
-test('A new task can restore protected history only after the same Provider version is approved again', async () => {
+test('History-only approval retains Provider answers without approving execution in a new task', async () => {
     const f = fixture(({ ask, run }) => [[tool('muyu.provider.discover'), done], ask(), run(), [text('PROTECTED_PROVIDER_ANSWER'), done], ask(), [text('followup'), done]]);
     await f.enable(); const c = f.controller; c.setInput('first'); c.send(); await settle(); c.answerPermission(c.snapshot().interaction.id, 'task'); await settle();
-    c.setInput('followup'); c.send(); await settle();
-    assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_PROVIDER_ANSWER/);
+    c.setInput('followup'); assert.throws(() => c.send(), /HISTORY_PERMISSION_REQUIRED/);
+    c.allowHistory(); c.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_PROVIDER_ANSWER/);
+    assert.equal(c.snapshot().interaction.source, 'providerExecution');
+    assert.equal(f.called(), 1);
     c.answerPermission(c.snapshot().interaction.id, 'task'); await settle();
     assert.match(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_PROVIDER_ANSWER/);
     assert.equal(f.called(), 1); await c.dispose();

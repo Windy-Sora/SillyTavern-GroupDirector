@@ -1,11 +1,14 @@
 import { copyJson, jsonKey } from '../core/json-contract.js';
+import { copyModelText } from '../core/model-message.js';
+import { HISTORY_LIMITS } from '../sessions/contract.js';
 import { createRunState } from '../core/run-state.js';
 import { createWorkspace } from '../workspace/store.js';
 import { createProcessStore } from './process-store.js';
 import { selectHistory } from '../sessions/contract.js';
 import { createInteractionStore } from '../interactions/store.js';
-import { MAX_CLARIFICATIONS, describeAnswer, validateAnswer } from '../interactions/contract.js';
-import { MAX_INTERACTIONS, permissionAnswer, permissionTitle } from '../permissions/contract.js';
+import { describeAnswer, validateAnswer } from '../interactions/contract.js';
+import { permissionAnswer, permissionTitle } from '../permissions/contract.js';
+import { interactionLimit } from '../interactions/limits.js';
 
 /** Trusted application facade. startRun must expose completion AND physical drained promises. */
 export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSessions = 16, maxTasks = 128, maxRuns = 128, workspaceOptions } = {}) {
@@ -64,7 +67,7 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
                 lease.handle = startRun({ identity: { id: record.id, sessionId: record.sessionId, taskId: record.taskId, target: copyJson(record.target) },
                     input: record.input, previousMessages: selectHistory(sessions.get(record.sessionId).messages.slice(0, -1)).messages,
                     resume,
-                    taskContext: copyJson({ goal: tasks.get(record.taskId).goal, constraints: tasks.get(record.taskId).constraints }),
+                    taskContext: { goal: copyModelText(tasks.get(record.taskId).goal), constraints: copyJson(tasks.get(record.taskId).constraints) },
                     onEvent: event => {
                         if (disposed || lease.completed || record.status !== 'running' || sessions.get(record.sessionId).closed) return;
                         // Notifications only; model text cannot mutate task/artifact or application status.
@@ -88,21 +91,25 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
                     }
                     else {
                         let status = ['succeeded', 'failed', 'cancelled', 'interrupted', 'yielded'].includes(result?.state?.status) ? result.state.status : 'failed';
+                        let settlementError = null;
                         if (status === 'yielded') {
                             const t = tasks.get(record.taskId);
                             try {
                                 const permission = result.interaction?.kind === 'permission';
-                                if ((t.interactionCount || 0) >= MAX_INTERACTIONS || !permission && (t.clarifications || 0) >= MAX_CLARIFICATIONS || !isCurrent(record.target) || startedTargetEpoch !== targetEpoch) throw Error('INTERACTION_LIMIT');
+                                if (!isCurrent(record.target) || startedTargetEpoch !== targetEpoch) throw Error('TARGET_UNAVAILABLE');
+                                const limit = interactionLimit(t, result.interaction);
+                                if (limit) throw Error(limit);
                                 if (result.resume && result.interaction?.kind !== 'permission') throw Error('INVALID_CONTINUATION');
                                 interactions.create({ sessionId: record.sessionId, taskId: record.taskId, runId: record.id, target: record.target },
                                     permission ? { ...result.interaction, hostManaged: !!result.resume } : result.interaction);
                                 if (result.resume) resumes.set(record.taskId, result.resume);
                                 t.interactionCount = (t.interactionCount || 0) + 1;
                                 if (!permission) t.clarifications = (t.clarifications || 0) + 1;
-                            } catch { status = 'failed'; }
+                                else { const counter = result.interaction.source === 'providerExecution' ? 'codePermissions' : 'readPermissions'; t[counter] = (t[counter] || 0) + 1; }
+                            } catch (error) { status = 'failed'; settlementError = ['PERMISSION_LIMIT', 'CLARIFICATION_LIMIT', 'TARGET_UNAVAILABLE', 'INVALID_CONTINUATION'].includes(error?.message) ? error.message : null; }
                         }
                         let answer = null;
-                        if (['succeeded', 'yielded'].includes(status) && typeof result.answer === 'string') { try { answer = copyJson(result.answer); } catch { /* Reject oversized result. */ } }
+                        if (['succeeded', 'yielded'].includes(status) && typeof result.answer === 'string') { try { answer = copyModelText(result.answer); } catch { /* Reject oversized result. */ } }
                         const successful = ['succeeded', 'yielded'].includes(status) && answer !== null;
                         if (!successful) {
                             interactions.invalidate(r => r.runId === record.id);
@@ -111,7 +118,7 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
                                 else { try { result.resume.dispose(); } catch { /* Cleanup only. */ } }
                             }
                         }
-                        settle(record, ['succeeded', 'yielded'].includes(status) && !successful ? 'failed' : status, successful ? null : 'RUN_ENDED', answer);
+                        settle(record, ['succeeded', 'yielded'].includes(status) && !successful ? 'failed' : status, successful ? null : settlementError || 'RUN_ENDED', answer);
                     }
                 } else {
                     try { result?.resume?.dispose(); } catch { /* Cleanup only. */ }
@@ -134,9 +141,9 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
         if ([...runs.values()].some(r => r.sessionId === s.id && unfinished(r)) || (active && runs.get(active.id).sessionId === s.id)) throw new Error('SESSION_BUSY');
         if (queue.length >= maxQueue) throw new Error('QUEUE_FULL');
         if (runs.size >= maxRuns) throw new Error('RUN_CAPACITY');
-        if (typeof input !== 'string' || !input.trim()) throw new TypeError('Missing input'); copyJson(input);
+        if (typeof input !== 'string' || !input.trim()) throw new TypeError('Missing input'); copyModelText(input);
         if (typeof displayInput !== 'string' || !displayInput.trim()) throw new TypeError('Invalid display input');
-        copyJson(displayInput);
+        copyModelText(displayInput);
         const id = nextId('run');
         const r = { id, sessionId: s.id, taskId: t.id, target: copyJson(s.target), input, status: 'queued', error: null };
         runs.set(id, r); processes.create(id); queue.push(id); t.status = 'queued'; s.messages.push({ role: 'user', runId: id, content: displayInput });
@@ -146,10 +153,10 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
     return Object.freeze({
         createSession(scope, history = []) {
             live(); if (sessions.size >= maxSessions) throw new Error('SESSION_CAPACITY');
-            if (!Array.isArray(history) || history.length > 256) throw Error('HISTORY_CAPACITY');
+            if (!Array.isArray(history) || history.length > HISTORY_LIMITS.messages) throw Error('HISTORY_CAPACITY');
             const messages = history.map(m => {
                 if (!['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || typeof m.runId !== 'string') throw Error('HISTORY_INVALID');
-                return { role: m.role, content: copyJson(m.content), runId: copyJson(m.runId) };
+                return { role: m.role, content: copyModelText(m.content), runId: copyJson(m.runId) };
             });
             const id = nextId('session'); const valid = createRunState({ id: 'check', sessionId: id, taskId: 'check', target: scope }).target;
             sessions.set(id, { id, target: valid, closed: false, messages }); emit('session.created', { sessionId: id }); return id;

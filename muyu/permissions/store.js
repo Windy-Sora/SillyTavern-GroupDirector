@@ -1,5 +1,6 @@
 import { jsonKey } from '../core/json-contract.js';
 import { permissionSources, sourceKey, validatePermission, permissionSource, parseExecutionSource } from './contract.js';
+import { tracePermission, permissionTraceError } from '../core/permission-debug.js';
 
 /** Connection-local source grants. Only the application may commit a UI decision. */
 export function createSourcePermissions() {
@@ -20,7 +21,10 @@ export function createSourcePermissions() {
         allows(source, target, taskId) {
             const execution = parseExecutionSource(source);
             if (execution) return !!key(target) && target.kind === 'chat' && executions.has(executionKey(target, taskId, execution.providerId, execution.providerRevision));
-            return permissionSources.includes(source) && !!scope(source, target) && (contains(chats, scope(source, target), source) || contains(tasks, taskKey(target, taskId), source));
+            const chatGrant = contains(chats, scope(source, target), source), taskGrant = contains(tasks, taskKey(target, taskId), source);
+            const granted = permissionSources.includes(source) && !!scope(source, target) && (chatGrant || taskGrant);
+            if (taskId || chatGrant || taskGrant) tracePermission('store.check', { target, taskId, source, granted, chatGrant, taskGrant });
+            return granted;
         },
         denied(source, target, taskId) { return contains(denied, taskKey(target, taskId), source); },
         list(target) { return permissionSources.filter(source => contains(chats, scope(source, target), source)); },
@@ -46,8 +50,9 @@ export function createSourcePermissions() {
             const id = decision === 'chat' ? scopeId : taskKey(request.target, request.taskId);
             if (!map.has(id) && map.size >= 1024) throw Error('PERMISSION_CAPACITY');
             const old = map.get(id), next = new Set(old); next.add(sourceKey(request.source)); map.set(id, next);
+            tracePermission('store.commit', { target: request.target, taskId: request.taskId, source: sourceKey(request.source), decision });
             // Enqueue is synchronous. No observer callback runs between commit and rollback.
-            try { return continuation(); } catch (error) { if (old) map.set(id, old); else map.delete(id); throw error; }
+            try { return continuation(); } catch (error) { if (old) map.set(id, old); else map.delete(id); tracePermission('store.rollback', { target: request.target, taskId: request.taskId, source: sourceKey(request.source), decision, errorCode: permissionTraceError(error) }); throw error; }
         },
         grantTaskSources(sources, target, taskId, continuation) {
             const id = taskKey(target, taskId);
@@ -65,9 +70,10 @@ export function createSourcePermissions() {
             for (const map of [tasks, denied]) for (const [id, values] of map) if (scope(source, JSON.parse(JSON.parse(id)[0])) === scope(source, target)) values.delete(source);
         },
         forgetTask(target, taskId) {
+            tracePermission('store.forgetTask', { target, taskId });
             for (const map of [tasks, denied]) for (const id of map.keys()) if (JSON.parse(id)[1] === taskId && (!target || JSON.parse(id)[0] === key(target))) map.delete(id);
             for (const map of [executions, executionDenials]) for (const id of map.keys()) if (JSON.parse(JSON.parse(id)[0])[1] === taskId && (!target || JSON.parse(JSON.parse(id)[0])[0] === key(target))) map.delete(id);
         },
-        clear() { chats.clear(); tasks.clear(); denied.clear(); executions.clear(); executionDenials.clear(); },
+        clear() { tracePermission('store.clear'); chats.clear(); tasks.clear(); denied.clear(); executions.clear(); executionDenials.clear(); },
     });
 }

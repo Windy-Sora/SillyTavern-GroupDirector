@@ -46,7 +46,7 @@ test('Provider directory is metadata-only; trusted pure readers do not initializ
 });
 
 test('Paging is bounded, tied to evidence and per-run budget; changed source and targets fail closed', () => {
-    const f = fixture(); f.ctx.chat[0].mes = '长'.repeat(20000);
+    const f = fixture(); f.module.bindRun('r', 24000); f.ctx.chat[0].mes = '长'.repeat(20000);
     let page = f.read(); assert.equal(page.text.length, 2000); assert.equal(page.truncated, true);
     const revision = page.revision;
     page = f.read({ revision, offset: page.nextOffset }); assert.equal(page.status, 'ok');
@@ -56,6 +56,25 @@ test('Paging is bounded, tied to evidence and per-run budget; changed source and
     f.ctx.chat[0].mes = 'changed'; assert.equal(f.read({ revision, offset: 2000 }, 'other').status, 'STALE_SOURCE');
     const g = fixture(), first = g.read(); g.ctx.chat[0].mes = 'edit'; assert.equal(g.read({ revision: first.revision }).status, 'STALE_SOURCE');
     g.switch(); assert.equal(g.read().status, 'TARGET_UNAVAILABLE');
+});
+
+test('Read hints distinguish directory and content and provide exact same-source continuation args', () => {
+    const f = fixture();
+    const directory = f.read({ id: 'chatHistory' });
+    assert.equal(directory.readHint.kind, 'directory');
+    assert.deepEqual(directory.readHint.nextRead, { id: 'chatHistory', selector: 'range:0:1', revision: directory.revision, offset: 0 });
+    const wrong = f.read({ id: 'chatHistory', selector: '0:1', revision: directory.revision });
+    assert.equal(wrong.status, 'INVALID_SELECTOR'); assert.equal(wrong.readHint.recovery, 'correct_selector');
+    assert.match(wrong.readHint.selectorFormat, /range:START:COUNT/);
+    f.ctx.chat[0].mes = '长'.repeat(3000);
+    const page = f.read();
+    assert.equal(page.readHint.kind, 'content');
+    assert.deepEqual(page.readHint.nextRead, { id: 'recentMessages', selector: '', revision: page.revision, offset: page.nextOffset });
+    f.ctx.chat[0].mes = 'changed';
+    const stale = f.read(page.readHint.nextRead);
+    assert.equal(stale.status, 'STALE_SOURCE'); assert.equal(stale.readHint.recovery, 'read_directory');
+    assert.equal(stale.readHint.nextRead.revision, ''); assert.equal(stale.readHint.nextRead.offset, 0);
+    assert.doesNotMatch(JSON.stringify(directory.readHint), /Alice|a.png|hello/);
 });
 
 test('Disabled, oversized, replaced, missing and invalid selectors have distinct closed outcomes', () => {

@@ -46,14 +46,19 @@ export function renderMarkdown(root, source) {
             while (i + 1 < limit && lines[i + 1].includes('|') && lines[i + 1].trim()) { const row = node('tr', '', body); cells(lines[++i]).forEach(c => inline(node('td', '', row), c)); }
             continue;
         }
-        const heading = /^(#{1,6})\s+(.+)$/.exec(line), item = /^\s*(?:([-+*])|\d+[.)])\s+(.+)$/.exec(line);
+        const heading = /^(#{1,6})\s+(.+)$/.exec(line), item = /^\s*(?:([-+*])|(\d+)[.)])\s+(.+)$/.exec(line);
         if (heading) { flush(); inline(node('h' + heading[1].length, '', root), heading[2]); }
         else if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) { flush(); node('hr', '', root); }
         else if (/^\s*>\s?/.test(line)) { flush(); inline(node('blockquote', '', root), line.replace(/^\s*>\s?/, '')); }
         else if (item) {
             const type = item[1] ? 'ul' : 'ol';
-            if (!list || listType !== type) { flush(); list = node(type, '', root); listType = type; }
-            inline(node('li', '', list), item[2]);
+            if (!list || listType !== type) {
+                flush(); list = node(type, '', root); listType = type;
+                // Loose numbered sections may be separated by ordinary paragraphs.
+                // Preserve the source number instead of restarting every section at 1.
+                if (type === 'ol') list.setAttribute('start', item[2]);
+            }
+            inline(node('li', '', list), item[3]);
         } else { list = null; paragraph.push(line); }
     }
     flush();

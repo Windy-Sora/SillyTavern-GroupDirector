@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
+import { createPermissionView } from '../../muyu/ui/permission-view.js';
 import { importPreview } from '../../muyu/sessions/exchange.js';
 
 // Minimal native DOM contract; does not assert CSS geometry or browser layout.
@@ -17,6 +18,39 @@ class Element {
     click() { if (!this.disabled) return this.onclick?.(); }
     toggle(open) { this.open = open; this.events.toggle?.(); }
 }
+
+test('Permission request stays inside the transcript and disposes its card', () => {
+    const doc = { createElement: tag => new Element(tag, doc) };
+    doc.body = doc.createElement('body');
+    const parent = doc.createElement('div'), settings = doc.createElement('div');
+    const view = createPermissionView({ doc, parent, settings, controller: {}, act: fn => fn(), lang: 'en' });
+    const card = parent.children[0];
+    assert.equal(card.className, 'gd-muyu-interaction');
+    assert.equal(card.getAttribute('role'), 'group');
+    assert.equal(doc.body.children.length, 0);
+    view.render({ interaction: { id: 'read-1', kind: 'permission', source: 'chatHistory', reason: 'Inspect chat', status: 'pending' }, connection: { model: 'test', endpoint: 'https://example.test' } });
+    assert.equal(card.hidden, false);
+    view.render({ interaction: null });
+    assert.equal(card.hidden, true);
+    view.dispose();
+    assert.equal(parent.children.includes(card), false);
+});
+
+for (const lang of ['zh', 'en']) test(`Coverage UI distinguishes a blocked plan from the previous task and preserves input (${lang})`, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.input = 'unsent draft';
+    f.state.context = { coverage: { state: 'blocked', total: 12, summarized: 4, raw: 0, omitted: 8, excluded: 0 }, turns: 0, omitted: 8, summary: 'reference' };
+    f.state.runs = [{ process: { coverage: { status: 'blocked' }, summaryPhase: 'summary_failed', summaryError: 'MODEL_OUTPUT_TRUNCATED', summaryUsage: { calls: 2, reports: 1, inputTokens: 20, outputTokens: 10 } } }];
+    f.emit();
+    const content = () => f.all().map(e => e.textContent || '').join('\n');
+    assert.match(content(), /4\/0\/8\/0/); assert.match(content(), lang === 'en' ? /full unsummarized tail cannot fit/ : /未摘要原文无法完整携带/);
+    assert.match(content(), /MODEL_OUTPUT_TRUNCATED/); assert.match(content(), /1\/2/);
+    assert.equal(f.state.input, 'unsent draft');
+    f.state.context.coverage = { state: 'complete', total: 12, summarized: 4, raw: 8, omitted: 0, excluded: 0 }; f.emit();
+    assert.match(content(), lang === 'en' ? /carried contiguously/ : /原文连续携带/);
+    assert.ok(f.all().some(e => e.getAttribute('aria-live') === 'polite'));
+    f.root.__gdMuyuDispose();
+});
 function fixture(lang = 'zh', standalone = false, options = {}) {
     const doc = { createElement: tag => new Element(tag, doc) }, root = doc.createElement('div');
     const state = { viewToken: 1, enabled: false, mode: options.initialMode || 'memory', input: '', hasChat: true, messages: [], runs: [], artifacts: [] };
@@ -53,12 +87,58 @@ test('Full-access switch confirms once and keeps a warning visible outside setti
     f.state.enabled = true; f.emit();
     const toggle = f.all().find(e => e.tag === 'input' && e.parent?.textContent?.includes('Full-access mode'));
     assert.ok(toggle); assert.equal(toggle.checked, false);
-    let accepted = false; f.root.ownerDocument.defaultView = { confirm: () => accepted };
     toggle.checked = true; toggle.onchange(); assert.equal(f.state.fullAccess, undefined); assert.equal(toggle.checked, false);
-    accepted = true; toggle.checked = true; toggle.onchange(); assert.equal(f.state.fullAccess, true);
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-danger-confirm').hidden, false);
+    await f.find('button', 'Keep disabled').click(); assert.equal(f.state.fullAccess, undefined);
+    toggle.checked = true; toggle.onchange(); await f.find('button', 'I understand the risk, enable').click(); assert.equal(f.state.fullAccess, true);
     const warning = f.all().find(e => e.className === 'gd-muyu-full-access-warning');
     assert.equal(warning.hidden, false); assert.equal(warning.parent.className, 'gd-muyu-chat');
     toggle.checked = false; toggle.onchange(); assert.equal(f.state.fullAccess, false); assert.equal(warning.hidden, true);
+    f.root.__gdMuyuDispose();
+});
+
+test('Expired history authorization is visible beside the composer and preserves drafts without auto-sending', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    f.state.enabled = true; f.state.input = 'keep this draft';
+    f.state.history = { loading: false, missingPermissions: ['source:variables'], sessions: [] };
+    let approvals = 0;
+    f.controller.allowHistory = () => { approvals++; f.state.history.missingPermissions = []; f.emit(); };
+    f.emit();
+    const approve = f.find('button', 'Allow existing history');
+    assert.equal(approve.parent.parent.hidden, false);
+    assert.equal(approve.parent.parent.parent.className, 'gd-muyu-composer');
+    await approve.click();
+    assert.equal(approvals, 1); assert.equal(f.sent.length, 0);
+    assert.equal(f.state.input, 'keep this draft'); assert.equal(approve.parent.parent.hidden, true);
+    f.root.__gdMuyuDispose();
+});
+
+test('Context failure process displays its safe code and distinguishes input from output tokens', () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    f.state.messages = [{ role: 'user', runId: 'r', content: 'inspect' }];
+    f.state.runs = [{ id: 'r', process: { phase: 'failed', terminal: 'failed', cleaned: true, error: 'CONTEXT_LIMIT', rows: [{ type: 'model.failed', attemptId: 2, durationMs: 17, error: 'CONTEXT_LIMIT' }] } }];
+    f.emit();
+    const content = f.all().map(e => e.textContent).join('\n');
+    assert.match(content, /CONTEXT_LIMIT/); assert.match(content, /input context budget, not output tokens/);
+    f.root.__gdMuyuDispose();
+});
+
+test('AI connection controls explicitly test, list and select models without changing the connection', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }), calls = [];
+    f.controller.probeConnection = async (config, options) => { calls.push({ config, kind: options.kind }); return options.kind === 'models' ? ['flash', 'pro'] : { ok: true }; };
+    const key = f.all().find(e => e.tag === 'input' && e.type === 'password');
+    key.value = 'PRIVATE_TEST_KEY';
+    assert.equal(calls.length, 0);
+    await f.find('button', 'Fetch models').click();
+    assert.equal(calls.length, 1); assert.equal(calls[0].kind, 'models');
+    const select = f.all().find(e => e.tag === 'select' && e.parent?.textContent?.includes('Model menu'));
+    assert.ok(select); assert.deepEqual(select.options.map(option => option.value), ['', 'flash', 'pro']);
+    select.value = 'pro'; select.onchange();
+    const model = f.all().find(e => e.tag === 'input' && e.parent?.textContent === 'Model');
+    assert.equal(model.value, 'pro');
+    await f.find('button', 'Test connection').click();
+    assert.equal(calls[1].kind, 'test'); assert.equal(calls[1].config.model, 'pro');
+    assert.equal(f.configs.length, 0); assert.equal(f.state.enabled, false);
     f.root.__gdMuyuDispose();
 });
 
@@ -103,6 +183,31 @@ test('Task plan card distinguishes unavailable writes and offers one explicit re
     f.state.declinedPlans = []; f.emit();
     await f.find('button', 'Allow reads and continue planning').click();
     assert.equal(approvals, 1); assert.equal(f.find('button', 'Decline reads'), undefined);
+    f.root.__gdMuyuDispose();
+});
+
+test('Task plans stay with their originating reply, collapse after review and retain manual expansion', () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    f.state.messages = [{ role: 'user', content: 'Inspect settings', runId: 'r-plan' },
+        { role: 'assistant', content: 'Plan ready', runId: 'r-plan' },
+        { role: 'user', content: 'Continue', runId: 'r-next' },
+        { role: 'assistant', content: 'Analysis finished', runId: 'r-next' }];
+    f.state.artifacts = [{ id: 'plan-position', sourceRunId: 'r-plan', revision: 1, kind: 'task-plan', content: { plan: {
+        goal: 'Inspect global settings', sources: ['configSettings'], unknowns: [], steps: [],
+    } } }];
+    const plan = () => f.all().find(e => e.className === 'gd-muyu-card gd-muyu-plan');
+    f.emit();
+    const first = plan(); assert.equal(first.tag, 'details'); assert.equal(first.open, true);
+    const order = f.all();
+    assert.ok(order.indexOf(first) > order.findIndex(e => e.textContent === 'Plan ready'));
+    assert.ok(order.indexOf(first) < order.findIndex(e => e.textContent === 'Analysis finished'));
+    first.toggle(false); f.emit(); assert.equal(plan().open, false);
+    f.state.approvedPlans = ['plan-position']; f.emit(); assert.equal(plan().open, false);
+    plan().toggle(true); f.emit(); assert.equal(plan().open, true);
+    // A removed card can receive a queued native toggle; it cannot change the new card.
+    first.toggle(false); f.emit(); assert.equal(plan().open, true);
+    assert.equal(f.all().filter(e => e.className === 'gd-muyu-card gd-muyu-plan').length, 1);
+    assert.ok(f.all().some(e => e.textContent?.includes('proposal at planning time')));
     f.root.__gdMuyuDispose();
 });
 
@@ -364,9 +469,9 @@ test('Context UI preserves settings drafts, requires summary confirmation and re
     f.state.runs = [{ process: { context: { estimatedTokens: 900, inputTokenLimit: 4096, requestBytes: 1800, historicalMessages: 0, trimmedHistoricalMessages: 2, messageBytes: 400, toolDefinitionBytes: 300, toolResultBytes: 0, reasoningBytes: 0 } } }]; f.emit();
     assert.ok(f.all().some(e => e.tag === 'p' && e.textContent.includes('Some original history is not planned')));
     assert.ok(f.all().some(e => e.tag === 'p' && e.textContent.includes('Additional historical messages removed before sending')));
-    const automatic = f.all().find(e => e.type === 'checkbox' && e.parent.textContent.includes('Automatic input budget'));
+    const automatic = f.all().find(e => e.type === 'checkbox' && e.parent.textContent.includes('Request-size protection only'));
     const input = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Manual input budget (estimated tokens)');
-    assert.equal(automatic.checked, true); assert.equal(input.disabled, true);
+    assert.equal(automatic.checked, false); assert.equal(input.disabled, false);
     automatic.checked = false; automatic.onchange(); assert.equal(input.disabled, false);
     input.value = '64000'; f.emit(); assert.equal(input.value, '64000');
     let savedContext; f.controller.saveContextConfig = value => { savedContext = value; };
@@ -458,6 +563,18 @@ test('View switches restore scroll position and unrelated renders do not force s
     const transcript = f.all().find(e => e.className === 'gd-muyu-transcript'); transcript.scrollHeight = 500; transcript.clientHeight = 100; transcript.scrollTop = 350;
     f.state.viewKey = 'B'; f.state.viewToken++; f.state.scrollTop = 25; f.emit(); assert.equal(transcript.scrollTop, 25); assert.deepEqual(saved.at(-1), ['A', 350]);
     transcript.scrollTop = 350; f.emit(); assert.equal(transcript.scrollTop, 350); f.root.__gdMuyuDispose();
+});
+
+test('A new permission request scrolls to its inline card only once', () => {
+    const f = fixture('en', true), transcript = f.all().find(e => e.className === 'gd-muyu-transcript');
+    transcript.scrollHeight = 500; transcript.clientHeight = 100; transcript.scrollTop = 50;
+    f.state.interaction = { id: 'read-1', kind: 'permission', source: 'chatHistory', reason: 'Inspect chat', status: 'pending' };
+    f.emit(); assert.equal(transcript.scrollTop, 500);
+    transcript.scrollTop = 80; f.emit(); assert.equal(transcript.scrollTop, 80, 'ordinary progress render preserves manual scroll');
+    f.state.interaction.status = 'granted'; f.emit();
+    f.state.interaction = { id: 'read-2', kind: 'permission', source: 'chatHistory', reason: 'Read again', status: 'pending' };
+    f.emit(); assert.equal(transcript.scrollTop, 500);
+    f.root.__gdMuyuDispose();
 });
 
 test('Session chooser creates/switches explicitly and local saving can be toggled without model calls', async () => {
@@ -665,9 +782,9 @@ test('Execution budget controls save units and preserve edits across progress re
     const f = fixture('zh', true);
     const modelCalls = f.all().find(e => e.type === 'number' && e.parent.textContent === '模型调用次数');
     const timeout = f.all().find(e => e.type === 'number' && e.parent.textContent === '单轮超时（秒）');
-    assert.equal(modelCalls.value, '6'); assert.equal(timeout.value, '120');
+    assert.equal(modelCalls.value, '12'); assert.equal(timeout.value, '120');
     modelCalls.value = '10'; timeout.value = '60'; f.emit(); assert.equal(modelCalls.value, '10');
     await f.find('button', '保存运行预算').click(); assert.equal(f.state.runConfig.modelCalls, 10); assert.equal(f.state.runConfig.timeMs, 60000);
-    await f.find('button', '恢复默认预算并保存').click(); assert.equal(modelCalls.value, '6'); assert.equal(timeout.value, '120');
-    modelCalls.value = '1.5'; await f.find('button', '保存运行预算').click(); assert.equal(f.state.runConfig.modelCalls, 6);
+    await f.find('button', '恢复默认预算并保存').click(); assert.equal(modelCalls.value, '12'); assert.equal(timeout.value, '120');
+    modelCalls.value = '1.5'; await f.find('button', '保存运行预算').click(); assert.equal(f.state.runConfig.modelCalls, 12);
 });

@@ -1,5 +1,6 @@
 import { copyJson, jsonKey, validateJson } from '../core/json-contract.js';
 import { assertActive, bounded, ExecutionError, safeFailure, systemClock } from '../core/execution.js';
+import { tracePermission } from '../core/permission-debug.js';
 
 /** A run-local serial executor; external effects require an explicit tool-ID allowlist. */
 export function createToolBroker({ registry, handlers, runId, target, allowedTools = [], externalTools = [], policy = () => false, signal, maxCalls = 16, clock = systemClock, track, onEvent = () => {} }) {
@@ -34,6 +35,9 @@ export function createToolBroker({ registry, handlers, runId, target, allowedToo
         let granted = false, needsPermission = false, requestInvalid = false, denialReason = null, missingSources = [];
         try {
             const decision = policy({ definition: copyJson(d), args: copyJson(args), target: copyJson(origin), runId });
+            tracePermission('broker.policy', { target: origin, runId, toolId: d.id,
+                decision: typeof decision === 'object' ? decision?.decision : decision,
+                missingSources: decision?.missingSources });
             if (decision && typeof decision.then === 'function') Promise.resolve(decision).catch(() => {});
             else {
                 granted = decision === true;

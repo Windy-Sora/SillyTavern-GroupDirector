@@ -13,6 +13,16 @@ const labels = {
     cancelled: ['任务已取消', 'Run cancelled'], interrupted: ['任务中断', 'Run interrupted'],
 };
 const errors = {
+    CONTEXT_LIMIT: ['输入上下文超过预算（含历史、工具定义、结果及思考回传）；请调整输入上下文预算，不是单次输出上限', 'Input context exceeds budget (history, tools, results and thinking); adjust the input context budget, not output tokens'],
+    CONTEXT_INCOMPLETE: ['未摘要历史无法完整携带；增加输入预算、整理历史或明确不带历史', 'Unsummarized history cannot fit; increase input budget, summarize or explicitly omit history'],
+    MODEL_OUTPUT_TRUNCATED: ['模型输出被截断；提高单次输出上限或缩小任务', 'Model output truncated; increase output tokens or narrow the task'],
+    MODEL_HISTORY_UNAVAILABLE: ['缺少工具思考回传信息；检查接口与模型兼容性', 'Required thinking/tool replay unavailable; check endpoint/model compatibility'],
+    MODEL_PROTOCOL_ERROR: ['模型响应或思考回传不符合接口协议', 'Model response or thinking replay violates the protocol'],
+    MODEL_FAILED: ['模型请求在本地准备或执行阶段失败', 'Model request failed during local preparation or execution'],
+    MODEL_HTTP_ERROR: ['接口拒绝请求；检查模型与请求参数', 'Endpoint rejected the request; check model and parameters'],
+    PERMISSION_LIMIT: ['本任务授权申请次数已达上限，未读取该资料', 'Task permission request limit reached; source not read'],
+    CLARIFICATION_LIMIT: ['本任务澄清次数已达上限', 'Task clarification limit reached'],
+    INVALID_CONTINUATION: ['任务续接无效，未继续执行', 'Invalid continuation; execution stopped'],
     PERMISSION_REQUIRED: ['需要读取授权', 'Read permission required'], PERMISSION_DENIED: ['权限拒绝', 'Permission denied'], PERMISSION_REQUEST_INVALID: ['授权申请无效或已经获准', 'Invalid or already granted permission request'], INVALID_ARGUMENT: ['参数不符合契约', 'Invalid arguments'],
     CALL_ID_CONFLICT: ['调用编号冲突', 'Call ID conflict'], UNSUPPORTED_CAPABILITY: ['不支持此能力', 'Unsupported capability'],
     TARGET_UNAVAILABLE: ['目标已不可用', 'Target unavailable'], UPSTREAM_PENDING: ['上游尚未清理', 'Upstream still pending'],
@@ -48,7 +58,7 @@ export function createProcessView({ doc, lang = 'zh' }) {
                 view.signature = signature; view.list.replaceChildren();
                 for (const row of p.rows) {
                     const tool = row.tool ? local(processTools[row.tool] || ['未知工具', 'Unknown tool'], lang) + ' · ' : '';
-                    const error = row.error ? ' · ' + local(errors[row.error] || ['安全错误（无原始详情）', 'Safe error (no raw details)'], lang) : '';
+                    const error = row.error ? ' · ' + row.error + ' · ' + local(errors[row.error] || ['安全错误（无原始详情）', 'Safe error (no raw details)'], lang) : '';
                     if (row.read) node('li', `${row.read.source} · ${row.read.status} · ${row.read.characters}` + local([' 字符', ' characters'], lang) + (row.read.truncated ? local([' · 内容未完整返回', ' · Partial content'], lang) : ''), view.list);
                     node('li', tool + local(labels[row.type] || ['处理中', 'Processing'], lang) + ` #${row.attemptId}` + (row.durationMs === null ? '' : ` · ${row.durationMs} ms`) + error, view.list);
                 }
@@ -58,7 +68,7 @@ export function createProcessView({ doc, lang = 'zh' }) {
             if (p.toolFailures) notes.push(local(['包含失败或被拒绝的工具调用', 'Includes failed/rejected tool calls'], lang));
             if (p.dropped) notes.push(local(['较早过程记录已截断', 'Earlier process records were truncated'], lang));
             if (p.terminal === 'succeeded' && expectsArtifact && !artifactPresent) notes.push(local(['回答已结束；尚无可信报告或草稿', 'Answer ended; no verified report or draft available'], lang));
-            if (p.error) notes.push(local(errors[p.error] || ['任务结束时发生错误', 'Run ended with an error'], lang));
+            if (p.error) notes.push(p.error + ' · ' + local(errors[p.error] || ['任务结束时发生错误', 'Run ended with an error'], lang));
             view.note.textContent = notes.join(' · ') + (p.budget ? '\n' + formatBudget(p.budget, lang) : '');
             return view.root;
         },

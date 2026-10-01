@@ -26,7 +26,7 @@
 
 ## 后续扩展
 
-按需读取授权现已使用独立合同接入，详见 [权限合同](../permissions/README.md)。请求容器支持 clarification/permission，但草稿回答仅适用于 clarification，GUI 授权只能经独立入口处理；澄清三次上限不变，全部交接合计最多六次。下述写审批仍未实现。
+按需读取授权现已使用独立合同接入，详见 [权限合同](../permissions/README.md)。请求容器支持 clarification/permission，但草稿回答仅适用于 clarification，GUI 授权只能经独立入口处理；澄清三次上限不变，资料读取申请最多32次、Provider代码执行批准申请最多6次，三类计数独立。下述写审批仍未实现。
 
 ### 对话显示约定
 

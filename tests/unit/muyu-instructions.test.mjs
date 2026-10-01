@@ -7,6 +7,29 @@ import { startMuyuRun } from '../../muyu/composition.js';
 import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { identity, registry, toolId, scriptedModel, request, call, text, done, createClock } from './helpers/muyu-subject.mjs';
 
+test('Unified assistant distinguishes chat bodies from static knowledge and describes reusable source grants', () => {
+    const task = composeInstructions('assistant').task;
+    assert.match(task, /承接最近明确的读取对象/);
+    assert.match(task, /recentMessages或chatHistory/);
+    assert.match(task, /不能代替聊天正文/);
+    assert.match(task, /不要说无法申请/);
+    assert.match(task, /不是每次只允许一次读取/);
+    assert.match(task, /沿readHint.nextRead继续同一来源/);
+    assert.match(task, /offset是UTF-16字符偏移，不是字节数/);
+    assert.match(task, /预算拒绝后停止/);
+    assert.match(task, /新任务需重新读取目录核验/);
+    assert.match(task, /continuationToken:continuation.token/);
+    assert.match(task, /token不授予权限/);
+});
+
+test('Long answers use readable Markdown without forcing headings onto short replies', () => {
+    const base = composeInstructions('assistant').base;
+    assert.match(base, /标题前后留空行/);
+    assert.match(base, /每段只讲一个重点/);
+    assert.match(base, /字段名、字面值与占位符用行内代码/);
+    assert.match(base, /不为短回答强加标题或表格/);
+});
+
 test('Instruction config is closed and bounded; disabled text is retained locally but never composed', () => {
     for (const value of [{ enabled: 1, text: '' }, { enabled: true, text: 'x'.repeat(4001) }, { enabled: true, text: '', tools: ['*'] }]) assert.throws(() => validateInstructionConfig(value), /INVALID_INSTRUCTION_CONFIG/);
     const draft = validateInstructionDraft({ enabled: true, text: 'x'.repeat(4001) }); assert.equal(draft.text.length, 4001);
@@ -21,7 +44,8 @@ test('Receipt explanation has an independent task policy without Provider naviga
     assert.match(plain.task, /工具列表为空/);
     assert.equal(composeReceiptInstructions({ enabled: true, text: '简洁' }).preference, '简洁');
     assert.ok(Object.isFrozen(plain));
-    assert.match(plain.base, /简单追问用2–4句话/);
+    assert.match(plain.base, /简单事实通常只答1句/);
+    assert.doesNotMatch(plain.base, /hostObservation/);
     assert.match(plain.base, /已确认的事实直接说清/);
     const draft = composeInstructions('draft');
     assert.match(draft.task, /查看并应用/);

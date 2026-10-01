@@ -1,5 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+test('Coverage observations retain only bounded counts and safe recovery status', () => {
+    const p = createProcessStore(); p.create('r');
+    const coverage = { state: 'complete', total: 10, summarized: 2, raw: 8, omitted: 0, excluded: 0 };
+    const event = (seq, payload) => ({ runId: 'r', seq, type: 'run.context', payload });
+    p.event('r', event(1, { phase: 'history_coverage', status: 'fallback', coverage: { ...coverage, text: 'PRIVATE', fingerprint: 'PRIVATE' } }));
+    assert.deepEqual(p.snapshot('r').coverage, { ...coverage, status: 'fallback' });
+    p.event('r', event(2, { phase: 'history_coverage', status: 'PRIVATE', coverage }));
+    p.event('r', event(3, { phase: 'history_coverage', status: 'blocked', coverage: { ...coverage, total: 11 } }));
+    assert.equal(p.snapshot('r').coverage.status, 'fallback'); assert.doesNotMatch(JSON.stringify(p.snapshot('r')), /PRIVATE/);
+    p.lifecycle('r', 'cancelled'); p.event('r', event(4, { phase: 'history_coverage', status: 'summarized', coverage }));
+    assert.equal(p.snapshot('r').coverage.status, 'fallback');
+});
 import { createProcessStore } from '../../muyu/application/process-store.js';
 import { createApplication } from '../../muyu/application/service.js';
 import { startMuyuRun } from '../../muyu/composition.js';

@@ -1,13 +1,7 @@
 import { RUN_DEFAULTS, validateRunConfig } from '../core/budget.js';
+import { createBudgetConfigStore } from './budget-config.js';
 export function createRunConfigStore({ getSettings, saveSettings }) {
-    return {
-        read() { try { return validateRunConfig(getSettings().muyuRunConfig); } catch { return { ...RUN_DEFAULTS }; } },
-        async save(value) {
-            const next = validateRunConfig(value), settings = getSettings(), previous = settings.muyuRunConfig;
-            settings.muyuRunConfig = next;
-            try { await saveSettings(); }
-            catch { if (settings.muyuRunConfig === next) { if (previous === undefined) delete settings.muyuRunConfig; else settings.muyuRunConfig = previous; } throw Error('RUN_CONFIG_SAVE_FAILED'); }
-            return { ...next };
-        },
-    };
+    return createBudgetConfigStore({ getSettings, saveSettings, key: 'muyuRunConfig', versionKey: 'muyuRunBudgetVersion',
+        defaults: RUN_DEFAULTS, validate: validateRunConfig, errorCode: 'RUN_CONFIG_SAVE_FAILED',
+        legacy: value => value.modelCalls === 6 && value.toolCalls === 16 && value.timeMs === 120000 && value.maxTokens === 8192 && [24000, 1000000].includes(value.providerBytes) });
 }
