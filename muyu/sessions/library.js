@@ -175,6 +175,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
             // replacement and metadata headroom BEFORE committing the runtime queue item.
             const reserve = historyBytes(input) + MAX_MESSAGE_BYTES + 512 * 1024 + 65536;
             if (recoveries.has(id) || record.messages.length > HISTORY_LIMITS.messages - 2 || historyBytes(record) + reserve > HISTORY_LIMITS.recordBytes) throw Error('HISTORY_CAPACITY');
+            if (enabled) store?.assertCapacity?.(record, reserve, [...records.values()]);
         },
         async refresh() {
             await ready; if (loading || closed || !port) throw Error('NOT_READY');

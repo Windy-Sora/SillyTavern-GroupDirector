@@ -30,7 +30,12 @@ export function createProviderModule(host) {
             if (!saved || saved.id !== args.id || saved.revision !== args.revision || saved.target !== jsonKey(ctx.target)) throw Error('INVALID_REFERENCE');
             return { identity: args.resultId, length: 1, at: index => index === 0 ? { role: 'provider', content: saved.text } : undefined };
         }
-        if (args.revision || !['chatHistory', 'charMemory'].includes(args.id) || typeof host.providerPort?.searchSource !== 'function') throw Error('INVALID_SELECTOR');
+        if (!['chatHistory', 'charMemory'].includes(args.id) || typeof host.providerPort?.searchSource !== 'function' || args.id === 'chatHistory' && args.revision) throw Error('INVALID_SELECTOR');
+        if (args.id === 'charMemory') {
+            if (!/^character:(0|[1-9]\d{0,2})$/.test(args.selector || '')) throw Error('INVALID_SELECTOR');
+            const directory = run.sources.get('charMemory:');
+            if (!args.revision || !directory || directory.revision !== args.revision || directory.evidence !== JSON.stringify(host.providerPort.read('charMemory', ''))) throw Error('STALE_SOURCE');
+        }
         return host.providerPort.searchSource(args.id, args.selector || '');
     } });
     registry.seal();

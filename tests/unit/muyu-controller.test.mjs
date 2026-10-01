@@ -18,6 +18,7 @@ import { createTaskBundleDraftPort } from '../../muyu/host/task-bundle-draft.js'
 import { createTaskBundleWriter } from '../../muyu/host/task-bundle-write.js';
 import { createProfileWriter } from '../../muyu/host/profile-write.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
+import { openSettingsHistoryStore } from '../../muyu/sessions/settings-store.js';
 import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subject.mjs';
 
 const tool = (toolId, args = {}, callId = 'c1') => ({ type: 'tool_call_complete', call: { toolId, callId, version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
@@ -1198,6 +1199,22 @@ test('Near-full summarized archive rejects a large question before queue/model c
     assert.equal(f.controller.snapshot().input, input);
     assert.equal(JSON.parse(f.controller.exportHistory()).messages.length, 32);
     await f.controller.dispose();
+});
+
+test('Account archive rejects an unsavable question before model calls and preserves the composer', async () => {
+    const settings = {}, store = openSettingsHistoryStore({ namespace: crypto.randomUUID(), getSettings: () => settings, saveSettings: async () => {} });
+    const f = fixture([[text('must not run'), done]], { history: { enabled: () => true, open: async () => store, setEnabled: async () => {} } });
+    try {
+        await f.controller.ready;
+        const record = { version: 7, id: crypto.randomUUID(), revision: 0, scope: historyScope('assistant', f.host.currentTarget()), title: 'account fixture', createdAt: 1, updatedAt: 1,
+            messages: Array.from({ length: 8 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', runId: String(i >> 1), content: 'x'.repeat(1024 * 1024 - 1000) })),
+            required: [], status: 'succeeded', archived: false, imported: false, receipts: [], scopeChanges: [], contextSummary: null };
+        await store.create(record); await f.controller.refreshHistory(); await f.enable(); f.controller.setMode('assistant'); await f.controller.openSession(record.id);
+        const input = 'question ' + '中'.repeat(20000); f.controller.setInput(input);
+        assert.throws(() => f.controller.send(), /HISTORY_CAPACITY/); await settle();
+        assert.equal(f.model.requests.length, 0); assert.equal(f.controller.snapshot().runs.length, 0); assert.equal(f.controller.snapshot().input, input);
+        assert.equal(JSON.parse(f.controller.exportHistory()).messages.length, 8); assert.equal((await store.read(record.id)).messages.length, 8);
+    } finally { await f.controller.dispose(); }
 });
 
 test('Unexpected capacity failure during final capture is visible, exportable and does not break disposal', async () => {

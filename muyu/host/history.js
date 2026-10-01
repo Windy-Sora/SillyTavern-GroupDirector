@@ -75,6 +75,7 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
             return {
                 kind: store.kind || 'browser',
                 get migration() { return migration && { ...migration }; },
+                ...(store.assertCapacity ? { assertCapacity: (...args) => store.assertCapacity(...args) } : {}),
                 async retryMigration() { await check(); await migrate(); await check(); },
                 async list() { await check(); const value = await store.list(); await check(); return value; },
                 async read(id) { await check(); const value = await store.read(id); await check(); return value; },

@@ -157,3 +157,6 @@ Agent → ToolBroker → modules/providers → host/providers → 既有业务�
 8. 问“开场前十条说了什么”，检查读取范围和来源；对未加载的其他聊天、未返回的卡片字段应说明缺少资料，不猜测。
 
 Node 测试不代替真实模型质量、浏览器布局和宿主保存验收。
+# 角色记忆检索版本绑定（2026-10-01）
+
+`muyu.provider.search` 的 `charMemory` 路径必须先用 `muyu.provider.read({id:'charMemory'})` 获取目录，然后携带该目录的 `revision` 和 `character:N`。后续 cursor 搜索和 match 回读沿用同一 revision。缺版本或目录身份变化返回 `STALE_SOURCE`，须重读目录并重新选择角色；不能沿用旧数字序号或换来源绕行。正文修改仍由命中引用的指纹检测。chatHistory 原生搜索与缓存 Provider 结果的版本契约不变。

@@ -28,6 +28,26 @@ function moduleFor(f, question = '记住：简洁回答', budget = 50000) {
     return { module, ctx, call: (id, args) => module.handlers['muyu.notes.' + id](args, ctx) };
 }
 
+test('Account notes require affirmative scope, never quoted keywords, negation or conflicting corrections', async () => {
+    for (const question of ['记住：中文回答，仅当前聊天，不要全局保存', '记住：中文回答，仅当前聊天',
+        '记住：中文回答，不要全局保存', '记住：「account」这个词',
+        '全局记住：中文回答，但只用于当前聊天', '记住：不要全局，改成全局保存中文回答',
+        'globally remember: Chinese, not for all chats']) {
+        const f = fixture(); f.settings.muyuAgentMemoryEnabled = true;
+        const quote = question.includes('中文回答') ? '中文回答' : question.includes('account') ? 'account' : 'Chinese';
+        assert.equal((await moduleFor(f, question).call('remember', { quote, scope: 'account' })).status, 'invalid_intent', question);
+        assert.deepEqual(await f.port.list(a), []);
+    }
+    for (const question of ['全局记住：中文回答', '请在所有聊天记住：中文回答', 'globally remember: 中文回答', 'for all chats remember: 中文回答']) {
+        const f = fixture(); f.settings.muyuAgentMemoryEnabled = true;
+        assert.equal((await moduleFor(f, question).call('remember', { quote: '中文回答', scope: 'account' })).status, 'saved', question);
+        f.switch(b); assert.equal((await f.port.list(b))[0].scope, 'account');
+    }
+    const f = fixture(); f.settings.muyuAgentMemoryEnabled = true;
+    assert.equal((await moduleFor(f, '记住：中文回答，仅当前聊天，不要全局保存').call('remember', { quote: '中文回答', scope: 'chat' })).status, 'saved');
+    f.switch(b); assert.deepEqual(await f.port.list(b), []);
+});
+
 test('Assistant notes persist independently, are copied, scoped and readable after host reconstruction', async () => {
     const f = fixture(); const local = await f.port.save(input(), { target: a });
     const global = await f.port.save(input('偏好中文', 'account'), { target: a });

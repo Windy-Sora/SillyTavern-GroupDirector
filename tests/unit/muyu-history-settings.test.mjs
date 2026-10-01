@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { openSettingsHistoryStore, SETTINGS_HISTORY_LIMITS } from '../../muyu/sessions/settings-store.js';
 import { createHistoryPort } from '../../muyu/host/history.js';
 import { historyScope } from '../../muyu/sessions/contract.js';
+import { createSessionLibrary } from '../../muyu/sessions/library.js';
 import { createConfigProfileSubject } from './helpers/config-profile-subject.mjs';
 import { sanitizeImportedSettings } from '../../systems/config-profile-validation.js';
 import { deferred } from './helpers/muyu-subject.mjs';
@@ -13,6 +14,45 @@ function fixture(save = async () => {}) {
     const settings = { other: 'untouched' };
     return { settings, store: openSettingsHistoryStore({ namespace, getSettings: () => settings, saveSettings: save }) };
 }
+
+test('Account history admission rejects known overflow before send, retaining input and saved history', async () => {
+    const f = fixture(), library = createSessionLibrary({ port: { enabled: () => true, open: async () => f.store } });
+    await library.ready;
+    const id = library.create(record().scope), messages = Array.from({ length: 8 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: 'x'.repeat(1024 * 1024 - 1000), runId: String(i >> 1) }));
+    library.update(id, { messages, status: 'idle' }); await library.flush();
+    const before = await f.store.read(id), draft = '中'.repeat(20000); let modelCalls = 0;
+    const send = () => { library.assertRoom(id, draft); modelCalls++; };
+    assert.throws(send, /HISTORY_CAPACITY/); assert.equal(modelCalls, 0); assert.equal(draft.length, 20000);
+    assert.deepEqual(await f.store.read(id), before); assert.equal(library.get(id).messages.length, 8);
+    await library.retry(); assert.throws(send, /HISTORY_CAPACITY/);
+    await library.close();
+});
+
+test('Account admission enforces total capacity including unloaded and unsaved conversations', async () => {
+    const f = fixture(), rows = [];
+    for (let i = 0; i < 4; i++) {
+        const row = record(); row.messages = Array.from({ length: 7 }, (_, n) => ({ role: 'user', content: 'x'.repeat(1024 * 1024 - 1000), runId: String(n) }));
+        rows.push(await f.store.create(row));
+    }
+    const library = createSessionLibrary({ port: { enabled: () => true, open: async () => f.store } }); await library.ready;
+    await library.load(rows[0].id);
+    assert.throws(() => library.assertRoom(rows[0].id, 'x'.repeat(1024 * 1024)), /HISTORY_CAPACITY/);
+    const small = record(); f.store.assertCapacity(small, 1024, []);
+    const working = record(); working.messages = Array.from({ length: 5 }, (_, n) => ({ role: 'user', content: 'y'.repeat(1024 * 1024 - 1000), runId: String(n) }));
+    assert.throws(() => f.store.assertCapacity(small, 1024, [working]), /HISTORY_CAPACITY/);
+    assert.equal((await f.store.list()).length, 4); await library.close();
+});
+
+test('History host wrapper preserves backend admission; selection only changes on reopening', async () => {
+    const settings = { muyuHistoryEnabled: true, muyuHistoryAccountStorage: true };
+    const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {},
+        openServer: async () => null, openStore: async () => ({ kind: 'browser', list: async () => [], close() {} }) });
+    const account = await port.open(); assert.equal(typeof account.assertCapacity, 'function');
+    assert.throws(() => account.assertCapacity(record(), SETTINGS_HISTORY_LIMITS.recordBytes), /HISTORY_CAPACITY/);
+    await port.setAccountStorage(false); assert.equal(typeof account.assertCapacity, 'function');
+    const browser = await port.open(); assert.equal(browser.assertCapacity, undefined);
+    account.close(); browser.close();
+});
 
 test('Account settings history persists and restores independent conversation DTOs', async () => {
     const f = fixture(); const saved = await f.store.create(record());

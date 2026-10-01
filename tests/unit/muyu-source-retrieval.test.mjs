@@ -77,7 +77,8 @@ test('Match references reject edits, appends, wrong source, run, target, forgott
 });
 
 test('Memory search returns only selected-role events and rejects identity changes', () => {
-    const f = fixture(), args = { id: 'charMemory', selector: 'character:0' }, result = f.search(args);
+    const f = fixture(), directory = f.call('muyu.provider.read', { id: 'charMemory' });
+    const args = { id: 'charMemory', selector: 'character:0', revision: directory.revision }, result = f.search(args);
     assert.equal(result.items.length, 1); assert.match(result.items[0].text, /任务奖励/);
     assert.doesNotMatch(JSON.stringify(result), /a\.png|去了北方/);
     assert.match(f.read(result.items[0].matchToken, args).text, /金币来自任务奖励/);
@@ -85,6 +86,29 @@ test('Memory search returns only selected-role events and rejects identity chang
     f.ctx.chatMetadata.gd.charMemories = { 'b.png': [{ event: '金币来自任务奖励', mood: 'happy' }] };
     assert.equal(f.read(old, args).status, 'STALE_SOURCE');
     assert.equal(f.search({ id: 'charMemory', selector: '' }).status, 'INVALID_SELECTOR');
+});
+
+test('Memory first search requires a live directory revision across reorder, deletion and replacement', () => {
+    for (const change of ['reorder', 'delete', 'replace']) {
+        const f = fixture();
+        const alice = f.ctx.chatMetadata.gd.charMemories['a.png'];
+        const bob = [{ event: '金币来自Bob', mood: '' }];
+        f.ctx.characters.push({ avatar: 'b.png', name: 'Bob' });
+        f.ctx.chatMetadata.gd.charMemories = { 'b.png': bob, 'a.png': alice };
+        const directory = f.call('muyu.provider.read', { id: 'charMemory' });
+        const args = { id: 'charMemory', selector: 'character:1', revision: directory.revision };
+        assert.equal(f.search({ ...args, revision: '' }).status, 'STALE_SOURCE');
+        if (change === 'reorder') f.ctx.chatMetadata.gd.charMemories = { 'a.png': alice, 'b.png': bob };
+        if (change === 'delete') f.ctx.chatMetadata.gd.charMemories = { 'a.png': alice };
+        if (change === 'replace') f.ctx.chatMetadata.gd.charMemories = { 'b.png': bob, 'c.png': bob };
+        assert.equal(f.search(args).status, 'STALE_SOURCE');
+        const fresh = f.call('muyu.provider.read', { id: 'charMemory' });
+        const freshArgs = { id: 'charMemory', selector: 'character:0', revision: fresh.revision };
+        const found = f.search(freshArgs); assert.equal(found.status, 'ok');
+        assert.equal(f.read(found.items[0].matchToken, freshArgs).status, 'ok');
+        f.ctx.chatMetadata.gd.charMemories = {};
+        assert.equal(f.read(found.items[0].matchToken, freshArgs).status, 'STALE_SOURCE');
+    }
 });
 
 test('Existing Provider result is searched and reread without rendering again or requiring a live registration', async () => {

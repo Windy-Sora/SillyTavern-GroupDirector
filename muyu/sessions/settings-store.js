@@ -51,6 +51,15 @@ export function openSettingsHistoryStore({ namespace, getSettings, saveSettings 
     }
     return {
         kind: 'account-settings',
+        assertCapacity(record, reserve, working = []) {
+            const data = readData(), sizes = new Map(data.records.map(row => [row.id, historyBytes(row)]));
+            for (const row of working) sizes.set(row.id, Math.max(sizes.get(row.id) || 0, historyBytes(row)));
+            const projected = Math.max(sizes.get(record.id) || 0, historyBytes(record)) + reserve;
+            if (projected > SETTINGS_HISTORY_LIMITS.recordBytes) throw Error('HISTORY_CAPACITY');
+            sizes.set(record.id, projected);
+            const envelope = historyBytes({ version: 1, namespace, records: [] });
+            if (sizes.size > HISTORY_LIMITS.sessions || envelope + Math.max(0, sizes.size - 1) + [...sizes.values()].reduce((sum, size) => sum + size, 0) > SETTINGS_HISTORY_LIMITS.totalBytes) throw Error('HISTORY_CAPACITY');
+        },
         async list() { return (await settledData()).records.map(summarizeRecord); },
         async read(id) { return (await settledData()).records.find(r => r.id === id) || null; },
         write(value, expectedRevision) {
