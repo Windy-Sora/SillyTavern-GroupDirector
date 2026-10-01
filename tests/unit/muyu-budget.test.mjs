@@ -15,7 +15,7 @@ function run(steps, extra = {}) {
 }
 
 test('Run config validates closed bounds and confirmed persistence rollback', async () => {
-    for (const patch of [{ modelCalls: 1 }, { toolCalls: 65 }, { timeMs: 120001 }, { maxTokens: 0 }, { providerBytes: 16777217 }, { extra: 1 }, { modelCalls: '6' }]) assert.throws(() => validateRunConfig({ ...RUN_DEFAULTS, ...patch }), /INVALID_RUN_CONFIG/);
+    for (const patch of [{ modelCalls: 1 }, { toolCalls: 65 }, { timeMs: 1800001 }, { maxTokens: 0 }, { providerBytes: 16777217 }, { extra: 1 }, { modelCalls: '6' }]) assert.throws(() => validateRunConfig({ ...RUN_DEFAULTS, ...patch }), /INVALID_RUN_CONFIG/);
     const settings = {}; let reject = false;
     const store = createRunConfigStore({ getSettings: () => settings, saveSettings: async () => { if (reject) throw Error('PRIVATE'); } });
     assert.deepEqual(store.read(), RUN_DEFAULTS); await store.save({ ...RUN_DEFAULTS, modelCalls: 10 }); reject = true;

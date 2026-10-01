@@ -101,7 +101,7 @@ model.run(request,{signal})须同步返回AsyncIterable，规范化事件仅支�
 
 onEvent收到隔离副本：eventId/sessionId/taskId/runId/seq/type/at/payload。支持run.started、model.started/completed/failed、model.delta、tool.requested/started/reused/completed/failed、run.finished；监听器异常不终止执行。tool.requested不代表权限通过，tool.started表示确实调用handler，tool.reused表示未重复执行。原始内部事件不直接提供给界面，应用层另做安全投影。
 
-默认模型6次、工具16次、参数错误后最多2次修正机会、活跃总时限120秒；硬上限分别16/64/2/120秒。clock须提供now/setTimeout/clearTimeout，测试时钟完全手动推进。单工具按定义timeoutMs（最多15秒），同时受总Run取消约束。工具超时返回模型可读失败；总时限终止Run。启用真实连接后的请求可能计费，不把调用计数当Token用量。
+默认模型12次、工具48次、参数错误后最多2次修正机会、活跃总时限300秒；硬上限分别16/64/2/1800秒。单轮与压缩时间均可配置10–1800秒，压缩默认300秒且受整轮剩余预算约束。clock须提供now/setTimeout/clearTimeout，测试时钟完全手动推进。单工具按定义timeoutMs（最多15秒），同时受总Run取消约束。工具超时返回模型可读失败；总时限终止Run。启用真实连接后的请求可能计费，不把调用计数当Token用量。
 
 取消前不启动工作；取消中不启动后续工具，迟到返回不可覆盖终态。非合作任务只能逻辑隔离，无法抢占同步CPU或撤销工具自身外部副作用。非合作迭代器的return()只尽力调用，不能保证已退出；Promise拒绝被收集以防未处理异常。异常正文、供应商错误、堆栈不发送给模型，仅公开有限错误码。
 

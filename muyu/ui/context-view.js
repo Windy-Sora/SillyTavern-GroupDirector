@@ -1,4 +1,4 @@
-import { CONTEXT_DEFAULTS, MAX_MANUAL_INPUT_TOKENS } from '../context/policy.js';
+import { CONTEXT_DEFAULTS, MAX_MANUAL_INPUT_TOKENS, SUMMARY_TIME_RANGE } from '../context/policy.js';
 import { formatBudget } from './budget-view.js';
 import { permissionTitle } from '../permissions/contract.js';
 
@@ -21,11 +21,13 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     const turns = field(t('整理时保留近期问答的参考值', 'Recent-turn reference for summarization'), 'number', config); turns.min = 1; turns.max = 24; turns.step = 1;
     node('small', t('长对话按输入预算的 10% 保留近期原文，按完整问答向前扩展，不固定两轮。全部原文已能放入该额度的短对话，才使用上方轮数参考值；至少留一轮作为整理候选。仅请求体保护模式按 8 MiB 上限计算。保留额度不足时可整轮摘要，不截断问答；原始记录不删除。', 'Long conversations retain a contiguous recent raw suffix within 10% of the input budget, on whole-turn boundaries, not a two-turn cap. The turn reference above applies only to short histories that entirely fit this allowance; at least one turn remains a summary candidate. Transport-only mode uses the 8 MiB ceiling. A turn exceeding the allowance may be summarized whole, never truncated; originals are not deleted.'), config);
     const summaryTokens = field(t('摘要输出预算（Token）', 'Summary output budget (tokens)'), 'number', config); summaryTokens.min = 1024; summaryTokens.max = 32768; summaryTokens.step = 1;
-    node('small', t('默认 8192，上限仍受单次模型输出预算限制。手动整理使用此预算；自动整理先用最多 8192，截断且预算允许时最多重试一次，使用配置上限。摘要保留目标、关键事实、操作结果与待办；不固定字符数，不删除原文。更大预算可能增加费用。', 'Defaults to 8192, capped by the per-call model output budget. Manual summarization uses this budget; automatic summarization starts at up to 8192 and may retry once at the configured ceiling after truncation if budget permits. Preserves goals, facts, outcomes and pending work, without a fixed character target or deleting originals. Larger budgets may cost more.'), config);
+    const summaryTime = field(t('压缩时间预算（秒）', 'Summarization timeout (seconds)'), 'number', config); summaryTime.min = SUMMARY_TIME_RANGE[0] / 1000; summaryTime.max = SUMMARY_TIME_RANGE[1] / 1000; summaryTime.step = 1;
+    node('small', t('默认300秒，可配置10–1800秒；同时受单轮超时限制。自动整理给后续回答保留10秒；截断重试共用此时间预算。保存后下一轮生效，不延长正在执行的任务。', 'Default: 300 seconds; configurable from 10–1800 seconds, also bounded by the run timeout. Auto-summarization reserves 10 seconds for the answer; truncation retry shares this deadline. Changes apply next run, never extend an active task.'), config);
+    node('small', t('默认 16384，上限仍受单次模型输出预算限制，已保存的自定义值保留。手动整理使用此预算；自动整理先用最多 16384，截断且可提高额度、预算允许时最多重试一次。DeepSeek 摘要调用关闭思考，正常对话的思考配置不变；其他兼容接口不额外发送专有思考参数。摘要不固定字符数、不删除原文，更大预算可能增加费用。', 'Defaults to 16384, capped by the per-call model output budget; saved custom values are preserved. Manual summarization uses this budget; automatic summarization starts at up to 16384 and may retry once after truncation if the ceiling can increase and budget permits. DeepSeek summaries disable thinking without changing normal conversation settings; generic endpoints receive no proprietary thinking fields. No fixed character target or original deletion. Larger budgets may cost more.'), config);
     const auto = field(t('发送时自动整理较早历史（额外模型调用，默认关闭）', 'Auto-summarize on send (extra model call, off by default)'), 'checkbox', config);
     node('small', t('旧历史未覆盖，或完整请求达到输入／请求体预算的 80% 时，在新任务首次请求前尝试整理。每次最多整理一段，计入本轮调用和时间预算；不整理在途工具轨迹。连续三轮失败暂停自动整理，原文保留；百分比不是实际模型窗口。', 'Before a new task’s first request, summarize uncovered history or when the complete request reaches 80% of the input/transport budget. At most one prefix, within the same call/time budget; never compacts live tools. Three failed operations pause automatic summarization; originals remain. This is not the actual model window.'), config);
     const save = button(t('保存上下文设置', 'Save context settings'), config);
-    save.onclick = () => act(() => controller.saveContextConfig({ inputTokens: autoBudget.checked ? null : Number(tokens.value), recentTurns: Number(turns.value), autoSummary: auto.checked, historyAuthorization: historyPolicy.value, summaryTokens: Number(summaryTokens.value) }));
+    save.onclick = () => act(() => controller.saveContextConfig({ inputTokens: autoBudget.checked ? null : Number(tokens.value), recentTurns: Number(turns.value), autoSummary: auto.checked, historyAuthorization: historyPolicy.value, summaryTokens: Number(summaryTokens.value), summaryTimeMs: Number(summaryTime.value) * 1000 }));
     const reset = button(t('恢复默认上下文预算并保存', 'Restore and save default context budget'), config);
     reset.onclick = () => act(() => controller.saveContextConfig({ ...CONTEXT_DEFAULTS, historyAuthorization: savedHistoryPolicy }));
     const details = node('details', '', parent); details.className = 'gd-muyu-context'; node('summary', t('上下文', 'Context'), details);
@@ -40,7 +42,9 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     omit.onchange = () => act(() => controller.setOmitHistory(omit.checked));
     const preview = node('details', '', details); node('summary', t('查看历史摘要', 'View history summary'), preview); const summary = node('p', '', preview);
     const compact = button(t('立即整理历史', 'Summarize history now'), details), clear = button(t('清除摘要', 'Clear summary'), details), confirm = button(t('确认调用模型整理', 'Confirm model summarization'), details), cancel = button(t('取消整理', 'Cancel summarization'), details);
-    node('small', t('整理会将本会话较早的问答发送到当前模型；只生成参考摘要，不删除原文。手动整理最多一次调用、30秒，不恢复工具或权限。', 'Summarizing sends older conversation turns to the current model. It creates a reference summary without deleting originals. Manual operation uses at most one call/30 seconds, never restores tools or permissions.'), details);
+    const scopeNote = node('small', '', details);
+    scopeNote.textContent = t('已切换酒馆聊天：请回到此会话原聊天整理，或发送新消息后再整理。不会为不匹配的聊天调用模型。', 'ST chat changed: return to this conversation’s original chat to summarize, or send a new message first. No model call is made for a mismatched chat.');
+    node('small', t('整理会将本会话较早的问答发送到当前模型；只生成参考摘要，不删除原文。手动整理最多一次调用，遵守配置的压缩与单轮时间预算，不恢复工具或权限。', 'Summarizing sends older conversation turns to the current model. It creates a reference summary without deleting originals. Manual operation uses at most one call within configured summarization/run deadlines, never restores tools or permissions.'), details);
     confirm.hidden = cancel.hidden = true;
     compact.onclick = () => { confirm.hidden = cancel.hidden = false; };
     cancel.onclick = () => { confirm.hidden = cancel.hidden = true; };
@@ -50,15 +54,16 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     return { render(s) {
         const c = s.contextConfig || CONTEXT_DEFAULTS, key = JSON.stringify(c), ctx = s.context || {};
         savedHistoryPolicy = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization;
-        if (key !== configKey) { historyPolicy.value = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization; autoBudget.checked = c.inputTokens === null; tokens.value = String(c.inputTokens ?? CONTEXT_DEFAULTS.inputTokens); tokens.disabled = autoBudget.checked; turns.value = String(c.recentTurns); summaryTokens.value = String(c.summaryTokens ?? CONTEXT_DEFAULTS.summaryTokens); auto.checked = c.autoSummary; configKey = key; }
+        if (key !== configKey) { historyPolicy.value = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization; autoBudget.checked = c.inputTokens === null; tokens.value = String(c.inputTokens ?? CONTEXT_DEFAULTS.inputTokens); tokens.disabled = autoBudget.checked; turns.value = String(c.recentTurns); summaryTokens.value = String(c.summaryTokens ?? CONTEXT_DEFAULTS.summaryTokens); summaryTime.value = String((c.summaryTimeMs ?? CONTEXT_DEFAULTS.summaryTimeMs) / 1000); auto.checked = c.autoSummary; configKey = key; }
         save.disabled = !!s.savingContextConfig || s.resetting;
         breakerNote.hidden = retryAuto.hidden = !s.autoCompaction?.blocked;
         breakerNote.textContent = t('自动整理连续失败三轮，已暂停重复调用。原文与旧摘要保留；可手动整理、调整预算，或明确重新允许自动整理。', 'Automatic summarization failed in three consecutive operations and is paused. Originals and the existing summary remain. Summarize manually, adjust budgets or explicitly resume.');
         retryAuto.disabled = s.busy || s.resetting || s.readOnly;
         reset.disabled = save.disabled;
-        if (view !== s.viewToken || s.busy || s.resetting) { confirm.hidden = cancel.hidden = true; view = s.viewToken; }
+        if (view !== s.viewToken || s.busy || s.resetting || s.switchedChat) { confirm.hidden = cancel.hidden = true; view = s.viewToken; }
         compact.disabled = clear.disabled = !s.history?.sessionId || s.readOnly || s.busy || s.resetting;
-        compact.disabled ||= !s.enabled; clear.disabled ||= !ctx.summary;
+        compact.disabled ||= !s.enabled || s.switchedChat; clear.disabled ||= !ctx.summary;
+        scopeNote.hidden = !s.switchedChat;
         omit.disabled = s.readOnly || s.busy || s.resetting; omit.checked = !!ctx.omitHistory;
         counts.textContent = `${t('计划携带完整问答', 'Planned complete turns')}: ${ctx.turns || 0} · ${t('未覆盖消息', 'Uncovered messages')}: ${ctx.omitted || 0}\n${t('历史部分估算', 'History estimate')}: ${ctx.estimatedTokens || 0} tokens · ${t('摘要', 'Summary')}: ${ctx.summaryStale ? t('来源变化，不使用', 'Stale; not used') : ctx.summaryUsed ? t('使用中', 'In use') : t('未使用', 'Not used')}`;
         if (ctx.omitted > 0) counts.textContent += `\n${t('部分原文未纳入计划；摘要不保证包含每个细节，需要时核对原文。', 'Some original history is not planned; a summary may omit details. Check the original when needed.')}`;

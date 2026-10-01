@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { createHistoryPort } from '../../muyu/host/history.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
+import { createSessionLibrary } from '../../muyu/sessions/library.js';
 import { openServerHistoryStore } from '../../muyu/sessions/server-store.js';
 import { validateRecord } from '../../muyu/sessions/contract.js';
 import { fingerprint } from '../../muyu/context/planner.js';
@@ -14,6 +15,34 @@ const require = createRequire(import.meta.url);
 const { createFileStore, init } = require('../../muyu/server-plugin/index.cjs');
 const scope = JSON.stringify(['assistant', 'chat', 'A']);
 const record = () => validateRecord({ version: 5, id: crypto.randomUUID(), revision: 0, scope, title: 'Hello', createdAt: 1, updatedAt: 1, messages: [{ role: 'user', content: 'Hello', runId: 'r' }], required: [], status: 'succeeded', archived: false, imported: false, contextSummary: null, receipts: [] });
+
+test('Full server history remains manageable while browser migration waits; refresh retries after deletion', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-migration-full-'));
+    const browser = createMemoryHistoryStore(); const old = record(); await browser.create(old);
+    const server = { ...createFileStore(root), close() {} }, ids = [];
+    let library;
+    try {
+        for (let i = 0; i < 64; i++) ids.push((await server.create(record())).id);
+        const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({ muyuHistoryEnabled: true }), saveSettings: async () => {}, openStore: async () => browser, openServer: async () => server });
+        library = createSessionLibrary({ port }); await library.ready;
+        const s = library.snapshot(scope); assert.equal(s.enabled, true); assert.equal(s.error, null);
+        assert.equal(s.sessions.length, 64); assert.deepEqual(s.migration, { pending: 1, reason: 'HISTORY_CAPACITY' });
+        await library.load(ids[0]); assert.match(library.export(ids[0]), /Hello/);
+        await library.refresh(); assert.equal(library.snapshot(scope).migration.pending, 1);
+        assert.ok(await browser.read(old.id)); assert.equal(await server.read(old.id), null);
+        await library.remove(ids[0]); await library.refresh();
+        assert.equal(library.snapshot(scope).migration, null); assert.equal(library.snapshot(scope).sessions.length, 64);
+        assert.ok(await server.read(old.id)); assert.ok(await browser.read(old.id));
+    } finally { await library?.close(); await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('Optional migration capacity fallback does not mask storage or account errors', async () => {
+    const browser = createMemoryHistoryStore(); await browser.create(record());
+    let closed = 0;
+    const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({}), saveSettings: async () => {}, openStore: async () => browser,
+        openServer: async () => ({ list: async () => [], create: async () => { throw Error('HISTORY_SAVE_FAILED'); }, close() { closed++; } }) });
+    await assert.rejects(port.open(), /HISTORY_SAVE_FAILED/); assert.equal(closed, 1);
+});
 
 test('Private file store agrees with the large-context archive contract', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-large-store-'));

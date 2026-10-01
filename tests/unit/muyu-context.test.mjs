@@ -13,6 +13,7 @@ import { createContextConfigStore } from '../../muyu/host/context-config.js';
 import { validateRecord, summarizeRecord } from '../../muyu/sessions/contract.js';
 import { startMuyuRun } from '../../muyu/composition.js';
 import { createProcessStore } from '../../muyu/application/process-store.js';
+import { composeInstructions } from '../../muyu/instructions/compose.js';
 import { createSessionLibrary } from '../../muyu/sessions/library.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { importedRecord, parseHistoryImport, exportHistoryRecord } from '../../muyu/sessions/exchange.js';
@@ -107,7 +108,7 @@ test('Transport-only retention is byte-bounded and a giant oldest turn cannot be
 
 test('History transport defaults to automatic, upgrades old settings and persists approval independently', async () => {
     const legacy = { inputTokens: 64000, recentTurns: 5, autoSummary: false };
-    assert.deepEqual(validateContextConfig(legacy), { ...legacy, historyAuthorization: 'auto', summaryTokens: 8192 });
+    assert.deepEqual(validateContextConfig(legacy), { ...legacy, historyAuthorization: 'auto', summaryTokens: 16384, summaryTimeMs: 300000 });
     for (const value of ['invalid', null, true]) assert.throws(() => validateContextConfig({ ...legacy, historyAuthorization: value }));
     const settings = { muyuContextConfig: legacy }; let fail = false;
     const store = createContextConfigStore({ getSettings: () => settings, saveSettings: async () => { if (fail) throw Error('save failed'); } });
@@ -300,9 +301,10 @@ test('Truncated automatic summary retries once with a fresh context and reserves
         if (requests.length === 1) throw new ExecutionError('MODEL_OUTPUT_TRUNCATED');
         yield text(requests.length === 2 ? 'summary' : 'answer'); yield done;
     }, releaseContext: value => released.push(value) };
-    const s = run([], { model, compaction: candidate(), maxTokens: 16384, contextConfig: { ...config, summaryTokens: 16384 }, limits: { modelCalls: 3 } });
+    const s = run([], { model, compaction: candidate(), maxTokens: 32768, contextConfig: { ...config, summaryTokens: 32768 }, limits: { modelCalls: 3 } });
     assert.equal((await s.handle.completion).answer, 'answer'); await s.handle.drained;
-    assert.deepEqual(requests.map(r => r.maxTokens), [8192, 16384, 16384]);
+    assert.deepEqual(requests.map(r => r.maxTokens), [16384, 32768, 32768]);
+    assert.deepEqual(requests.map(r => r.reasoning), ['disabled', 'disabled', undefined]);
     assert.notEqual(contexts[0], contexts[1]); assert.ok(released.includes(contexts[0]));
     const process = createProcessStore(); process.create(identity.id); s.events.forEach(e => process.event(identity.id, e));
     assert.equal(process.snapshot(identity.id).summaryUsage.calls, 2);
@@ -371,11 +373,11 @@ test('Planner preserves complete recent turns, ignores orphans and never splits 
 });
 
 test('A long recent answer uses a large configured window or one whole-turn summary', () => {
-    const messages = [{ role: 'user', content: 'Draft a plan', runId: 'long' }, { role: 'assistant', content: '中'.repeat(9000), runId: 'long' }];
+    const messages = [{ role: 'user', content: 'Draft a plan', runId: 'long' }, { role: 'assistant', content: '中'.repeat(21000), runId: 'long' }];
     const large = { inputTokens: 128000, recentTurns: 12, autoSummary: false };
     assert.equal(planContext(messages, null, large).turns, 1);
     assert.equal(planContext(messages, null, large).omitted, 0);
-    const normal = { ...large, inputTokens: 15000, autoSummary: true };
+    const normal = { ...large, inputTokens: 34500, autoSummary: true };
     assert.equal(planContext(messages, null, normal).turns, 0);
     const candidate = summaryCandidate(messages, normal);
     assert.equal(candidate?.through, 2);
@@ -401,6 +403,28 @@ test('A summary request carries a whole long turn through bounded ordered segmen
     }
     assert.deepEqual(JSON.parse(compactionRequest({ messages: [{ role: 'user', content: '' }] }, setting.inputTokens).messages[1].content),
         { sourceIndex: 0, role: 'user', start: 0, end: 0, total: 0, text: '' });
+});
+
+test('Compaction and recovery keep task provenance distinct from suggestions and unknowns across a rolling summary', async () => {
+    const source = [summaryMessage('User task: compare venues. Optional suggestion: get phone. Unknown: payment.'),
+        { role: 'assistant', content: 'I could verify payment and get the phone number.' },
+        { role: 'user', content: 'Only compare venues; do not add verification tasks.' }];
+    const model = scriptedModel([[text('User unfinished work: compare venues. Suggestions: phone lookup, not accepted. Unknown: payment.'), done], [text('comparison'), done]]);
+    const handle = startMuyuRun({ identity, input: 'continue comparing venues', model, registry: registry(), allowedTools: [], contextConfig: config,
+        compaction: { through: 3, fingerprint: '1:2:3', messages: source, tail: [] }, instructions: composeInstructions('assistant') });
+    assert.equal((await handle.completion).error, null); await handle.drained;
+    const instruction = model.requests[0].messages[0].content;
+    assert.match(instruction, /NOT a planning turn/); assert.match(instruction, /explicitly requested or accepted/);
+    assert.match(instruction, /Optional assistant suggestions/); assert.match(instruction, /Unknown information and conditional blockers/);
+    assert.match(instruction, /Completed work does not become pending again/); assert.match(instruction, /short acceptance/);
+    assert.match(instruction, /Ongoing discussion topics/);
+    const segments = model.requests[0].messages.slice(1).map(m => JSON.parse(m.content));
+    assert.equal(segments[1].role, 'assistant'); assert.equal(segments[2].role, 'user');
+    assert.equal(segments[0].text, source[0].content, 'old reference stays a reference, not an original user request');
+    assert.match(model.requests[1].messages[0].content, /untrusted reference data/);
+    assert.match(model.requests[1].instructions.base, /不能把助手建议或未知事实说成用户此前交办的待办/);
+    assert.match(model.requests[1].instructions.base, /不必为每个普通步骤反复确认/);
+    assert.deepEqual(source[2], { role: 'user', content: 'Only compare venues; do not add verification tasks.' });
 });
 
 test('Original history tool is paged, bounded, stale-checked and guarded at each read', () => {
@@ -459,11 +483,34 @@ test('Summary failure falls back; insufficient call budget skips summary, never 
 
 test('Summary cancellation and timeout never launch a fallback while upstream is still draining', async () => {
     for (const cancelled of [true, false]) {
-        const gate = deferred(), saved = [], s = run([() => gate.promise], { compaction: candidate(), onSummary: v => saved.push(v) });
+        const gate = deferred(), saved = [], s = run([() => gate.promise], { contextConfig: { ...config, summaryTimeMs: 30000 }, compaction: candidate(), onSummary: v => saved.push(v) });
         await flush(); if (cancelled) s.handle.cancel(); else s.clock.advance(30000);
         await flush(); assert.equal((await s.handle.completion).error, cancelled ? 'CANCELLED' : 'TIMEOUT');
         let drained = false; s.handle.drained.then(() => { drained = true; }); await flush(); assert.equal(drained, false);
         gate.resolve([text('late'), done]); await s.handle.drained; assert.equal(s.model.requests.length, 1); assert.equal(saved.length, 0);
+    }
+});
+
+test('Manual and automatic summaries may exceed 30 seconds within the new default budgets', async () => {
+    for (const summaryOnly of [true, false]) {
+        const gate = deferred(), saved = [], s = run([() => gate.promise, [text('answer'), done]], { summaryOnly, compaction: candidate(), onSummary: v => saved.push(v) });
+        await flush(); s.clock.advance(45000); await flush();
+        assert.equal(s.handle.snapshot().status, 'running');
+        gate.resolve([text('summary'), done]); const result = await s.handle.completion; await s.handle.drained;
+        assert.equal(result.error, null); assert.equal(saved.length, 1); assert.equal(result.budget.timeLimitMs, 300000);
+        assert.equal(s.clock.pending, 0);
+    }
+});
+
+test('Summary timeout is validated, persisted, and bounded by remaining run time with answer reserve', async () => {
+    for (const summaryTimeMs of [9999, 1800001, 30000.5, '300000', null]) assert.throws(() => validateContextConfig({ ...config, summaryTimeMs }), /INVALID_CONTEXT_CONFIG/);
+    const settings = {}, store = createContextConfigStore({ getSettings: () => settings, saveSettings: async () => {} });
+    await store.save({ ...config, summaryTimeMs: 600000 }); assert.equal(store.read().summaryTimeMs, 600000);
+    for (const summaryOnly of [true, false]) {
+        const gate = deferred(), saved = [], s = run([() => gate.promise], { summaryOnly, compaction: candidate(), contextConfig: { ...config, summaryTimeMs: 600000 }, limits: { timeMs: 60000 }, onSummary: v => saved.push(v) });
+        await flush(); s.clock.advance(summaryOnly ? 60000 : 50000); await flush();
+        assert.equal((await s.handle.completion).error, 'TIMEOUT'); assert.equal(saved.length, 0);
+        gate.resolve([text('late summary'), done]); await s.handle.drained; assert.equal(saved.length, 0); assert.equal(s.clock.pending, 0);
     }
 });
 

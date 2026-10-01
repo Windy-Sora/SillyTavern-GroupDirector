@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createSessionLibrary } from '../../muyu/sessions/library.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { createHistoryPort } from '../../muyu/host/history.js';
-import { historyScope, validateRecord, selectHistory, HISTORY_LIMITS } from '../../muyu/sessions/contract.js';
+import { historyScope, validateRecord, selectHistory, HISTORY_LIMITS, historyBytes } from '../../muyu/sessions/contract.js';
 import { deferred } from './helpers/muyu-subject.mjs';
 import { DEFAULT_SETTINGS } from '../../settings.js';
 
@@ -14,6 +14,41 @@ function fixture(store = createMemoryHistoryStore(), initiallyEnabled = false) {
     return { store, port, library: createSessionLibrary({ port }) };
 }
 const pair = (runId = 'r', body = 'answer') => [{ role: 'user', content: 'question', runId }, { role: 'assistant', content: body, runId }];
+
+test('Archive admission reserves serialized input plus a maximum answer, not a fixed small turn', async () => {
+    const f = fixture(), id = f.library.create(scope);
+    const messages = Array.from({ length: 29 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', runId: String(i), content: 'x'.repeat(1024 * 1024 - 100) }));
+    f.library.update(id, { messages });
+    f.library.assertRoom(id, 'small');
+    assert.throws(() => f.library.assertRoom(id, '中'.repeat(350000)), /HISTORY_CAPACITY/);
+    assert.equal(f.library.get(id).messages.length, 29);
+    await f.library.close();
+});
+
+test('Overflow capture has a bounded exportable recovery without relaxing disk/import limits', async () => {
+    const f = fixture(undefined, true); await f.library.ready; const id = f.library.create(scope);
+    const messages = Array.from({ length: 32 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', runId: String(i), content: 'x'.repeat(1010000) }));
+    f.library.update(id, { messages, status: 'running' }); await f.library.flush();
+    const next = [...messages, ...pair('new', 'RECOVERY_MARKER' + 'y'.repeat(1500000))];
+    assert.ok(historyBytes({ ...f.library.get(id), messages: next }) > HISTORY_LIMITS.recordBytes);
+    assert.throws(() => f.library.update(id, { messages: next, status: 'succeeded' }), /HISTORY_CAPACITY/);
+    f.library.retainRecovery(id, next, 'succeeded');
+    assert.equal(f.library.snapshot(scope, id).error, 'HISTORY_CAPACITY');
+    assert.equal(f.library.snapshot(scope, id).dirty, true);
+    assert.equal(f.library.snapshot(scope, id).recovery, true);
+    const backup = JSON.parse(f.library.export(id));
+    assert.equal(backup.format, 'muyu-unsaved-recovery'); assert.equal(backup.status, 'succeeded');
+    assert.match(backup.messages.at(-1).content, /^RECOVERY_MARKER/);
+    assert.match(f.library.export(id, 'markdown'), /UNSAVED RECOVERY/);
+    assert.throws(() => f.library.import(f.library.export(id)), /HISTORY_CAPACITY/);
+    assert.throws(() => f.library.assertRoom(id), /HISTORY_CAPACITY/);
+    f.library.update(id, { contextSummary: null });
+    assert.equal(f.library.snapshot(scope, id).recovery, true, 'metadata/summary edits cannot discard an unsaved answer');
+    assert.match(f.library.recoveryMessages(id).at(-1).content, /^RECOVERY_MARKER/);
+    await f.library.retry(); assert.equal(f.library.snapshot(scope, id).error, 'HISTORY_CAPACITY');
+    assert.equal((await f.store.read(id)).messages.length, 32);
+    await f.library.close();
+});
 
 test('History defaults to temporary storage; opt-in saves and reload reads without runtime authority', async () => {
     const f = fixture(); await f.library.ready;

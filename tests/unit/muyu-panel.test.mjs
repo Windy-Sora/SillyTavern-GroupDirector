@@ -36,6 +36,21 @@ test('Permission request stays inside the transcript and disposes its card', () 
     assert.equal(parent.children.includes(card), false);
 });
 
+test('Switched chat disables compaction and explains how to resume; migration/recovery notices stay actionable', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); f.state.enabled = true;
+    f.state.history = { available: true, enabled: true, loading: false, pending: 0, error: null, sessionId: 'old', sessions: [], missingPermissions: [], migration: { pending: 1, reason: 'HISTORY_CAPACITY' } };
+    f.state.switchedChat = true; f.emit();
+    let calls = 0; f.controller.compactHistory = () => { calls++; };
+    const compact = f.find('button', 'Summarize history now'); assert.equal(compact.disabled, true);
+    await compact.click(); assert.equal(calls, 0);
+    assert.ok(f.all().some(e => !e.hidden && /original chat to summarize/.test(e.textContent)));
+    const status = f.all().find(e => e.tag === 'small' && e.attrs.role === 'status');
+    assert.match(status.textContent, /await migration/); assert.match(status.textContent, /refresh history to retry/);
+    f.state.switchedChat = false; f.state.history.recovery = true; f.state.history.error = 'HISTORY_CAPACITY'; f.emit();
+    assert.equal(compact.disabled, false); assert.match(status.textContent, /unsaved/); assert.match(status.textContent, /not an importable session/);
+    f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test(`Coverage UI distinguishes a blocked plan from the previous task and preserves input (${lang})`, () => {
     const f = fixture(lang, true, { initialMode: 'assistant' });
     f.state.input = 'unsent draft';
@@ -480,8 +495,12 @@ test('Context UI preserves settings drafts, requires summary confirmation and re
     let savedContext; f.controller.saveContextConfig = value => { savedContext = value; };
     await f.find('button', 'Save context settings').click(); assert.equal(savedContext.inputTokens, 64000);
     const summaryBudget = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Summary output budget (tokens)');
-    assert.equal(summaryBudget.value, '8192'); summaryBudget.value = '16384'; f.emit();
-    await f.find('button', 'Save context settings').click(); assert.equal(savedContext.summaryTokens, 16384);
+    assert.equal(summaryBudget.value, '16384'); summaryBudget.value = '32768'; f.emit();
+    await f.find('button', 'Save context settings').click(); assert.equal(savedContext.summaryTokens, 32768);
+    const summaryTime = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Summarization timeout (seconds)');
+    assert.equal(summaryTime.value, '300'); assert.equal(summaryTime.min, 10); assert.equal(summaryTime.max, 1800);
+    summaryTime.value = '600'; f.emit(); assert.equal(summaryTime.value, '600');
+    await f.find('button', 'Save context settings').click(); assert.equal(savedContext.summaryTimeMs, 600000);
     const historyPolicy = f.all().find(e => e.tag === 'select' && e.parent.textContent === 'Sending existing conversation history');
     assert.equal(historyPolicy.value, 'auto'); historyPolicy.value = 'ask'; f.emit(); assert.equal(historyPolicy.value, 'ask');
     await f.find('button', 'Save context settings').click(); assert.equal(savedContext.historyAuthorization, 'ask');
@@ -799,9 +818,9 @@ test('Execution budget controls save units and preserve edits across progress re
     const f = fixture('zh', true);
     const modelCalls = f.all().find(e => e.type === 'number' && e.parent.textContent === '模型调用次数');
     const timeout = f.all().find(e => e.type === 'number' && e.parent.textContent === '单轮超时（秒）');
-    assert.equal(modelCalls.value, '12'); assert.equal(timeout.value, '120');
+    assert.equal(modelCalls.value, '12'); assert.equal(timeout.value, '300'); assert.equal(timeout.max, 1800);
     modelCalls.value = '10'; timeout.value = '60'; f.emit(); assert.equal(modelCalls.value, '10');
     await f.find('button', '保存运行预算').click(); assert.equal(f.state.runConfig.modelCalls, 10); assert.equal(f.state.runConfig.timeMs, 60000);
-    await f.find('button', '恢复默认预算并保存').click(); assert.equal(modelCalls.value, '12'); assert.equal(timeout.value, '120');
+    await f.find('button', '恢复默认预算并保存').click(); assert.equal(modelCalls.value, '12'); assert.equal(timeout.value, '300');
     modelCalls.value = '1.5'; await f.find('button', '保存运行预算').click(); assert.equal(f.state.runConfig.modelCalls, 12);
 });

@@ -57,6 +57,37 @@ test('Final payload inspection includes tools and private thinking; local contex
     assert.equal(Object.hasOwn(s.requests[0].payload, 'inputTokenLimit'), false);
 });
 
+test('Tool-free summary reasoning override is local, counted in inspection, and never changes normal thinking replay', async () => {
+    const configured = { ...connection, profile: 'deepseek', thinking: true };
+    const s = subject([response('summary'), response('', [tc()], { reasoning_content: 'private thought' }), response('answer', [], { reasoning_content: 'final thought' })], { connection: configured });
+    const compact = { messages: [{ role: 'user', content: 'Summarize reference data' }], tools: [], reasoning: 'disabled', maxTokens: 16384 };
+    assert.equal(s.model.inspect(compact, {}).reasoningBytes, 4, 'empty reasoning projection retains JSON envelope bytes');
+    await collect(s.model, compact);
+    assert.deepEqual(s.requests[0].payload.thinking, { type: 'disabled' });
+    assert.equal(Object.hasOwn(s.requests[0].payload, 'reasoning_effort'), false);
+    assert.equal(s.requests[0].payload.max_tokens, 16384);
+    const context = {}, first = request(); await collect(s.model, first, context);
+    const follow = { ...first, messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [{ callId: 'c1', toolId, version: 1, args: { n: 1 } }] }, { role: 'tool', callId: 'c1', result: { ok: true } }] };
+    await collect(s.model, follow, context);
+    assert.deepEqual(s.requests[1].payload.thinking, { type: 'enabled' });
+    assert.equal(s.requests[2].payload.messages[1].reasoning_content, 'private thought');
+    assert.equal(configured.thinking, true);
+    for (const invalid of [{ ...compact, reasoning: 'enabled' }, { ...compact, tools: first.tools }, { ...follow, tools: [], reasoning: 'disabled' }]) {
+        assert.throws(() => s.model.inspect(invalid, context), /MODEL_PROTOCOL_ERROR/);
+        await assert.rejects(collect(s.model, invalid, context), /MODEL_PROTOCOL_ERROR/);
+    }
+    assert.equal(s.requests.length, 3);
+    const generic = subject([response('summary')]); await collect(generic.model, compact);
+    assert.equal(Object.hasOwn(generic.requests[0].payload, 'thinking'), false);
+});
+
+test('A disabled-thinking summary rejects truncated output before emitting any summary text', async () => {
+    const s = subject([{ choices: [{ finish_reason: 'length', message: { role: 'assistant', content: 'half summary' } }] }], { connection: { ...connection, profile: 'deepseek', thinking: true } });
+    const events = [];
+    await assert.rejects(async () => { for await (const event of s.model.run({ messages: [{ role: 'user', content: 'summarize' }], tools: [], reasoning: 'disabled' }, { signal: new AbortController().signal, context: {} })) events.push(event); }, /MODEL_OUTPUT_TRUNCATED/);
+    assert.deepEqual(events, []);
+});
+
 test('Final adapter payload retains a long historical answer when the input budget fits', async () => {
     const longAnswer = '中'.repeat(9000), s = subject([response('continued')]);
     const input = { messages: [{ role: 'user', content: 'Draft a plan' }, { role: 'assistant', content: longAnswer },

@@ -11,6 +11,11 @@ const fail = () => { throw modelError('MODEL_PROTOCOL_ERROR'); };
 const callId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
 
 function prepare(request, connection, privateHistory) {
+    // A per-request reduction only: never enable reasoning or change the saved connection.
+    if (request.reasoning !== undefined) {
+        if (request.reasoning !== 'disabled' || !Array.isArray(request.tools) || request.tools.length || request.messages?.some(m => m.role === 'tool' || m.toolCalls?.length)) fail();
+        connection = { ...connection, thinking: false };
+    }
     if (!Array.isArray(request.tools) || request.tools.length > 64 || !Array.isArray(request.messages) || !request.messages.length || request.messages.length > MAX_CONTEXT_MESSAGES) fail();
     if (request.tools.length && !connection.supportsTools) throw modelError('UNSUPPORTED_CAPABILITY');
     const byId = new Map(), byName = new Map();
@@ -69,7 +74,7 @@ function prepare(request, connection, privateHistory) {
         payload.thinking = { type: connection.thinking ? 'enabled' : 'disabled' };
         if (connection.thinking) payload.reasoning_effort = connection.reasoningEffort;
     }
-    return { payload, byName };
+    return { payload, byName, effectiveConnection: connection };
 }
 
 function decode(data, byName, connection) {
@@ -127,16 +132,16 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
         async *run(request, { signal, context, onUsage: reportUsage = () => {} }) {
             assertActive(signal);
             try {
-                if (config.thinking && (!context || typeof context !== 'object')) throw modelError('MODEL_HISTORY_UNAVAILABLE');
                 let privateHistory = context && histories.get(context);
                 if (!privateHistory) { privateHistory = new Map(); if (context) histories.set(context, privateHistory); }
-                const { payload, byName } = prepare(request, config, privateHistory);
+                const { payload, byName, effectiveConnection } = prepare(request, config, privateHistory);
+                if (effectiveConnection.thinking && (!context || typeof context !== 'object')) throw modelError('MODEL_HISTORY_UNAVAILABLE');
                 const measured = measurePayload(payload);
                 if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > MAX_MANUAL_INPUT_TOKENS)) fail();
                 if (measured.requestBytes > MAX_REQUEST_BYTES || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
-                const { events, usage, reasoning, signature } = decode(await post(config, payload, signal), byName, config);
+                const { events, usage, reasoning, signature } = decode(await post(config, payload, signal), byName, effectiveConnection);
                 assertActive(signal);
-                if (config.thinking) {
+                if (effectiveConnection.thinking) {
                     const size = [...privateHistory.values()].reduce((sum, value) => sum + new TextEncoder().encode(value.reasoning).length, 0);
                     if (privateHistory.size >= 16 || size + new TextEncoder().encode(reasoning).length > 524288) throw modelError('MODEL_HISTORY_LIMIT');
                     privateHistory.set(request.messages.length, { reasoning, signature });

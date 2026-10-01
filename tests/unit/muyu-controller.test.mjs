@@ -8,6 +8,7 @@ import { createCredentialStore } from '../../muyu/host/credentials.js';
 import { RUN_DEFAULTS } from '../../muyu/core/budget.js';
 import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { fingerprint } from '../../muyu/context/planner.js';
+import { HISTORY_LIMITS, historyBytes, historyScope } from '../../muyu/sessions/contract.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
 import { createVariableDraftPort } from '../../muyu/host/variable-draft.js';
@@ -1128,6 +1129,55 @@ test('Instruction drafts survive chat/reconnect, failed saves and newer edits du
 async function seedTurns(f, count = 4) {
     for (let i = 0; i < count; i++) { f.controller.setInput('question ' + i); f.controller.send({ consent: true }); await settle(); }
 }
+
+test('Near-full summarized archive rejects a large question before queue/model calls and preserves the draft', async () => {
+    const store = createMemoryHistoryStore();
+    const f = fixture([[text('must not run'), done]], { history: { enabled: () => true, open: async () => store, setEnabled: async () => {} } });
+    await f.controller.ready;
+    const record = { version: 7, id: crypto.randomUUID(), revision: 0, scope: historyScope('assistant', f.host.currentTarget()), title: 'large fixture', createdAt: 1, updatedAt: 1, messages: [], required: [], status: 'succeeded', archived: false, imported: false, receipts: [], scopeChanges: [], contextSummary: null };
+    for (let i = 0; i < 32; i++) record.messages.push({ role: i % 2 ? 'assistant' : 'user', runId: String(i), content: 'x'.repeat(1024 * 1024 - 10000) });
+    record.contextSummary = { through: 32, fingerprint: fingerprint(record.messages), text: 'Synthetic summary.', createdAt: 1 };
+    record.messages[31].content += 'x'.repeat(HISTORY_LIMITS.recordBytes - 210000 - historyBytes(record));
+    record.contextSummary.fingerprint = fingerprint(record.messages);
+    await store.create(record); await f.controller.refreshHistory(); await f.enable(); f.controller.setMode('assistant'); await f.controller.openSession(record.id);
+    const input = 'question ' + 'b'.repeat(150000); f.controller.setInput(input);
+    assert.throws(() => f.controller.send(), /HISTORY_CAPACITY/); await settle();
+    assert.equal(f.model.requests.length, 0); assert.equal(f.controller.snapshot().runs.length, 0);
+    assert.equal(f.controller.snapshot().input, input);
+    assert.equal(JSON.parse(f.controller.exportHistory()).messages.length, 32);
+    await f.controller.dispose();
+});
+
+test('Unexpected capacity failure during final capture is visible, exportable and does not break disposal', async () => {
+    const wait = deferred(), f = fixture([() => wait.promise]); await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('question'); f.controller.send(); await settle();
+    const clone = globalThis.structuredClone; let injected = false;
+    globalThis.structuredClone = value => {
+        if (!injected && value?.version >= 5 && value.status === 'succeeded' && value.messages?.at(-1)?.content === 'RECOVERY_ANSWER') {
+            injected = true; throw Error('HISTORY_CAPACITY');
+        }
+        return clone(value);
+    };
+    try { wait.resolve([text('RECOVERY_ANSWER'), done]); await settle(); }
+    finally { globalThis.structuredClone = clone; }
+    assert.equal(injected, true); const s = f.controller.snapshot();
+    assert.equal(s.runs.at(-1).status, 'succeeded'); assert.equal(s.notice, 'HISTORY_SYNC_FAILED');
+    assert.equal(s.history.error, 'HISTORY_CAPACITY'); assert.equal(s.history.recovery, true);
+    assert.equal(JSON.parse(f.controller.exportHistory()).messages.at(-1).content, 'RECOVERY_ANSWER');
+    await f.controller.dispose();
+});
+
+test('Manual compaction rejects a switched chat before any paid call and succeeds again in the original chat', async () => {
+    const f = fixture([[text('a'.repeat(2000)), done], [text('Valid short summary.'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('story'); f.controller.send(); await settle();
+    f.switchChat('B'); assert.equal(f.controller.snapshot().switchedChat, true);
+    assert.equal(f.controller.snapshot().readOnly, false);
+    await assert.rejects(f.controller.compactHistory(), /HISTORY_SCOPE/);
+    assert.equal(f.model.requests.length, 1); assert.equal(f.controller.snapshot().context.summary, '');
+    f.switchChat('A'); await f.controller.compactHistory();
+    assert.equal(f.model.requests.length, 2); assert.equal(f.controller.snapshot().context.summary, 'Valid short summary.');
+    await f.controller.dispose();
+});
 
 test('Controller avoids unnecessary recompaction and retains all intermediate corrections', async () => {
     const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('old budget 3700'), done],

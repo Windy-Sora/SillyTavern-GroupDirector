@@ -27,6 +27,8 @@ profile支持chat-completions和deepseek；后者默认thinking:true、reasoning
 
 ## 协议与隐私
 
+2026-10-01：可信调用方可在无工具、无工具轨迹的请求上设置 `reasoning: 'disabled'`。DeepSeek 仅对该次请求发送 thinking=disabled 并省略 reasoning_effort；计量、解码与私有推理存储均使用该次有效配置，不修改连接或影响正常工具续接。其他值或携带工具/工具轨迹时在网络前拒绝；不能通过该入口开启思考。通用兼容 profile 不发送专有思考参数，不保证未知服务端关闭推理。摘要层使用此入口；依然先验证完整响应，length 不发出半截摘要。
+
 工具定义按ID排序映射为muyu_tool_N；版本固定在本地，模型不能指定权限、处理函数或版本。规范消息转换后逐一检查工具结果配对。完整响应批次通过检查才发送事件；JSON参数结构错误拒绝整个批次，合法JSON但不符合工具Schema由Broker拒绝，允许现有有界修正流程处理。
 
 仅接受一个choice、stop/tool_calls完成原因；length明确报MODEL_OUTPUT_TRUNCATED，content_filter报MODEL_CONTENT_FILTERED。未知结束、未知工具、重复调用ID、空答案或畸形数据拒绝。reasoning不能替代最终回答。

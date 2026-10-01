@@ -18,6 +18,18 @@ test('Fresh settings and missing-settings fallbacks share the 1M-model budget pr
     const s = stores({});
     assert.deepEqual(s.context.read(), CONTEXT_DEFAULTS); assert.deepEqual(s.run.read(), RUN_DEFAULTS);
 });
+
+test('Larger summary fallback preserves explicitly configured output limits', () => {
+    const pinned = { muyuContextConfig: { ...oldContext, summaryTokens: 8192 }, muyuContextBudgetVersion: 1 };
+    assert.equal(stores(pinned).context.read().summaryTokens, 8192);
+    assert.equal(stores(pinned).context.read().inputTokens, 32000);
+    const custom = { muyuContextConfig: { ...oldContext, summaryTokens: 16384 } };
+    assert.equal(stores(custom).context.read().inputTokens, 32000);
+    const recognizable = { muyuContextConfig: { ...oldContext, summaryTokens: 8192 } };
+    assert.deepEqual(stores(recognizable).context.read(), CONTEXT_DEFAULTS);
+    const current = { muyuContextConfig: { ...CONTEXT_DEFAULTS, summaryTokens: 8192 } };
+    assert.equal(stores(current).context.read().summaryTokens, 8192);
+});
 test('Known legacy defaults upgrade without writing during reads; custom combinations and auto mode stay unchanged', () => {
     for (const inputTokens of [32000, 500000]) for (const providerBytes of [24000, 1000000]) {
         const settings = { muyuContextConfig: { ...oldContext, inputTokens }, muyuRunConfig: { ...oldRun, providerBytes } }, before = structuredClone(settings);
@@ -27,13 +39,13 @@ test('Known legacy defaults upgrade without writing during reads; custom combina
     }
     const settings = { muyuContextConfig: { ...oldContext, inputTokens: null }, muyuRunConfig: { ...oldRun, maxTokens: 32768, providerBytes: 50000 } };
     const s = stores(settings);
-    assert.deepEqual(s.context.read(), { ...settings.muyuContextConfig, historyAuthorization: 'auto', summaryTokens: 8192 }); assert.deepEqual(s.run.read(), settings.muyuRunConfig);
+    assert.deepEqual(s.context.read(), { ...settings.muyuContextConfig, historyAuthorization: 'auto', summaryTokens: 16384, summaryTimeMs: 300000 }); assert.deepEqual(s.run.read(), settings.muyuRunConfig);
 });
 test('Explicitly saving even an old-default-sized budget pins it across reloads', async () => {
     const settings = {}, s = stores(settings);
     await s.context.save(oldContext); await s.run.save(oldRun);
     const reopened = stores(settings);
-    assert.deepEqual(reopened.context.read(), { ...oldContext, historyAuthorization: 'auto', summaryTokens: 8192 }); assert.deepEqual(reopened.run.read(), oldRun);
+    assert.deepEqual(reopened.context.read(), { ...oldContext, historyAuthorization: 'auto', summaryTokens: 16384, summaryTimeMs: 300000 }); assert.deepEqual(reopened.run.read(), oldRun);
 });
 test('Failed saves roll back values and migration markers without overwriting a concurrent replacement', async () => {
     const settings = {}; let concurrent = false;
@@ -44,5 +56,14 @@ test('Failed saves roll back values and migration markers without overwriting a 
     await assert.rejects(s.run.save(oldRun), /RUN_CONFIG_SAVE_FAILED/);
     assert.equal(Object.hasOwn(settings, 'muyuRunConfig'), false); assert.equal(Object.hasOwn(settings, 'muyuRunBudgetVersion'), false);
     concurrent = true; await assert.rejects(s.context.save(oldContext)); assert.equal(settings.muyuContextConfig, replacement);
-    assert.deepEqual(s.context.read(), { ...replacement, historyAuthorization: 'auto', summaryTokens: 8192 });
+    assert.deepEqual(s.context.read(), { ...replacement, historyAuthorization: 'auto', summaryTokens: 16384, summaryTimeMs: 300000 });
+});
+
+test('300-second defaults upgrade only unpinned old defaults and preserve explicit timeout choices', async () => {
+    const settings = { muyuRunConfig: { ...RUN_DEFAULTS, timeMs: 120000 } }, s = stores(settings);
+    assert.equal(s.run.read().timeMs, 300000);
+    await s.run.save({ ...RUN_DEFAULTS, timeMs: 120000 }); assert.equal(stores(settings).run.read().timeMs, 120000);
+    await s.run.save({ ...RUN_DEFAULTS, timeMs: 1800000 }); assert.equal(stores(settings).run.read().timeMs, 1800000);
+    settings.muyuContextConfig = { ...oldContext, summaryTimeMs: 450000 };
+    assert.equal(s.context.read().inputTokens, 32000); assert.equal(s.context.read().summaryTimeMs, 450000);
 });

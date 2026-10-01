@@ -230,7 +230,14 @@ export function createMuyuController({ host, createModel = createChatCompletions
             });
             // Persist the question as text, never a resumable request or authorization.
             const status = latest ? latest.status === 'yielded' ? 'interrupted' : ['queued', 'cancelling', 'running'].includes(latest.status) ? 'running' : latest.status : record.status;
-            if (JSON.stringify(record.messages) !== JSON.stringify(messages) || record.status !== status) library.update(id, { messages, status });
+            if (JSON.stringify(record.messages) !== JSON.stringify(messages) || record.status !== status) {
+                try { library.update(id, { messages, status }); }
+                catch (failure) {
+                    notices.set(runtimeId, 'HISTORY_SYNC_FAILED');
+                    if (failure.message === 'HISTORY_CAPACITY') library.retainRecovery(id, messages, status);
+                    else error = 'HISTORY_SYNC_FAILED';
+                }
+            }
         }
     }
     function historyAccess(runId, target) {
@@ -270,7 +277,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             context: { turns: plan.turns, omitted: plan.omitted + choice.historyStart, summaryUsed: plan.summaryUsed, estimatedTokens: plan.estimatedTokens, coverage: { ...plan.coverage, state: choice.omitHistory ? 'omitted' : plan.coverage.state, total: (record?.messages || []).length, excluded: choice.historyStart }, omitHistory: omittedViews.has(viewKey()), permissionOmitted: choice.autoHistoryOmitted, summary: record?.contextSummary?.text || '', summaryStale: !!record?.contextSummary && !usableSummary(record.contextSummary, record.messages), compacting: !!compacting && compacting.id === id, progress: compactState?.progress || null, usage: compactState?.usage || null },
             busy, draining: !!compacting?.finished || !!state?.draining,
             occupiedElsewhere: !!compacting && compacting.id !== id || !!state?.activeRunId && state.runs.find(r => r.id === state.activeRunId)?.sessionId !== sessionId,
-            messages: session?.messages || record?.messages || [], runs: state?.runs.filter(r => r.sessionId === sessionId) || [],
+            messages: session?.messages || library.recoveryMessages(id) || record?.messages || [], runs: state?.runs.filter(r => r.sessionId === sessionId) || [],
             history: { ...library.snapshot(scopeKey(), id, { ...historyFilters, chatKey: host.currentTarget()?.chatKey }), filters: { ...historyFilters }, restoredStatus: !session ? record?.status : null,
                 missingPermissions: choice.missing,
                 omitted: plan.omitted },
@@ -600,12 +607,13 @@ export function createMuyuController({ host, createModel = createChatCompletions
         async compactHistory() {
             live(); const id = selectedId(), record = library.get(id), target = targetFor();
             if (!model || resetting || snapshot().busy || !record || readOnly(record)) throw Error('NOT_READY');
+            if (record.scope !== historyScope(mode, target)) throw Error('HISTORY_SCOPE');
             if (missingHistorySources(record, target).length) throw Error('HISTORY_PERMISSION_REQUIRED');
             const candidate = candidateFor(record, contextConfig); if (!candidate) throw Error('NOTHING_TO_SUMMARIZE');
             const state = { id, target, progress: null, usage: null, summaryEpoch: historyTransportEpoch };
             const handle = startMuyuRun({ identity: { id: 'compact:' + crypto.randomUUID(), sessionId: id, taskId: 'compact', target }, input: 'Summarize history', model, registry: builtins.registry, handlers: {}, allowedTools: [],
                 contextConfig: { ...contextConfig }, compaction: candidate, summaryOnly: true, maxTokens: runConfig.maxTokens,
-                limits: { modelCalls: 1, toolCalls: 1, timeMs: Math.min(runConfig.timeMs, 30000) },
+                limits: { modelCalls: 1, toolCalls: 1, timeMs: Math.min(runConfig.timeMs, contextConfig.summaryTimeMs) },
                 onSummary: summary => saveSummary(id, record.messages, summary, target, null, state.summaryEpoch),
                 onEvent: event => { if (compacting !== state) return; if (event.type === 'run.context') state.progress = event.payload.phase; if (event.type === 'run.usage') state.usage = event.payload; if (event.type === 'run.finished') { state.finished = true; state.progress = event.payload.error ? 'summary_failed' : 'summarized'; } emit(); } });
             compacting = state; running = handle; emit();
@@ -732,7 +740,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             syncTarget(false); const key = viewKey(), input = explanation ? '请解释操作回执 ' + explanation + ' 的结果、保存确认情况及注意事项。不要重新执行操作。' : continuation ? permissionDecision !== null ? permissionAnswer(request, permissionDecision) : describeAnswer(request, request.draft) : planArtifactId ? '应用已批准此任务方案列出的读取来源。请继续只读核对并更新方案；尚无任何写入权限，不要声称已应用。' : inputs.get(key) || ''; if (!input.trim()) throw new Error('EMPTY_INPUT');
             let id = selectedId();
             if (!id) { id = library.create(scopeKey()); sessions.set(scopeKey(), id); }
-            const record = library.get(id); library.assertRoom(id);
+            const record = library.get(id); library.assertRoom(id, input);
             const existingArtifact = artifactId || planArtifactId ? app.getArtifact(artifactId || planArtifactId) : null;
             const historyTaskId = continuation ? request.taskId : existingArtifact?.taskId || null;
             const { missing, autoHistoryOmitted, historyStart, omitHistory } = historyChoice(record, key, target, continuation, historyTaskId, !!explanation);

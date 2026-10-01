@@ -10,7 +10,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
     let state = createRunState(identity);
     const budget = { modelCalls: RUN_DEFAULTS.modelCalls, toolCalls: RUN_DEFAULTS.toolCalls, corrections: 2, timeMs: RUN_DEFAULTS.timeMs, ...limits };
-    const ceilings = { modelCalls: 16, toolCalls: 64, corrections: 2, timeMs: 120000 };
+    const ceilings = { modelCalls: 16, toolCalls: 64, corrections: 2, timeMs: RUN_RANGES.timeMs[1] };
     for (const [k, v] of Object.entries(budget)) if (!(k in ceilings) || !Number.isInteger(v) || v < (k === 'corrections' ? 0 : 1) || v > ceilings[k]) throw new TypeError('Invalid run budget');
     if (!Number.isInteger(maxTokens) || maxTokens < 256 || maxTokens > 32768) throw new TypeError('Invalid output budget');
     if (typeof finalizeOnLimit !== 'boolean') throw new TypeError('Invalid finalization option');
@@ -114,16 +114,19 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     async function compact() {
         // A continuation owns a live tool/reasoning trajectory, not a new history plan.
         if (resume) { historyCoverage = null; return null; }
-        if (!compaction || !contextConfig || (!summaryOnly && (budget.modelCalls < 3 || budget.timeMs <= 10000))) {
+        const remainingMs = Math.max(0, budget.timeMs - (clock.now() - startedAt));
+        if (!compaction || !contextConfig || (!summaryOnly && (budget.modelCalls < 3 || remainingMs <= 10000))) {
             if (historyBlocked) { coverageEvent('blocked'); throw new ExecutionError('CONTEXT_INCOMPLETE'); }
             coverageEvent('skipped');
             return null;
         }
-        const deadline = clock.now() + (summaryOnly ? Math.min(30000, budget.timeMs) : Math.min(30000, Math.floor(budget.timeMs / 3)));
+        // Both attempts share one deadline. Automatic compaction leaves 10 seconds
+        // for the answer and never creates time beyond the enclosing run.
+        const deadline = clock.now() + Math.min(contextConfig.summaryTimeMs, summaryOnly ? remainingMs : remainingMs - 10000);
         for (let attempt = 0; attempt < 2; attempt++) {
             const context = Object.freeze({});
             const summaryCap = Math.min(contextConfig.summaryTokens, maxTokens);
-            const request = compactionRequest(compaction, contextConfig.inputTokens, summaryOnly || attempt ? summaryCap : Math.min(8192, summaryCap));
+            const request = compactionRequest(compaction, contextConfig.inputTokens, summaryOnly || attempt ? summaryCap : Math.min(16384, summaryCap));
             try {
                 checkContext(request, context); calls++; usageEvent(); emit('run.context', { phase: 'summarizing' });
                 const text = await bounded(childSignal => collectSummary(model, request, { signal: childSignal, context, onUsage: value => {

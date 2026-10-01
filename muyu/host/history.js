@@ -28,11 +28,14 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
             const namespace = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
             const server = await openServer({ namespace, fetcher, headers: getHeaders });
             const store = server || await openStore({ namespace });
-            if (server) {
+            let migration = null;
+            async function migrate() {
+                if (!server) return;
                 // Copy older browser records without deleting the original. A server record with
                 // the same ID wins; conflict resolution remains explicit, never an overwrite.
                 let browser;
                 try {
+                    let pending = 0;
                     browser = await openStore({ namespace });
                     const existing = new Set((await server.list()).map(row => row.id));
                     for (const summary of await browser.list()) if (!existing.has(summary.id)) {
@@ -40,20 +43,25 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
                         if (record) {
                             try { await server.create({ ...record, revision: 0 }); }
                             catch (error) {
+                                if (error.message === 'HISTORY_CAPACITY') { pending++; continue; }
                                 if (error.message !== 'HISTORY_DELETED' &&
                                     !(error.message === 'HISTORY_CONFLICT' && await server.read(summary.id))) throw error;
                             }
                             existing.add(summary.id);
                         }
                     }
+                    migration = pending ? { pending, reason: 'HISTORY_CAPACITY' } : null;
                 } catch (error) {
                     if (error.message !== 'HISTORY_UNAVAILABLE') { server.close(); throw error; }
                 } finally { browser?.close(); }
             }
+            await migrate();
             const check = async () => { if (await accountKey() !== identity) throw Error('HISTORY_IDENTITY_UNAVAILABLE'); };
             try { await check(); } catch (e) { store.close(); throw e; }
             return {
                 kind: store.kind || 'browser',
+                get migration() { return migration && { ...migration }; },
+                async retryMigration() { await check(); await migrate(); await check(); },
                 async list() { await check(); const value = await store.list(); await check(); return value; },
                 async read(id) { await check(); const value = await store.read(id); await check(); return value; },
                 async write(record, revision) { await check(); return store.write(record, revision); },

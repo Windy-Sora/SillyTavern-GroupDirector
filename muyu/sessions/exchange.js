@@ -1,5 +1,6 @@
 import { HISTORY_LIMITS, validateRecord, historyBytes } from './contract.js';
 import { receiptText, receiptSources } from '../actions/receipts.js';
+import { MAX_MESSAGE_BYTES } from '../core/context-limits.js';
 
 /** Import preview is data only. It can never create a runnable conversation. */
 export function parseHistoryImport(text) {
@@ -18,6 +19,19 @@ export function importedRecord(source, now = Date.now()) {
 }
 export function exportHistoryRecord(record, format = 'json') {
     const r = validateRecord(record);
+    return formatRecord(r, format);
+}
+/** Emergency exports are explicitly NOT importable session records or resumable authority. */
+export function exportHistoryRecovery(record, messages, status, format = 'json') {
+    const r = validateRecord(record);
+    if (!Array.isArray(messages) || messages.length > HISTORY_LIMITS.messages + 2 || historyBytes(messages) > HISTORY_LIMITS.recordBytes + 2 * MAX_MESSAGE_BYTES) throw Error('HISTORY_CAPACITY');
+    const base = { ...r, version: 7, receipts: [], scopeChanges: [], contextSummary: null, messages: [], status };
+    validateRecord(base);
+    const checked = messages.map(message => validateRecord({ ...base, messages: [message] }).messages[0]);
+    if (format === 'json') return JSON.stringify({ format: 'muyu-unsaved-recovery', version: 1, record: r, messages: checked, status });
+    return formatRecord({ ...r, messages: checked, status, title: 'UNSAVED RECOVERY — ' + (r.title || 'Untitled') }, format);
+}
+function formatRecord(r, format) {
     if (format === 'json') return JSON.stringify(r); // Bounded file can be imported again.
     if (format !== 'markdown') throw Error('HISTORY_INVALID');
     // Literal fenced blocks prevent record text from becoming active HTML/images in Markdown viewers.
