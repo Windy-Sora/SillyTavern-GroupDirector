@@ -12,9 +12,10 @@ export function searchRecords(source, { query, offset = 0, start = 0, fingerprin
     if (start > 0 && !expected || expected && (!initial || fingerprint(initial) !== expected) ||
         initial && (start > initial.content.length || low(initial.content.charAt(start))) || !initial && start !== 0) throw Error('HISTORY_STALE');
     const needle = caseSensitive ? query : fold(query), items = [];
-    let index = offset, position = start, scannedMessages = 0, scannedChars = 0;
+    let index = offset, position = start, scannedMessages = 0, scannedRecords = 0, lastScannedIndex = -1, scannedChars = 0;
     while (index < source.length && scannedMessages < LITERAL_LIMITS.records && scannedChars < LITERAL_LIMITS.chars && items.length < LITERAL_LIMITS.hits) {
         const message = source.at(index), content = message.content;
+        if (index !== lastScannedIndex) { scannedRecords++; lastScannedIndex = index; }
         scannedMessages++;
         const span = Math.min(content.length - position, LITERAL_LIMITS.chars - scannedChars);
         const window = content.slice(position, position + span + needle.length - 1);
@@ -34,6 +35,6 @@ export function searchRecords(source, { query, offset = 0, start = 0, fingerprin
         else { position += span; if (low(content.charAt(position))) position--; break; }
     }
     const complete = index >= source.length;
-    return { total: source.length, scannedMessages, scannedChars, complete, nextOffset: complete ? -1 : index, nextStart: complete ? 0 : position,
+    return { total: source.length, scannedMessages, scannedRecords, scannedChars, complete, nextOffset: complete ? -1 : index, nextStart: complete ? 0 : position,
         nextFingerprint: !complete && position > 0 ? fingerprint(source.at(index)) : '', items };
 }

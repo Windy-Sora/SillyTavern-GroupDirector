@@ -60,9 +60,8 @@ export function createProviderRetrieval({ registry, getRun, current, source }) {
                     return token;
                 };
                 output.complete = page.complete; output.totalRecords = fresh.length; output.scannedSteps = page.scannedMessages;
-                // A hit can resume within the same record. Count distinct touched records,
-                // while the original loop-step cap still bounds computational work.
-                output.scannedRecords = Math.min(page.scannedMessages, (page.complete ? fresh.length : page.nextOffset + Number(page.nextStart > 0)) - offset);
+                // Count actual visits, not the Unicode-adjusted continuation cursor.
+                output.scannedRecords = page.scannedRecords;
                 output.scannedChars = page.scannedChars;
                 output.items = page.items.map(item => ({ index: item.index, role: item.role, text: item.text, matchToken: reference('match', item.index, item.start) }));
                 if (!page.complete) output.cursor = reference('cursor', page.nextOffset, page.nextStart);

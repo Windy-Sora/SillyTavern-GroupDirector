@@ -58,6 +58,27 @@ test('A continuation may scan the same long record again without inflating its s
     const third = f.search({ cursor: second.cursor }); assert.equal(third.totalRecords, 1); assert.equal(third.scannedRecords, 1); assert.equal(third.items.length, 1);
 });
 
+test('Unicode cursor rollback still counts every touched memory record and resumes without loss', () => {
+    const f = fixture();
+    f.ctx.chatMetadata.gd.charMemories['a.png'] = [
+        { event: 'x'.repeat(65532), mood: '' },
+        { event: '😀金币', mood: '' },
+    ];
+    const directory = f.call('muyu.provider.read', { id: 'charMemory' });
+    const args = { id: 'charMemory', selector: 'character:0', revision: directory.revision };
+    const first = f.search(args);
+    assert.equal(first.status, 'ok'); assert.equal(first.totalRecords, 2);
+    assert.equal(first.scannedSteps, 2); assert.equal(first.scannedRecords, 2);
+    assert.equal(first.scannedChars, 65536); assert.equal(first.complete, false);
+    assert.equal(first.items.length, 0); assert.ok(first.cursor);
+    const next = f.search({ ...args, cursor: first.cursor });
+    assert.equal(next.status, 'ok'); assert.equal(next.complete, true); assert.equal(next.cursor, '');
+    assert.equal(next.totalRecords, 2); assert.equal(next.scannedRecords, 1);
+    assert.equal(next.items.length, 1); assert.equal(next.items[0].index, 1);
+    assert.match(next.items[0].text, /😀金币/);
+    assert.match(f.read(next.items[0].matchToken, args).text, /😀金币/);
+});
+
 test('Bounded search continues through empty batches instead of claiming absence', () => {
     const f = fixture(); f.ctx.chat = Array.from({ length: 70 }, (_, i) => ({ name: 'A', mes: i === 69 ? '金币' : '无关' }));
     let page = f.search(); assert.equal(page.items.length, 0); assert.equal(page.complete, false); assert.ok(page.cursor); assert.equal(page.scannedRecords, 32);

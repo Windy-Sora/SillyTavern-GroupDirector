@@ -162,3 +162,5 @@ Node 测试不代替真实模型质量、浏览器布局和宿主保存验收。
 `muyu.provider.search` 的 `charMemory` 路径必须先用 `muyu.provider.read({id:'charMemory'})` 获取目录，然后携带该目录的 `revision` 和 `character:N`。后续 cursor 搜索和 match 回读沿用同一 revision。缺版本或目录身份变化返回 `STALE_SOURCE`，须重读目录并重新选择角色；不能沿用旧数字序号或换来源绕行。正文修改仍由命中引用的指纹检测。chatHistory 原生搜索与缓存 Provider 结果的版本契约不变。
 
 检索统计区分 `scannedSteps`（本页扫描步数，可能重复访问同条记录）、`scannedRecords`（本页涉及的不同记录）和 `totalRecords`（所选来源／角色的当前记录总数）。预算仍按原32步／65536字符限制，不因区分统计而增加计算量。跨页可能再次扫描同条长记录，不能累加 scannedRecords 当全库总数；query 和 complete 只说明本关键词在指定来源的扫描覆盖，不能据此否定其他主题或角色的记录。失败／预算拒绝不携带已取得的统计或命中作为成功证据。
+
+`scannedRecords` 在扫描循环中按实际访问的不同索引计数，不从续搜游标推导。即使剩余字符额度只有一个 UTF-16 单元、下一条以代理对开头，游标为保护 Unicode 退回该条起点，该条也属于本页已涉及的记录；这不代表该条已完整扫描。共享扫描器的内部计数不改变 `muyu.history.search` 的既有输出字段。
