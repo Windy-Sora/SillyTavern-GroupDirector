@@ -14,6 +14,7 @@ import { createTaskBundleModule } from './task-bundle/index.js';
 import { createProfileDraftModule } from './profile-draft/index.js';
 import { createHistoryModule } from './history/index.js';
 import { createWebSearchModule } from './web/index.js';
+import { createAgentMemoryModule } from './agent-memory/index.js';
 import { createVariableDraftPort } from '../host/variable-draft.js';
 import { createTaskBundleDraftPort } from '../host/task-bundle-draft.js';
 import { createToolPlan } from './tool-plan.js';
@@ -32,7 +33,8 @@ export function createBuiltins(host) {
     const variables = createVariableDraftModule({ port: variablePort });
     const bundle = createTaskBundleModule({ port: host.bundleDraftPort || createTaskBundleDraftPort({ getTarget: host.currentTarget, getSettings: host.getSettings, variableDraftPort: variablePort }) });
     const profiles = createProfileDraftModule(), web = createWebSearchModule();
-    const modules = [memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles, web];
+    const notes = createAgentMemoryModule({ port: host.agentMemory, budget: id => providers.usage(id).limit, used: id => providers.usage(id).used, charge: (id, bytes) => providers.charge(id, bytes) });
+    const modules = [memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles, web, notes];
     const unified = new Map();
     const legacyPreview = (args, ctx) => {
         const run = unified.get(ctx.runId);
@@ -51,6 +53,7 @@ export function createBuiltins(host) {
         { id: 'task-bundle', module: bundle },
         { id: 'profile-draft', module: profiles },
         { id: 'web', module: web },
+        { id: 'agent-memory', module: notes },
     ];
     const { registry, handlers } = createToolPlan(entries, { capabilityFor: toolCapability, labels: toolLabels });
     const artifacts = createArtifactOwners([
@@ -64,7 +67,7 @@ export function createBuiltins(host) {
     const shared = [...context.registry.list(), ...interaction.registry.list()].map(d => d.id);
     const tasks = {
         assistant: { module: null,
-            bind(identity, intent) { unified.set(identity.id, { identity, intent, bound: false }); settings.bindRun(identity); taskPlan.bindRun(identity); variables.bindRun(identity); bundle.bindRun(identity); profiles.bindRun(identity); web.bindRun(identity, intent); },
+            bind(identity, intent) { unified.set(identity.id, { identity, intent, bound: false }); settings.bindRun(identity); taskPlan.bindRun(identity); variables.bindRun(identity); bundle.bindRun(identity); profiles.bindRun(identity); web.bindRun(identity, intent); notes.bindRun(identity, intent); },
             publish(app, id, intent) {
                 let failed = false; const published = new Map();
                 const publish = fn => { try { fn(); } catch { failed = true; } };

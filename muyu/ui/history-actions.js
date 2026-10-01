@@ -61,7 +61,7 @@ export function createHistoryActions({ doc, importRoot, exportRoot, parent, cont
             else {
                 const stopping = s.busy && !s.occupiedElsewhere;
                 prompt.textContent = (stopping ? t('先停止此会话任务并等待清理，然后', 'Stop this conversation and wait for cleanup, then ') : '') + (action === 'remove'
-                    ? h.persisted ? t('删除本浏览器中已保存的这条记录及本页副本？无法撤销，建议先导出。不会删除酒馆聊天。', 'delete this saved browser record and its working copy? This cannot be undone; export first. ST chat is unaffected.') : t('删除这条临时记录？无法撤销，不影响酒馆聊天。', 'delete this temporary record? This cannot be undone; ST chat is unaffected.')
+                    ? h.persisted ? t('删除当前存储位置中已保存的这条记录及本页副本？无法撤销，建议先导出。不会删除酒馆聊天或其他存储位置的副本。', 'delete this record from the active storage backend and this page? This cannot be undone; export first. ST chat and copies in other backends are unaffected.') : t('删除这条临时记录？无法撤销，不影响酒馆聊天。', 'delete this temporary record? This cannot be undone; ST chat is unaffected.')
                     : command.value ? t('归档此对话？仍占存储容量，可恢复。', 'archive this conversation? Storage is retained; it can be restored.') : t('恢复此归档对话？导入备份仍为只读。', 'restore this archived conversation? Imported backups remain read-only.'));
             }
             (action === 'rename' ? title : confirm).focus?.();

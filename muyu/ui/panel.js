@@ -9,6 +9,7 @@ import { formatBudget, budgetReasonLabel } from './budget-view.js';
 import { createHistoryView } from './history-view.js';
 import { createContextView } from './context-view.js';
 import { createInstructionView } from './instruction-view.js';
+import { createAgentMemoryView } from './agent-memory-view.js';
 import { createSettingsLayout } from './settings-layout.js';
 import { createInteractionView } from './interaction-view.js';
 import { createPermissionView } from './permission-view.js';
@@ -111,6 +112,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const usageDetails = node('details', '', toolContent); node('summary', t('本轮开销与限制', 'Run usage and limits'), usageDetails); const usageText = node('p', '', usageDetails);
     const contextView = createContextView({ doc, settings: settingsLayout.pages.limits, parent: toolContent, controller, act, lang });
     const instructionView = createInstructionView({ doc, settings: settingsLayout.pages.behavior, controller, act, lang });
+    const agentMemoryView = createAgentMemoryView({ doc, settings: settingsLayout.pages.data, controller, act, lang });
     const inputBox = node('div', '', composer); inputBox.className = 'gd-muyu-input-box';
     const inputLabel = node('label', t('给暮羽的消息', 'Message to Muyu'), inputBox), input = node('textarea', '', inputLabel); input.className = 'text_pole'; input.rows = 3; input.maxLength = MAX_MESSAGE_BYTES;
     const recoveryBar = node('div', '', inputBox); recoveryBar.className = 'gd-muyu-recovery'; recoveryBar.hidden = true;
@@ -223,6 +225,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         contextView.render(s);
         receiptView.render(s);
         instructionView.render(s);
+        agentMemoryView.render(s);
         interactionView.render(s);
         permissionView.render(s);
         const pendingPermissionId = s.interaction?.kind === 'permission' && s.interaction.status === 'pending' ? s.interaction.id : null;

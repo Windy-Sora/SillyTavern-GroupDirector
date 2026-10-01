@@ -6,6 +6,7 @@ import { configDataSchema } from './config-contract.js';
 import { structuredContracts, validateTextSource } from './contracts.js';
 import { readHint, readHintSchema } from './read-hints.js';
 import { createReadContinuations } from './continuations.js';
+import { createProviderRetrieval } from './retrieval.js';
 
 const str = maxLength => ({ type: 'string', maxLength });
 const obj = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -22,6 +23,16 @@ export function createProviderModule(host) {
     registry.register({ id: 'muyu.provider.discover', version: 1, description: '分页列出当前已注册Provider的名称、来源、版本及可选上下文需求；仅元数据，不执行render。missingContext表示当前聊天无法提供的字段。offset缺省为0。', inputSchema: { type: 'object', properties: { offset: { type: 'integer', minimum: 0, maximum: 256 } }, required: [], additionalProperties: false }, outputSchema: obj({ items: { type: 'array', maxItems: 64, items: obj({ id: str(80), revision: str(80), origin: { type: 'string', enum: ['user', 'registered'] }, description: str(120), context: { type: 'array', maxItems: 2, items: { type: 'string', enum: ['chatMessages', 'characterCard'] } }, missingContext: { type: 'array', maxItems: 2, items: { type: 'string', enum: ['chatMessages', 'characterCard'] } } }) }, nextOffset: { type: 'integer' } }), scope: 'chat', effect: 'read', dataClasses: ['public-knowledge'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     registry.register({ id: 'muyu.provider.execute', version: 2, description: '执行已注册Provider的render代码。先discover，再申请具体id/revision的providerExecution任务批准。projection可选content或data。执行可能修改状态、联网或产生费用，超时不能保证中止。长结果返回resultId/nextOffset，用muyu.provider.result读取同一次执行的后续内容。', inputSchema: { type: 'object', properties: { id: str(80), revision: str(80), projection: { type: 'string', enum: ['content', 'data'] } }, required: ['id', 'revision'], additionalProperties: false }, outputSchema: obj({ id: str(80), status: { type: 'string', enum: ['ok', 'empty', 'STALE_PROVIDER', 'TARGET_UNAVAILABLE', 'BUDGET_EXCEEDED', 'OUTCOME_UNKNOWN'] }, text: str(8000), truncated: { type: 'boolean' }, executed: { type: 'boolean' }, resultId: str(40), nextOffset: { type: 'integer' } }), scope: 'chat', effect: 'external', dataClasses: ['provider-code'], confirmation: 'policy', resourceKeys: [], timeoutMs: 5000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     registry.register({ id: 'muyu.provider.result', version: 1, description: '只读读取本次任务、当前运行中既有Provider执行结果的后续页面。必须沿用execute返回的id/revision/resultId/nextOffset；不再次执行render。结果随运行结束清理。', inputSchema: { type: 'object', properties: { id: str(80), revision: str(80), resultId: str(40), offset: { type: 'integer', minimum: 0, maximum: 131072 } }, required: ['id', 'revision', 'resultId', 'offset'], additionalProperties: false }, outputSchema: obj({ id: str(80), status: { type: 'string', enum: ['ok', 'empty', 'RESULT_UNAVAILABLE', 'TARGET_UNAVAILABLE', 'BUDGET_EXCEEDED'] }, text: str(8000), truncated: { type: 'boolean' }, nextOffset: { type: 'integer' } }), scope: 'chat', effect: 'read', dataClasses: ['provider-code'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
+    const retrieval = createProviderRetrieval({ registry, getRun: id => runs.get(id), current: (ctx, source) => current(ctx, source), source: (args, run, ctx) => {
+        if (args.resultId) {
+            if (args.selector || !args.revision) throw Error('INVALID_SELECTOR');
+            const saved = run.results.get(args.resultId);
+            if (!saved || saved.id !== args.id || saved.revision !== args.revision || saved.target !== jsonKey(ctx.target)) throw Error('INVALID_REFERENCE');
+            return { identity: args.resultId, length: 1, at: index => index === 0 ? { role: 'provider', content: saved.text } : undefined };
+        }
+        if (args.revision || !['chatHistory', 'charMemory'].includes(args.id) || typeof host.providerPort?.searchSource !== 'function') throw Error('INVALID_SELECTOR');
+        return host.providerPort.searchSource(args.id, args.selector || '');
+    } });
     registry.seal();
     const current = (ctx, source) => {
         if (disposed || ctx.signal?.aborted) return false;
@@ -152,11 +163,13 @@ export function createProviderModule(host) {
         bindRun(id, limit) { if (!Number.isInteger(limit) || limit < RUN_RANGES.providerBytes[0] || limit > RUN_RANGES.providerBytes[1] || runs.has(id) || runs.size >= 128) throw Error('INVALID_PROVIDER_BUDGET'); runs.set(id, newRun(limit)); },
         transferRun(from, id, limit) { const run = runs.get(from); if (!run || runs.has(id) || !Number.isInteger(limit) || limit < RUN_RANGES.providerBytes[0] || limit > RUN_RANGES.providerBytes[1]) throw Error('INVALID_PROVIDER_BUDGET'); runs.delete(from); run.limit = Math.min(run.limit, limit); run.exhausted ||= run.bytes >= run.limit; runs.set(id, run); },
         usage(id) { const r = runs.get(id); return { used: r?.bytes || 0, limit: r?.limit || 0, exhausted: r?.exhausted || false }; },
+        charge(id, bytes) { const r = runs.get(id); if (!r || !Number.isSafeInteger(bytes) || bytes < 0 || r.exhausted || bytes > r.limit - r.bytes) return false; r.bytes += bytes; r.exhausted ||= r.bytes >= r.limit; return true; },
         handlers: {
         'muyu.provider.list': publicProviderCatalog,
         'muyu.provider.read': read,
         'muyu.provider.discover': discover,
         'muyu.provider.execute': execute,
         'muyu.provider.result': result,
+        ...retrieval,
     }, forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); } };
 }

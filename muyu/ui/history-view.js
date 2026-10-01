@@ -12,9 +12,12 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
         return el;
     };
     const section = node('section', '', settings); node('h3', t('对话历史', 'Conversation history'), section);
-    const label = node('label', t('保存暮羽对话到本浏览器（默认开启）', 'Save Muyu conversations in this browser (on by default)'), section);
+    const label = node('label', t('自动保存暮羽对话（默认开启）', 'Automatically save Muyu conversations (on by default)'), section);
     const enabled = node('input', '', label); enabled.type = 'checkbox';
-    node('small', t('服务端插件可用时记录写入 ST 用户私有目录；否则回退到本浏览器 IndexedDB。均不写入聊天存档或角色卡，数据未加密、不同设备不同步；刷新不恢复授权或执行。', 'With the server plugin, records use private ST user files; otherwise they use this browser’s IndexedDB. Neither writes chat saves or cards. Data is unencrypted and does not sync; reload never restores grants or execution.'), section);
+    node('small', t('默认使用 ST 私有文件（需要服务端插件），不可用时使用浏览器 IndexedDB。不写入聊天存档或角色卡；浏览器记录不跨设备同步。刷新不恢复授权或执行。', 'By default, use private ST files when the server plugin is available; otherwise use browser IndexedDB. Chat saves/cards are unaffected. Browser records do not sync across devices; reload never restores grants or execution.'), section);
+    const storageLabel = node('label', t('保存到酒馆账户设置（可选，无需附属插件）', 'Store in ST account settings (optional, no companion plugin)'), section);
+    const accountStorage = node('input', '', storageLabel); accountStorage.type = 'checkbox';
+    const storageNotice = node('small', t('开启后在刷新页面时切换存储位置。对话以明文随当前账户设置保存，换浏览器可读取；会增大 settings.json，每条最多8 MiB、总计32 MiB。尽量只用一个酒馆标签页，其他标签页保存设置可能覆盖记录。旧存储原件保留，不自动迁移；需要时先导出备份。关闭自动保存不会删除已有记录。', 'Takes effect after page reload. Plaintext conversations follow this ST account across browsers and enlarge settings.json: 8 MiB per record, 32 MiB total. Prefer one ST tab; another tab saving settings may overwrite records. Existing backend data is retained, not automatically migrated; export a backup first. Turning off auto-save does not delete records.'), section);
     const retry = button(t('重试保存', 'Retry saving'), section);
     const bar = node('div', '', chat); bar.className = 'gd-muyu-session-bar';
     const toggle = button(t('历史', 'History'), bar), title = node('strong', '', bar);
@@ -71,6 +74,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     archived.onchange = () => act(() => controller.setHistoryFilters({ archive: archived.value }));
     task.onchange = () => act(() => controller.setHistoryFilters({ task: task.value }));
     enabled.onchange = () => act(() => controller.setHistoryEnabled(enabled.checked));
+    accountStorage.onchange = () => act(() => controller.setHistoryAccountStorage(accountStorage.checked));
     retry.onclick = () => act(() => controller.retryHistory());
     refresh.onclick = () => act(() => controller.refreshHistory());
     create.onclick = () => act(async () => { await controller.newSession(); if (!disposed && !wide) setOpen(false); });
@@ -83,6 +87,9 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             (task.parentElement || task.parent).hidden = s.mode === 'assistant';
             actions.render(s);
             enabled.checked = h.enabled; enabled.disabled = !h.available || h.loading || s.resetting || s.busy;
+            storageLabel.hidden = storageNotice.hidden = !h.canChooseStorage;
+            accountStorage.checked = h.accountStorage === true;
+            accountStorage.disabled = !h.canChooseStorage || h.loading || s.resetting || s.busy;
             retry.disabled = !h.enabled || h.loading || !!h.pending || !h.error && !h.dirty; refresh.disabled = !h.available || h.loading || s.resetting;
             create.disabled = h.loading || s.resetting || !s.hasChat && !['draft', 'assistant'].includes(s.mode);
             rename.disabled = archive.disabled = remove.disabled = !h.sessionId || h.loading || s.resetting;
@@ -145,6 +152,8 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             if (h.omitted) status.textContent += t(' · 继续时仅发送预算内完整问答', ' · Continuation sends complete turns within the history budget');
             if (h.enabled && h.backend === 'private-files') status.textContent += t(' · ST 私有文件', ' · Private ST files');
             else if (h.enabled && h.backend === 'browser') status.textContent += t(' · 浏览器 IndexedDB', ' · Browser IndexedDB');
+            else if (h.enabled && h.backend === 'account-settings') status.textContent += t(' · 酒馆账户设置', ' · ST account settings');
+            if (h.canChooseStorage && h.backend !== 'memory' && (h.backend === 'account-settings') !== h.accountStorage) status.textContent += t(' · 存储选项已保存，刷新后生效；当前仍使用原位置', ' · Storage preference saved; reload to switch. Current storage is unchanged');
         },
         setVisible(value) { visible = value; visibility(); },
         dispose() { disposed = true; observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); },

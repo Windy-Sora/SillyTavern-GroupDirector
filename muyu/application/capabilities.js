@@ -9,6 +9,8 @@ function settingsSources(fields) {
 // One application contract for tool effects, required grants and history dependencies.
 // Tool definitions own wire schemas; handlers own business validation.
 const capabilities = Object.freeze({
+    ...Object.fromEntries(['muyu.notes.list', 'muyu.notes.read'].map(id => [id, { effect: 'read', sources: () => [] }])),
+    ...Object.fromEntries(['muyu.notes.remember', 'muyu.notes.forget'].map(id => [id, { effect: 'external', sources: () => [] }])),
     'muyu.web.search': { effect: 'external', sources: () => [] },
     ...Object.fromEntries(['muyu.provider.list', 'muyu.provider.discover', 'muyu.knowledge.list', 'muyu.knowledge.read', 'muyu.config.contract', 'muyu.context.list', 'muyu.context.read', 'muyu.history.list', 'muyu.history.read', 'muyu.history.search', 'muyu.interaction.ask', 'muyu.permission.request', 'muyu.settings.catalog', 'muyu.settings.contract', 'muyu.task.plan', 'muyu.profile.preview'].map(id => [id, { effect: 'read', sources: () => [] }])),
     'muyu.settings.read': { effect: 'read', sources: args => settingsSources(args.fields || []) },
@@ -19,6 +21,8 @@ const capabilities = Object.freeze({
             ...(fields.includes('storyBlueprintCompletionVariable') ? ['source:variables'] : [])];
     } },
     'muyu.provider.read': { effect: 'read', sources: args => permissionSource(args.id) ? [sourceKey(args.id)] : null },
+    ...Object.fromEntries(['muyu.provider.search', 'muyu.provider.match'].map(id => [id, { effect: 'read', sources: args => args.resultId
+        ? [executionSource(args.id, args.revision)] : ['chatHistory', 'charMemory'].includes(args.id) ? [sourceKey(args.id)] : null }])),
     'muyu.variables.preview': { effect: 'read', sources: () => ['source:variables'] },
     'muyu.task.preview': { effect: 'read', sources: args => {
         let fields = [];
@@ -69,14 +73,15 @@ export function permissionApprovalCurrent(request, providerPort) {
     return sourceTargetValid(request.source === 'providerExecution' ? executionSource(request.providerId, request.providerRevision) : sourceKey(request.source), request.target, providerPort);
 }
 export function toolAvailableInMode(toolId, mode) {
-    return mode === 'assistant' || !['muyu.provider.execute', 'muyu.provider.result'].includes(toolId);
+    return mode === 'assistant' || !toolId.startsWith('muyu.notes.') && !['muyu.provider.execute', 'muyu.provider.result'].includes(toolId);
 }
 export function assistantToolAccess(definition, args, target, taskId, permissions, providerPort) {
     const contract = capabilities[definition.id];
     if (!contract || contract.effect !== definition.effect) return { decision: 'policy_forbidden', required: [] };
     const required = requiredSources(definition.id, args);
     if (!required) return { decision: 'invalid_request', required: [] };
-    if (required.some(source => !sourceTargetValid(source, target, providerPort, definition.id === 'muyu.provider.result'))) return { decision: 'target_unavailable', required: [] };
+    const stored = definition.id === 'muyu.provider.result' || ['muyu.provider.search', 'muyu.provider.match'].includes(definition.id) && !!args.resultId;
+    if (required.some(source => !sourceTargetValid(source, target, providerPort, stored))) return { decision: 'target_unavailable', required: [] };
     if (required.some(source => sourceDenied(source, target, taskId, permissions))) return { decision: 'user_denied', required: [] };
     const missingSources = required.filter(source => !permissions.allows(source, target, taskId));
     if (missingSources.length) return { decision: 'permission_required', required: [], missingSources };

@@ -1,5 +1,6 @@
 import { openIndexedHistoryStore } from '../sessions/indexeddb-store.js';
 import { openServerHistoryStore } from '../sessions/server-store.js';
+import { openSettingsHistoryStore } from '../sessions/settings-store.js';
 /** Only the host composition layer supplies account identity, never the model or an import. */
 export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openServer = openServerHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
     async function accountKey() {
@@ -12,6 +13,14 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
     }
     return {
         enabled: () => getSettings().muyuHistoryEnabled === true,
+        accountStorage: () => getSettings().muyuHistoryAccountStorage === true,
+        async setAccountStorage(enabled) {
+            if (typeof enabled !== 'boolean') throw Error('HISTORY_INVALID');
+            const settings = getSettings(), previous = settings.muyuHistoryAccountStorage;
+            settings.muyuHistoryAccountStorage = enabled;
+            try { await saveSettings(); }
+            catch { if (settings.muyuHistoryAccountStorage === enabled) settings.muyuHistoryAccountStorage = previous; throw Error('HISTORY_SETTINGS_FAILED'); }
+        },
         async setEnabled(enabled) {
             const settings = getSettings(), previous = settings.muyuHistoryEnabled;
             settings.muyuHistoryEnabled = enabled;
@@ -26,8 +35,13 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
             const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('gd-muyu-history-v1:' + identity));
             const hex = [...new Uint8Array(digest)].slice(0, 16).map(n => n.toString(16).padStart(2, '0')).join('');
             const namespace = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-            const server = await openServer({ namespace, fetcher, headers: getHeaders });
-            const store = server || await openStore({ namespace });
+            const useSettings = getSettings().muyuHistoryAccountStorage === true;
+            const server = useSettings ? null : await openServer({ namespace, fetcher, headers: getHeaders });
+            const store = useSettings ? openSettingsHistoryStore({ namespace, getSettings, saveSettings: async () => {
+                if (await accountKey() !== identity) throw Error('HISTORY_IDENTITY_UNAVAILABLE');
+                await saveSettings();
+                if (await accountKey() !== identity) throw Error('HISTORY_IDENTITY_UNAVAILABLE');
+            } }) : server || await openStore({ namespace });
             let migration = null;
             async function migrate() {
                 if (!server) return;

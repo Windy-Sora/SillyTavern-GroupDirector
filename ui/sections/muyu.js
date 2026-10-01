@@ -14,6 +14,7 @@ import { createRunConfigStore } from '../../muyu/host/run-config.js';
 import { createContextConfigStore } from '../../muyu/host/context-config.js';
 import { createInstructionConfigStore } from '../../muyu/host/instruction-config.js';
 import { createHistoryPort } from '../../muyu/host/history.js';
+import { createAgentMemoryPort } from '../../muyu/host/agent-memory.js';
 import { createWebSearchPort } from '../../muyu/host/web-search.js';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
@@ -39,6 +40,7 @@ registerSection('muyu', ctx => {
         const history = createHistoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
         const webSearch = createWebSearchPort({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
         let host;
+        const agentMemory = createAgentMemoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, getTarget: () => host?.currentTarget() });
         const memoryLimitPort = createMemoryLimitPort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY, memorySystem: ctx.memorySystem,
             changed: () => { const live = owner.currentContext || ctx; live.refreshMemoryList?.(); window.__gdRefreshDashboard?.(); } });
         const completionVariablePort = createStoryCompletionVariablePort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata,
@@ -129,7 +131,7 @@ registerSection('muyu', ctx => {
         const bundleWriter = createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget: () => host?.currentTarget(), variableWriter, configWriter });
         const profileWriter = createProfileWriter({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials,
             getDrawerKeys: () => ctx.configProfileSystem.getDrawerKeys(), onSaved: () => window.__gdRefreshConfigList?.() });
-        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, webSearch, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort });
+        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort });
         owner.controller = createMuyuController({ host });
         owner.floatingRegistry = createFloatingRegistry();
         owner.floatingRegistry.register({

@@ -36,6 +36,31 @@ test('Permission request stays inside the transcript and disposes its card', () 
     assert.equal(parent.children.includes(card), false);
 });
 
+for (const lang of ['zh', 'en']) test(`Long-term memory editor survives view rebuilds and deletes only after explicit confirmation (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    const state = f.state.agentMemory = { available: true, enabled: false, loaded: true, busy: false, error: null, stale: false,
+        rows: [{ id: 'note', revision: 1, title: '<script>unsafe</script>', content: 'text', scope: 'chat' }],
+        draft: { id: null, revision: null, title: '', content: '', scope: 'chat' } };
+    let saved = 0, deleted = 0;
+    f.controller.setAgentMemoryDraft = fields => { Object.assign(state.draft, fields); f.emit(); };
+    f.controller.saveAgentMemory = () => { saved++; };
+    f.controller.removeAgentMemory = (id, revision) => { assert.equal(id, 'note'); assert.equal(revision, 1); deleted++; state.rows = []; f.emit(); };
+    f.controller.setAgentMemoryEnabled = value => { state.enabled = value; f.emit(); };
+    f.controller.newAgentMemory = () => { state.draft = { id: null, revision: null, title: '', content: '', scope: 'chat' }; state.stale = false; f.emit(); };
+    f.emit();
+    const title = f.all().find(e => e.tag === 'input' && e.parent.textContent === (lang === 'en' ? 'Title' : '标题'));
+    const content = f.all().find(e => e.tag === 'textarea' && e.parent.textContent === (lang === 'en' ? 'Content' : '记忆正文'));
+    title.value = 'preference'; title.oninput(); content.value = 'my draft'; content.oninput();
+    f.mount();
+    assert.equal(f.all().find(e => e.tag === 'textarea' && e.parent.textContent === (lang === 'en' ? 'Content' : '记忆正文')).value, 'my draft');
+    assert.ok(f.all().some(e => e.tag === 'span' && e.textContent.includes('<script>unsafe</script>')));
+    await f.find('button', lang === 'en' ? 'Save this note' : '保存这条记忆').click(); assert.equal(saved, 1);
+    state.stale = true; f.emit(); assert.equal(f.find('button', lang === 'en' ? 'Save this note' : '保存这条记忆').disabled, true);
+    await f.find('button', lang === 'en' ? 'Delete' : '删除').click(); assert.equal(deleted, 0);
+    await f.find('button', lang === 'en' ? 'Confirm delete' : '确认删除').click(); assert.equal(deleted, 1);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
 test('Switched chat disables compaction and explains how to resume; migration/recovery notices stay actionable', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' }); f.state.enabled = true;
     f.state.history = { available: true, enabled: true, loading: false, pending: 0, error: null, sessionId: 'old', sessions: [], missingPermissions: [], migration: { pending: 1, reason: 'HISTORY_CAPACITY' } };
@@ -66,6 +91,22 @@ for (const lang of ['zh', 'en']) test(`Coverage UI distinguishes a blocked plan 
     assert.ok(f.all().some(e => e.getAttribute('aria-live') === 'polite'));
     f.root.__gdMuyuDispose();
 });
+for (const lang of ['zh', 'en']) test(`Account history storage option explains limits and defers backend switching (${lang})`, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.history = { available: true, enabled: true, canChooseStorage: true, accountStorage: false, backend: 'browser', sessions: [] };
+    f.emit();
+    const option = f.all().find(e => e.type === 'checkbox' && /账户设置|account settings/.test(e.parent.textContent || ''));
+    assert.ok(option); assert.equal(option.checked, false); assert.equal(!!option.disabled, false);
+    const content = () => f.all().map(e => e.textContent || '').join('\n');
+    assert.match(content(), /settings.json/); assert.match(content(), /32 MiB/);
+    assert.match(content(), lang === 'en' ? /another tab.*overwrite/ : /其他标签页.*覆盖/);
+    option.checked = true; option.onchange();
+    assert.equal(f.state.history.accountStorage, true); assert.equal(f.state.history.backend, 'browser');
+    assert.match(content(), lang === 'en' ? /reload to switch/ : /刷新后生效/);
+    f.state.busy = true; f.emit(); assert.equal(option.disabled, true);
+    f.root.__gdMuyuDispose();
+});
+
 function fixture(lang = 'zh', standalone = false, options = {}) {
     const doc = { createElement: tag => new Element(tag, doc) }, root = doc.createElement('div');
     const state = { viewToken: 1, enabled: false, mode: options.initialMode || 'memory', input: '', hasChat: true, messages: [], runs: [], artifacts: [] };
@@ -87,6 +128,7 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
         archiveSession(id, value) { state.history.selected.archived = value; state.readOnly = value; emit(); },
         deleteSession(id) { state.history.sessions = state.history.sessions.filter(s => s.id !== id); state.history.sessionId = ''; emit(); },
         setHistoryEnabled(value) { state.history.enabled = value; emit(); }, retryHistory() { state.history.error = null; emit(); },
+        setHistoryAccountStorage(value) { state.history.accountStorage = value; emit(); },
         configure(config) { configs.push(config); state.enabled = true; emit(); }, disable() { state.enabled = false; emit(); }, stop() { stops++; state.busy = false; emit(); },
         setFullAccess(enabled) { state.fullAccess = enabled; emit(); },
     };
@@ -564,7 +606,7 @@ test('Sidebar responds to container width, preserves manual choice and traps onl
 });
 test('Sidebar filters are explicit and metadata/delete actions require confirmation', async () => {
     const f = fixture('zh', true); f.state.history = managedHistory(); f.emit();
-    const search = f.all().find(e => e.type === 'search'); search.value = 'title'; await search.oninput(); assert.equal(f.state.history.filters.query, 'title');
+    const search = f.all().find(e => e.type === 'search' && e.parent.textContent === '搜索标题'); search.value = 'title'; await search.oninput(); assert.equal(f.state.history.filters.query, 'title');
     await f.find('button', '重命名').click(); assert.equal(f.state.history.selected.title, 'Title');
     const title = f.all().find(e => e.tag === 'input' && e.parent.textContent === '对话标题'); title.value = 'New title';
     await f.find('button', '确认').click(); assert.equal(f.state.history.selected.title, 'New title');
@@ -621,7 +663,7 @@ test('Session chooser creates/switches explicitly and local saving can be toggle
     assert.equal(open.textContent, '<img onerror=alert(1)>'); assert.equal(f.find('img'), undefined);
     await open.click(); assert.equal(f.state.history.sessionId, 'old');
     await f.find('button', '新对话').click(); assert.equal(f.state.history.sessionId, 'new');
-    const save = f.all().find(e => e.type === 'checkbox' && e.parent.textContent === '保存暮羽对话到本浏览器（默认开启）');
+    const save = f.all().find(e => e.type === 'checkbox' && e.parent.textContent === '自动保存暮羽对话（默认开启）');
     assert.equal(save.checked, false); save.checked = true; await save.onchange(); assert.equal(f.state.history.enabled, true);
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });

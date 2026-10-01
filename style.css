@@ -1214,6 +1214,12 @@
 .gd-muyu-settings-page > details, .gd-muyu-settings-page > section { border-top: 1px solid var(--SmartThemeBorderColor, #777); padding-top: 12px; margin-top: 14px; }
 .gd-muyu-settings-page summary { cursor: pointer; font-weight: 600; }
 .gd-muyu-instruction-settings textarea { min-height: 160px; }
+.gd-muyu-agent-memory > label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-block: 8px; }
+.gd-muyu-agent-memory > label > .text_pole { flex: 1 1 100%; min-width: 0; width: 100%; }
+.gd-muyu-agent-memory > .menu_button { margin: 4px 6px 6px 0; white-space: normal; }
+.gd-muyu-memory-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-block: 6px; }
+.gd-muyu-memory-row > span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.gd-muyu-agent-memory textarea { min-height: 120px; resize: vertical; }
 .gd-muyu-conversation-tools { flex: 0 0 auto; min-width: 0; max-height: 35%; overflow: auto; font-size: .8em; }
 .gd-muyu-conversation-tools > summary { padding: 8px 12px; cursor: pointer; opacity: .8; }
 .gd-muyu-conversation-tools-content { max-height: min(240px, 30dvh); overflow: auto; padding: 0 12px 10px; overscroll-behavior: contain; overflow-wrap: anywhere; }

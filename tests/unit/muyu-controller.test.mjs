@@ -5,6 +5,7 @@ import { createHostBridge } from '../../muyu/host/bridge.js';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { ExecutionError } from '../../muyu/core/execution.js';
 import { createCredentialStore } from '../../muyu/host/credentials.js';
+import { createAgentMemoryPort } from '../../muyu/host/agent-memory.js';
 import { RUN_DEFAULTS } from '../../muyu/core/budget.js';
 import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { fingerprint } from '../../muyu/context/planner.js';
@@ -22,6 +23,57 @@ import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subje
 const tool = (toolId, args = {}, callId = 'c1') => ({ type: 'tool_call_complete', call: { toolId, callId, version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
 
 const ask = () => tool('muyu.interaction.ask', { question: 'Which part?', options: ['Frequency', 'Content'] });
+test('Long-term memory is opt-in even in full access, and explicit remembering survives into a later conversation', async () => {
+    let f; const settings = { muyuAgentMemoryEnabled: false };
+    const agentMemory = createAgentMemoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {}, getTarget: () => f.host.currentTarget() });
+    f = fixture([[text('not enabled'), done], [tool('muyu.notes.remember', { quote: '先给结论', scope: 'chat' }), done], [text('remembered'), done],
+        [tool('muyu.notes.list', { query: '结论', offset: 0 }), done], [text('found user note'), done]], { agentMemory });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('hello'); f.controller.send(); await settle();
+    assert.ok(!f.model.requests[0].tools.some(row => row.id.startsWith('muyu.notes.')));
+    await f.controller.setAgentMemoryEnabled(true);
+    f.controller.setInput('记住：先给结论'); f.controller.send(); await settle();
+    assert.equal((await agentMemory.list(f.host.currentTarget())).length, 1);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    f.controller.newSession(); f.controller.setInput('我以前希望怎么回答？'); f.controller.send(); await settle();
+    if (f.controller.snapshot().busy) {
+        const idle = deferred(); const subscription = f.controller.subscribe(() => { if (!f.controller.snapshot().busy) { subscription.unsubscribe(); idle.resolve(); } });
+        await idle.promise;
+    }
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /先给结论/);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    f.switchChat('B'); assert.equal((await agentMemory.list(f.host.currentTarget())).length, 0);
+    await f.controller.dispose();
+});
+
+test('Turning long-term memory off before a returned tool call prevents any note read or write', async () => {
+    let f; const settings = { muyuAgentMemoryEnabled: true }, wait = deferred(); let writes = 0;
+    const agentMemory = createAgentMemoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => { writes++; }, getTarget: () => f.host.currentTarget() });
+    f = fixture([() => wait.promise, [text('not written'), done]], { agentMemory });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('记住：先给结论'); f.controller.send(); await flush();
+    await f.controller.setAgentMemoryEnabled(false); const before = writes;
+    wait.resolve([tool('muyu.notes.remember', { quote: '先给结论', scope: 'chat' }), done]); await settle();
+    assert.equal(writes, before); assert.deepEqual(await agentMemory.list(f.host.currentTarget()), []);
+    await f.controller.dispose();
+});
+test('Storage preference saves without switching the active backend or dropping the composer draft', async () => {
+    const store = createMemoryHistoryStore(); store.kind = 'browser';
+    const saving = deferred(); let selected = false, opened = 0;
+    const history = { enabled: () => true, accountStorage: () => selected, open: async () => { opened++; return store; },
+        setAccountStorage: async value => { await saving.promise; selected = value; } };
+    const f = fixture([], { history }); await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.newSession(); f.controller.setInput('unsent message');
+    const choice = f.controller.setHistoryAccountStorage(true); await flush();
+    assert.equal(f.controller.snapshot().resetting, true);
+    assert.equal(f.controller.snapshot().input, 'unsent message');
+    await assert.rejects(f.controller.setHistoryAccountStorage(false), /NOT_READY/);
+    saving.resolve(); await choice;
+    const state = f.controller.snapshot();
+    assert.equal(state.history.accountStorage, true); assert.equal(state.history.backend, 'browser');
+    assert.equal(state.history.canChooseStorage, true); assert.equal(state.input, 'unsent message');
+    assert.equal(opened, 1); assert.equal(f.model.requests.length, 0);
+    await f.controller.dispose();
+});
 test('Globe is opt-in even in full access; enabled searches reach the model and reconnect turns it off', async () => {
     let calls = 0, checks = 0;
     const capture = { limits: { maxSearches: 3, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { status: 'ok', provider: 'brave', query: args.query, fetchedAt: '2026-09-30T00:00:00Z', truncated: false, results: [{ title: 'Docs', url: 'https://docs.example.test/', snippet: 'Untrusted public evidence' }] }; } };

@@ -1,5 +1,9 @@
 # 通用 Provider 执行合同
 
+## 缓存结果检索
+
+同一运行已产生的结果可经 `muyu.provider.search({id,revision,resultId,query})` 检索，再携带相同来源参数和 `matchToken` 调用 `muyu.provider.match`。它们只读该次执行的缓存，不再次调用 `render`；仍核验原执行来源授权、目标与共享字节预算，不恢复已清理结果。只有 Provider ID 不能触发隐式执行。原有结果分页及首屏输出契约不变。
+
 ## 当前入口
 
 已注册 Provider 仍由原 `provider-registry.js` 管理。暮羽使用 `discover({offset})` 读取当前注册元数据；使用 `execute({id, revision, projection?})` 调用选定实例的 `render(context, signal)`。注册和执行之间没有每个脚本单独的适配文件，也不修改现有导入格式。固定来源 `list/read` 是另外一条可验证的只读通道。

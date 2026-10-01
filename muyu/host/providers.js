@@ -131,5 +131,31 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         if (!source || !available(id) || !Object.hasOwn(readers, source.reader)) throw Error('SOURCE_UNAVAILABLE');
         return readers[source.reader](id, selector);
     }
-    return Object.freeze({ available, read, discover, describe, execute });
+    function searchSource(id, selector = '') {
+        if (!available(id)) throw Error('SOURCE_UNAVAILABLE');
+        const ctx = getContext();
+        if (id === 'chatHistory') {
+            if (selector) throw Error('INVALID_SELECTOR');
+            const messages = Array.isArray(ctx.chat) ? ctx.chat : [];
+            if (messages.length > 65536) throw Error('SOURCE_TOO_LARGE');
+            return { identity: 'chatHistory', length: messages.length, at: index => {
+                const m = messages[index];
+                if (text(m?.name).length + text(m?.mes).length > 1048576) throw Error('SOURCE_TOO_LARGE');
+                return m ? { role: m.is_system ? 'system' : m.is_user ? 'user' : 'character', content: text(m.name) + ': ' + text(m.mes) } : undefined;
+            } };
+        }
+        if (id !== 'charMemory' || !/^character:(0|[1-9]\d{0,2})$/.test(selector)) throw Error('INVALID_SELECTOR');
+        const store = peekMemories(ctx.chatMetadata, extensionKey), keys = Object.keys(store).filter(k => Array.isArray(store[k]) && store[k].length);
+        if (keys.length > 256) throw Error('SOURCE_TOO_LARGE');
+        const key = keys[Number(selector.slice(10))];
+        if (key === undefined) throw Error('INVALID_SELECTOR');
+        const memories = store[key];
+        if (memories.length > 2048) throw Error('SOURCE_TOO_LARGE');
+        return { identity: key, length: memories.length, at: index => {
+            const m = memories[index];
+            if (text(m?.event).length + text(m?.mood).length > 1048576) throw Error('SOURCE_TOO_LARGE');
+            return m ? { role: 'memory', content: text(m.event) + ' [' + text(m.mood) + ']' } : undefined;
+        } };
+    }
+    return Object.freeze({ available, read, discover, describe, execute, searchSource });
 }

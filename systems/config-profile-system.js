@@ -20,6 +20,10 @@ const INTENTIONALLY_UNCOVERED_KEYS = new Set([
     'muyuContextConfig', // Private assistant context policy, not a story profile.
     'muyuRunConfig', // Local assistant execution policy, not a shared story profile.
     'muyuHistoryEnabled', // Local history privacy choice, never imported with story settings.
+    'muyuHistoryAccountStorage',
+    'muyuHistoryData', // Private conversations must never be shared through a story profile.
+    'muyuAgentMemoryEnabled',
+    'muyuAgentMemoryData', // Assistant notes are private, not transferable story settings.
     // Profile libraries are reusable content data, not a config-profile setting.
     'profileLibraries',
     'storyBlueprintLibraries',
@@ -105,6 +109,7 @@ function snapshotSettings(settings, drawers) {
 function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
+        if (['muyuHistoryAccountStorage', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData'].includes(k)) continue;
         if (k === 'muyuInstructionConfig') continue; // Personal instructions are never applied by a story profile.
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
@@ -374,6 +379,10 @@ export function createConfigProfileSystem(deps) {
         // profile could carry raw keys).
         const expSettings = JSON.parse(JSON.stringify(profile.settings));
         delete expSettings.muyuInstructionConfig;
+        delete expSettings.muyuHistoryAccountStorage;
+        delete expSettings.muyuHistoryData;
+        delete expSettings.muyuAgentMemoryEnabled;
+        delete expSettings.muyuAgentMemoryData;
         if (expSettings.agentConfigs) expSettings.agentConfigs = stripApiKeys(expSettings.agentConfigs);
 
         const manifest = {
@@ -437,6 +446,10 @@ export function createConfigProfileSystem(deps) {
 
         const snap = JSON.parse(JSON.stringify(profile.settings));
         delete snap.muyuInstructionConfig;
+        delete snap.muyuHistoryAccountStorage;
+        delete snap.muyuHistoryData;
+        delete snap.muyuAgentMemoryEnabled;
+        delete snap.muyuAgentMemoryData;
 
         // Strip API keys (defense-in-depth: stored profiles should already be clean)
         if (snap.agentConfigs) {

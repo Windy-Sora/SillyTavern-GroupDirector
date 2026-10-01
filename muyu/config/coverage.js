@@ -4,7 +4,7 @@ import { configFields, fieldDefinition } from './registry.js';
 // Explicit inventory, not a whitelist generated from defaults. New default keys
 // must receive an owner and a deliberate support classification in tests.
 const groups = {
-    muyu: 'muyuInstructionConfig muyuContextConfig muyuRunConfig muyuHistoryEnabled muyuWebSearchConfig',
+    muyu: 'muyuInstructionConfig muyuContextConfig muyuRunConfig muyuHistoryEnabled muyuHistoryAccountStorage muyuHistoryData muyuAgentMemoryEnabled muyuAgentMemoryData muyuWebSearchConfig',
     director: 'mode topN llmContextDepth llmPrompt llmMaxSpeakers llmRespectOrder llmCharDescMode llmCharDescLength llmScriptEnabled llmScriptPrompt llmScriptWrapper llmJsonSchema llmJsonSchemaHint llmHistoryEnabled llmScriptContinuity llmScriptContinuityMode llmScriptContinuityCount llmScriptContinuityWrapper llmScriptContinuityHistoryWrapper llmWorldInfoEnabled llmWorldInfoWrapper templateMaxPasses templateRecursive templateDebugPlaceholders providerTimeoutMs forceSpeakMode forceSpeakPrompt llmScriptPosition',
     formula: 'scoreWeights recentMessageCount consecutivePenalty triggerEnabled triggerScore initiativeEnabled initiativeBaseScore',
     summary: 'knowledgeText summaryEnabled summaryReusePrevious summaryPrompt autoSummaryEnabled autoSummaryInterval',
