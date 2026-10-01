@@ -10,6 +10,7 @@ export const toolLabels = Object.freeze({
     'muyu.web.search': ['搜索公开网页', 'Search the web'],
     'muyu.history.list': ['查看本会话原文索引', 'List session history'],
     'muyu.history.read': ['回读本会话原文', 'Read session history'],
+    'muyu.history.search': ['检索本会话历史原文', 'Search session history'],
     'muyu.profile.preview': ['预览可复用配置档', 'Preview reusable config profile'],
     'muyu.task.plan': ['规划跨模块任务', 'Plan multi-module task'],
     'muyu.task.preview': ['预览整单修改', 'Preview operation bundle'],

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { createHostBridge } from '../../muyu/host/bridge.js';
+import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { RUN_DEFAULTS } from '../../muyu/core/budget.js';
@@ -15,7 +16,7 @@ import { scriptedModel, text, done, flush } from './helpers/muyu-subject.mjs';
 
 const tool = (toolId, args = {}) => ({ type: 'tool_call_complete', call: { toolId, callId: crypto.randomUUID(), version: toolId === 'muyu.provider.execute' ? 2 : 1, args } });
 const settle = async () => { for (let i = 0; i < 16; i++) await flush(); };
-function fixture(stepsBuilder = null) {
+function fixture(stepsBuilder = null, historyAuthorization = 'ask') {
     let called = 0;
     const events = new EventEmitter(), ctx = { chatId: 'A', groupId: 'g', groups: [{ id: 'g', members: [] }], chat: [], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };
     const settings = {}, provider = { id: 'myNotes', placeholder: '{{myNotes}}', _gdOwner: 'group-director/user-provider', render: () => { called++; return { content: 'PRIVATE_PROVIDER_RESULT' }; } };
@@ -25,7 +26,9 @@ function fixture(stepsBuilder = null) {
     const ask = () => [tool('muyu.permission.request', { source: 'providerExecution', providerId: 'myNotes', providerRevision: revision, reason: 'Read my provider result' }), done];
     const run = () => [tool('muyu.provider.execute', { id: 'myNotes', revision }), done];
     const model = scriptedModel(stepsBuilder ? stepsBuilder({ ask, run }) : [ [tool('muyu.provider.discover'), done], ask(), run(), [text('summarized'), done], [text('followup'), done] ]);
-    const host = createHostBridge({ getSettings: () => settings, getContext: () => ctx, extensionKey: 'gd', providerPort: port, configWriter: createConfigWriter({ getSettings: () => settings, saveSettings: async () => {} }) });
+    const host = createHostBridge({ getSettings: () => settings, getContext: () => ctx, extensionKey: 'gd', providerPort: port,
+        contextConfig: { read: () => ({ ...CONTEXT_DEFAULTS, historyAuthorization }) }, // History approval never authorizes a new execution.
+        configWriter: createConfigWriter({ getSettings: () => settings, saveSettings: async () => {} }) });
     const controller = createMuyuController({ host, createModel: () => model });
     return { controller, model, port, ctx, provider, revision, ask, run, called: () => called, replace(next) { registered = [next]; }, switch() { ctx.chatId = 'B'; events.emit('chat'); }, async enable() { await controller.configure({ endpoint: 'https://example.test', model: 'fake', apiKey: 'synthetic' }); await controller.saveRunConfig({ ...RUN_DEFAULTS, modelCalls: 16 }); } };
 }
@@ -52,6 +55,17 @@ test('Full access executes an available registered Provider without an authoriza
     assert.equal(f.controller.snapshot().interaction, null);
     assert.equal(f.model.requests.length, 2);
     await f.controller.dispose();
+});
+
+test('Automatic history never authorizes fresh Provider code execution', async () => {
+    const f = fixture(({ ask, run }) => [[tool('muyu.provider.discover'), done], ask(), run(), [text('PROTECTED_PROVIDER_ANSWER'), done], ask(), [text('declined'), done]], 'auto');
+    await f.enable(); const c = f.controller; c.setInput('first'); c.send(); await settle();
+    c.answerPermission(c.snapshot().interaction.id, 'task'); await settle(); assert.equal(f.called(), 1);
+    c.setInput('followup'); c.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests.at(-1)), /PROTECTED_PROVIDER_ANSWER/);
+    assert.equal(c.snapshot().interaction.source, 'providerExecution'); assert.equal(f.called(), 1);
+    c.answerPermission(c.snapshot().interaction.id, 'deny'); await settle(); assert.equal(f.called(), 1);
+    await c.dispose();
 });
 
 test('Denied execution and replaced versions never call render; failed render does not expose error text', async () => {

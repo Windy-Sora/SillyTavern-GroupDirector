@@ -6,7 +6,7 @@ import { copyModelMessage, copyModelText } from './model-message.js';
 import { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES } from './context-limits.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
-export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, compaction = null, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
+export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
     let state = createRunState(identity);
     const budget = { modelCalls: RUN_DEFAULTS.modelCalls, toolCalls: RUN_DEFAULTS.toolCalls, corrections: 2, timeMs: RUN_DEFAULTS.timeMs, ...limits };
@@ -18,13 +18,14 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
         if (typeof instructionPort?.validate !== 'function') throw new TypeError('Missing instruction port');
         instructions = instructionPort.validate(instructions);
     }
-    const { measurePayload, validateContextConfig, projectCoverage, summaryMessage, compactionRequest, collectSummary } = contextPort || {};
+    const { measurePayload, validateContextConfig, projectCoverage, summaryMessage, compactionRequest, collectSummary, summaryReduces, compactionPressure } = contextPort || {};
+    if (prepareCompaction !== null && typeof prepareCompaction !== 'function' || (prepareCompaction !== null || autoCompactionBlocked) && typeof compactionPressure !== 'function' || typeof autoCompactionBlocked !== 'boolean') throw new TypeError('Invalid compaction policy');
     if (historyCoverage !== null) {
         historyCoverage = projectCoverage?.(historyCoverage);
         if (!historyCoverage) throw new TypeError('Invalid history coverage');
     }
     if (contextConfig) {
-        if ([measurePayload, validateContextConfig, summaryMessage, compactionRequest, collectSummary].some(fn => typeof fn !== 'function')) throw new TypeError('Missing context ports');
+        if ([measurePayload, validateContextConfig, summaryMessage, compactionRequest, collectSummary, summaryReduces].some(fn => typeof fn !== 'function')) throw new TypeError('Missing context ports');
         contextConfig = validateContextConfig(contextConfig);
     }
     if (typeof input !== 'string' || !input.trim()) throw new TypeError('Missing user input');
@@ -121,8 +122,8 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
         const deadline = clock.now() + (summaryOnly ? Math.min(30000, budget.timeMs) : Math.min(30000, Math.floor(budget.timeMs / 3)));
         for (let attempt = 0; attempt < 2; attempt++) {
             const context = Object.freeze({});
-            const request = compactionRequest(compaction, contextConfig.inputTokens);
-            request.maxTokens = Math.min(attempt ? 8192 : request.maxTokens, maxTokens);
+            const summaryCap = Math.min(contextConfig.summaryTokens, maxTokens);
+            const request = compactionRequest(compaction, contextConfig.inputTokens, summaryOnly || attempt ? summaryCap : Math.min(8192, summaryCap));
             try {
                 checkContext(request, context); calls++; usageEvent(); emit('run.context', { phase: 'summarizing' });
                 const text = await bounded(childSignal => collectSummary(model, request, { signal: childSignal, context, onUsage: value => {
@@ -130,6 +131,7 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
                     if (value && [value.inputTokens, value.outputTokens].every(n => Number.isSafeInteger(n) && n >= 0 && n <= 1000000000)) emit('run.context', { phase: 'summary_usage', inputTokens: value.inputTokens, outputTokens: value.outputTokens });
                 } }), { signal, timeoutMs: Math.max(1, deadline - clock.now()), clock, track: drain.track });
                 assertActive(signal);
+                if (!summaryReduces(compaction, text)) throw new ExecutionError('SUMMARY_NOT_SMALLER');
                 const summary = { through: compaction.through, fingerprint: compaction.fingerprint, text, createdAt: Date.now() };
                 onSummary(summary);
                 if (summaryOnly) { emit('run.context', { phase: 'summarized' }); return text; }
@@ -145,11 +147,11 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
                 emit('run.context', { phase: 'summarized' }); return text;
             } catch (e) {
                 assertActive(signal);
-                emit('run.context', { phase: 'summary_failed', error: ['MODEL_OUTPUT_TRUNCATED', 'MODEL_PROTOCOL_ERROR', 'TIMEOUT', 'CONTEXT_INCOMPLETE', 'CONTEXT_LIMIT'].includes(e?.code) ? e.code : 'MODEL_FAILED' });
+                emit('run.context', { phase: 'summary_failed', error: ['MODEL_OUTPUT_TRUNCATED', 'MODEL_PROTOCOL_ERROR', 'TIMEOUT', 'CONTEXT_INCOMPLETE', 'CONTEXT_LIMIT', 'SUMMARY_TOO_LARGE', 'SUMMARY_NOT_SMALLER'].includes(e?.code) ? e.code : 'MODEL_FAILED' });
                 // A timed-out iterator may still be draining. Never overlap another model call.
                 if (summaryOnly || e?.code === 'TIMEOUT') throw e;
                 if (e?.code === 'CONTEXT_INCOMPLETE') { coverageEvent('blocked'); throw e; }
-                if (!attempt && e?.code === 'MODEL_OUTPUT_TRUNCATED' && maxTokens > request.maxTokens && calls < budget.modelCalls - 1 && deadline - clock.now() > 1000) continue;
+                if (!attempt && e?.code === 'MODEL_OUTPUT_TRUNCATED' && summaryCap > request.maxTokens && calls < budget.modelCalls - 1 && deadline - clock.now() > 1000) continue;
                 if (historyBlocked) { coverageEvent('blocked'); throw new ExecutionError('CONTEXT_INCOMPLETE'); }
                 coverageEvent('fallback');
                 return null;
@@ -287,6 +289,21 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
         try {
             assertActive(signal); move('running'); emit('run.started');
             coverageEvent('planned');
+            // Only pre-run history is eligible. Never rewrite a resumed tool or
+            // reasoning trajectory, and never compact based solely on its length.
+            if (!resume && !summaryOnly && contextConfig?.autoSummary && (prepareCompaction || autoCompactionBlocked)) {
+                const request = requestFor();
+                const measured = model.inspect ? model.inspect(request, modelContext) : measurePayload(request);
+                if (compactionPressure(measured, contextConfig)) {
+                    // A failed/no-op attempt must not silently trim this history
+                    // to force a hard-limit request through.
+                    protectedHistory = true;
+                    if (autoCompactionBlocked) {
+                        emit('run.context', { phase: 'auto_compaction_blocked' });
+                        if (measured.requestBytes > MAX_REQUEST_BYTES || contextConfig.inputTokens !== null && measured.estimatedTokens > contextConfig.inputTokens) throw new ExecutionError('AUTO_COMPACTION_BLOCKED');
+                    } else if (!compaction) compaction = prepareCompaction?.() || null;
+                }
+            }
             const summary = await compact();
             answer = summaryOnly ? summary : await loop(); assertActive(signal); move(interaction ? 'yielded' : 'succeeded');
         } catch (e) {

@@ -23,6 +23,7 @@ import { WEB_TOOL, WEB_DEFAULTS } from '../web/contract.js';
 import { importPreview } from '../sessions/exchange.js';
 import { CONTEXT_DEFAULTS, validateContextConfig } from '../context/policy.js';
 import { planContext, summaryCandidate, usableSummary, fingerprint } from '../context/planner.js';
+import { createCompactionBreaker } from '../context/auto-compaction.js';
 import { INSTRUCTION_DEFAULTS, validateInstructionConfig, validateInstructionDraft } from '../instructions/contract.js';
 import { composeInstructions, composeReceiptInstructions } from '../instructions/compose.js';
 import { CLARIFICATION_TOOL, MAX_CLARIFICATIONS, describeAnswer } from '../interactions/contract.js';
@@ -37,11 +38,14 @@ export function createMuyuController({ host, createModel = createChatCompletions
     let mode = 'assistant', error = null, pinnedTarget = null, fullAccess = false;
     let webSearchEnabled = false, webEpoch = 0, savingWebSearch = false;
     let runConfig = host.runConfig?.read() || { ...RUN_DEFAULTS }, savingRunConfig = false;
-    let contextConfig = host.contextConfig?.read() || { ...CONTEXT_DEFAULTS }, savingContextConfig = false, compacting = null;
+    let contextConfig = validateContextConfig(host.contextConfig?.read() || { ...CONTEXT_DEFAULTS }), savingContextConfig = false, compacting = null;
     const omittedViews = new Set();
     const historyGrants = new Map();
+    let historyTransportEpoch = 0;
+    const compactionBreaker = createCompactionBreaker();
     const historyGrantKey = (record, target) => record && record.id + ':' + jsonKey(target);
-    const missingHistorySources = (record, target, taskId = null) => (record?.required || []).filter(source =>
+    // History transport preference is not a grant in the host/tool permission store.
+    const missingHistorySources = (record, target, taskId = null) => contextConfig.historyAuthorization === 'auto' ? [] : (record?.required || []).filter(source =>
         !permissions.allows(source, target, taskId) && !historyGrants.get(historyGrantKey(record, target))?.has(source));
     const compactResults = new Map();
     let instructionConfig = host.instructionConfig?.read() || { ...INSTRUCTION_DEFAULTS }, instructionDraft = { ...instructionConfig }, savingInstructions = false;
@@ -261,7 +265,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             enabled: !!model, resetting, mode, fullAccess, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
             permissions: permissions.snapshot(targetFor()), sourceGrants: permissions.sourceGrants(targetFor()), canReadConfig: configAllowed(targetFor()), canCheckReceipts: Object.fromEntries(receiptsFor(selectedId()).map(r => [r.operationId, receiptAllowed(r, host.globalTarget)])), savedConnection: host.credentials?.describe() || null,
             runConfig: { ...runConfig }, savingRunConfig,
-            contextConfig: { ...contextConfig }, savingContextConfig,
+            contextConfig: { ...contextConfig }, savingContextConfig, autoCompaction: compactionBreaker.status(id, record?.scope),
             instructionSettings: { saved: { ...instructionConfig }, draft: { ...instructionDraft }, saving: savingInstructions, dirty: JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft) },
             context: { turns: plan.turns, omitted: plan.omitted + choice.historyStart, summaryUsed: plan.summaryUsed, estimatedTokens: plan.estimatedTokens, coverage: { ...plan.coverage, state: choice.omitHistory ? 'omitted' : plan.coverage.state, total: (record?.messages || []).length, excluded: choice.historyStart }, omitHistory: omittedViews.has(viewKey()), permissionOmitted: choice.autoHistoryOmitted, summary: record?.contextSummary?.text || '', summaryStale: !!record?.contextSummary && !usableSummary(record.contextSummary, record.messages), compacting: !!compacting && compacting.id === id, progress: compactState?.progress || null, usage: compactState?.usage || null },
             busy, draining: !!compacting?.finished || !!state?.draining,
@@ -285,6 +289,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
         };
     }
     function assemble() {
+        compactionBreaker.clear();
+        historyTransportEpoch++;
         historyGrants.clear();
         actions.clear();
         variableActions.clear();
@@ -325,11 +331,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const handle = startMuyuRun({ ...options, model, registry, handlers, allowedTools, trimRecoveryTools,
                 interactionAdmission: request => interactionLimit(currentTask, request),
                 toolObservation: intent.mode === 'assistant' ? createReadObservation({ permissions, target: options.identity.target, taskId: options.identity.taskId, decisions: intent.readDecisions, registry }) : null,
-                trimRecoveryNote: '部分历史原文已在发送前因上下文预算裁剪。需要具体原文时用本轮提供的 muyu.history.list/read 回读；否则说明缺口，不要猜测。',
-                previousMessages: intent.contextPlan.messages, historyCoverage: intent.contextPlan.coverage, protectedHistory: intent.contextPlan.protectedHistory === true, historyBlocked: intent.contextPlan.historyBlocked === true, contextConfig: intent.contextConfig, compaction: intent.compaction,
+                trimRecoveryNote: '部分历史原文已在发送前因上下文预算裁剪。需要具体原文时用本轮提供的 muyu.history.search 按关键词定位，再用 muyu.history.read 回读，或 list 浏览索引；否则说明缺口，不要猜测。',
+                previousMessages: intent.contextPlan.messages, historyCoverage: intent.contextPlan.coverage, protectedHistory: intent.contextPlan.protectedHistory === true, historyBlocked: intent.contextPlan.historyBlocked === true, contextConfig: intent.contextConfig, compaction: intent.compaction, prepareCompaction: intent.prepareCompaction, autoCompactionBlocked: intent.autoCompactionBlocked,
                 instructions: intent.instructions,
                 applicationResults: intent.receipts,
-                onSummary: summary => saveSummary(intent.historyId, intent.sourceMessages, summary, options.identity.target, options.identity.taskId),
+                onSummary: summary => { saveSummary(intent.historyId, intent.sourceMessages, summary, options.identity.target, options.identity.taskId, intent.summaryEpoch); intent.summarySucceeded = true; },
                 limits: { modelCalls: config.modelCalls, toolCalls: config.toolCalls, timeMs: config.timeMs }, maxTokens: config.maxTokens, finalizeOnLimit: true,
                 resourceUsage: () => builtins.resourceUsage(options.identity.id),
                 policy: ({ definition, target, args }) => {
@@ -363,6 +369,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 },
                 onEvent: event => {
                     options.onEvent(event);
+                    if (event.type === 'run.context' && ['summarizing', 'summary_failed'].includes(event.payload.phase)) intent.summaryAttempted = true;
+                    if (event.type === 'run.context' && event.payload.phase === 'summarized') intent.summarySucceeded = true;
+                    if (event.type === 'run.finished' && intent.summaryAttempted && (intent.summarySucceeded || event.payload.error !== 'CANCELLED') && library.get(intent.historyId)?.scope === intent.summaryScope) {
+                        compactionBreaker.record(intent.historyId, intent.summaryScope, intent.summarySucceeded === true, intent.breakerEpoch);
+                        emit();
+                    }
                     if (['tool.completed', 'tool.failed'].includes(event.type) && builtins.candidateTool(event.payload.toolId)) {
                         if (event.payload.toolId === 'muyu.settings.preview') {
                             if (event.payload.result.error?.code === 'INVALID_ARGUMENT') builtins.invalidateSettingsAttempt(options.identity.id, event.payload.changeFields);
@@ -434,9 +446,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
         for (const r of app.snapshot().runs) app.cancel(r.id);
         if (running) await Promise.all([running.completion, running.drained]);
     }
-    function saveSummary(id, source, summary, target, taskId = null) {
+    function saveSummary(id, source, summary, target, taskId, epoch) {
         const current = library.get(id);
-        if (disposed || !current || readOnly(current) || current.required.some(k => !permissions.allows(k, target, taskId)) || fingerprint(source.slice(0, summary.through)) !== fingerprint(current.messages.slice(0, summary.through))) throw Error('SUMMARY_STALE');
+        // Summarizing existing answers uses history transport consent, not a new
+        // host-read grant. Epoch fences revoked/replaced consent while in flight.
+        if (disposed || epoch !== historyTransportEpoch || !current || readOnly(current) || current.scope !== historyScope(JSON.parse(current.scope)[0], target) || missingHistorySources(current, target, taskId).length || fingerprint(source.slice(0, summary.through)) !== fingerprint(current.messages.slice(0, summary.through))) throw Error('SUMMARY_STALE');
         library.update(id, { contextSummary: summary }); emit();
     }
     function candidateFor(record, config) {
@@ -578,23 +592,24 @@ export function createMuyuController({ host, createModel = createChatCompletions
         async saveContextConfig(value) {
             live(); if (resetting || savingContextConfig) throw Error('NOT_READY');
             const next = validateContextConfig(value); savingContextConfig = true; emit();
-            try { if (!host.contextConfig) throw Error('CONTEXT_CONFIG_UNAVAILABLE'); await host.contextConfig.save(next); live(); contextConfig = next; }
+            try { if (!host.contextConfig) throw Error('CONTEXT_CONFIG_UNAVAILABLE'); await host.contextConfig.save(next); live(); if (jsonKey(contextConfig) !== jsonKey(next)) compactionBreaker.clear(); if (contextConfig.historyAuthorization !== next.historyAuthorization) { historyGrants.clear(); historyTransportEpoch++; } contextConfig = next; }
             finally { savingContextConfig = false; emit(); }
         },
         clearContextSummary() { live(); const id = selectedId(); if (snapshot().busy || resetting || !id || readOnly(library.get(id))) throw Error('NOT_READY'); library.update(id, { contextSummary: null }); emit(); },
+        resetAutoCompaction() { live(); const id = selectedId(); if (!id || snapshot().busy || resetting || readOnly(library.get(id))) throw Error('NOT_READY'); compactionBreaker.reset(id); emit(); },
         async compactHistory() {
             live(); const id = selectedId(), record = library.get(id), target = targetFor();
             if (!model || resetting || snapshot().busy || !record || readOnly(record)) throw Error('NOT_READY');
             if (missingHistorySources(record, target).length) throw Error('HISTORY_PERMISSION_REQUIRED');
             const candidate = candidateFor(record, contextConfig); if (!candidate) throw Error('NOTHING_TO_SUMMARIZE');
-            const state = { id, target, progress: null, usage: null };
+            const state = { id, target, progress: null, usage: null, summaryEpoch: historyTransportEpoch };
             const handle = startMuyuRun({ identity: { id: 'compact:' + crypto.randomUUID(), sessionId: id, taskId: 'compact', target }, input: 'Summarize history', model, registry: builtins.registry, handlers: {}, allowedTools: [],
                 contextConfig: { ...contextConfig }, compaction: candidate, summaryOnly: true, maxTokens: runConfig.maxTokens,
                 limits: { modelCalls: 1, toolCalls: 1, timeMs: Math.min(runConfig.timeMs, 30000) },
-                onSummary: summary => saveSummary(id, record.messages, summary, target),
+                onSummary: summary => saveSummary(id, record.messages, summary, target, null, state.summaryEpoch),
                 onEvent: event => { if (compacting !== state) return; if (event.type === 'run.context') state.progress = event.payload.phase; if (event.type === 'run.usage') state.usage = event.payload; if (event.type === 'run.finished') { state.finished = true; state.progress = event.payload.error ? 'summary_failed' : 'summarized'; } emit(); } });
             compacting = state; running = handle; emit();
-            try { const result = await handle.completion; await handle.drained; if (result.error) throw Error(result.error); }
+            try { const result = await handle.completion; await handle.drained; if (result.error) throw Error(result.error); compactionBreaker.reset(id); }
             finally { if (library.get(id)) compactResults.set(id, state); if (compacting === state) compacting = null; if (running === handle) running = null; emit(); }
         },
         ready: library.ready,
@@ -643,7 +658,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         async saveRunConfig(value) {
             live(); if (savingRunConfig || resetting) throw Error('NOT_READY');
             const next = validateRunConfig(value); savingRunConfig = true; emit();
-            try { await host.runConfig?.save(next); live(); runConfig = next; }
+            try { await host.runConfig?.save(next); live(); if (jsonKey(runConfig) !== jsonKey(next)) compactionBreaker.clear(); runConfig = next; }
             finally { savingRunConfig = false; emit(); }
         },
         allowHistory() {
@@ -660,7 +675,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             else permissions.grant(kind, host.currentTarget()); emit(); },
         async revokePermission(kind) {
             live(); if (resetting) throw Error('NOT_READY');
-            permissions.revoke(kind, targetFor()); resetting = true; emit();
+            permissions.revoke(kind, targetFor()); historyTransportEpoch++; compactionBreaker.clear(); resetting = true; emit();
             try {
                 await stopAndDrain(); live();
                 // Conservative reset: prior answers may quote data from revoked sources.
@@ -754,7 +769,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 else readDecisions.set(sourceKey(request.source), permissionDecision);
             }
             if (planArtifactId) for (const source of artifact.content.plan.sources) if (source !== 'providerExecution') readDecisions.set(sourceKey(source), 'task');
-            const compaction = !omitHistory && !historyStart && contextConfig.autoSummary && (contextPlan.omitted > 0 || contextPlan.needsSummary) ? candidateFor(record, contextConfig) : null;
+            const autoEligible = !continuation && !omitHistory && !historyStart && contextConfig.autoSummary;
+            const autoCompactionBlocked = autoEligible && compactionBreaker.status(id, record.scope).blocked;
+            const compaction = autoEligible && !autoCompactionBlocked && (contextPlan.omitted > 0 || contextPlan.needsSummary) ? candidateFor(record, contextConfig) : null;
+            const compactConfig = { ...contextConfig };
+            const prepareCompaction = autoEligible && !autoCompactionBlocked ? () => candidateFor(record, compactConfig) : null;
             const result = continuation ? permissionDecision !== null ? app.answerPermission(interactionId, permissionDecision) : app.answerInteraction(interactionId, request.draft) : artifact ? { taskId: artifact.taskId, runId: app.continueTask(artifact.taskId, input) } : app.submit(sessionId, input, []);
             try {
             tracePermission('controller.queueCommitted', { target, taskId: result.taskId, runId: result.runId });
@@ -768,7 +787,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 viewedId = null;
             }
             intentions.set(result.runId, { readDecisions, mode, explanation, receipts, consent, webSearch, webAllowed, fields: [...fields], artifact, resumeFrom: continuation?.sourceRunId || null, candidates: new Map(continuation?.candidates || []), autoApplyCandidates: new Map(continuation?.autoApplyCandidates || []), completedTools: new Set(continuation?.completedTools || []), failedTool: continuation?.failedTool || false, recoverablePreviewFailure: continuation?.recoverablePreviewFailure || false, autoHistoryOmitted, instructions: scopedInstructions, runConfig: { ...(continuation?.runConfig || runConfig) }, contextConfig: { ...contextConfig }, contextPlan, historyId: id, sourceMessages: record.messages, historyStart,
-                compaction });
+                compaction, prepareCompaction, autoCompactionBlocked, summaryScope: library.get(id).scope, breakerEpoch: compactionBreaker.epoch(), summaryEpoch: historyTransportEpoch });
             omittedViews.delete(key);
             const granted = mode === 'assistant' ? [] : ['diagnostics', 'chat', 'extended', ...permissionSources.filter(source => !['source:memoryConfig', 'source:memoryDiagnostics', 'source:directorDiagnostics'].includes(source))].filter(kind => permissions.allows(kind, target, result.taskId));
             tracePermission('controller.persistMetadata', { target, taskId: result.taskId, runId: result.runId });

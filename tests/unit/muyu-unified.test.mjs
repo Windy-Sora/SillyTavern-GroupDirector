@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { createHostBridge } from '../../muyu/host/bridge.js';
+import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { createMemoryLimitPort } from '../../muyu/host/memory-limit.js';
@@ -212,6 +213,7 @@ function fixture(steps, chat = true) {
     const memoryLimitPort = createMemoryLimitPort({ getTarget: () => host.currentTarget(), getMetadata: () => ctx.chatMetadata,
         extensionKey: 'gd', memorySystem: { isPruning: () => false, pruneAfter: async () => {} } });
     host = createHostBridge({ getSettings, getContext: () => ctx, extensionKey: 'gd', providerPort, memoryLimitPort,
+        contextConfig: { read: () => ({ ...CONTEXT_DEFAULTS, historyAuthorization: 'ask' }) }, // Exercise optional history approval independently of tool grants.
         configWriter: createConfigWriter({ getSettings, isBusy: () => false, saveSettings: async () => { writes++; }, memoryLimitPort }) });
     const model = scriptedModel(steps), controller = createMuyuController({ host, createModel: () => model });
     return { controller, model, settings, host, ctx, reads: () => reads, writes: () => writes,

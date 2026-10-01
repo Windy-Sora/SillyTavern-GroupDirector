@@ -2,6 +2,7 @@
 import { permissionSources, parseExecutionSource } from '../permissions/contract.js';
 import { validateReceipt, receiptSources } from '../actions/receipts.js';
 import { MAX_CONTEXT_MESSAGES, MAX_MESSAGE_BYTES } from '../context/policy.js';
+import { validSummaryText } from '../context/summary-contract.js';
 export const HISTORY_LIMITS = Object.freeze({ sessions: 64, messages: MAX_CONTEXT_MESSAGES, recordBytes: 32 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 });
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const validHistoryId = value => typeof value === 'string' && uuid.test(value);
@@ -27,7 +28,7 @@ export function validateRecord(value) {
         ![change.from, change.to].every(scope => typeof scope === 'string' && scope.length <= 4096 && scope.startsWith('["assistant",'))))) throw Error('HISTORY_INVALID');
     if (value.version >= 3 && value.contextSummary !== null) {
         const s = value.contextSummary;
-        if (!s || Object.keys(s).sort().join(',') !== 'createdAt,fingerprint,text,through' || !Number.isSafeInteger(s.through) || s.through < 2 || s.through > HISTORY_LIMITS.messages || typeof s.fingerprint !== 'string' || !/^\d+:\d+:\d+$/.test(s.fingerprint) || s.fingerprint.length > 50 || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 6000 || !Number.isSafeInteger(s.createdAt) || s.createdAt < 0) throw Error('HISTORY_INVALID');
+        if (!s || Object.keys(s).sort().join(',') !== 'createdAt,fingerprint,text,through' || !Number.isSafeInteger(s.through) || s.through < 2 || s.through > HISTORY_LIMITS.messages || typeof s.fingerprint !== 'string' || !/^\d+:\d+:\d+$/.test(s.fingerprint) || s.fingerprint.length > 50 || !validSummaryText(s.text) || !Number.isSafeInteger(s.createdAt) || s.createdAt < 0) throw Error('HISTORY_INVALID');
     }
     if (!validHistoryId(value.id) || !Number.isSafeInteger(value.revision) || value.revision < 0) throw Error('HISTORY_INVALID');
     if (typeof value.scope !== 'string' || value.scope.length > 4096 || typeof value.title !== 'string' || value.title.length > 100) throw Error('HISTORY_INVALID');

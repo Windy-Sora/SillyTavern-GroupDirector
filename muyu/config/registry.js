@@ -1,4 +1,5 @@
 import { copyJson, jsonKey, validateJson } from '../core/json-contract.js';
+import { configPresentation } from './presentation.js';
 import { memoryFieldSchemas } from '../modules/config-draft/contracts.js';
 import { directorRuleDefinitions, formulaRuleDefinitions } from './speaker-rules.js';
 import { inspectDirectorOutputFormat } from './director-output-format.js';
@@ -62,7 +63,7 @@ export function fieldDefinition(id) {
         prompt: '导演提示词原文，不是JSON Schema。空串沿用插件缺省提示词。最多4000字符；超出草稿DTO字节预算则拒绝，不截断保存。生成中不可修改。',
         provider: '毫秒；0表示不超时。保存入口同步默认渲染超时，只影响后续调用，不中断正在执行的Provider。',
     };
-    return copyJson({ id, scope: 'global', applies: 'next-use', description: notes[definition.domain], source: definition.domain === 'scoring' ? 'ui/sections/formula.js' : definition.domain === 'memory' ? 'ui/sections/memory.js' : 'ui/sections/director.js', ...definition });
+    return copyJson({ id, scope: 'global', applies: 'next-use', description: notes[definition.domain], source: definition.domain === 'scoring' ? 'ui/sections/formula.js' : definition.domain === 'memory' ? 'ui/sections/memory.js' : 'ui/sections/director.js', ...definition, presentation: configPresentation(id) });
 }
 export function selectedFields(fields) {
     if (!Array.isArray(fields) || !fields.length || fields.length > configFields.length + Object.keys(readOnlyDependencies).length || new Set(fields).size !== fields.length) throw Error('INVALID_CONFIG_FIELDS');

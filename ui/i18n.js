@@ -1203,6 +1203,13 @@ const I18N = {
     },
 };
 
+/** Plain label projection for non-DOM consumers; never renders dictionary HTML. */
+export function uiLabel(key, lang = 'zh') {
+    const dictionary = lang === 'en' ? I18N.en : I18N.zh;
+    if (!Object.hasOwn(dictionary, key)) return null;
+    return dictionary[key].replace(/<[^>]*>/g, '').trim();
+}
+
 export function applyI18n(lang, EXT_KEY, chat_metadata) {
     const t = I18N[lang] || I18N.zh;
     $('[data-i18n]').each(function () {

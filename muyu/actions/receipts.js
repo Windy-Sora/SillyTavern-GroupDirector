@@ -1,6 +1,7 @@
 import { validateJson } from '../core/json-contract.js';
 import { memoryFields } from '../modules/config-draft/contracts.js';
 import { configFields, fieldDefinition } from '../config/registry.js';
+import { configDiffText, configLabel } from '../config/presentation.js';
 const text = maxLength => ({ type: 'string', maxLength });
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 export const receiptStatuses = ['cancelled', 'expired', 'not_executed', 'applied_confirmed', 'applied_unconfirmed', 'saved_confirmed', 'saved_unconfirmed', 'partial', 'outcome_unknown'];
@@ -77,10 +78,10 @@ export function actionReceipt(action) {
 }
 export function receiptText(r, lang = 'zh') {
     const en = lang === 'en';
-    if (r.version === 5) return `${new Date(r.at).toISOString()} · ${r.status}\n${en ? 'Profile' : '配置档'}: ${r.profileName}\n${en ? 'Saved ID' : '保存标识'}: ${r.profileId || (en ? 'none' : '无')}\n${en ? 'Persistence' : '持久化'}: ${r.persistence}\n${en ? 'Fields' : '字段'}: ${r.fields.join(', ')}\n${en ? 'This operation only saved a reusable profile; it did not apply it or change active settings. Historical result only.' : '本次仅保存可复用配置档，未应用，也未修改当前生效设置；这是历史结果。'}`;
+    if (r.version === 5) return `${new Date(r.at).toISOString()} · ${r.status}\n${en ? 'Profile' : '配置档'}: ${r.profileName}\n${en ? 'Saved ID' : '保存标识'}: ${r.profileId || (en ? 'none' : '无')}\n${en ? 'Persistence' : '持久化'}: ${r.persistence}\n${en ? 'Fields' : '字段'}: ${r.fields.map(field => configLabel(field, lang)).join(', ')}\n${en ? 'This operation only saved a reusable profile; it did not apply it or change active settings. Historical result only.' : '本次仅保存可复用配置档，未应用，也未修改当前生效设置；这是历史结果。'}`;
     if (r.version === 4) return `${new Date(r.at).toISOString()} · ${r.status}\n` +
         r.steps.map((step, i) => `${i + 1}. ${step.kind === 'variable' ? step.id : en ? 'Global settings' : '全局配置'} · ${step.status}\n` +
-            step.diff.map(d => `${d.field}: ${d.before} → ${d.after}`).join('; ') +
+            step.diff.map(d => step.kind === 'settings' ? configDiffText(d, lang) : `${d.field}: ${d.before} → ${d.after}`).join('; ') +
             `\n${step.kind === 'variable' ? 'chatSave=' + step.chatSave : 'settingsSave=' + step.settingsSave}`).join('\n') +
         (en ? '\nHistorical result, not current state or authorization.' : '\n历史结果，不代表当前状态或授权。');
     if (r.version === 3) return `${new Date(r.at).toISOString()} · ${r.status}\n${r.variableId}\n` +
@@ -92,7 +93,7 @@ export function receiptText(r, lang = 'zh') {
         applied_confirmed: ['当时已应用，保存已确认', 'Applied then; save confirmed'], applied_unconfirmed: ['当时已更新内存，持久化保存未确认', 'Memory updated then; persistence unconfirmed'], saved_confirmed: ['当时已保存', 'Saved then'], saved_unconfirmed: ['当时已加入列表，持久化未确认', 'Added then; persistence unconfirmed'], partial: ['部分完成，逐项核对', 'Partially completed; check each step'], outcome_unknown: ['执行结果不确定', 'Execution outcome unknown'],
     };
     return `${new Date(r.at).toISOString()} · ${statuses[r.status][en ? 1 : 0]}\n` +
-        (en ? 'Proposed changes (not proof of approval or execution): ' : '提议的变更（不单独证明批准或执行成功）：') + r.diff.map(d => `${d.field}: ${d.before} → ${d.after}`).join('; ') +
+        (en ? 'Proposed changes (not proof of approval or execution): ' : '提议的变更（不单独证明批准或执行成功）：') + r.diff.map(d => configDiffText(d, lang)).join('; ') +
         (r.saveError ? (en ? '\nSave call reported an error.' : '\n保存调用异常。') : '') +
         (r.changed ? (en ? '\nSettings changed again while saving.' : '\n保存期间配置又发生变化。') : '') +
         (r.memoryPrune ? (en ? `\nGlobal settings save: ${r.memoryPrune.settingsSave}; current-chat pruning: ${r.memoryPrune.status}; planned ${r.memoryPrune.planned}, reported removed ${r.memoryPrune.removed}.` : `\n全局设置保存：${r.memoryPrune.settingsSave}；当前聊天裁剪：${r.memoryPrune.status}；预计 ${r.memoryPrune.planned} 条，报告裁剪 ${r.memoryPrune.removed} 条。`) : '') +

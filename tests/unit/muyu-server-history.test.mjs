@@ -8,6 +8,7 @@ import { createHistoryPort } from '../../muyu/host/history.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { openServerHistoryStore } from '../../muyu/sessions/server-store.js';
 import { validateRecord } from '../../muyu/sessions/contract.js';
+import { fingerprint } from '../../muyu/context/planner.js';
 
 const require = createRequire(import.meta.url);
 const { createFileStore, init } = require('../../muyu/server-plugin/index.cjs');
@@ -19,9 +20,11 @@ test('Private file store agrees with the large-context archive contract', async 
     try {
         const store = createFileStore(root), input = record();
         input.messages = Array.from({ length: 400 }, (_, n) => ({ role: n % 2 ? 'assistant' : 'user', content: '中'.repeat(n === 0 ? 100000 : 2000), runId: String(Math.floor(n / 2)) }));
+        input.contextSummary = { through: 2, fingerprint: fingerprint(input.messages.slice(0, 2)), text: '交接资料'.repeat(4000), createdAt: 1 };
         const first = await store.create(validateRecord(input));
         assert.equal(first.messages.length, 400);
         assert.equal((await store.read(input.id)).messages[0].content.length, 100000);
+        assert.equal(validateRecord(await store.read(input.id)).contextSummary.text, input.contextSummary.text);
         assert.ok((await store.list())[0].bytes > 2 * 1024 * 1024);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

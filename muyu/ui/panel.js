@@ -1,4 +1,5 @@
 import { MAX_MESSAGE_BYTES } from '../context/policy.js';
+import { renderConfigDiff } from './config-diff-view.js';
 import { memoryFields } from '../modules/config-draft/contracts.js';
 import { createProcessView, processLabel } from './process-view.js';
 import { taskCatalog } from '../modules/catalog.js';
@@ -60,7 +61,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const connect = button(t('启用此连接', 'Enable connection'), settingsLayout.pages.connection), disable = button(t('禁用连接', 'Disable connection'), settingsLayout.pages.connection);
     node('small', t('禁用停止任务，但不删除历史；密钥请使用“清除已保存密钥”。', 'Disabling stops tasks, not history storage. Use Forget saved key to erase the saved credential.'), settingsLayout.pages.connection);
     node('h3', t('上下文与权限', 'Context and permissions'), settingsLayout.pages.data);
-    node('p', t('授权在本连接内复用，并按聊天隔离。撤销会停止任务、清除运行产物并打开空白会话；旧历史仅保留查看，重新外发须核验授权。不能撤回已发送的数据。', 'Grants are reused per connection and isolated per chat. Revoking stops tasks, clears live artifacts and opens a blank conversation. Old history remains viewable; resending requires authorization. Sent data cannot be recalled.'), settingsLayout.pages.data);
+    node('p', t('资料读取授权在本连接内复用，并按聊天隔离。撤销会停止任务、清除运行产物并打开空白会话；已有对话是否再次外发由上下文设置中的自动允许／逐次审批决定，不恢复新读取权限。不能撤回已发送的数据。', 'Read grants are reused per connection and isolated per chat. Revoking stops tasks, clears live artifacts and opens a blank conversation. Resending existing history follows the automatic/approval context setting, without restoring fresh read access. Sent data cannot be recalled.'), settingsLayout.pages.data);
     const diagnosticPermission = field(t('插件诊断信息（白名单配置、匿名统计与运行状态）', 'Plugin diagnostics (whitelist settings, anonymous counts and state)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const chatPermission = field(t('当前聊天资料（消息、总结、档案、记忆正文及名称）', 'Current chat data (messages, summary, profiles, memories and names)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const extendedPermission = field(t('扩展剧情上下文（当前已加载历史分段读取、参聊角色卡、导演历史账本正文）', 'Extended story context (loaded chat history in ranges, participant cards, director ledger bodies)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
@@ -175,6 +176,9 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         MODEL_RATE_LIMIT: t('服务限流，请稍后手动重试。', 'Service rate limit; retry manually later.'),
         MODEL_SERVICE_ERROR: t('模型服务暂时失败。', 'Model service failed.'),
         MODEL_OUTPUT_TRUNCATED: t('模型输出被截断；查看本轮输出上限与服务商限制。', 'Model output was truncated; check the output limit and service restrictions.'),
+        SUMMARY_TOO_LARGE: t('摘要超过 512 KiB 安全上限，未保存；原文和已有摘要保留。', 'Summary exceeded the 512 KiB safety limit and was not saved; originals and the existing summary remain.'),
+        SUMMARY_NOT_SMALLER: t('摘要连同包装没有比原文更小，未替换已有摘要。', 'The framed summary did not reduce the original size; the existing summary was not replaced.'),
+        AUTO_COMPACTION_BLOCKED: t('自动整理已因连续失败暂停，完整请求仍超预算，未发送。请手动整理、调整预算或明确恢复自动整理。', 'Automatic summarization is paused after repeated failures and the full request still exceeds budget; nothing was sent. Summarize manually, adjust budgets or explicitly resume.'),
         MODEL_HISTORY_UNAVAILABLE: t('服务缺少工具思考回传所需信息，未静默关闭思考。', 'Required thinking/tool history is unavailable; thinking was not silently disabled.'),
         TIMEOUT: t('任务超时，正在等待上游清理。', 'Task timed out; awaiting upstream cleanup.'),
         BUDGET_EXCEEDED: t('已达到任务预算，未继续调用。', 'Run budget reached; no further calls.'),
@@ -372,7 +376,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 }
                 if (artifact.content.settings) {
                     node('strong', t('全局配置：影响所有聊天', 'Global settings: affects all chats'), card);
-                    for (const diff of artifact.content.settings.preview.diff) node('p', `${diff.field}: ${diff.before} → ${diff.after}`, card);
+                    renderConfigDiff({ doc, parent: card, diff: artifact.content.settings.preview.diff, lang });
                     for (const warning of artifact.content.settings.preview.warnings) node('p', warning, card);
                 }
                 const recheck = button(t('重新校验整单', 'Revalidate bundle'), card); recheck.disabled = s.busy || s.resetting;
@@ -381,7 +385,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
             } else if (artifact.kind === 'profile-draft') {
                 node('p', artifact.content.name, card);
                 if (artifact.content.description) node('small', artifact.content.description, card);
-                for (const [field, value] of Object.entries(artifact.content.settings)) node('p', `${field}: ${JSON.stringify(value)}`, card);
+                renderConfigDiff({ doc, parent: card, settings: artifact.content.settings, lang });
                 for (const warning of artifact.content.warnings) node('small', warning, card);
                 node('small', t('这是一份可复用的局部配置档；保存到库不会修改当前设置。以后应用配置档时，以上字段将影响所有聊天，未列出的字段保持不变。', 'Reusable partial profile. Saving does not change active settings. Applying it later affects all chats for the listed fields; omitted fields stay unchanged.'), card);
                 const recheck = button(t('重新校验配置档', 'Revalidate profile'), card); recheck.disabled = s.busy || s.resetting;
@@ -396,7 +400,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
                 renderVariableApply({ doc, card, artifact, state: s, controller, act, lang });
             } else {
-                for (const d of artifact.content.preview.diff) node('p', `${d.field}: ${d.before} → ${d.after}`, card);
+                renderConfigDiff({ doc, parent: card, diff: artifact.content.preview.diff, lang });
                 const operation = s.configActions?.find(r => r.artifactId === artifact.id && r.revision === artifact.revision);
                 const attempted = operation && !['pending', 'cancelled', 'expired', 'not_executed'].includes(operation.status);
                 node('p', attempted ? t('上方为本次操作的原始差异；实际结果见下方。', 'Original operation diff above; see actual result below.') : artifact.content.preview.notice, card); node('p', artifact.content.preview.warnings.join(' · '), card);

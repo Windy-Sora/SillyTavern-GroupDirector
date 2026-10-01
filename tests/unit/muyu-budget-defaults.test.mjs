@@ -27,13 +27,13 @@ test('Known legacy defaults upgrade without writing during reads; custom combina
     }
     const settings = { muyuContextConfig: { ...oldContext, inputTokens: null }, muyuRunConfig: { ...oldRun, maxTokens: 32768, providerBytes: 50000 } };
     const s = stores(settings);
-    assert.deepEqual(s.context.read(), settings.muyuContextConfig); assert.deepEqual(s.run.read(), settings.muyuRunConfig);
+    assert.deepEqual(s.context.read(), { ...settings.muyuContextConfig, historyAuthorization: 'auto', summaryTokens: 8192 }); assert.deepEqual(s.run.read(), settings.muyuRunConfig);
 });
 test('Explicitly saving even an old-default-sized budget pins it across reloads', async () => {
     const settings = {}, s = stores(settings);
     await s.context.save(oldContext); await s.run.save(oldRun);
     const reopened = stores(settings);
-    assert.deepEqual(reopened.context.read(), oldContext); assert.deepEqual(reopened.run.read(), oldRun);
+    assert.deepEqual(reopened.context.read(), { ...oldContext, historyAuthorization: 'auto', summaryTokens: 8192 }); assert.deepEqual(reopened.run.read(), oldRun);
 });
 test('Failed saves roll back values and migration markers without overwriting a concurrent replacement', async () => {
     const settings = {}; let concurrent = false;
@@ -44,5 +44,5 @@ test('Failed saves roll back values and migration markers without overwriting a 
     await assert.rejects(s.run.save(oldRun), /RUN_CONFIG_SAVE_FAILED/);
     assert.equal(Object.hasOwn(settings, 'muyuRunConfig'), false); assert.equal(Object.hasOwn(settings, 'muyuRunBudgetVersion'), false);
     concurrent = true; await assert.rejects(s.context.save(oldContext)); assert.equal(settings.muyuContextConfig, replacement);
-    assert.deepEqual(s.context.read(), replacement);
+    assert.deepEqual(s.context.read(), { ...replacement, historyAuthorization: 'auto', summaryTokens: 8192 });
 });

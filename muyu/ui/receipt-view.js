@@ -1,4 +1,6 @@
 import { receiptText } from '../actions/receipts.js';
+import { configLabel, configValue } from '../config/presentation.js';
+import { renderConfigDiff } from './config-diff-view.js';
 
 /** Plain application facts, distinct from user/assistant messages. */
 export function createReceiptView({ doc, parent, controller, act, lang }) {
@@ -17,6 +19,12 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
         for (const r of state.receipts) {
             const card = node('div', ''); card.className = 'gd-muyu-artifact';
             node('p', receiptText(r, lang), card).setAttribute('style', 'white-space: pre-wrap');
+            if (r.version !== 3 && r.version !== 4 && r.version !== 5) renderConfigDiff({ doc, parent: card, diff: r.diff, lang, technicalOnly: true });
+            if (r.version === 4) for (const step of r.steps) if (step.kind === 'settings') renderConfigDiff({ doc, parent: card, diff: step.diff, lang, technicalOnly: true });
+            if (r.version === 5) {
+                const details = node('details', '', card); node('summary', t('技术详情 · 原始字段', 'Technical details · raw fields'), details);
+                node('p', r.fields.join(', '), details);
+            }
             const status = state.receiptExplanations?.[r.operationId];
             const actions = node('div', '', card); actions.className = 'gd-muyu-receipt-actions';
             if (status) node('small', t(...(labels[status] || ['解释状态未知', 'Explanation status unknown'])) + t('；不改变操作结果', '; does not change the operation result'), actions).setAttribute('role', 'status');
@@ -24,7 +32,7 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
             if (check) {
                 const checks = { reading: ['正在核对', 'Checking'], matched: ['读取时与提议值一致', 'Matched proposed values at read time'], different: ['读取时与提议值不一致', 'Different from proposed values at read time'], unknown: ['无法核对', 'Unable to verify'], permission_required: ['尚未核对：需要配置读取授权', 'Not checked: settings read permission required'] };
                 node('p', t(...(checks[check.state] || checks.unknown)) + (check.readAt ? ' · ' + check.readAt : ''), actions).setAttribute('role', 'status');
-                for (const field of check.fields) node('small', `${field.field}: ${field.actual || t('未知', 'unknown')} · ${t('提议', 'proposed')} ${field.expected}`, actions);
+                for (const field of check.fields) node('small', `${configLabel(field.field, lang)}：${configValue(field.field, field.actual, lang, { serialized: true })} · ${t('提议', 'proposed')} ${configValue(field.field, field.expected, lang, { serialized: true })}`, actions);
                 node('small', t('仅是读取时的内存值，不证明持久化，也不改变原回执。', 'In-memory values at read time only; not proof of persistence. Original receipt unchanged.'), actions);
             }
             if (state.readOnly) continue;

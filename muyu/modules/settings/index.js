@@ -3,6 +3,7 @@ import { assertActive, ExecutionError } from '../../core/execution.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { configFields, configDomains, configChangesSchema, dependencyFields, fieldDefinition, previewSettings, readSettingsFields, selectedFields } from '../../config/registry.js';
 import { configurationCoverage, dynamicSettings } from '../../config/coverage.js';
+import { configPresentation } from '../../config/presentation.js';
 
 const string = { type: 'string', maxLength: 24000 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -66,6 +67,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
     }
     register('muyu.settings.catalog', '列出当前可编辑配置领域和字段，以及尚未接入或暂缓的配置键；deferred 表示暮羽暂不支持修改，不能靠额外授权解锁。目录不读取配置值。', object({}), () => ({ candidateId: '', text: JSON.stringify({ version: 2,
         supported: configDomains.map(domain => ({ domain, fields: configFields.filter(id => fieldDefinition(id).domain === domain) })),
+        labels: Object.fromEntries(configFields.map(id => [id, configPresentation(id).label])),
         pending: configurationCoverage().filter(row => row.status !== 'supported' && row.status !== 'internal').map(({ key, owner, status }) => ({ key, owner, status })), dynamicPending: Object.keys(dynamicSettings),
     }) }));
     register('muyu.settings.contract', '查询字段用途、类型、限制和生效时机，也用于只读分析，不限于修改前校验。已知字段名时用fields一次查询多个领域，跨领域时省略domain；仅探索一个领域时用domain。两者同时提供时fields必须属于该领域；INVALID_CONTRACT_QUERY后改用fields单独查询或拆分领域，勿重复原组合。scope=global影响所有聊天；未指定字段保持原值，不填默认值。', {
@@ -77,7 +79,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         if (domain && ids.some(id => fieldDefinition(id).domain !== domain)) throw Error('INVALID_CONTRACT_QUERY');
         return { candidateId: '', text: JSON.stringify(ids.map(fieldDefinition)) };
     });
-    register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化、字段的用途或历史变化。分析字段联动与生效关系前按需查询muyu.settings.contract或静态说明，不按字段名猜测。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields) }) }));
+    register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化、字段的用途或历史变化。分析字段联动与生效关系前按需查询muyu.settings.contract或静态说明，不按字段名猜测。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields), labels: Object.fromEntries(fields.map(id => [id, configPresentation(id).label])) }) }));
     register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         run.invalidatedCandidateIds = [];
