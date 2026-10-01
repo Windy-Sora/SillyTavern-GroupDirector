@@ -41,6 +41,23 @@ test('Native chat search returns small locations and matched read-only evidence 
     assert.equal(f.executions(), 0);
 });
 
+test('Provider search distinguishes scan steps, distinct page records and selected-source total', () => {
+    const f = fixture(); f.ctx.chat[0].mes = '金币甲，金币乙，金币丙。';
+    const page = f.search();
+    assert.equal(page.query, '金币'); assert.equal(page.totalRecords, 1); assert.equal(page.scannedRecords, 1);
+    assert.equal(page.scannedSteps, 4); assert.equal(page.items.length, 3); assert.equal(page.complete, true);
+    f.ctx.chat = Array.from({ length: 40 }, () => ({ mes: '金币，尾部' }));
+    const bounded = f.search(); assert.ok(bounded.scannedSteps <= 32); assert.ok(bounded.scannedRecords <= bounded.scannedSteps);
+    assert.equal(bounded.totalRecords, 40); assert.equal(bounded.complete, false);
+});
+
+test('A continuation may scan the same long record again without inflating its source total', () => {
+    const f = fixture(); f.ctx.chat[0].mes = 'x'.repeat(140000) + '金币';
+    const first = f.search(); assert.equal(first.totalRecords, 1); assert.equal(first.scannedRecords, 1); assert.equal(first.complete, false);
+    const second = f.search({ cursor: first.cursor }); assert.equal(second.totalRecords, 1); assert.equal(second.scannedRecords, 1); assert.equal(second.complete, false);
+    const third = f.search({ cursor: second.cursor }); assert.equal(third.totalRecords, 1); assert.equal(third.scannedRecords, 1); assert.equal(third.items.length, 1);
+});
+
 test('Bounded search continues through empty batches instead of claiming absence', () => {
     const f = fixture(); f.ctx.chat = Array.from({ length: 70 }, (_, i) => ({ name: 'A', mes: i === 69 ? '金币' : '无关' }));
     let page = f.search(); assert.equal(page.items.length, 0); assert.equal(page.complete, false); assert.ok(page.cursor); assert.equal(page.scannedRecords, 32);

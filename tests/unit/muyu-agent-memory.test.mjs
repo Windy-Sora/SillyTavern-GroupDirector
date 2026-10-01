@@ -198,6 +198,35 @@ test('Memory model reads paginate, validate revisions, bind chat scope and count
     f.switch(b); const other = moduleFor(f); assert.equal((await other.call('read', { id: note.id, revision: 1, offset: 0 })).status, 'not_found');
 });
 
+test('Note keyword coverage is not an inventory and excludes notes from other chats', async () => {
+    const f = fixture(); await f.port.setEnabled(true);
+    for (let i = 0; i < 10; i++) await f.port.save(input('背景资料' + i), { target: a });
+    await f.port.save(input('偏好中文回答', 'account'), { target: a });
+    f.switch(b); await f.port.save(input('另一聊天秘密'), { target: b }); f.switch(a);
+    const m = moduleFor(f), found = await m.call('list', { query: '中文', offset: 0 });
+    assert.deepEqual(found.coverage, { query: '中文', kind: 'query_matches', matchedCount: 1, offset: 0, complete: true, scope: 'account-and-current-chat' });
+    validateJson(m.module.registry.get('muyu.notes.list').outputSchema, found);
+    const missing = await m.call('list', { query: '不存在', offset: 0 }); assert.equal(missing.coverage.matchedCount, 0); assert.equal(missing.coverage.kind, 'query_matches');
+    const first = await m.call('list', { query: '', offset: 0 }); assert.equal(first.coverage.kind, 'visible_inventory'); assert.equal(first.coverage.matchedCount, 11);
+    assert.equal(first.items.length, 8); assert.equal(first.coverage.complete, false); assert.equal(first.nextOffset, 8);
+    const last = await m.call('list', { query: '', offset: first.nextOffset }); assert.equal(last.coverage.offset, 8); assert.equal(last.coverage.complete, true); assert.equal(last.items.length, 3);
+    assert.doesNotMatch(JSON.stringify(first) + JSON.stringify(last), /另一聊天秘密/);
+    assert.equal((await moduleFor(f, '', 100).call('list', { query: '中文', offset: 0 })).coverage, undefined);
+});
+
+test('Successful note writes disclose scope and on-demand recall, never automatic injection', async () => {
+    const f = fixture(); await f.port.setEnabled(true);
+    for (const [scope, question] of [['chat', '记住：简洁回答'], ['account', '全局记住：中文回答']]) {
+        const m = moduleFor(f, question), args = { quote: scope === 'chat' ? '简洁回答' : '中文回答', scope };
+        const saved = await m.call('remember', args); assert.equal(saved.status, 'saved');
+        assert.deepEqual(saved.writeReceipt, { scope, recallMode: 'on_demand', automaticContextInjection: false, creationStatus: 'not_reported', semanticDuplicateCheck: 'not_performed' });
+        validateJson(m.module.registry.get('muyu.notes.remember').outputSchema, saved);
+        assert.deepEqual((await m.call('remember', args)).writeReceipt, saved.writeReceipt);
+    }
+    const fail = fixture(async () => { throw Error('save failed'); }); fail.settings.muyuAgentMemoryEnabled = true;
+    const unknown = await moduleFor(fail).call('remember', { quote: '简洁回答', scope: 'chat' }); assert.equal(unknown.status, 'save_unknown'); assert.equal(unknown.writeReceipt, undefined);
+});
+
 test('Model cannot store derived tool text, change scope, delete unnamed notes or bypass a revision', async () => {
     const f = fixture(); await f.port.setEnabled(true); const note = await f.port.save(input('简洁回答'), { target: a });
     const m = moduleFor(f, '更新偏好：简洁回答，改成详细回答');

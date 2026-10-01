@@ -31,6 +31,21 @@ test('Long answers use readable Markdown without forcing headings onto short rep
     assert.match(base, /不为短回答强加标题或表格/);
 });
 
+test('Retrieval and memory presentation cannot turn matches into inventory or storage into adoption', () => {
+    const instructions = composeInstructions('assistant');
+    assert.match(instructions.base, /来源总数只看totalRecords/);
+    assert.match(instructions.base, /搜完匹配结果不等于查完全部笔记/);
+    assert.match(instructions.base, /不保证以后每轮自动采用/);
+    assert.match(instructions.base, /默认不展示笔记ID/);
+    assert.match(instructions.base, /saved不证明首次新建/);
+    assert.match(instructions.base, /用户表达偏好不是插件配置字段/);
+    assert.match(instructions.task, /不承诺以后自动采用/);
+    assert.ok(instructions.base.length <= 4000);
+    assert.ok(instructions.task.length <= 4000);
+    assert.ok(instructions.task.length <= 3450, 'Leave room for host full-access, web and scope notices without enlarging the instruction contract');
+    assert.doesNotMatch(composeReceiptInstructions().base, /notes.list|scannedSteps|writeReceipt.recallMode/);
+});
+
 test('Owl-girl persona is shared by every answer mode and receipt explanations without changing capabilities', () => {
     for (const mode of ['assistant', 'chat', 'draft', 'memory', 'director']) {
         const instructions = composeInstructions(mode);
