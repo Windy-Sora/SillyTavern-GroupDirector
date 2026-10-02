@@ -23,13 +23,20 @@ test('Director projection reads only whitelist and history structure, including 
     assert.equal(r.state.mode, 'formula'); assert.equal(r.state.enabledMembers, 1); assert.equal(r.state.reasonFieldPresent, 'on');
     assert.doesNotMatch(JSON.stringify(r), /PRIVATE|DISABLED|llmPrompt/);
     assert.ok(r.findings.some(x => x.code === 'HISTORY_LIMIT'));
+    assert.equal(r.presentation.find(x => x.field === 'roundActive').kind, 'runtime');
+    assert.doesNotMatch(r.findings.map(x => x.text).join(' '), /formula|reason/);
     f.metadata.gd.directorHistory = [{}]; assert.equal(f.read().state.lastSpeakerCount, -1);
     delete f.metadata.gd.directorHistory; assert.ok(f.read().findings.some(x => x.code === 'NO_HISTORY'));
     f.module.dispose();
 });
 test('Director facts handle off/LLM/non-group and never claim historical causation', () => {
     const f = fixture(); f.settings.mode = 'off'; assert.ok(f.read().findings.some(x => x.code === 'DIRECTOR_OFF'));
+    assert.doesNotMatch(f.read().findings.find(x => x.code === 'CURRENT_MODE').text, /模型仍可少选/);
     f.settings.mode = 'llm'; assert.equal(f.read().state.llmMaxSpeakers, 3);
+    f.ports.getGroup = () => ({ members: ['a', 'b', 'c'] });
+    const sameLimit = f.read();
+    assert.equal(sameLimit.state.enabledMembers, sameLimit.state.llmMaxSpeakers);
+    assert.match(sameLimit.findings.find(x => x.code === 'CURRENT_MODE').text, /不代表每轮全选/);
     f.ports.getGroup = () => null; assert.ok(f.read().findings.some(x => x.code === 'NO_GROUP'));
     assert.ok(f.read().findings.some(x => x.code === 'NO_CHARACTER_EVIDENCE')); f.module.dispose();
 });

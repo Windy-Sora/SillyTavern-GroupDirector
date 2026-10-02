@@ -4,6 +4,7 @@ import { createToolRegistry } from '../../tools/registry.js';
 import { configFields, configDomains, configChangesSchema, dependencyFields, fieldDefinition, previewSettings, readSettingsFields, selectedFields } from '../../config/registry.js';
 import { configurationCoverage, dynamicSettings } from '../../config/coverage.js';
 import { configPresentation } from '../../config/presentation.js';
+import { settingDisplayValues } from '../../config/read-presentation.js';
 
 const string = { type: 'string', maxLength: 24000 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -79,7 +80,11 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         if (domain && ids.some(id => fieldDefinition(id).domain !== domain)) throw Error('INVALID_CONTRACT_QUERY');
         return { candidateId: '', text: JSON.stringify(ids.map(fieldDefinition)) };
     });
-    register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化、字段的用途或历史变化。分析字段联动与生效关系前按需查询muyu.settings.contract或静态说明，不按字段名猜测。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => ({ candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: selectedFields(fields), values: read(ctx.target, fields), labels: Object.fromEntries(fields.map(id => [id, configPresentation(id).label])) }) }));
+    register('muyu.settings.read', '按明确字段读取当前内存值，未提供的字段为缺失，不补默认值；不能证明持久化、字段的用途或历史变化。分析字段联动与生效关系前按需查询muyu.settings.contract或静态说明，不按字段名猜测。需要相应配置读取授权。', object({ fields: strings }), ({ fields }, ctx) => {
+        const ids = selectedFields(fields), values = read(ctx.target, ids);
+        return { candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: ids, values,
+            labels: Object.fromEntries(ids.map(id => [id, configPresentation(id).label])), displayValues: settingDisplayValues(values) }) };
+    });
     register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         run.invalidatedCandidateIds = [];

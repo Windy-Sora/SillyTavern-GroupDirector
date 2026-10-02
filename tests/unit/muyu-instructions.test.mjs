@@ -27,7 +27,9 @@ test('Long answers use readable Markdown without forcing headings onto short rep
     const base = composeInstructions('assistant').base;
     assert.match(base, /标题前后留空行/);
     assert.match(base, /每段只讲一个重点/);
-    assert.match(base, /字段名、字面值与占位符用行内代码/);
+    assert.match(base, /用户明确索要代码、JSON或原始字段/);
+    assert.match(base, /普通诊断不例外/);
+    assert.match(base, /runtime标注是运行状态，不是GUI开关/);
     assert.match(base, /不为短回答强加标题或表格/);
 });
 

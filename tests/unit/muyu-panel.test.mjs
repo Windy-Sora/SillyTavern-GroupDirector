@@ -353,6 +353,13 @@ for (const lang of ['zh', 'en']) test(`Diagnostic reports stay beside the origin
     f.emit(); const report = () => f.all().find(e => e.className === 'gd-muyu-card gd-muyu-report');
     const history = f.all().find(e => e.className === 'gd-muyu-history');
     assert.equal(report().tag, 'details'); assert.equal(report().open, false);
+    const body = report().children.find(e => e.tag === 'div');
+    const finding = body.children.find(e => e.tag === 'p');
+    assert.match(finding.textContent, lang === 'en' ? /Confirmed/ : /已确认/);
+    assert.doesNotMatch(finding.textContent, /CURRENT_MODE|fact/);
+    const technical = body.children.find(e => e.tag === 'details');
+    assert.ok(!technical.open);
+    assert.match(technical.children.find(e => e.tag === 'pre').textContent, /CURRENT_MODE/);
     assert.equal(report().parent.parent, history);
     const anchor = report().parent; const later = history.children.find(e => e.className === 'gd-muyu-message gd-muyu-user');
     assert.ok(history.children.indexOf(anchor) < history.children.indexOf(later));

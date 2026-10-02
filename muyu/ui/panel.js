@@ -360,7 +360,11 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 card = node('div', '', wrapper); card.className = 'gd-muyu-plan-body';
             } else node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
             if (artifact.kind === 'report') {
-                for (const f of artifact.content.findings) node('p', `${f.kind} · ${f.code}: ${f.text}`, card);
+                const findingLabels = { fact: t('已确认', 'Confirmed'), unknown: t('尚未确认', 'Unknown'), blocker: t('阻止条件', 'Blocking condition'), condition: t('当前条件', 'Current condition') };
+                for (const f of artifact.content.findings) node('p', `${Object.hasOwn(findingLabels, f.kind) ? findingLabels[f.kind] : t('说明', 'Note')}：${f.text}`, card);
+                const technical = node('details', '', card);
+                node('summary', t('技术详情', 'Technical details'), technical);
+                node('pre', JSON.stringify(artifact.content.findings, null, 2), technical);
                 node('small', t('这是生成时的证据快照，不是实时状态。', 'Snapshot at generation time, not live state.'), card);
                 const director = artifact.content.module === 'director';
                 button(director ? t('前往导演设置', 'Open director settings') : t('前往记忆设置', 'Open memory settings'), card).onclick = director ? navigateDirector : navigateMemory;

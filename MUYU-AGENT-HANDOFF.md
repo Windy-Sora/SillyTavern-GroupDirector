@@ -1,6 +1,12 @@
 # 暮羽 Agent 续做交接（2026-10-02）
 
-## 当前交接：代码基线170ffd0
+## 当前交接：代码基线3dcfe7d，名称展示优化尚未提交
+
+2026-10-03 继续补充分析边界：复用现有指令及领域合同，不新增推理审查Agent。单条路径关闭不外推整个功能关闭，人数上限不等于实际选择，缺少读取不等于不存在；导演少选提示仅LLM模式出现。参考本地 `codex-main/codex-rs/core/gpt-5.2-codex_prompt.md` 的假设分离、`claude-code-main/src/constants/prompts.ts` 的先读后建议及条件启用的忠实结果规则，不认为这些提示能保证推论正确。专项140/140，真实DeepSeek五场景11次请求；两个目标误推断本次未复现，仍有历史/现状表达及冗余收尾待优化。详见 TESTING.md。
+
+本轮补齐 settings.read 的易读值、导演/记忆诊断与 memoryConfig Provider 的 GUI 名称元数据；默认回答不用内部字段名，技术提问仍可返回原 ID/JSON。报告类型本地化，内部代码收进技术详情。新增共享入口 `muyu/config/read-presentation.js`，不要在各工具再维护独立的设置翻译表；运行状态不得伪装为可点击的设置开关。权限、原始值与执行逻辑未变。
+
+真实 DeepSeek 五个合成场景、10 次请求均完成，名称检查及只读检查通过；普通回答仍有过度推断或冗余收尾，不算完整语义验收。外部脚本 `muyu-agent-live-harness/gui-names-live.mjs` 与结果不进仓库/release。正式测试记录见 TESTING.md；不代表浏览器像素验收。
 
 本文是续做快照，不代表远端发布状态；开始前重新检查Git与release差异。旧交接的数量、分支状态及已完成的档案Schema队列已移除；历次验收保留在TESTING.md和阶段路线，Git历史仍可恢复旧内容。
 

@@ -25,6 +25,8 @@ test('Structured config source shares Provider entry, preserves missing/unsuppor
     const r = f.read(); assert.equal(r.status, 'ok'); assert.equal(r.data.persistence, 'unknown');
     assert.equal(r.data.fields.find(x => x.field === 'autoMemorySpeakers').state, 'missing');
     assert.equal(r.data.fields.find(x => x.field === 'autoMemoryInterval').value, '15');
+    assert.equal(r.data.presentation.find(x => x.field === 'memoryEnabled').value.zh, '开启');
+    assert.equal(r.data.presentation.find(x => x.field === 'autoMemorySpeakers').value.zh, '缺失／未读取');
     assert.doesNotMatch(JSON.stringify(r), /NEVER_SEND|secretGetter/);
     f.settings.autoMemoryInterval = 'secret invalid value';
     assert.deepEqual(f.read().data.fields.find(x => x.field === 'autoMemoryInterval'), { field: 'autoMemoryInterval', state: 'unsupported', value: '' });

@@ -7,6 +7,8 @@ import { createSettingsModule } from '../../muyu/modules/settings/index.js';
 import { DEFAULT_SETTINGS } from '../../settings.js';
 import { renderConfigDiff } from '../../muyu/ui/config-diff-view.js';
 import { receiptText } from '../../muyu/actions/receipts.js';
+import { diagnosticPresentation, readPresentationSchema, memoryConfigPresentation, settingDisplayValues } from '../../muyu/config/read-presentation.js';
+import { validateJson } from '../../muyu/core/json-contract.js';
 
 test('Every editable setting has bilingual UI labels, sections and contract metadata', () => {
     for (const id of configFields) {
@@ -20,6 +22,17 @@ test('Every editable setting has bilingual UI labels, sections and contract meta
     assert.equal(configLabel('critiqueEnabled'), uiLabel('critiqueEnabled'));
     assert.equal(configPresentation('__proto__'), null);
     assert.equal(configLabel('notRegistered'), '未登记的配置项');
+});
+
+test('Config contracts bound inference without changing values or write schemas', () => {
+    const target = { kind: 'global', userKey: 'test' };
+    const module = createSettingsModule({ getTarget: () => target, getSettings: () => DEFAULT_SETTINGS });
+    const result = JSON.parse(module.handlers['muyu.settings.contract']({ fields: ['llmMaxSpeakers', 'autoMemoryEnabled'] }, { target, signal: new AbortController().signal }).text);
+    assert.match(result[0].description, /上限.*不是实际选择结果/);
+    assert.match(result[1].description, /自动提取关闭只停用自动提取路径/);
+    assert.deepEqual(result[0].schema, { type: 'integer', minimum: 1, maximum: 20 });
+    assert.deepEqual(result[1].schema, { type: 'boolean' });
+    module.dispose();
 });
 
 test('Readable values retain empty, missing, null and text distinctions without default claims', () => {
@@ -48,11 +61,42 @@ test('Catalog is host-independent and all-field reads/contracts stay inside tool
     assert.equal(reads, 0); assert.equal(JSON.parse(catalog.text).labels.memoryEnabled.zh, uiLabel('memoryEnabled'));
     const read = module.handlers['muyu.settings.read']({ fields: [...configFields] }, ctx);
     assert.equal(JSON.parse(read.text).values.memoryEnabled, DEFAULT_SETTINGS.memoryEnabled);
+    assert.equal(JSON.parse(read.text).displayValues.memoryEnabled.zh, configValue('memoryEnabled', DEFAULT_SETTINGS.memoryEnabled));
     for (const result of [catalog, read, ...configDomains.map(domain => module.handlers['muyu.settings.contract']({ domain }, ctx))]) {
         assert.ok(result.text.length <= 24000);
         assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 32768);
     }
     module.dispose();
+});
+
+test('Diagnostic names reuse GUI labels while runtime facts cannot masquerade as settings', () => {
+    const state = { mode: 'llm', respectOrder: 'off', interval: 15, speakersOnly: 'on', lastChatLength: -1, roundActive: 'off', baselineSource: 'legacy', members: [{ slot: 0, intervalStatus: 'pending' }] };
+    const before = structuredClone(state), rows = diagnosticPresentation(state);
+    validateJson(readPresentationSchema, rows);
+    const row = field => rows.find(r => r.field === field);
+    assert.equal(row('mode').value.zh, configValue('mode', 'llm'));
+    assert.equal(row('respectOrder').label.zh, configLabel('llmRespectOrder'));
+    assert.equal(row('respectOrder').value.zh, '关闭');
+    assert.equal(row('interval').value.zh, configValue('autoMemoryInterval', 15));
+    assert.equal(row('roundActive').kind, 'runtime'); assert.equal(row('roundActive').section.zh, '');
+    assert.equal(row('lastChatLength').value.zh, '未知');
+    assert.equal(row('baselineSource').value.en, 'Legacy record');
+    assert.ok(row('members.intervalStatus'));
+    assert.deepEqual(state, before);
+    assert.deepEqual(diagnosticPresentation(JSON.parse('{"__proto__":"x","constructor":"x"}')), []);
+    assert.equal(diagnosticPresentation({ mode: 'off' })[0].value.zh, configValue('mode', 'off'));
+});
+
+test('Display annotations preserve raw config states and avoid repeating Prompt bodies', () => {
+    const fields = [{ field: 'memoryEnabled', state: 'value', value: 'false' }, { field: 'autoMemoryEnabled', state: 'missing', value: '' }, { field: 'autoMemoryInterval', state: 'unsupported', value: '' }];
+    const before = structuredClone(fields), rows = memoryConfigPresentation({ fields });
+    validateJson(readPresentationSchema, rows);
+    assert.equal(rows[0].value.zh, '关闭'); assert.equal(rows[1].value.zh, '缺失／未读取');
+    assert.match(rows[2].value.zh, /不受支持/); assert.deepEqual(fields, before);
+    const values = { mode: 'llm', memoryEnabled: false, llmPrompt: 'LONG_PRIVATE_BODY'.repeat(1000), providerTimeoutMs: 10000 };
+    const display = settingDisplayValues(values);
+    assert.equal(display.providerTimeoutMs.zh, '10 秒'); assert.equal(display.mode.en, configValue('mode', 'llm', 'en'));
+    assert.equal(Object.hasOwn(display, 'llmPrompt'), false);
 });
 
 test('GUI shows translated summaries and keeps exact unmodified fields in collapsed details', () => {

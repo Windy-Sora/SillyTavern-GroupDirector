@@ -1376,15 +1376,17 @@ test('A long answer is carried into the next request when the configured input b
 });
 
 test('An uncarried recent long answer can be summarized once before the follow-up', async () => {
-    const longAnswer = '中'.repeat(23000);
-    const f = fixture([[...Array.from({ length: 8 }, (_, i) => text(longAnswer.slice(i * 3000, (i + 1) * 3000))).filter(e => e.text), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
-        contextConfig: { read: () => ({ inputTokens: 38000, recentTurns: 12, autoSummary: true }) },
+    // Leave room for the current tool contracts after compaction, while the original
+    // answer still exceeds the planner's 90% raw-history allowance.
+    const longAnswer = '中'.repeat(29000);
+    const f = fixture([[...Array.from({ length: 10 }, (_, i) => text(longAnswer.slice(i * 3000, (i + 1) * 3000))).filter(e => e.text), done], [text('Step three: verify the balance'), done], [text('Continue'), done]], {
+        contextConfig: { read: () => ({ inputTokens: 48000, recentTurns: 12, autoSummary: true }) },
     });
     await f.enable(); f.controller.setMode('assistant');
     f.controller.setInput('Draft a plan'); f.controller.send(); await settle();
     assert.equal(f.controller.snapshot().context.turns, 0);
     f.controller.setInput('Continue step three'); f.controller.send(); await settle();
-    assert.equal(f.model.requests.length, 3);
+    assert.equal(f.model.requests.length, 3, JSON.stringify(f.controller.snapshot().runs.at(-1).process));
     assert.deepEqual(f.model.requests[1].tools, []);
     assert.match(f.model.requests[1].messages.slice(1).map(message => JSON.parse(message.content).text).join(''), /中{100}/);
     assert.equal(f.controller.snapshot().context.summary, 'Step three: verify the balance');

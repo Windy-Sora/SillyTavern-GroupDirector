@@ -57,8 +57,8 @@ export function fieldDefinition(id) {
     const definition = Object.hasOwn(definitions, id) ? definitions[id] : Object.hasOwn(readOnlyDependencies, id) ? readOnlyDependencies[id] : null;
     if (!definition) throw Error('UNKNOWN_CONFIG_FIELD');
     const notes = {
-        memory: '记忆开关/自动提取参数。interval单位为新增消息条数，1..200是本工具支持范围，不是运行时强制上限。缺失保持未知，不自动补开开关。',
-        director: 'off关闭、formula公式、llm导演模型。topN用于公式模式，llmMaxSpeakers用于LLM模式。人数1..20与快捷操作一致；生成中不可修改。',
+        memory: '记忆开关/自动提取参数。interval单位为新增消息条数，1..200是本工具支持范围，不是运行时强制上限。缺失保持未知，不自动补开开关。自动提取关闭只停用自动提取路径，不能推断记忆冻结或只能手动提取；编辑、导入等路径需分别核实。',
+        director: 'off关闭、formula公式、llm导演模型。topN用于公式模式，llmMaxSpeakers用于LLM模式。人数1..20与快捷操作一致；生成中不可修改。LLM人数是上限，不是实际选择结果；即使上限等于成员数，模型仍可少选，不能说导演不再筛选。',
         scoring: '评分权重，按单个叶字段修改，保留其他权重；生成中不可修改。',
         prompt: '导演提示词原文，不是JSON Schema。空串沿用插件缺省提示词。最多4000字符；超出草稿DTO字节预算则拒绝，不截断保存。生成中不可修改。',
         provider: '毫秒；0表示不超时。保存入口同步默认渲染超时，只影响后续调用，不中断正在执行的Provider。',

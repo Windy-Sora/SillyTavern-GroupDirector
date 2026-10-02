@@ -3,13 +3,14 @@ import { assertActive } from '../../core/execution.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { listMemoryKnowledge, readMemoryKnowledge } from './knowledge.js';
 import { diagnoseMemory } from './diagnose.js';
+import { readPresentationSchema } from '../../config/read-presentation.js';
 
 const str = { type: 'string', maxLength: 2000 }, num = { type: 'integer', minimum: -1 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const array = (items, maxItems) => ({ type: 'array', items, maxItems });
 const metadata = { id: str, version: num, source: str, scope: str, title: str };
 const stateSchema = object({ revision: num, memoryEnabled: str, autoMemoryEnabled: str, speakersOnly: str, interval: num, messageCount: num, baseline: num, baselineSource: str, hasGroup: str, enabledMembers: num, canFinalize: str, manualGenerating: str, generationType: str, members: array(object({ slot: num, memoryCount: num, covered: num, newMessages: num, intervalStatus: str }), 64) });
-const reportSchema = object({ version: num, evidenceComplete: { type: 'boolean' }, state: stateSchema, findings: array(object({ kind: str, code: str, evidence: array(str, 5), knowledge: str, text: str }), 16), navigation: str, scopeNotice: str });
+const reportSchema = object({ version: num, evidenceComplete: { type: 'boolean' }, state: stateSchema, presentation: readPresentationSchema, findings: array(object({ kind: str, code: str, evidence: array(str, 5), knowledge: str, text: str }), 16), navigation: str, scopeNotice: str });
 
 /** Built-in module: permissions stay in Broker; no host or model import in this module. */
 export function createMemoryModule({ reader, maxReports = 128 }) {
