@@ -4,7 +4,8 @@ export function createSettingsLayout({ doc, root, lang }) {
     const nav = doc.createElement('nav'); nav.className = 'gd-muyu-settings-nav';
     nav.setAttribute('aria-label', en ? 'Settings categories' : '配置分类'); root.append(nav);
     const content = doc.createElement('div'); content.className = 'gd-muyu-settings-content'; root.append(content);
-    const pages = {}, buttons = {};
+    const pages = {}, buttons = {}, positions = new Map();
+    let selected = 'connection', visible = false;
     for (const [id, zh, english, description] of [
         ['connection', '模型连接', 'Connection', en ? 'Choose the service used for your requests.' : '配置暮羽使用的模型服务。'],
         ['data', '资料与历史', 'Data & history', en ? 'Control shared data and local conversation storage.' : '管理可读取资料，以及本地对话保存。'],
@@ -16,14 +17,30 @@ export function createSettingsLayout({ doc, root, lang }) {
         const page = doc.createElement('section'); page.className = 'gd-muyu-settings-page'; page.setAttribute('aria-label', button.textContent);
         const hint = doc.createElement('p'); hint.className = 'gd-muyu-settings-hint'; hint.textContent = description; page.append(hint);
         content.append(page); pages[id] = page; button.onclick = () => select(id);
+        page.onscroll = () => { if (visible && selected === id) positions.set(id, page.scrollTop || 0); };
     }
-    function select(id) {
+    function capture() { if (visible && pages[selected]) positions.set(selected, pages[selected].scrollTop || 0); }
+    function restore() { if (visible) pages[selected].scrollTop = positions.get(selected) || 0; }
+    function select(id, { target } = {}) {
         if (!pages[id]) return;
+        capture(); selected = id;
         for (const key of Object.keys(pages)) {
             pages[key].hidden = key !== id;
             buttons[key].setAttribute('aria-current', key === id ? 'page' : 'false');
         }
+        restore();
+        if (visible && target) {
+            let owner = target, belongs = false;
+            while (owner) { if (owner === pages[id]) { belongs = true; break; } owner = owner.parentElement || owner.parent; }
+            if (!belongs) return;
+            for (owner = target; owner && owner !== pages[id]; owner = owner.parentElement || owner.parent) {
+                if ((owner.tagName || owner.tag || '').toLowerCase() === 'details') owner.open = true;
+            }
+            target.focus?.({ preventScroll: true });
+            target.scrollIntoView?.({ block: 'nearest' });
+            positions.set(id, pages[id].scrollTop || 0);
+        }
     }
     select('connection');
-    return { pages, select };
+    return { pages, select, setVisible(value) { if (!value) capture(); visible = !!value; if (visible) restore(); } };
 }

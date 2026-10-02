@@ -1,6 +1,7 @@
 import { CONTEXT_DEFAULTS, MAX_MANUAL_INPUT_TOKENS, SUMMARY_TIME_RANGE } from '../context/policy.js';
 import { formatBudget } from './budget-view.js';
 import { permissionTitle } from '../permissions/contract.js';
+import { createFormFeedback } from './form-feedback.js';
 
 /** View only. Summary text is plain reference data; no operation comes from model output. */
 export function createContextView({ doc, settings, parent, controller, act, lang }) {
@@ -10,26 +11,41 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     const field = (text, type, owner) => { const label = node('label', text, owner), el = node('input', '', label); el.type = type; el.className = type === 'checkbox' ? '' : 'text_pole'; return el; };
     const config = node('details', '', settings); node('summary', t('上下文预算', 'Context budget'), config);
     config.open = true;
-    const historyLabel = node('label', t('已有对话外发', 'Sending existing conversation history'), config);
+    config.className = 'gd-muyu-settings-card';
+    const historyGroup = node('div', '', config); historyGroup.className = 'gd-muyu-settings-group';
+    node('h4', t('携带已有对话', 'Conversation history'), historyGroup);
+    const historyLabel = node('label', t('已有对话外发', 'Sending existing conversation history'), historyGroup);
     const historyPolicy = node('select', '', historyLabel); historyPolicy.className = 'text_pole';
     for (const [value, label] of [['auto', t('自动允许（默认）', 'Allow automatically (default)')], ['ask', t('逐次审批（授权失效时确认）', 'Ask when authorization expires')]]) { const option = node('option', label, historyPolicy); option.value = value; }
     node('small', t('自动允许会将已有问答及其中引用的资料发送到当前配置的模型服务，包括更换连接后。仅允许携带已有对话，不授权重新读取酒馆资料、修改配置或执行代码；仍可选择本次不携带旧历史。', 'Automatic mode sends existing conversation turns and quoted data to the configured model service, including after changing connections. It grants no fresh host reads, writes or code execution. You can still omit history for a send.'), config);
-    node('p', t('面向 1M 上下文模型，默认输入预算为 900000 估算 Token，留出输出与估算余量；历史另预留 10% 给问题、指令和工具。旧版默认小预算自动升级，自定义组合保留；重新保存的手动预算始终保留。估算不是模型窗口，较小模型请降低预算；增大预算可能增加费用。', 'For 1M-context models: default input budget is 900000 estimated tokens, leaving room for output and estimation error. History additionally reserves 10% for the question, instructions and tools. Legacy defaults upgrade; custom combinations and explicitly re-saved budgets stay unchanged. Estimates are not model windows; lower this for smaller models. Larger budgets may cost more.'), config);
+    node('p', t('输入预算控制每次发给模型的上下文总量。默认适配 1M 上下文模型；使用较小模型时请降低预算。增大预算可能增加费用。', 'Input budget limits the context sent to the model. Defaults target 1M-context models; lower the budget for smaller models. Larger budgets may cost more.'), config);
+    const budgetHelp = node('details', '', config); node('summary', t('预算估算与旧设置说明', 'Budget estimates and existing settings'), budgetHelp);
+    node('small', t('默认输入预算为 900000 估算 Token，留出输出与估算余量；历史另预留 10% 给问题、指令和工具。估算不是模型实际窗口。旧版默认小预算自动升级，自定义组合及重新保存的手动预算保留。', 'Default input budget: 900000 estimated tokens, leaving room for output and estimation error. History reserves another 10% for the question, instructions and tools. Estimates are not the model window. Legacy defaults upgrade; custom combinations and explicitly re-saved budgets remain.'), budgetHelp);
     const autoBudget = field(t('仅按请求体保护（8 MiB；不限制估算 Token）', 'Request-size protection only (8 MiB; no token cap)'), 'checkbox', config);
     const tokens = field(t('手动输入预算（估算 Token）', 'Manual input budget (estimated tokens)'), 'number', config); tokens.min = 4096; tokens.max = MAX_MANUAL_INPUT_TOKENS; tokens.step = 1;
     autoBudget.onchange = () => { tokens.disabled = autoBudget.checked; };
-    const turns = field(t('整理时保留近期问答的参考值', 'Recent-turn reference for summarization'), 'number', config); turns.min = 1; turns.max = 24; turns.step = 1;
+    const auto = field(t('发送时自动整理较早历史（额外模型调用，默认关闭）', 'Auto-summarize on send (extra model call, off by default)'), 'checkbox', config);
+    node('small', t('历史较长时按需整理；会额外调用模型，原始对话仍保留。修改后请保存。', 'Summarize long histories when needed. Uses an extra model call and retains originals. Save to apply.'), config);
+    const compression = node('details', '', config); compression.className = 'gd-muyu-settings-advanced';
+    node('summary', t('历史整理与摘要预算', 'History summarization and budget'), compression);
+    node('p', t('输入预算决定能带多少资料；摘要预算决定整理后的长度；单次输出上限决定每次回答最多生成多少。', 'Input budget limits the context sent to the model. Summary budget limits the summary length. Per-call output limits how much each response can generate.'), compression);
+    const turns = field(t('整理时保留近期问答的参考值', 'Recent-turn reference for summarization'), 'number', compression); turns.min = 1; turns.max = 24; turns.step = 1;
     node('small', t('长对话按输入预算的 10% 保留近期原文，按完整问答向前扩展，不固定两轮。全部原文已能放入该额度的短对话，才使用上方轮数参考值；至少留一轮作为整理候选。仅请求体保护模式按 8 MiB 上限计算。保留额度不足时可整轮摘要，不截断问答；原始记录不删除。', 'Long conversations retain a contiguous recent raw suffix within 10% of the input budget, on whole-turn boundaries, not a two-turn cap. The turn reference above applies only to short histories that entirely fit this allowance; at least one turn remains a summary candidate. Transport-only mode uses the 8 MiB ceiling. A turn exceeding the allowance may be summarized whole, never truncated; originals are not deleted.'), config);
     const summaryTokens = field(t('摘要输出预算（Token）', 'Summary output budget (tokens)'), 'number', config); summaryTokens.min = 1024; summaryTokens.max = 32768; summaryTokens.step = 1;
     const summaryTime = field(t('压缩时间预算（秒）', 'Summarization timeout (seconds)'), 'number', config); summaryTime.min = SUMMARY_TIME_RANGE[0] / 1000; summaryTime.max = SUMMARY_TIME_RANGE[1] / 1000; summaryTime.step = 1;
     node('small', t('默认300秒，可配置10–1800秒；同时受单轮超时限制。自动整理给后续回答保留10秒；截断重试共用此时间预算。保存后下一轮生效，不延长正在执行的任务。', 'Default: 300 seconds; configurable from 10–1800 seconds, also bounded by the run timeout. Auto-summarization reserves 10 seconds for the answer; truncation retry shares this deadline. Changes apply next run, never extend an active task.'), config);
     node('small', t('默认 16384，上限仍受单次模型输出预算限制，已保存的自定义值保留。手动整理使用此预算；自动整理先用最多 16384，截断且可提高额度、预算允许时最多重试一次。DeepSeek 摘要调用关闭思考，正常对话的思考配置不变；其他兼容接口不额外发送专有思考参数。摘要不固定字符数、不删除原文，更大预算可能增加费用。', 'Defaults to 16384, capped by the per-call model output budget; saved custom values are preserved. Manual summarization uses this budget; automatic summarization starts at up to 16384 and may retry once after truncation if the ceiling can increase and budget permits. DeepSeek summaries disable thinking without changing normal conversation settings; generic endpoints receive no proprietary thinking fields. No fixed character target or original deletion. Larger budgets may cost more.'), config);
-    const auto = field(t('发送时自动整理较早历史（额外模型调用，默认关闭）', 'Auto-summarize on send (extra model call, off by default)'), 'checkbox', config);
     node('small', t('旧历史未覆盖，或完整请求达到输入／请求体预算的 80% 时，在新任务首次请求前尝试整理。每次最多整理一段，计入本轮调用和时间预算；不整理在途工具轨迹。连续三轮失败暂停自动整理，原文保留；百分比不是实际模型窗口。', 'Before a new task’s first request, summarize uncovered history or when the complete request reaches 80% of the input/transport budget. At most one prefix, within the same call/time budget; never compacts live tools. Three failed operations pause automatic summarization; originals remain. This is not the actual model window.'), config);
-    const save = button(t('保存上下文设置', 'Save context settings'), config);
-    save.onclick = () => act(() => controller.saveContextConfig({ inputTokens: autoBudget.checked ? null : Number(tokens.value), recentTurns: Number(turns.value), autoSummary: auto.checked, historyAuthorization: historyPolicy.value, summaryTokens: Number(summaryTokens.value), summaryTimeMs: Number(summaryTime.value) * 1000 }));
-    const reset = button(t('恢复默认上下文预算并保存', 'Restore and save default context budget'), config);
-    reset.onclick = () => act(() => controller.saveContextConfig({ ...CONTEXT_DEFAULTS, historyAuthorization: savedHistoryPolicy }));
+    // Group the existing controls without rebuilding them or losing their handlers.
+    const compressionIndex = Array.from(config.children).indexOf(compression);
+    for (const child of Array.from(config.children).slice(compressionIndex + 1)) compression.append(child);
+    const actions = node('div', '', config); actions.className = 'gd-muyu-settings-actions';
+    const save = button(t('保存上下文设置', 'Save context settings'), actions);
+    save.onclick = () => act(() => feedback.run(() => controller.saveContextConfig({ inputTokens: autoBudget.checked ? null : Number(tokens.value), recentTurns: Number(turns.value), autoSummary: auto.checked, historyAuthorization: historyPolicy.value, summaryTokens: Number(summaryTokens.value), summaryTimeMs: Number(summaryTime.value) * 1000 }), () => feedback.validateNumbers()));
+    const reset = button(t('恢复默认上下文预算并保存', 'Restore and save default context budget'), actions);
+    const feedback = createFormFeedback({ doc, parent: actions, fields: [historyPolicy, autoBudget, tokens, auto, turns, summaryTokens, summaryTime], buttons: [save, reset], lang, savedText: t('设置已更新，下次任务生效。', 'Settings updated; applies to the next task.') });
+    const fill = c => { historyPolicy.value = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization; autoBudget.checked = c.inputTokens === null; tokens.value = String(c.inputTokens ?? CONTEXT_DEFAULTS.inputTokens); turns.value = String(c.recentTurns); summaryTokens.value = String(c.summaryTokens ?? CONTEXT_DEFAULTS.summaryTokens); summaryTime.value = String((c.summaryTimeMs ?? CONTEXT_DEFAULTS.summaryTimeMs) / 1000); auto.checked = c.autoSummary; };
+    reset.onclick = () => act(() => feedback.run(async () => { const next = { ...CONTEXT_DEFAULTS, historyAuthorization: savedHistoryPolicy }; await controller.saveContextConfig(next); fill(next); configKey = ''; }));
     const details = node('details', '', parent); details.className = 'gd-muyu-context'; node('summary', t('上下文', 'Context'), details);
     details.open = true;
     const counts = node('p', '', details), coverage = node('p', '', details), usage = node('p', '', details);
@@ -54,12 +70,14 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     return { render(s) {
         const c = s.contextConfig || CONTEXT_DEFAULTS, key = JSON.stringify(c), ctx = s.context || {};
         savedHistoryPolicy = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization;
-        if (key !== configKey) { historyPolicy.value = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization; autoBudget.checked = c.inputTokens === null; tokens.value = String(c.inputTokens ?? CONTEXT_DEFAULTS.inputTokens); tokens.disabled = autoBudget.checked; turns.value = String(c.recentTurns); summaryTokens.value = String(c.summaryTokens ?? CONTEXT_DEFAULTS.summaryTokens); summaryTime.value = String((c.summaryTimeMs ?? CONTEXT_DEFAULTS.summaryTimeMs) / 1000); auto.checked = c.autoSummary; configKey = key; }
+        if (key !== configKey && !feedback.dirty && !feedback.busy) { fill(c); feedback.rebase(); configKey = key; }
         save.disabled = !!s.savingContextConfig || s.resetting;
         breakerNote.hidden = retryAuto.hidden = !s.autoCompaction?.blocked;
         breakerNote.textContent = t('自动整理连续失败三轮，已暂停重复调用。原文与旧摘要保留；可手动整理、调整预算，或明确重新允许自动整理。', 'Automatic summarization failed in three consecutive operations and is paused. Originals and the existing summary remain. Summarize manually, adjust budgets or explicitly resume.');
         retryAuto.disabled = s.busy || s.resetting || s.readOnly;
         reset.disabled = save.disabled;
+        feedback.update(s.savingContextConfig || s.resetting);
+        tokens.disabled = autoBudget.checked || feedback.busy || !!s.savingContextConfig || !!s.resetting;
         if (view !== s.viewToken || s.busy || s.resetting || s.switchedChat) { confirm.hidden = cancel.hidden = true; view = s.viewToken; }
         compact.disabled = clear.disabled = !s.history?.sessionId || s.readOnly || s.busy || s.resetting;
         compact.disabled ||= !s.enabled || s.switchedChat; clear.disabled ||= !ctx.summary;

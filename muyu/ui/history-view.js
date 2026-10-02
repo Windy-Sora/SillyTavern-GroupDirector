@@ -12,6 +12,8 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
         return el;
     };
     const section = node('section', '', settings); node('h3', t('对话历史', 'Conversation history'), section);
+    const storageLocation = node('p', '', section); storageLocation.className = 'gd-muyu-storage-location';
+    const storageStatus = node('p', '', section); storageStatus.className = 'gd-muyu-storage-status'; storageStatus.setAttribute('role', 'status');
     const label = node('label', t('自动保存暮羽对话（默认开启）', 'Automatically save Muyu conversations (on by default)'), section);
     const enabled = node('input', '', label); enabled.type = 'checkbox';
     node('small', t('默认使用 ST 私有文件（需要服务端插件），不可用时使用浏览器 IndexedDB。不写入聊天存档或角色卡；浏览器记录不跨设备同步。刷新不恢复授权或执行。', 'By default, use private ST files when the server plugin is available; otherwise use browser IndexedDB. Chat saves/cards are unaffected. Browser records do not sync across devices; reload never restores grants or execution.'), section);
@@ -140,7 +142,11 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             status.textContent = h.loading ? t('正在加载历史…', 'Loading history…') : h.error ? t('历史操作或保存失败；请先导出备份。', 'History operation/save failed; export a backup first.') : h.pending ? t('正在保存到本地…', 'Saving locally…') : !h.enabled ? h.dirty ? t('仅保留在本页；新内容未保存', 'This page only; new content is unsaved') : h.persisted ? t('本机有旧记录；新内容不会自动保存', 'An older local record exists; new content will not auto-save') : t('仅保留在本页；自动保存关闭', 'This page only; automatic saving is off') : h.dirty ? t('有未保存内容', 'Unsaved changes') : h.persisted ? t('已保存在本地', 'Saved locally') : t('自动保存已开启；发送后保存新对话', 'Automatic saving is on; new conversations save after sending');
             if (h.error === 'HISTORY_CONFLICT' || h.error === 'HISTORY_DELETED') status.textContent = t('另一标签页已更新或删除此记录；未覆盖。请先导出本页内容，再刷新页面核对。', 'Another tab updated or deleted this record; not overwritten. Export this version before reloading the page.');
             if (h.recovery) status.textContent = t('回答仍在本页，但已超过存档容量，未保存。请立即导出恢复备份，再新建对话；恢复 JSON 仅作备份，不能直接导入。', 'The answer remains on this page but exceeds archive capacity and is unsaved. Export a recovery backup now, then start a new conversation. Recovery JSON is a backup, not an importable session.');
+            if (h.backend === 'memory' && !h.loading && !h.error && !h.recovery) status.textContent = t('仅保留在本页，刷新后可能丢失；请导出需要保留的对话。', 'Held in this page only and may be lost on reload; export conversations you want to keep.');
             if (h.migration?.pending) status.textContent += t(` · ${h.migration.pending} 份浏览器记录因容量不足待迁移；原件保留。可先导出／删除服务端旧记录，再刷新历史重试。`, ` · ${h.migration.pending} browser records await migration due to capacity; originals remain. Export/delete old server records, then refresh history to retry.`);
+            const locations = { 'private-files': t('酒馆服务端私有文件', 'Private files on the ST server'), browser: t('当前浏览器 IndexedDB', 'This browser’s IndexedDB'), 'account-settings': t('当前酒馆账户设置', 'Current ST account settings'), memory: t('仅本页临时保留', 'This page only') };
+            storageLocation.textContent = t('当前存储位置：', 'Current storage location: ') + (locations[h.backend] || t('尚未确认', 'Not yet confirmed'));
+            storageStatus.textContent = status.textContent;
             if (h.restoredStatus === 'interrupted') status.textContent += t(' · 上次任务已中断，未自动恢复', ' · Previous run interrupted; not resumed');
             if (s.switchedChat && !s.readOnly) status.textContent += t(' · 已切换 ST 聊天：继续发送会使用当前聊天，并告知暮羽重新核对资料', ' · ST chat changed: the next message uses this chat and tells Muyu to recheck its data');
             if (s.readOnly) status.textContent += h.selected?.imported ? t(' · 导入备份：只读，不会发送给模型', ' · Imported backup: read-only, not sent to a model') : h.selected?.archived ? t(' · 已归档：恢复后才能继续', ' · Archived: restore to continue') : t(' · 其他聊天历史：只读，请在原聊天继续', ' · Other chat: read-only; continue in its original chat');
@@ -153,7 +159,10 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             if (h.enabled && h.backend === 'private-files') status.textContent += t(' · ST 私有文件', ' · Private ST files');
             else if (h.enabled && h.backend === 'browser') status.textContent += t(' · 浏览器 IndexedDB', ' · Browser IndexedDB');
             else if (h.enabled && h.backend === 'account-settings') status.textContent += t(' · 酒馆账户设置', ' · ST account settings');
-            if (h.canChooseStorage && h.backend !== 'memory' && (h.backend === 'account-settings') !== h.accountStorage) status.textContent += t(' · 存储选项已保存，刷新后生效；当前仍使用原位置', ' · Storage preference saved; reload to switch. Current storage is unchanged');
+            if (h.canChooseStorage && h.backend !== 'memory' && (h.backend === 'account-settings') !== h.accountStorage) {
+                const notice = t(' · 存储选项已保存，刷新后生效；当前仍使用原位置', ' · Storage preference saved; reload to switch. Current storage is unchanged');
+                status.textContent += notice; storageStatus.textContent += notice;
+            }
         },
         setVisible(value) { visible = value; visibility(); },
         dispose() { disposed = true; observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); },

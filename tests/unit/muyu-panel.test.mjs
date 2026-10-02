@@ -12,7 +12,7 @@ class Element {
     setAttribute(k, v) { this.attrs[k] = v; }
     getAttribute(k) { return this.attrs[k]; }
     focus() { this.ownerDocument.activeElement = this; }
-    addEventListener(k, fn) { this.events[k] = fn; }
+    addEventListener(k, fn) { const previous = this.events[k]; this.events[k] = event => { previous?.(event); fn(event); }; }
     remove() { this.parent.children = this.parent.children.filter(e => e !== this); }
     get options() { return this.children.filter(e => e.tag === 'option'); }
     click() { if (!this.disabled) return this.onclick?.(); }
@@ -180,6 +180,109 @@ test('Context failure process displays its safe code and distinguishes input fro
     f.root.__gdMuyuDispose();
 });
 
+for (const lang of ['zh', 'en']) test(`Connection card separates basic and advanced options without connecting (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), calls = [];
+    const protocol = f.all().find(e => e.tag === 'select' && e.parent.textContent === (lang === 'en' ? 'API protocol' : '接口协议'));
+    const advanced = f.all().find(e => e.className === 'gd-muyu-connection-advanced');
+    const thinking = f.all().find(e => e.type === 'checkbox' && /DeepSeek/.test(e.parent.textContent));
+    const effort = f.all().find(e => e.tag === 'select' && /reasoning effort|思考强度/.test(e.parent.textContent));
+    const endpoint = f.all().find(e => e.type === 'url'), key = f.all().find(e => e.type === 'password');
+    assert.equal(!!advanced.open, false); assert.equal(key.autocomplete, 'off');
+    endpoint.value = 'https://example.test/v1/chat/completions'; key.value = 'PRIVATE_TEST_KEY';
+    protocol.value = 'chat-completions'; protocol.events.change();
+    assert.equal(thinking.disabled, true); assert.equal(effort.disabled, true);
+    assert.equal(endpoint.value, 'https://example.test/v1/chat/completions'); assert.equal(key.value, 'PRIVATE_TEST_KEY');
+    assert.equal(f.configs.length, 0); assert.equal(f.sent.length, 0);
+    f.controller.probeConnection = async config => { calls.push(config); return { ok: true }; };
+    await f.find('button', lang === 'en' ? 'Test connection' : '测试连接').click();
+    assert.equal(calls[0].profile, 'chat-completions'); assert.equal(calls[0].thinking, false);
+    await f.find('button', lang === 'en' ? 'Enable connection' : '启用此连接').click();
+    assert.equal(f.configs[0].profile, 'chat-completions'); assert.equal(f.configs[0].thinking, false); assert.equal(key.value, '');
+    protocol.value = 'deepseek'; protocol.events.change(); effort.value = 'max';
+    key.value = 'PRIVATE_TEST_KEY';
+    assert.equal(thinking.disabled, false); assert.equal(effort.disabled, false);
+    await f.find('button', lang === 'en' ? 'Test connection' : '测试连接').click();
+    assert.equal(calls[1].thinking, true); assert.equal(calls[1].reasoningEffort, 'max');
+    f.root.__gdMuyuDispose();
+});
+
+test('Changing protocol aborts model discovery and ignores its late reply', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let resolve, signal;
+    f.all().find(e => e.type === 'password').value = 'PRIVATE_TEST_KEY';
+    f.controller.probeConnection = (_config, options) => { signal = options.signal; return new Promise(r => { resolve = r; }); };
+    const pending = f.find('button', 'Fetch models').click();
+    const protocol = f.all().find(e => e.tag === 'select' && e.parent.textContent === 'API protocol');
+    protocol.value = 'chat-completions'; protocol.events.change(); assert.equal(signal.aborted, true);
+    resolve(['obsolete-model']); await pending;
+    const menu = f.all().find(e => e.tag === 'select' && /Model menu/.test(e.parent.textContent));
+    assert.deepEqual(menu.options.map(o => o.value), ['']); assert.equal(f.find('button', 'Fetch models').disabled, false);
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`Budget failure preserves input, prevents duplicate saves and allows retry (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    const field = f.all().find(e => e.type === 'number' && e.parent.textContent === (lang === 'en' ? 'Model calls' : '模型调用次数'));
+    const save = f.find('button', lang === 'en' ? 'Save execution budgets' : '保存运行预算');
+    const status = f.all().find(e => e.className === 'gd-muyu-form-status' && e.parent === save.parent);
+    let calls = 0, reject;
+    f.controller.saveRunConfig = () => { calls++; return new Promise((_resolve, fail) => { reject = fail; }); };
+    field.value = '7'; field.events.input(); assert.match(status.textContent, /未保存|Unsaved/);
+    const pending = save.click(); await save.click(); assert.equal(calls, 1); assert.equal(field.disabled, true);
+    f.emit(); assert.equal(field.value, '7'); assert.equal(field.disabled, true);
+    reject(Error('RUN_CONFIG_SAVE_FAILED')); await pending;
+    assert.equal(field.value, '7'); assert.equal(field.disabled, false); assert.match(status.textContent, /保留|retained/);
+    f.controller.saveRunConfig = value => { calls++; f.state.runConfig = value; f.emit(); };
+    await save.click(); assert.equal(calls, 2); assert.match(status.textContent, /下次任务|next task/);
+    field.value = '0'; field.events.input(); await save.click(); assert.equal(calls, 2);
+    assert.equal(field.getAttribute('aria-invalid'), 'true'); assert.equal(field.ownerDocument.activeElement, field);
+    f.root.__gdMuyuDispose();
+});
+
+test('Context errors expand the summary section; failed defaults preserve unsaved fields', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    const summary = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Summary output budget (tokens)');
+    const advanced = f.find('summary', 'History summarization and budget').parent;
+    const auto = f.all().find(e => e.type === 'checkbox' && e.parent.textContent.startsWith('Auto-summarize on send'));
+    assert.notEqual(auto.parent.parent, advanced); assert.equal(!!advanced.open, false);
+    let calls = 0; f.controller.saveContextConfig = () => { calls++; throw Error('CONTEXT_CONFIG_SAVE_FAILED'); };
+    summary.value = ''; summary.events.input(); await f.find('button', 'Save context settings').click();
+    assert.equal(calls, 0); assert.equal(advanced.open, true); assert.equal(summary.ownerDocument.activeElement, summary);
+    summary.value = '12000'; summary.events.input();
+    await f.find('button', 'Restore and save default context budget').click();
+    assert.equal(calls, 1); assert.equal(summary.value, '12000'); f.emit(); assert.equal(summary.value, '12000');
+    f.root.__gdMuyuDispose();
+});
+
+test('Connection validation is local and test results do not replace the active connection', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let probes = 0;
+    f.state.enabled = true; f.state.connection = { endpoint: 'https://old.test/chat/completions', model: 'active-model', profile: 'deepseek', thinking: true }; f.emit();
+    f.controller.probeConnection = async () => { probes++; return { ok: true }; };
+    const endpoint = f.all().find(e => e.type === 'url'), key = f.all().find(e => e.type === 'password');
+    const status = f.all().find(e => e.className === 'gd-muyu-active-connection');
+    endpoint.value = 'not a URL'; endpoint.events.input();
+    await f.find('button', 'Enable connection').click(); assert.equal(f.configs.length, 0); assert.equal(endpoint.getAttribute('aria-invalid'), 'true');
+    endpoint.value = 'https://new.test/chat/completions'; endpoint.events.input();
+    await f.find('button', 'Test connection').click(); assert.equal(probes, 0); assert.equal(key.getAttribute('aria-invalid'), 'true');
+    key.value = 'PRIVATE_TEST_KEY'; key.events.input(); await f.find('button', 'Test connection').click();
+    assert.equal(probes, 1); assert.match(status.textContent, /old.test/); assert.equal(f.configs.length, 0);
+    assert.ok(f.all().some(e => e.className === 'gd-muyu-form-status' && /not active/.test(e.textContent)));
+    assert.ok(!f.all().some(e => /PRIVATE_TEST_KEY/.test(e.textContent || '')));
+    f.root.__gdMuyuDispose();
+});
+
+test('Search field validation expands limits and failed saving retains the key and numeric draft', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' }); let calls = 0;
+    const attempts = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Search attempts per task');
+    const key = f.all().find(e => e.type === 'password' && e.parent.textContent === 'Brave Search API key');
+    const save = f.find('button', 'Save search settings');
+    f.controller.saveWebSearchConfig = async () => { calls++; throw Error('WEB_CONFIG_SAVE_FAILED'); };
+    attempts.value = '0'; attempts.events.input(); await save.click(); assert.equal(calls, 0);
+    assert.equal(f.find('summary', 'Search limits and data budget').parent.open, true);
+    attempts.value = '2'; attempts.events.input(); key.value = 'PRIVATE_SEARCH_KEY'; key.events.input();
+    await save.click(); assert.equal(calls, 1); assert.equal(key.value, 'PRIVATE_SEARCH_KEY'); assert.equal(attempts.value, '2');
+    f.emit(); assert.equal(attempts.value, '2'); f.root.__gdMuyuDispose();
+});
+
 test('AI connection controls explicitly test, list and select models without changing the connection', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' }), calls = [];
     f.controller.probeConnection = async (config, options) => { calls.push({ config, kind: options.kind }); return options.kind === 'models' ? ['flash', 'pro'] : { ok: true }; };
@@ -241,6 +344,26 @@ test('Task plan card distinguishes unavailable writes and offers one explicit re
     await f.find('button', 'Allow reads and continue planning').click();
     assert.equal(approvals, 1); assert.equal(f.find('button', 'Decline reads'), undefined);
     f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`Diagnostic reports stay beside the original reply and preserve explicit expansion (${lang})`, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.messages = [{ role: 'assistant', content: 'Diagnosis complete', runId: 'diagnosis' }, { role: 'user', content: 'Next question', runId: 'later' }];
+    f.state.artifacts = [{ id: 'report:1', kind: 'report', revision: 1, sourceRunId: 'diagnosis', content: { module: 'director', findings: [{ kind: 'fact', code: 'CURRENT_MODE', text: 'llm' }] } }];
+    f.emit(); const report = () => f.all().find(e => e.className === 'gd-muyu-card gd-muyu-report');
+    const history = f.all().find(e => e.className === 'gd-muyu-history');
+    assert.equal(report().tag, 'details'); assert.equal(report().open, false);
+    assert.equal(report().parent.parent, history);
+    const anchor = report().parent; const later = history.children.find(e => e.className === 'gd-muyu-message gd-muyu-user');
+    assert.ok(history.children.indexOf(anchor) < history.children.indexOf(later));
+    report().toggle(true); const old = report(); f.emit(); assert.equal(report().open, true);
+    old.toggle(false); f.emit(); assert.equal(report().open, true); // detached toggle cannot change the new card
+    f.state.messages.push({ role: 'assistant', content: 'Later response', runId: 'later' }); f.emit();
+    assert.equal(report().open, true); assert.equal(report().parent.parent, history);
+    f.state.artifacts[0].revision = 2; f.emit(); assert.equal(report().open, false);
+    f.state.artifacts[0].sourceRunId = 'missing'; f.emit();
+    assert.equal(report().parent, history.children[0]); assert.equal(report().open, false);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
 
 test('Task plans stay with their originating reply, collapse after review and retain manual expansion', () => {
@@ -467,6 +590,46 @@ test('Floating rail releases space in settings, restores it on return and cleans
     await f.all(sidebar).find(e => e.textContent === 'Back to chat').click();
     assert.equal(changes.at(-1), false); assert.equal(sidebar.hidden, true);
     f.root.__gdMuyuDispose(); assert.equal(changes.at(-1), false); assert.equal(f.sent.length, 0);
+});
+
+for (const lang of ['zh', 'en']) test(`Settings scroll positions survive switching and shortcuts override restoration (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), en = lang === 'en';
+    const pages = f.all().filter(e => e.className === 'gd-muyu-settings-page');
+    await f.find('button', '⚙').click(); pages[0].scrollTop = 120;
+    await f.find('button', en ? 'Budgets' : '运行预算').click(); assert.equal(pages[3].scrollTop, 0);
+    pages[3].scrollTop = 330;
+    await f.find('button', en ? 'Connection' : '模型连接').click(); assert.equal(pages[0].scrollTop, 120);
+    await f.find('button', en ? 'Budgets' : '运行预算').click(); assert.equal(pages[3].scrollTop, 330);
+    f.emit(); assert.equal(pages[3].scrollTop, 330);
+    await f.find('button', en ? 'Back to chat' : '返回聊天').click();
+    pages[3].scrollTop = 0; // Simulate a hidden layout dropping its native scroll offset.
+    await f.find('button', '⚙').click(); assert.equal(pages[3].scrollTop, 330);
+    const endpoint = f.all(pages[0]).find(e => e.type === 'url');
+    endpoint.scrollIntoView = () => { pages[0].scrollTop = 20; };
+    await f.find('button', en ? 'Back to chat' : '返回聊天').click();
+    await f.find('button', en ? 'Configure connection' : '配置连接').click();
+    assert.equal(pages[0].scrollTop, 20); assert.equal(endpoint.ownerDocument.activeElement, endpoint);
+    f.emit(); assert.equal(pages[0].scrollTop, 20);
+    await f.all().find(e => e.className?.includes('gd-muyu-permission-summary')).click();
+    assert.equal(pages[1].hidden, false); assert.match(endpoint.ownerDocument.activeElement.className, /gd-muyu-grants/);
+    assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`History settings report actual storage, failures and pending changes (${lang})`, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), en = lang === 'en';
+    f.state.history = { available: true, enabled: true, backend: 'browser', canChooseStorage: true, accountStorage: false, sessions: [], persisted: true };
+    f.emit();
+    const location = f.all().find(e => e.className === 'gd-muyu-storage-location');
+    const status = f.all().find(e => e.className === 'gd-muyu-storage-status');
+    assert.match(location.textContent, /IndexedDB/); assert.match(status.textContent, en ? /Saved locally/ : /已保存在本地/);
+    f.state.history.accountStorage = true; f.emit(); assert.match(location.textContent, /IndexedDB/); assert.match(status.textContent, en ? /reload to switch/ : /刷新后生效/);
+    f.state.history.backend = 'account-settings'; f.emit(); assert.match(location.textContent, en ? /account settings/ : /账户设置/); assert.doesNotMatch(status.textContent, /reload to switch|刷新后生效/);
+    f.state.history.backend = 'private-files'; f.emit(); assert.match(location.textContent, en ? /ST server/ : /服务端/);
+    f.state.history.error = 'HISTORY_CONFLICT'; f.emit(); assert.match(status.textContent, en ? /Another tab/ : /另一标签页/);
+    f.state.history.recovery = true; f.emit(); assert.match(status.textContent, en ? /recovery backup/ : /恢复备份/);
+    f.state.history = { ...f.state.history, backend: 'memory', recovery: false, error: null, persisted: true }; f.emit();
+    assert.match(location.textContent, en ? /page only/ : /临时保留/); assert.match(status.textContent, en ? /may be lost/ : /可能丢失/); assert.doesNotMatch(status.textContent, /Saved locally|已保存在本地/);
+    f.root.__gdMuyuDispose();
 });
 
 for (const lang of ['zh', 'en']) test(`Settings categories preserve editors and route shortcuts without execution (${lang})`, async () => {
@@ -751,12 +914,13 @@ test('Settings are hidden initially; gear/back preserve draft input and clear un
     await f.find('button', '返回聊天').click(); assert.equal(settings.hidden, true); assert.equal(key.value, '');
     assert.equal(f.find('textarea').value, 'keep this draft'); assert.equal(f.sent.length, 0);
     const gear = f.all().find(e => e.attrs['aria-label'] === '暮羽配置'); await gear.click(); assert.equal(settings.hidden, false);
+    key.value = 'PRIVATE_TEST_KEY';
     await f.find('button', '启用此连接').click(); assert.equal(settings.hidden, true); assert.equal(chat.hidden, false);
     assert.equal(f.find('button', '配置连接').hidden, true); f.root.__gdMuyuDispose();
 });
 
 test('Send opens authorization without a model call; settings/target changes revoke confirmation', async () => {
-    const f = fixture('zh', true); await f.find('button', '启用此连接').click();
+    const f = fixture('zh', true); f.all().find(e => e.type === 'password').value = 'PRIVATE_TEST_KEY'; await f.find('button', '启用此连接').click();
     const auth = f.all().find(e => e.className === 'gd-muyu-authorization');
     const consent = f.all().find(e => e.type === 'checkbox' && e.parent.className === 'gd-muyu-consent');
     f.find('textarea').value = 'diagnose'; await f.find('button', '发送').click();
@@ -770,7 +934,7 @@ test('Send opens authorization without a model call; settings/target changes rev
 });
 
 test('Task selector reveals field scope only for a draft request; messages have distinct bubble roles', async () => {
-    const f = fixture('en', true); await f.find('button', 'Enable connection').click();
+    const f = fixture('en', true); f.all().find(e => e.type === 'password').value = 'PRIVATE_TEST_KEY'; await f.find('button', 'Enable connection').click();
     const mode = f.all().find(e => e.tag === 'select' && e.parent.textContent === 'Task'); mode.value = 'draft'; await mode.onchange();
     assert.equal(f.find('fieldset').hidden, false);
     f.state.messages = [{ role: 'user', content: 'hello' }, { role: 'assistant', content: 'hi' }]; f.emit();
@@ -797,7 +961,7 @@ test('Process details stay collapsed by default and preserve expansion/scroll wh
 });
 
 test('Director selection changes permission wording and requires a current chat', async () => {
-    const f = fixture('zh', true); await f.find('button', '启用此连接').click();
+    const f = fixture('zh', true); f.all().find(e => e.type === 'password').value = 'PRIVATE_TEST_KEY'; await f.find('button', '启用此连接').click();
     const mode = f.all().find(e => e.tag === 'select' && e.parent.textContent === '任务');
     mode.value = 'director'; await mode.onchange();
     const label = f.all().find(e => e.className === 'gd-muyu-consent');

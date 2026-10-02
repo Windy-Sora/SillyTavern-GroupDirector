@@ -1,29 +1,22 @@
-# 暮羽 Agent 续做交接（2026-09-25）
+# 暮羽 Agent 续做交接（2026-10-02）
 
-下次开始先读本文，再读 [架构](MUYU-AGENT-ARCHITECTURE.md)、[配置契约](muyu/config/README.md) 与最新 [测试记录](TESTING.md)。本文记录当前工作树的事实，不代表已发布版本。插件主体已长期使用；当前主要工程是让暮羽在明确授权和人工确认下完成更多真实任务，而非重写插件核心。
+## 当前交接：代码基线170ffd0
 
-## 当前能做什么
+本文是续做快照，不代表远端发布状态；开始前重新检查Git与release差异。旧交接的数量、分支状态及已完成的档案Schema队列已移除；历次验收保留在TESTING.md和阶段路线，Git历史仍可恢复旧内容。
 
-- 独立聊天框、侧栏历史、可选浏览器持久化、补充指令、运行预算、历史摘要、过程/用量展示；模型连接目前是非流式工具调用。授权与澄清可以在当前任务中续接，但任务不能跨刷新从检查点继续。
-- 按来源申请资料读取；现有 11 类固定来源，包括消息、角色卡、档案、记忆、导演账本、变量和剧情蓝图。已注册的 Provider 可发现，并在按任务、ID、版本批准后调用原 `render`；长结果可在同一 Run 分页。未知工具默认拒绝，历史资料不会因导入记录而自动恢复授权。
-- 查询配置目录、合同及获授权的当前内存值；提交局部配置预览，用户逐份确认后才由可信宿主端口保存，回执区分当时内存赋值与持久化确认。`memoryMaxEntries` 另有当前聊天裁剪影响预览和分步回执。模型没有任意 settings 路径写入工具。
+- 统一浮窗与侧栏，非流式模型工具调用、私有思考回传、预算、取消、澄清及来源授权续接。用户不选择任务分类。
+- 当前20类固定来源，含变量诊断、ST世界书异步读取、预设/Persona/扩展目录。当前酒馆正文/角色记忆/已有Provider结果可字面检索和回读；暮羽会话历史另走history工具。
+- 配置12领域89叶字段，对应114默认键中的86个supported顶层键；其余17 pending、8 special-editor-pending、1 deferred、2 internal，另4动态入口。pending衡量通用配置覆盖，不意味没有独立GUI。
+- 单草稿与整单批准已实现；普通全局设置可与最多六个当前聊天数值变量一并预览、一次批准后逐步执行。专用记忆上限/蓝图完成变量不混入普通整单，部分完成和未知保存不重试或自动回滚。配置档草稿可确认保存，但无任意资源CRUD。
+- 普通模式按来源/任务/版本批准；连接内全权限可免去已支持读取、Provider执行及特定应用的确认，不解除开关、目标、校验或预算。已注册Provider执行不是沙箱；创建/测试/编辑/导入工作台未实现，Script Executor写入明确暂缓。
+- 历史支持服务端私有文件、IndexedDB回退及可选账户设置后端；DTO v7兼容旧记录，导入只读，切ST聊天可续聊并通知范围变化。刷新不恢复执行或授权。历史外发默认auto、可选ask，独立于新宿主读取授权。
+- 长期笔记默认关闭，独立账户设置仓库、账户/当前聊天范围、GUI增删查改、字面查询及明确原话保存/精确删除；无自动注入、语义查重或后台学习。联网搜索需小地球开关、Brave及附属插件。
+- 原文/模型视图分离，手动/可选自动历史摘要、原文回读已实现；不压缩活跃工具/思考轨迹，失败恢复主要取回原问题，不是检查点恢复。
 
-## 配置接入进度
+未适配重点：蓝图总开关、手动选世界书、语言/调试、部分档案元数据、自定义Prompt总开关及专用资源/连接。暮羽自身配置和私人仓库不经普通业务写入器开放；memoryTokenBudget及llmJsonSchemaHint无当前运行消费者，不承诺生效。
 
-`muyu/config/coverage.js` 显式登记 108 个默认顶层键和 4 个动态资源入口。目前 46 个叶字段（涉及 43 个顶层键）已进入暮羽的选择性读取、预览、确认流程；另有 56 个顶层键待普通适配、9 个标为专用编辑待接入。这个目录只衡量**通用配置写入覆盖**，不等于 Agent 或插件整体完成百分比；暮羽自身部分设置已有独立 UI 端口。
+最近提交：a23792c修复检索身份、账户存储容量及笔记范围；1bbf2f4补检索/记忆证据语义；170ffd0修复Unicode回退访问计数。最近六文件专项221/221及静态检查通过，未重跑全量；该次无付费模型/浏览器验收，两份release已同步。真实模型的历次成功与失败见[TESTING.md](TESTING.md)，不保证任意问法正确。
 
-已接入的重点：导演基础模式与选人参数、公式评分/触发/主动性、记忆常规参数及上限专用动作、自动总结与点评、角色档案基础参数及生成 Prompt、NPC 基础参数、世界书普通设置、若干 Prompt、点评 JSON 输出示例、Provider 默认超时。最近两批是 `critiqueSchema`（实际为 JSON 输出示例，不是标准 JSON Schema）和 `profileGeneratorPrompt`（角色字段先替换，再由 `renderPrompt` 解析已注册 Provider 占位符）。二者均保留空串恢复默认语义与经典编辑器的聚焦草稿。
+下一轮先建立合成检索质量/成本基线，再选检索效率与按需工具/指南加载的最小切片；之后考虑偏好召回、任务检查点、执行中结果治理及有界网络恢复。详见[架构第10节](MUYU-AGENT-ARCHITECTURE.md#10-下一阶段任务效率与可恢复性规划未实施)。不增加用户任务分类，不同时重写权限或动作层。
 
-尚未接入的重点：剧情蓝图和轮后反馈的配置、导演高级文本/模板、档案 `profileJsonSchema` 与 `profileRenderTemplate`、记忆高级文本、模型连接及密钥、库/配置档/用户 Provider 等结构化或可执行资产。已注册 Provider 的**运行**已完成，但“编写 → 隔离测试 → 审阅 → 确认导入”工作台尚未完成。真实聊天数据与资源的修改应走各自 Action Contract，不能扩张普通叶字段写入器。
-
-## 本轮 bug 检查与验收
-
-- 使用 bug-hunter 的只读、小范围顺序审计检查 `muyu/config` 的 10/10 个源码文件，并交叉阅读设置候选、UI 批准和宿主写入端口。**未确认运行时 bug**。详情在 [审计报告](.bug-hunter/audit-muyu-20260925/report.md)；这不是对整个暮羽的全面审计。
-- 本轮相关测试 58/58 通过；随后重跑全量检查：1099 项，1098 通过、1 跳过、0 失败；静态检查与历史 BUG 契约 17/17 通过。最新字段没有新的真实浏览器或付费模型验收。
-- 当前 Git 分支为 `feat/ui-navigation-preview`，审计时 HEAD 为 `100e151`。工作树已有大量未提交与未跟踪文件；它们是正在开发的工程状态，**不要整体重置、暂存、覆盖或视为本轮审计产生**。本轮未提交、未 push，也未同步 release。
-
-## 下一块建议：档案 Schema
-
-优先复核 `profileJsonSchema`，不要直接套用点评示例的校验。它会被 `JSON.parse` 后以 `strict: true` 传给模型，还参与档案 Schema 哈希；当前空串表示宿主调用不附加自定义结构化输出参数，但 UI 展示内置示例。先核对生成、解析、导入、版本哈希及旧档案行为，再定义暮羽草稿可接受的 Schema 子集和影响提示。保留“只预览 → 人工确认 → 应用回执”，生成及异步保存期间禁写，并保护经典编辑器草稿。之后再单独处理 `profileRenderTemplate`。
-
-下一轮动手前建议先确认工作树差异和 release 当前版本，避免把尚未提交的其他模块改动误带入同步或提交。测试入口：`npm.cmd run test:full`；配置专项：`node --test tests/unit/muyu-settings.test.mjs tests/unit/muyu-config-prompt-editors.test.mjs tests/unit/profile-system-generation.test.mjs tests/unit/critique-system.test.mjs`。
+测试入口：`node --test tests/unit/muyu-source-retrieval.test.mjs tests/unit/muyu-history-search.test.mjs tests/unit/muyu-agent-memory.test.mjs tests/unit/muyu-instructions.test.mjs tests/unit/muyu-controller.test.mjs tests/unit/muyu-panel.test.mjs`；静态`npm.cmd run test:static`，全量`npm.cmd run test:full`。专项通过不能写成全量通过，浏览器/付费模型另行记录。

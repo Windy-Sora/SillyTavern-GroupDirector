@@ -1,5 +1,7 @@
 # 模型适配层：非流式 Chat Completions
 
+2026-10-02 接口页：GUI 可显式选择现有 `deepseek` / `chat-completions` 协议，DeepSeek 思考强度可选 low/high/max。测试连接、获取模型不自动启用；协议及思考选项随可选的记住密钥持久化，旧保存记录默认 DeepSeek/high。通用协议不发送 DeepSeek 专属思考参数；没有新增 Responses/Anthropic 适配器、多连接管理或服务端密钥库。离线专项通过，真实浏览器 CORS/服务兼容性仍需实际测试。
+
 2026-09-24。已完成离线协议与Runtime组合测试；未连接真实服务、未验证浏览器CORS、未挂载GUI。旧utils/custom-api.js保持不变。没有新增依赖、自动重试或模型回退。
 
 ## 组装

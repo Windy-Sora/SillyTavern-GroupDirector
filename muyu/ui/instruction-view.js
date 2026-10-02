@@ -4,7 +4,7 @@ import { INSTRUCTION_DEFAULTS, validateInstructionConfig } from '../instructions
 export function createInstructionView({ doc, settings, controller, act, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, owner) => { const el = doc.createElement(tag); el.textContent = text; owner.append(el); return el; };
-    const button = text => { const el = node('button', text, section); el.type = 'button'; el.className = 'menu_button'; return el; };
+    const button = text => { const el = node('button', text, actions); el.type = 'button'; el.className = 'menu_button'; return el; };
     const section = node('details', '', settings); section.className = 'gd-muyu-instruction-settings';
     section.open = true;
     node('summary', t('行为偏好', 'Behavior preferences'), section);
@@ -14,12 +14,14 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
     text.placeholder = t('例如：先给结论；通常用三条以内说明；不重复无关历史。', 'Example: lead with the conclusion; usually use at most three points; avoid unrelated history.');
     node('small', t('最多4000字符、16000 UTF-8字节；不静默截断。内容明文保存在插件设置，启用后外发给当前模型，不要填写密钥或敏感信息。草稿仅在本页保留，刷新页面会丢失。', 'Maximum 4000 characters and 16000 UTF-8 bytes; no silent truncation. Stored unencrypted in extension settings and sent to the active model when enabled. Do not enter credentials or sensitive data. Unsaved drafts survive view changes, not page reloads.'), section);
     const status = node('p', '', section); status.setAttribute('role', 'status');
+    const actions = node('div', '', section); actions.className = 'gd-muyu-settings-actions';
     const save = button(t('保存行为偏好', 'Save behavior preferences')), discard = button(t('放弃修改', 'Discard changes')), reset = button(t('恢复默认（需保存）', 'Restore defaults (save required)'));
-    const edit = () => act(() => controller.setInstructionDraft({ enabled: enabled.checked, text: text.value }));
+    let saveFailed = false;
+    const edit = () => act(() => { saveFailed = false; controller.setInstructionDraft({ enabled: enabled.checked, text: text.value }); });
     enabled.onchange = edit; text.oninput = edit;
-    save.onclick = () => act(() => controller.saveInstructions());
-    discard.onclick = () => act(() => controller.discardInstructionDraft());
-    reset.onclick = () => act(() => controller.resetInstructionDraft());
+    save.onclick = () => act(async () => { saveFailed = false; try { await controller.saveInstructions(); } catch { saveFailed = true; } });
+    discard.onclick = () => act(() => { saveFailed = false; controller.discardInstructionDraft(); });
+    reset.onclick = () => act(() => { saveFailed = false; controller.resetInstructionDraft(); });
     return { render(s) {
         const state = s.instructionSettings || { draft: INSTRUCTION_DEFAULTS, saved: INSTRUCTION_DEFAULTS, dirty: false, saving: false }, draft = state.draft;
         if (text.value !== draft.text) text.value = draft.text; enabled.checked = draft.enabled;
@@ -27,6 +29,9 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
         const bytes = new TextEncoder().encode(draft.text).length;
         status.textContent = `${draft.text.length}/4000 · ${bytes}/16000 B · ` + (valid ? state.saving ? t('保存中…', 'Saving…') : state.dirty ? t('有未保存修改', 'Unsaved changes') : t('已保存', 'Saved') : t('超出限制，未保存；请缩短内容', 'Over limit; not saved. Shorten the text.')) + ' · ' + (state.saved.enabled ? t('当前已启用', 'Currently enabled') : t('当前未启用', 'Currently disabled'));
         save.disabled = !valid || !state.dirty || state.saving || s.resetting;
+        enabled.disabled = text.disabled = !!state.saving || !!s.resetting;
+        text.setAttribute('aria-invalid', String(!valid));
+        if (saveFailed) status.textContent = t('保存未完成，草稿已保留，请重试。', 'Save did not complete. Draft retained; retry.');
         discard.disabled = !state.dirty || state.saving; reset.disabled = state.saving;
     } };
 }

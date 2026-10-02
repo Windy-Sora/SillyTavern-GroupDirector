@@ -5,6 +5,20 @@ import { createHostBridge } from '../../muyu/host/bridge.js';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { ExecutionError } from '../../muyu/core/execution.js';
 import { createCredentialStore } from '../../muyu/host/credentials.js';
+
+test('Credential storage retains protocol and reasoning options without exposing keys in descriptors', async () => {
+    const settings = { agentConfigs: { 'muyu-assistant': { endpoint: 'https://example.test/chat/completions', model: 'legacy', apiKey: 'PRIVATE_TEST_KEY', autoConnect: true } } };
+    const store = createCredentialStore({ getSettings: () => settings, saveSettings: async () => {} });
+    assert.equal(store.describe().profile, 'deepseek'); assert.equal(store.describe().reasoningEffort, 'high');
+    assert.equal(store.describe().thinking, true); assert.equal(store.describe().apiKey, undefined);
+    await store.save({ endpoint: 'https://example.test/chat/completions', model: 'generic', apiKey: 'PRIVATE_TEST_KEY', profile: 'chat-completions', thinking: true, reasoningEffort: 'max', autoConnect: true });
+    const reloaded = createCredentialStore({ getSettings: () => settings, saveSettings: async () => {} });
+    assert.equal(reloaded.restoreAutoConnection().profile, 'chat-completions'); assert.equal(reloaded.restoreAutoConnection().thinking, false);
+    assert.equal(reloaded.describe().reasoningEffort, 'max'); assert.equal(reloaded.describe().apiKey, undefined);
+    await reloaded.setAutoConnect(false); assert.equal(reloaded.restoreAutoConnection(), null); assert.equal(reloaded.describe().profile, 'chat-completions');
+    await store.save({ endpoint: 'https://example.test/chat/completions', model: 'thinking', apiKey: 'PRIVATE_TEST_KEY', profile: 'deepseek', thinking: true, reasoningEffort: 'low', autoConnect: true });
+    assert.equal(reloaded.restoreAutoConnection().reasoningEffort, 'low'); assert.equal(reloaded.restoreAutoConnection().thinking, true);
+});
 import { createAgentMemoryPort } from '../../muyu/host/agent-memory.js';
 import { RUN_DEFAULTS } from '../../muyu/core/budget.js';
 import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';

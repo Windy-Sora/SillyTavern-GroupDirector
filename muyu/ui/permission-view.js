@@ -17,9 +17,10 @@ export function createPermissionView({ doc, parent, settings, controller, act, l
     const cancel = node('button', t('取消任务', 'Cancel task'), actions); cancel.type = 'button'; cancel.className = 'menu_button'; cancel.onclick = () => act(() => controller.cancelInteraction(current.id));
     node('small', t('本任务授权在任务结束后失效；持续授权仅在当前连接及指定范围内复用，可在配置中撤销。读取授权不批准修改。', 'Task access expires at task end. Ongoing access lasts for this connection and stated scope; revoke it in settings. Read access does not approve changes.'), card);
     const status = node('p', '', parent); status.setAttribute('role', 'status'); status.hidden = true;
-    const grants = node('div', '', settings);
+    const grants = node('div', '', settings); grants.className = 'gd-muyu-settings-card gd-muyu-grants';
+    grants.setAttribute('tabindex', '-1');
     let signature = '';
-    return { dispose() { root.remove(); }, render(s) {
+    return { settingsTarget: grants, dispose() { root.remove(); }, render(s) {
         current = s.interaction?.kind === 'permission' ? s.interaction : null;
         const pending = current?.status === 'pending'; root.hidden = !pending;
         for (const b of buttons) b.disabled = !pending || s.busy || s.resetting;

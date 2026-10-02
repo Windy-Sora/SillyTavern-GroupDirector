@@ -718,7 +718,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             live(); if (resetting) throw new Error('RESETTING');
             const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
             const next = createModel({ connection: resolved }); resetting = true; emit();
-            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, autoConnect: config.autoConnect === true } : null); live(); const draft = inputs.get(viewKey()) || ''; clear(); model = next; connection = { endpoint: config.endpoint, model: config.model, thinking: config.thinking !== false, remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
+            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null); live(); const draft = inputs.get(viewKey()) || ''; clear(); model = next; connection = { endpoint: config.endpoint, model: config.model, profile: config.profile || 'chat-completions', thinking: config.thinking ?? config.profile === 'deepseek', reasoningEffort: config.reasoningEffort || 'high', remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
             finally { resetting = false; emit(); }
         },
         async probeConnection(config, options = {}) {
@@ -839,7 +839,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         const saved = host.credentials?.restoreAutoConnection?.();
         if (saved) {
             model = createModel({ connection: saved });
-            connection = { endpoint: saved.endpoint, model: saved.model, thinking: saved.thinking !== false, remembered: true, autoConnect: true };
+            connection = { endpoint: saved.endpoint, model: saved.model, profile: saved.profile || 'deepseek', thinking: saved.thinking !== false, reasoningEffort: saved.reasoningEffort || 'high', remembered: true, autoConnect: true };
             assemble();
         }
     } catch { model = null; connection = null; }
