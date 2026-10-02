@@ -28,6 +28,7 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
     const save = button(t('保存搜索配置', 'Save search settings'), controls), forget = button(t('清除搜索密钥', 'Forget search key'), controls);
     const stateText = node('small', '', editor);
     const feedback = createFormFeedback({ doc, parent: controls, fields: [key, remember, ...fields.map(f => f.input)], buttons: [save, forget], lang,
+        disabledWhen: control => control === forget && !controller.snapshot().webSearch?.hasKey,
         savedText: t('搜索设置已更新。', 'Search settings updated.'),
         errorText: error => error?.message === 'WEB_KEY_REQUIRED' ? t('请填写独立的搜索密钥。', 'Enter a separate search key.') : t('搜索配置未能保存，输入已保留。', 'Search settings could not be saved. Input retained.') });
     node('small', t('需要安装或更新暮羽服务端插件（muyu/server-plugin 下的全部 .cjs 文件），启用 ST 的 enableServerPlugins 并重启。搜索只返回链接与摘要，不读取网页全文。', 'Install or update the Muyu server plugin (all .cjs files under muyu/server-plugin), enable ST enableServerPlugins and restart. Search returns links and snippets, not full pages.'), editor);
@@ -59,8 +60,6 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
             hint.hidden = web.enabled !== true || s.mode !== 'assistant';
             const next = JSON.stringify([web.maxSearches, web.maxResults, web.resultBytes, web.remembered]);
             if (signature !== next && !feedback.dirty && !feedback.busy) { for (const { name, input } of fields) input.value = String(web[name]); remember.checked = web.remembered === true; signature = next; feedback.rebase(); }
-            save.disabled = !!web.saving || !!s.resetting || !!s.busy;
-            forget.disabled = !web.hasKey || !!web.saving || !!s.resetting;
             feedback.update(web.saving || s.resetting || s.busy);
             stateText.textContent = (web.hasKey ? t('已提供搜索密钥', 'Search key provided') : t('尚未配置搜索密钥', 'Search key not configured')) + ' · ' + ({ available: t('服务端插件已连接', 'Server plugin connected'), missing: t('服务端插件未安装或尚未重启', 'Server plugin missing or restart required'), unavailable: t('服务端插件连接失败', 'Server plugin unavailable'), unknown: t('开启时检测服务端插件', 'Server plugin checked when enabling') }[web.backend] || '');
         },

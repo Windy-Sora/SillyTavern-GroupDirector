@@ -270,6 +270,29 @@ test('Connection validation is local and test results do not replace the active 
     f.root.__gdMuyuDispose();
 });
 
+test('Search locking uses the latest state after completion, failure, cancellation and saving', async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    const save = f.find('button', 'Save search settings'), forget = f.find('button', 'Forget search key');
+    const key = f.all().find(e => e.type === 'password' && e.parent.textContent === 'Brave Search API key');
+    f.state.webSearch = { maxSearches: 3, maxResults: 5, resultBytes: 12000, hasKey: false };
+    for (const terminal of ['succeeded', 'failed', 'cancelled']) {
+        f.state.busy = true; f.emit(); assert.equal(save.disabled, true); assert.equal(key.disabled, true);
+        f.state.busy = false; f.state.runs = [{ status: terminal }]; f.emit();
+        assert.equal(save.disabled, false); assert.equal(key.disabled, false); assert.equal(forget.disabled, true);
+    }
+    let finish, calls = 0;
+    f.controller.saveWebSearchConfig = () => { calls++; return new Promise(resolve => { finish = () => { f.state.webSearch.hasKey = true; f.emit(); resolve(); }; }); };
+    key.value = 'SYNTHETIC'; key.events.input();
+    const pending = save.click(); assert.equal(save.disabled, true); await save.click(); assert.equal(calls, 1);
+    f.emit(); assert.equal(save.disabled, true);
+    finish(); await pending;
+    assert.equal(save.disabled, false); assert.equal(forget.disabled, false);
+    f.state.webSearch.saving = true; f.emit(); assert.equal(save.disabled, true);
+    f.state.webSearch.saving = false; f.state.webSearch.hasKey = false; f.emit();
+    assert.equal(save.disabled, false); assert.equal(forget.disabled, true);
+    f.root.__gdMuyuDispose();
+});
+
 test('Search field validation expands limits and failed saving retains the key and numeric draft', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' }); let calls = 0;
     const attempts = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Search attempts per task');

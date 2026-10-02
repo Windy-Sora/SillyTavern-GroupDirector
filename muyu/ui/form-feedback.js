@@ -1,6 +1,6 @@
 let nextErrorId = 0;
 /** Local form feedback. Never owns persisted settings or sends requests. */
-export function createFormFeedback({ doc, parent, fields, buttons = [], lang, savedText, errorText, dirtyText, busyText }) {
+export function createFormFeedback({ doc, parent, fields, buttons = [], lang, savedText, errorText, dirtyText, busyText, disabledWhen }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const status = doc.createElement('p'); status.className = 'gd-muyu-form-status'; status.setAttribute('role', 'status'); parent.append(status);
     const notes = new Map(), disabled = new Map();
@@ -13,7 +13,8 @@ export function createFormFeedback({ doc, parent, fields, buttons = [], lang, sa
     }
     function lock() {
         for (const field of [...fields, ...buttons]) {
-            if (busy || blocked) { if (!disabled.has(field)) disabled.set(field, !!field.disabled); field.disabled = true; }
+            if (disabledWhen) field.disabled = busy || blocked || !!disabledWhen(field);
+            else if (busy || blocked) { if (!disabled.has(field)) disabled.set(field, !!field.disabled); field.disabled = true; }
             else if (disabled.has(field)) { field.disabled = disabled.get(field); disabled.delete(field); }
         }
     }
