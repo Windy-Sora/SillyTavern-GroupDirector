@@ -15,6 +15,7 @@ export function fitSidebarRect(rect, viewport, opened) {
 /** Generic single-window shell. Closing a view never stops its module's business work. */
 export function createFloatingShell({ registry, doc = document, win = window, lang = 'zh' }) {
     let language = lang, activeId = null, teardown = null, disposed = false, returnFocus = null, sidebarOpen = false, mountVersion = 0;
+    let ballVisible = true;
     const t = (zh, en) => language === 'en' ? en : zh;
     const node = (tag, parent, cls) => { const e = doc.createElement(tag); if (cls) e.className = cls; parent.append(e); return e; };
     const root = node('div', doc.body, 'gd-floating-root');
@@ -65,7 +66,7 @@ export function createFloatingShell({ registry, doc = document, win = window, la
         const entries = registry.list().filter(e => e.available), current = entries.find(e => e.id === activeId);
         if (activeId && !current) { close(); return; }
         const labels = { idle: t('空闲', 'Idle'), running: t('运行中', 'Running'), attention: t('需关注', 'Attention'), error: t('错误', 'Error') };
-        ball.textContent = 'GD'; ball.dataset.status = registry.status(); ball.hidden = !entries.length;
+        ball.textContent = 'GD'; ball.dataset.status = registry.status(); ball.hidden = !ballVisible || !entries.length;
         ball.setAttribute('aria-label', t('插件快捷入口', 'Plugin shortcuts') + ' · ' + labels[registry.status()]);
         ball.title = t('点击展开或收回，拖动移动；方向键调整位置', 'Click to expand or collapse, drag to move; arrow keys reposition');
         ball.setAttribute('aria-expanded', String(!menu.hidden || !!activeId));
@@ -129,6 +130,12 @@ export function createFloatingShell({ registry, doc = document, win = window, la
     const unsubscribe = registry.subscribe(render); layout(); render();
     return Object.freeze({
         open, close,
+        setBallVisible(value) {
+            if (disposed) return;
+            ballVisible = !!value;
+            if (!ballVisible) menu.hidden = true;
+            render();
+        },
         setLanguage(value) {
             if (value === language || disposed) return;
             const id = activeId; if (id) close(); language = value; render(); if (id) open(id);

@@ -23,8 +23,18 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const retry = button(t('重试保存', 'Retry saving'), section);
     const bar = node('div', '', chat); bar.className = 'gd-muyu-session-bar';
     const toggle = button(t('历史', 'History'), bar), title = node('strong', '', bar);
-    const menu = node('details', '', bar); node('summary', '⋯', menu).setAttribute('aria-label', t('当前对话操作', 'Conversation actions'));
-    const rename = button(t('重命名', 'Rename'), menu), archive = button(t('归档', 'Archive'), menu), remove = button(t('删除', 'Delete'), menu);
+    const menu = node('details', '', bar); menu.className = 'gd-muyu-session-menu';
+    const menuToggle = node('summary', '⋯', menu); menuToggle.setAttribute('aria-label', t('当前对话操作', 'Conversation actions'));
+    const menuList = node('div', '', menu); menuList.className = 'gd-muyu-session-menu-list';
+    menuList.setAttribute('role', 'group'); menuList.setAttribute('aria-label', t('当前对话操作', 'Conversation actions'));
+    const rename = button(t('重命名', 'Rename'), menuList), archive = button(t('归档', 'Archive'), menuList), remove = button(t('删除', 'Delete'), menuList);
+    const dismissMenu = event => { if (menu.open && !menu.contains(event.target)) menu.open = false; };
+    const escapeMenu = event => {
+        if (menu.open && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); menu.open = false; menuToggle.focus(); }
+    };
+    doc.addEventListener?.('pointerdown', dismissMenu);
+    doc.addEventListener?.('keydown', escapeMenu);
+    menuList.addEventListener('click', event => { if (event.target.closest?.('button') && !event.target.disabled) menu.open = false; });
     const status = node('small', '', bar); status.setAttribute('role', 'status');
     const sidebar = node('aside', '', sidebarRoot || chat); sidebar.className = 'gd-muyu-history-sidebar'; sidebar.setAttribute('aria-label', t('暮羽历史会话', 'Muyu history'));
     const heading = node('div', '', sidebar); heading.className = 'gd-muyu-sidebar-heading';
@@ -32,7 +42,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const close = button(t('收起历史', 'Close history'), heading);
     const create = button(t('新对话', 'New conversation'), sidebar); create.className += ' gd-muyu-new-session';
     const actionsRoot = node('div', '', sidebar); actionsRoot.className = 'gd-muyu-sidebar-exchange';
-    const actions = createHistoryActions({ doc, importRoot: actionsRoot, exportRoot: menu, parent: bar, controller, act, t });
+    const actions = createHistoryActions({ doc, importRoot: actionsRoot, exportRoot: menuList, parent: bar, controller, act, t });
     rename.onclick = () => { menu.open = false; actions.show('rename'); };
     archive.onclick = () => { menu.open = false; actions.show('archive'); };
     remove.onclick = () => { menu.open = false; actions.show('remove'); };
@@ -45,7 +55,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const refresh = button(t('加载／刷新本地历史', 'Load / refresh local history'), sidebar);
     const list = node('div', '', sidebar); list.className = 'gd-muyu-session-list';
     const count = node('small', '', sidebar);
-    let opened = false, wide = false, manual = !!setSidebarOpen, signature = '', disposed = false, visible = true, available = false;
+    let opened = false, wide = false, manual = !!setSidebarOpen, signature = '', disposed = false, visible = true, available = false, menuSession;
     function visibility() {
         const showing = opened && available;
         sidebar.hidden = !showing;
@@ -84,6 +94,8 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     return {
         render(s) {
             const h = s.history; bar.hidden = section.hidden = !h;
+            if (menuSession !== h?.sessionId || !h) menu.open = false;
+            menuSession = h?.sessionId;
             available = !!h; visibility();
             if (!h) return;
             (task.parentElement || task.parent).hidden = s.mode === 'assistant';
@@ -164,7 +176,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
                 status.textContent += notice; storageStatus.textContent += notice;
             }
         },
-        setVisible(value) { visible = value; visibility(); },
-        dispose() { disposed = true; observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); },
+        setVisible(value) { visible = value; if (!value) menu.open = false; visibility(); },
+        dispose() { disposed = true; doc.removeEventListener?.('pointerdown', dismissMenu); doc.removeEventListener?.('keydown', escapeMenu); observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); },
     };
 }

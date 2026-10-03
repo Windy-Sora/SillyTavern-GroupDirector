@@ -5,6 +5,9 @@ import { mountFeatureViews } from './feature-views.js';
 import { mountCompactDisclosures } from './compact-disclosures.js';
 import { mountCommandBoard } from './command-board.js';
 
+// Keep the preview implementation for future work, but do not expose it to users.
+const PREVIEW_NAVIGATION_ENABLED = false;
+
 // One live template, two presentations. Switching NEVER rebuilds editors or
 // reinitializes sections, so drafts and existing task callbacks keep their nodes.
 export function mountNavigation(root, { settings, storage, initialState, deps } = {}) {
@@ -12,6 +15,7 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
     root.__gdNavigation?.dispose();
     const doc = root.ownerDocument;
     let state = initialState ? normalizePreference(initialState) : readPreference(storage);
+    if (!PREVIEW_NAVIGATION_ENABLED) state.layout = 'classic';
     const t = (zh, en) => settings?.lang === 'en' ? en : zh;
     const label = item => t(item.zh, item.en);
     const owned = [];
@@ -41,9 +45,11 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
         return el;
     }
     const bar = node('div', 'gd-ui-switchbar');
+    bar.hidden = !PREVIEW_NAVIGATION_ENABLED;
     const brand = node('span', 'gd-ui-brand', bar);
     brand.textContent = 'Group Director';
     const switchLabel = node('label', '', bar);
+    switchLabel.hidden = !PREVIEW_NAVIGATION_ENABLED;
     const switchText = node('span', '', switchLabel);
     const layout = node('select', 'text_pole', switchLabel);
     const help = node('button', 'menu_button', bar);
@@ -126,6 +132,10 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
     function render() {
         clearPresentation();
         root.classList.toggle('gd-ui-preview', state.layout === 'preview');
+        const dashboard = root.querySelector('.gd-dashboard');
+        if (state.layout === 'classic' && dashboard) {
+            if (dashboard.nextElementSibling !== bar) dashboard.after(bar);
+        } else if (root.firstElementChild !== bar) root.prepend(bar);
         options(layout, [['classic', t('经典界面', 'Classic')], ['preview', t('新版 · 预览', 'New · Preview')]], state.layout);
         switchText.textContent = t('界面', 'Interface');
         help.textContent = t('帮助', 'Help');
@@ -192,6 +202,7 @@ export function mountNavigation(root, { settings, storage, initialState, deps } 
         return true;
     }
     const onLayout = () => {
+        if (!PREVIEW_NAVIGATION_ENABLED) return;
         const previous = state;
         try { state = { ...state, layout: layout.value === 'preview' ? 'preview' : 'classic' }; render(); persist(); }
         catch (error) {

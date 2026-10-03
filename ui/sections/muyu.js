@@ -180,11 +180,28 @@ registerSection('muyu', ctx => {
     owner.refreshView = () => {
         root.__gdMuyuDispose?.(); owner.floating.setLanguage(ctx.settings.lang);
         const en = ctx.settings.lang === 'en'; root.classList.add('gd-muyu-entry');
-        const open = document.createElement('button'); open.type = 'button'; open.className = 'menu_button';
-        open.textContent = en ? 'Open Muyu chat window' : '打开暮羽聊天窗口'; open.onclick = () => owner.floating.open('muyu');
-        const hint = document.createElement('small'); hint.textContent = en ? 'Connection settings are in the window. Closing it does not stop tasks.' : '连接设置在窗口内；关闭窗口不会停止任务。';
-        root.append(open, hint);
-        root.__gdMuyuDispose = () => { root.replaceChildren(); delete root.__gdMuyuDispose; };
+        const label = document.createElement('label'); label.className = 'checkbox_label';
+        const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.id = 'gd-muyu-floating-ball-visible';
+        toggle.checked = ctx.settings.muyuFloatingBallVisible !== false;
+        owner.floating.setBallVisible(toggle.checked);
+        const text = document.createElement('span'); text.textContent = en ? 'Show Muyu floating ball' : '显示暮羽悬浮球';
+        label.htmlFor = toggle.id; label.append(toggle, text);
+        const hint = document.createElement('small');
+        const hintText = en ? 'Hide only the launcher; ongoing tasks are not stopped. Enable here to show it again.' : '仅隐藏入口，不停止正在执行的任务；可在这里重新开启。';
+        hint.textContent = hintText;
+        toggle.onchange = async () => {
+            const previous = ctx.settings.muyuFloatingBallVisible;
+            ctx.settings.muyuFloatingBallVisible = toggle.checked;
+            owner.floating.setBallVisible(toggle.checked); toggle.disabled = true;
+            try { await ctx.saveMuyuCredentials(); hint.textContent = hintText; }
+            catch {
+                ctx.settings.muyuFloatingBallVisible = previous;
+                toggle.checked = previous !== false; owner.floating.setBallVisible(toggle.checked);
+                hint.textContent = en ? 'Could not save; previous visibility restored.' : '保存失败，已恢复原显示设置。';
+            } finally { toggle.disabled = false; }
+        };
+        root.append(label, hint);
+        root.__gdMuyuDispose = () => { toggle.onchange = null; root.replaceChildren(); delete root.__gdMuyuDispose; };
     };
     owner.refreshView();
 });

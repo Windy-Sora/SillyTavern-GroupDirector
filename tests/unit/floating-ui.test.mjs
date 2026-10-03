@@ -4,6 +4,24 @@ import { createFloatingRegistry } from '../../ui/floating/registry.js';
 import { createFloatingShell, fitFloatingRect, fitSidebarRect } from '../../ui/floating/shell.js';
 
 const entry = (id, overrides = {}) => ({ id, label: { zh: id, en: id }, icon: '*', order: 10, mount: () => () => {}, ...overrides });
+test('Floating ball visibility survives status updates without closing the active view', () => {
+    const f = surface();
+    const ball = f.find('gd-floating-ball');
+    const frame = f.find('gd-floating-window');
+    assert.equal(ball.hidden, false);
+    f.shell.open('chat');
+    f.shell.setBallVisible(false);
+    assert.equal(ball.hidden, true);
+    assert.equal(frame.hidden, false);
+    f.shell.setLanguage('en');
+    assert.equal(ball.hidden, true);
+    f.shell.close();
+    assert.equal(frame.hidden, true);
+    assert.equal(ball.hidden, true);
+    f.shell.setBallVisible(true);
+    assert.equal(ball.hidden, false);
+    f.shell.dispose(); f.registry.dispose();
+});
 test('Floating registry supports independent modules, priority aggregation and isolated metadata', () => {
     const r = createFloatingRegistry(); let status = 'idle', notify, cleaned = 0;
     const remove = r.register(entry('chat', { getStatus: () => status, subscribe: fn => { notify = fn; return () => cleaned++; } }));

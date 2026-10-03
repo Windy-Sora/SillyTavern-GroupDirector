@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
 import { createPermissionView } from '../../muyu/ui/permission-view.js';
 import { importPreview } from '../../muyu/sessions/exchange.js';
+import { createHistoryView } from '../../muyu/ui/history-view.js';
 
 // Minimal native DOM contract; does not assert CSS geometry or browser layout.
 class Element {
@@ -18,6 +19,24 @@ class Element {
     click() { if (!this.disabled) return this.onclick?.(); }
     toggle(open) { this.open = open; this.events.toggle?.(); }
 }
+
+test('Conversation dropdown dismisses outside/Escape and removes document listeners on disposal', () => {
+    const listeners = new Map();
+    const doc = { createElement: tag => new Element(tag, doc), addEventListener: (type, fn) => listeners.set(type, fn), removeEventListener: (type, fn) => { if (listeners.get(type) === fn) listeners.delete(type); } };
+    const settings = doc.createElement('section'), chat = doc.createElement('section');
+    const view = createHistoryView({ doc, settings, chat, controller: {}, act: fn => fn(), lang: 'en' });
+    const menu = chat.children[0].children.find(e => e.className === 'gd-muyu-session-menu');
+    const trigger = menu.children[0], list = menu.children[1];
+    menu.contains = target => { for (let el = target; el; el = el.parent) if (el === menu) return true; return false; };
+    menu.open = true; listeners.get('pointerdown')({ target: list }); assert.equal(menu.open, true);
+    listeners.get('pointerdown')({ target: chat }); assert.equal(menu.open, false);
+    menu.open = true; let prevented = false;
+    listeners.get('keydown')({ key: 'Escape', preventDefault() { prevented = true; }, stopPropagation() {} });
+    assert.equal(menu.open, false); assert.equal(prevented, true); assert.equal(doc.activeElement, trigger);
+    menu.open = true; view.setVisible(false); assert.equal(menu.open, false);
+    menu.open = true; list.events.click({ target: { disabled: false, closest: () => ({}) } }); assert.equal(menu.open, false);
+    view.dispose(); assert.equal(listeners.size, 0);
+});
 
 test('Permission request stays inside the transcript and disposes its card', () => {
     const doc = { createElement: tag => new Element(tag, doc) };

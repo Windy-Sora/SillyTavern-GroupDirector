@@ -7,6 +7,7 @@ export const MODE_FORMULA = 'formula';
 export const MODE_LLM = 'llm';
 
 export const DEFAULT_SETTINGS = {
+    muyuFloatingBallVisible: true,
     muyuInstructionConfig: { enabled: false, text: '' },
     muyuContextConfig: { ...CONTEXT_DEFAULTS },
     muyuRunConfig: { ...RUN_DEFAULTS },
