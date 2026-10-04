@@ -6,7 +6,7 @@ export function createScriptExecutorModule({ port, charge }) {
     const registry = createToolRegistry(), runs = new Map();
     const outputSchema = { type: 'object', properties: { candidateId: str(100), text: str(24000), applyRequested: { type: 'boolean' } }, required: ['candidateId', 'text'], additionalProperties: false };
     const inputs = {
-        list: { properties: { offset: { type: 'integer', minimum: 0, maximum: 256 } }, required: [] },
+        list: { properties: { offset: { type: 'integer', minimum: 0, maximum: 4096 } }, required: [] },
         read: { properties: { id: str(100), revision: str(80), offset: { type: 'integer', minimum: 0, maximum: 1048576 } }, required: ['id', 'revision', 'offset'] },
         prepare_execution: { properties: { id: str(100), revision: str(80), stage: { type: 'string', enum: ['message', 'round', 'decision'] }, messageIndex: { type: 'integer', minimum: 0 } }, required: ['id', 'revision', 'stage'] },
         execute: { properties: { executionId: str(36) }, required: ['executionId'] },
