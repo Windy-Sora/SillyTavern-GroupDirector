@@ -1,3 +1,4 @@
+import { createSkillPort } from '../../muyu/host/skills.js';
 import { createSelectionEditorPort } from '../../muyu/host/selection-editor.js';
 import { createLedgerEditorPort } from '../../muyu/host/ledger-editor.js';
 import { createBlueprintNodeEditorPort } from '../../muyu/host/blueprint-node-editor.js';
@@ -223,6 +224,7 @@ registerSection('muyu', ctx => {
             extensionKey: ctx.EXT_KEY, memoryGeneration, profileGeneration, npcGeneration,
             isBusy: () => { const g = ctx.getMuyuGuards?.() || {}; return !!g.roundActive || !!g.manualGenerating || !!g.takeoverPending || !!ctx.profileLibrarySystem?.isAutoLoading?.() || !!ctx.memorySystem?.isGenerating?.() || !!ctx.profileSystem?.isGenerating?.() || !!ctx.npcSystem?.isGenerating?.() || !!ctx.summarySystem?.isGenerating?.() || !!ctx.critiqueSystem?.isGenerating?.() || !!ctx.storyBlueprintSystem?.isGenerating?.(); },
         }) : null;
+        const skills = createSkillPort({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const customPrompts = ctx.customPromptsSystem ? createCustomPromptPort({ getSettings: () => ctx.settings, system: ctx.customPromptsSystem }) : null;
         const customAgents = ctx.customAgentSystem ? createCustomAgentPort({ getSettings: () => ctx.settings, system: ctx.customAgentSystem, getProviders: ctx.getMuyuProviders, getContext: ctx.getContext, getTarget: () => host?.currentTarget(),
             changed: () => owner.currentContext?.refreshCustomAgentList?.() }) : null;
@@ -258,7 +260,7 @@ registerSection('muyu', ctx => {
                 return !!ctx.npcSystem?.isGenerating?.() || !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending;
             },
         }) : null;
-        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
+        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
         owner.controller = createMuyuController({ host });
         owner.floatingRegistry = createFloatingRegistry();
         owner.floatingRegistry.register({

@@ -24,6 +24,7 @@ const INTENTIONALLY_UNCOVERED_KEYS = new Set([
     'muyuHistoryData', // Private conversations must never be shared through a story profile.
     'muyuAgentMemoryEnabled',
     'muyuAgentMemoryData', // Assistant notes are private, not transferable story settings.
+    'muyuSkillData', // Personal skill packages travel only through explicit skill export.
     // Profile libraries are reusable content data, not a config-profile setting.
     'profileLibraries',
     'storyBlueprintLibraries',
@@ -109,7 +110,7 @@ function snapshotSettings(settings, drawers) {
 function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
-        if (['muyuHistoryAccountStorage', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData'].includes(k)) continue;
+        if (['muyuHistoryAccountStorage', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData', 'muyuSkillData'].includes(k)) continue;
         if (k === 'muyuInstructionConfig') continue; // Personal instructions are never applied by a story profile.
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
@@ -383,6 +384,7 @@ export function createConfigProfileSystem(deps) {
         delete expSettings.muyuHistoryData;
         delete expSettings.muyuAgentMemoryEnabled;
         delete expSettings.muyuAgentMemoryData;
+        delete expSettings.muyuSkillData;
         if (expSettings.agentConfigs) expSettings.agentConfigs = stripApiKeys(expSettings.agentConfigs);
 
         const manifest = {
@@ -450,6 +452,7 @@ export function createConfigProfileSystem(deps) {
         delete snap.muyuHistoryData;
         delete snap.muyuAgentMemoryEnabled;
         delete snap.muyuAgentMemoryData;
+        delete snap.muyuSkillData;
 
         // Strip API keys (defense-in-depth: stored profiles should already be clean)
         if (snap.agentConfigs) {

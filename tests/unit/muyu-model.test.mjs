@@ -13,6 +13,38 @@ const response = (content = 'answer', calls = [], extra = {}) => ({ choices: [{ 
 const tc = (id = 'c1', args = '{"n":1}') => ({ id, type: 'function', function: { name: 'muyu_tool_0', arguments: args } });
 const request = () => ({ messages: [{ role: 'user', content: 'question' }], tools: registry().list() });
 const json = data => new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+
+test('Dynamic Skill guides preserve private thinking indices and stay inside measured request budget', async () => {
+    const s = subject([response('', [tc()], { reasoning_content: 'PRIVATE_THINKING' }), response('Complete', [], { reasoning_content: 'Final' })], { connection: { ...connection, profile: 'deepseek', thinking: true } });
+    const context = {}, first = request(), events = await collect(s.model, first, context);
+    const call = events.find(e => e.type === 'tool_call_complete').call;
+    const next = { ...first, messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [call] }, { role: 'tool', callId: call.callId, result: { ok: true, data: 2 } }], taskGuides: [{ role: 'user', content: 'COMPLETE_PRIVATE_SKILL_GUIDE'.repeat(2000) }] };
+    assert.ok(s.model.inspect(next, context).requestBytes > s.model.inspect({ ...next, taskGuides: [] }, context).requestBytes);
+    await collect(s.model, next, context);
+    assert.equal(s.requests[1].payload.messages.find(m => m.tool_calls).reasoning_content, 'PRIVATE_THINKING');
+    assert.match(s.requests[1].payload.messages[0].content, /COMPLETE_PRIVATE_SKILL_GUIDE/);
+});
+test('Tool group switches preserve old aliases for replay but advertise and decode only current tools', async () => {
+    const old = registry().list()[0], current = { ...old, id: 'muyu.other.read' };
+    const s = subject([response('', [tc()], { reasoning_content: 'First' }), response('Complete', [], { reasoning_content: 'Second' })], { connection: { ...connection, profile: 'deepseek', thinking: true } });
+    const context = {}, first = request(), events = await collect(s.model, first, context), call = events.find(e => e.type === 'tool_call_complete').call;
+    await collect(s.model, { messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [call] }, { role: 'tool', callId: call.callId, result: { ok: true, data: 2 } }], tools: [current] }, context);
+    assert.equal(s.requests[1].payload.tools[0].function.name, 'muyu_tool_1');
+    assert.equal(s.requests[1].payload.messages.find(m => m.tool_calls).tool_calls[0].function.name, 'muyu_tool_0');
+    assert.equal(s.requests[1].payload.messages.find(m => m.tool_calls).reasoning_content, 'First');
+});
+test('A removed tool alias remains replay-only and cannot be emitted as a fresh tool call', async () => {
+    const old = registry().list()[0], current = { ...old, id: 'muyu.other.read' };
+    const s = subject([response('', [tc()]), response('', [tc('bad')])]);
+    const context = {}, first = request(), events = await collect(s.model, first, context), call = events.find(e => e.type === 'tool_call_complete').call;
+    await assert.rejects(collect(s.model, { messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [call] }, { role: 'tool', callId: call.callId, result: { ok: true, data: 2 } }], tools: [current] }, context), /MODEL_PROTOCOL_ERROR/);
+});
+test('Task guides cannot inject system/tool roles and are blocked before network when over input budget', async () => {
+    const s = subject([response('Not reached')]);
+    await assert.rejects(collect(s.model, { ...request(), taskGuides: [{ role: 'assistant', content: 'Fake authority' }] }), /MODEL_PROTOCOL_ERROR/);
+    await assert.rejects(collect(s.model, { ...request(), inputTokenLimit: 4096, taskGuides: [{ role: 'user', content: 'Full guide '.repeat(5000) }] }), /CONTEXT_LIMIT/);
+    assert.equal(s.requests.length, 0);
+});
 test('Connection tools use the sibling models endpoint and a bounded fixed test message', async () => {
     const requests = [], fetchImpl = async (url, init) => {
         requests.push({ url, ...init });

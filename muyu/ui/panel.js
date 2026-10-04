@@ -1,3 +1,6 @@
+import { createSkillView } from './skill-view.js';
+import { createSkillPicker } from './skill-picker.js';
+import { renderSkillSave } from './skill-save-view.js';
 import { renderSelectionEditor } from './selection-editor-view.js';
 import { renderLedgerEditor } from './ledger-editor-view.js';
 import { renderBlueprintNodeEditor } from './blueprint-node-editor-view.js';
@@ -138,8 +141,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const usageDetails = node('details', '', toolContent); node('summary', t('本轮开销与限制', 'Run usage and limits'), usageDetails); const usageText = node('p', '', usageDetails);
     const contextView = createContextView({ doc, settings: settingsLayout.pages.limits, parent: toolContent, controller, act, lang });
     const instructionView = createInstructionView({ doc, settings: settingsLayout.pages.behavior, controller, act, lang });
+    const skillView = controller.snapshot().skills?.available ? createSkillView({ doc, settings: settingsLayout.pages.skills, controller, act, lang }) : { render() {} };
     const agentMemoryView = createAgentMemoryView({ doc, settings: settingsLayout.pages.data, controller, act, lang });
     const inputBox = node('div', '', composer); inputBox.className = 'gd-muyu-input-box';
+    const skillPicker = controller.snapshot().skills?.available ? createSkillPicker({ doc, parent: inputBox, controller, act, lang }) : { render() {} };
     const inputLabel = node('label', t('给暮羽的消息', 'Message to Muyu'), inputBox), input = node('textarea', '', inputLabel); input.className = 'text_pole'; input.rows = 3; input.maxLength = MAX_MESSAGE_BYTES;
     const recoveryBar = node('div', '', inputBox); recoveryBar.className = 'gd-muyu-recovery'; recoveryBar.hidden = true;
     const recoveryNote = node('small', '', recoveryBar), restoreInput = button(t('恢复失败问题到输入框', 'Restore failed question to composer'), recoveryBar);
@@ -252,7 +257,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         contextView.render(s);
         receiptView.render(s);
         instructionView.render(s);
-        agentMemoryView.render(s);
+        agentMemoryView.render(s); skillView.render(s); skillPicker.render(s);
         interactionView.render(s);
         permissionView.render(s);
         const pendingPermissionId = s.interaction?.kind === 'permission' && s.interaction.status === 'pending' ? s.interaction.id : null;
@@ -375,7 +380,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 node('strong', (isPlan ? t('任务方案', 'Task plan') : t('排查报告', 'Diagnostic report')) + ' · v' + artifact.revision, summary);
                 node('span', isPlan ? artifact.content.plan.goal : t('生成时的证据快照 · 展开查看', 'Evidence snapshot · expand to view'), summary);
                 card = node('div', '', wrapper); card.className = 'gd-muyu-plan-body';
-            } else node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'selection-draft' ? t('选择策略草稿','Selection policy draft') : artifact.kind === 'ledger-edit-draft' ? t('导演账本编辑草稿','Director ledger editing draft') : artifact.kind === 'blueprint-node-edit-draft' ? t('蓝图节点编辑草稿','Blueprint node editing draft') : artifact.kind === 'npc-edit-draft' ? t('NPC编辑草稿','NPC editing draft') : artifact.kind === 'profile-edit-draft' ? t('角色档案编辑草稿','Character profile editing draft') : artifact.kind === 'memory-edit-draft' ? t('记忆编辑草稿','Memory editing draft') : artifact.kind === 'variable-editor-draft' ? t('变量编辑草稿','Variable editing draft') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'blueprint-library-chat-draft' ? t('聊天与蓝图库草稿', 'Chat / Blueprint library draft') : artifact.kind === 'npc-library-chat-draft' ? t('聊天与 NPC 库草稿', 'Chat / NPC library draft') : artifact.kind === 'profile-library-chat-draft' ? t('聊天与档案库草稿', 'Chat / profile library draft') : artifact.kind === 'blueprint-library-draft' ? t('蓝图库草稿', 'Blueprint library draft') : artifact.kind === 'npc-library-draft' ? t('NPC 库草稿', 'NPC library draft') : artifact.kind === 'profile-library-draft' ? t('角色档案库草稿', 'Character profile library draft') : artifact.kind === 'custom-prompt-draft' ? t('自定义 Prompt 草稿', 'Custom Prompt draft') : artifact.kind === 'custom-agent-draft' ? t('自定义 Agent 草稿', 'Custom Agent draft') : artifact.kind === 'script-draft' ? t('脚本执行器草稿', 'Script Executor draft') : artifact.kind === 'provider-draft' ? t('Provider 源码草稿', 'Provider source draft') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
+            } else node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'selection-draft' ? t('选择策略草稿','Selection policy draft') : artifact.kind === 'ledger-edit-draft' ? t('导演账本编辑草稿','Director ledger editing draft') : artifact.kind === 'blueprint-node-edit-draft' ? t('蓝图节点编辑草稿','Blueprint node editing draft') : artifact.kind === 'npc-edit-draft' ? t('NPC编辑草稿','NPC editing draft') : artifact.kind === 'profile-edit-draft' ? t('角色档案编辑草稿','Character profile editing draft') : artifact.kind === 'memory-edit-draft' ? t('记忆编辑草稿','Memory editing draft') : artifact.kind === 'variable-editor-draft' ? t('变量编辑草稿','Variable editing draft') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'blueprint-library-chat-draft' ? t('聊天与蓝图库草稿', 'Chat / Blueprint library draft') : artifact.kind === 'npc-library-chat-draft' ? t('聊天与 NPC 库草稿', 'Chat / NPC library draft') : artifact.kind === 'profile-library-chat-draft' ? t('聊天与档案库草稿', 'Chat / profile library draft') : artifact.kind === 'blueprint-library-draft' ? t('蓝图库草稿', 'Blueprint library draft') : artifact.kind === 'npc-library-draft' ? t('NPC 库草稿', 'NPC library draft') : artifact.kind === 'profile-library-draft' ? t('角色档案库草稿', 'Character profile library draft') : artifact.kind === 'skill-draft' ? t('技能管理草稿', 'Skill management draft') : artifact.kind === 'custom-prompt-draft' ? t('自定义 Prompt 草稿', 'Custom Prompt draft') : artifact.kind === 'custom-agent-draft' ? t('自定义 Agent 草稿', 'Custom Agent draft') : artifact.kind === 'script-draft' ? t('脚本执行器草稿', 'Script Executor draft') : artifact.kind === 'provider-draft' ? t('Provider 源码草稿', 'Provider source draft') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
             if (artifact.kind === 'report') {
                 const findingLabels = { fact: t('已确认', 'Confirmed'), unknown: t('尚未确认', 'Unknown'), blocker: t('阻止条件', 'Blocking condition'), condition: t('当前条件', 'Current condition') };
                 for (const f of artifact.content.findings) node('p', `${Object.hasOwn(findingLabels, f.kind) ? findingLabels[f.kind] : t('说明', 'Note')}：${f.text}`, card);
@@ -444,6 +449,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 renderNpcLibrarySave({ doc, card, artifact, state: s, controller, act, lang });
             } else if (artifact.kind === 'profile-library-draft') {
                 renderProfileLibrarySave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'skill-draft') {
+                renderSkillSave({ doc, card, artifact, state: s, controller, act, lang });
             } else if (artifact.kind === 'custom-prompt-draft') {
                 renderCustomPromptSave({ doc, card, artifact, state: s, controller, act, lang });
             } else if (artifact.kind === 'custom-agent-draft') {

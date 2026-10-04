@@ -28,6 +28,38 @@ for(const lang of ['zh','en'])for(const kind of ['selection-draft','ledger-edit-
 import assert from 'node:assert/strict';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
 import { createPermissionView } from '../../muyu/ui/permission-view.js';
+import { createSkillView } from '../../muyu/ui/skill-view.js';
+import { createSkillPicker } from '../../muyu/ui/skill-picker.js';
+for (const lang of ['zh', 'en']) test('Skill composer picker uses exact GUI identity, hides disabled entries and preserves selection / ' + lang, async () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), selected = [];
+    const picker = createSkillPicker({ doc, parent, lang, act: fn => fn(), controller: { selectSkill: (...args) => selected.push(args), loadSkills() {} } });
+    const state = { mode: 'assistant', skills: { available: true, rows: [{ id: 'user:manual', revision: 2, displayName: '<script>Manual</script>', userInvocable: true, source: 'user' }, { id: 'user:disabled', revision: 3, displayName: 'Disabled', userInvocable: false }] }, selectedSkill: null };
+    picker.render(state); const select = parent.children[0].children[1].children[0];
+    assert.equal(select.options.length, 2); assert.equal(select.options[1].value, 'user:manual');
+    select.value = 'user:manual'; select.onchange(); assert.deepEqual(selected, [['user:manual', 2]]);
+    state.selectedSkill = { id: 'user:manual', revision: '2', displayName: '<script>Manual</script>' }; picker.render(state); assert.equal(select.value, 'user:manual');
+    state.busy = true; picker.render(state); assert.equal(select.disabled, true); assert.equal(parent.children[0].tag, 'details');
+});
+for (const lang of ['zh', 'en']) test('Skill GUI lives in floating settings, retains form content and protects builtin editors / ' + lang, async () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, settings = doc.createElement('section');
+    const calls = [], controller = { loadSkills() {}, setSkillDraft: value => calls.push(value), editSkill: (id, revision) => calls.push([id, revision]) };
+    const view = createSkillView({ doc, settings, controller, act: fn => fn(), lang });
+    const all = () => { const values = []; const visit = e => { values.push(e); e.children.forEach(visit); }; visit(settings); return values; };
+    const draft = { id: 'builtin:example', revision: '1:0', name: 'example', displayName: '<script>Title</script>', description: 'Read-only', body: '<script>Body</script>', contentVersion: '', modelInvocable: true, userInvocable: true, resourcesJson: '[]', enabled: true, source: 'builtin' };
+    const state = { skills: { available: true, loaded: true, enabled: true, busy: false, error: null, result: null, draft, rows: [{ ...draft }] } };
+    view.render(state);
+    const body = all().find(el => el.tag === 'textarea' && el.value === draft.body);
+    assert.ok(body.disabled); assert.equal(all().some(el => el.tag === 'script'), false);
+    assert.equal(all().find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Save Skill' : '保存当前技能')).disabled, true);
+    assert.equal(all().some(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Delete' : '删除')), false);
+    const edit = all().find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'View / edit' : '查看／编辑'));
+    await edit.click(); assert.equal(calls.length, 0);
+    await all().find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Confirm' : '确认')).click();
+    assert.deepEqual(calls, [['builtin:example', '1:0']]);
+    state.skills.draft = { ...draft, id: '', source: 'user', body: 'Unsaved draft' }; view.render(state);
+    assert.equal(body.disabled, false); assert.equal(body.value, 'Unsaved draft');
+    view.render(state); assert.equal(body.value, 'Unsaved draft');
+});
 for (const lang of ['zh', 'en']) test('Generation batch card shows the exact ordered modes and one nonpersistent approval / ' + lang, async () => {
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
     const decisions = [], controller = { generationBatchExecutionDetails: () => ({ maximumModelCalls: 3, steps: [
@@ -114,6 +146,83 @@ class Element {
     click() { if (!this.disabled) return this.onclick?.(); }
     toggle(open) { this.open = open; this.events.toggle?.(); }
 }
+
+function compactSkillsFixture(lang = 'en') {
+    const doc = { createElement: tag => new Element(tag, doc) }, settings = doc.createElement('section');
+    const draft = { id: 'user:example', revision: 1, name: 'example', displayName: 'Example', description: 'A procedure', body: 'Long instructions', contentVersion: '1', modelInvocable: true, userInvocable: true, resourcesJson: '[]', enabled: true, source: 'user' };
+    const state = { skills: { available: true, loaded: true, enabled: true, busy: false, dirty: false, draft, rows: [{ ...draft }, { ...draft, id: 'builtin:other', name: 'other', displayName: 'Other', source: 'builtin', enabled: false }] } };
+    const calls = [];
+    const controller = { setSkillDraft(fields) { Object.assign(state.skills.draft, fields); state.skills.dirty = true; view.render(state); }, editSkill(id, revision) { calls.push([id, revision]); }, exportSkill: async () => '{"format":"muyu-skill-package"}' };
+    const view = createSkillView({ doc, settings, controller, act: fn => fn(), lang }); view.render(state);
+    const all = () => { const result = []; const visit = el => { result.push(el); el.children.forEach(visit); }; visit(settings); return result; };
+    const find = (tag, text) => all().find(el => el.tag === tag && el.textContent === text);
+    return { doc, view, state, calls, controller, all, find };
+}
+
+for (const lang of ['zh', 'en']) {
+    test('Compact Skill library folds long content and filters without replacing draft / ' + lang, () => {
+        const f = compactSkillsFixture(lang);
+        assert.ok(f.all().filter(el => el.tag === 'details').every(el => !el.open));
+        const row = f.all().find(el => el.getAttribute('data-skill-id') === 'user:example'); row.open = true;
+        const body = f.all().find(el => el.tag === 'textarea' && el.value === 'Long instructions');
+        body.value = 'Unsaved body'; body.oninput();
+        assert.equal(f.all().find(el => el.getAttribute('data-skill-id') === 'user:example'), row);
+        assert.equal(row.open, true); assert.equal(body.value, 'Unsaved body');
+        const source = f.all().find(el => el.tag === 'select' && el.parent.textContent === (lang === 'en' ? 'Source' : '来源'));
+        source.value = 'builtin'; source.onchange();
+        assert.equal(f.all().filter(el => el.className === 'gd-muyu-skill-row').length, 1);
+        assert.equal(body.value, 'Unsaved body');
+        const search = f.all().find(el => el.type === 'search'); search.value = 'missing'; search.oninput();
+        assert.ok(f.find('p', lang === 'en' ? 'No Skills match these filters.' : '没有符合筛选条件的技能。'));
+        assert.equal(f.state.skills.draft.body, 'Unsaved body');
+    });
+    test('Skill reference forms retain focus and reject malformed raw JSON without discarding it / ' + lang, async () => {
+        const f = compactSkillsFixture(lang);
+        await f.find('button', lang === 'en' ? 'Add reference file' : '添加参考文件').click();
+        const input = f.all().find(el => el.tag === 'textarea' && el.parent.textContent === (lang === 'en' ? 'Reference text' : '参考正文'));
+        input.focus(); input.value = '<script>Not executed</script>'; input.oninput();
+        assert.equal(f.doc.activeElement, input); assert.ok(f.all().includes(input));
+        assert.equal(JSON.parse(f.state.skills.draft.resourcesJson)[0].text, input.value);
+        const raw = f.all().find(el => el.tag === 'textarea' && el.parent.textContent.includes('[{path,text}]'));
+        raw.value = '{broken'; raw.oninput();
+        assert.equal(raw.value, '{broken'); assert.equal(f.state.skills.draft.resourcesJson, '{broken');
+        assert.equal(f.find('button', lang === 'en' ? 'Save Skill' : '保存当前技能').disabled, true);
+        assert.equal(f.find('button', lang === 'en' ? 'Add reference file' : '添加参考文件').disabled, true);
+        assert.ok(!f.all().some(el => el.tag === 'script'));
+        raw.value = '[]'; raw.oninput(); assert.equal(f.find('button', lang === 'en' ? 'Save Skill' : '保存当前技能').disabled, false);
+    });
+    test('Skill clean selection is direct; unsaved selection and reload require confirmation / ' + lang, async () => {
+        const f = compactSkillsFixture(lang), edit = f.find('button', lang === 'en' ? 'View / edit' : '查看／编辑');
+        await edit.click(); assert.deepEqual(f.calls, [['user:example', 1]]);
+        f.state.skills.dirty = true; f.view.render(f.state);
+        await f.find('button', lang === 'en' ? 'Reload saved version' : '重载已保存版本').click();
+        assert.equal(f.calls.length, 1);
+        await f.find('button', lang === 'en' ? 'Confirm' : '确认').click(); assert.equal(f.calls.length, 2);
+    });
+}
+
+test('Skill export ignores late responses after selection changes and downloads a complete JSON package', async () => {
+    const f = compactSkillsFixture(); let resolve;
+    f.controller.exportSkill = () => new Promise(r => { resolve = r; });
+    const pending = f.find('button', 'Export saved version').click();
+    f.state.skills.draft = { ...f.state.skills.draft, id: 'user:other', name: 'other' }; f.view.render(f.state);
+    resolve('OLD PACKAGE'); await pending;
+    assert.ok(!f.all().some(el => el.value === 'OLD PACKAGE'));
+    let created = 0, revoked = 0;
+    f.doc.defaultView = { Blob, URL: { createObjectURL(blob) { assert.equal(blob.type, 'application/json;charset=utf-8'); created++; return 'blob:test'; }, revokeObjectURL(url) { assert.equal(url, 'blob:test'); revoked++; } } };
+    f.controller.exportSkill = async () => '{"files":[{"path":"SKILL.md","text":"full"}]}';
+    await f.find('button', 'Download complete package').click();
+    await new Promise(r => setTimeout(r, 10));
+    assert.equal(created, 1); assert.equal(revoked, 1); assert.ok(!f.all().some(el => el.tag === 'a'));
+});
+
+test('Skill file read cannot overwrite newer pasted import text', async () => {
+    const f = compactSkillsFixture(); let resolve;
+    const file = f.all().find(el => el.type === 'file'), text = f.all().find(el => el.tag === 'textarea' && el.parent.textContent === 'Paste SKILL.md or complete package JSON');
+    file.files = [{ size: 10, text: () => new Promise(r => { resolve = r; }) }];
+    const pending = file.onchange(); text.value = 'New pasted text'; text.oninput(); resolve('Old file'); await pending;
+    assert.equal(text.value, 'New pasted text');
+});
 
 test('Conversation dropdown dismisses outside/Escape and removes document listeners on disposal', () => {
     const listeners = new Map();
@@ -805,8 +914,8 @@ for (const lang of ['zh', 'en']) test(`History settings report actual storage, f
 for (const lang of ['zh', 'en']) test(`Settings categories preserve editors and route shortcuts without execution (${lang})`, async () => {
     const f = fixture(lang, true), en = lang === 'en';
     const pages = f.all().filter(e => e.className === 'gd-muyu-settings-page');
-    const [connection, data, behavior, limits] = pages;
-    assert.equal(pages.length, 4); assert.equal(connection.hidden, false);
+    const [connection, data, behavior, limits, skills] = pages;
+    assert.equal(pages.length, 5); assert.equal(connection.hidden, false); assert.equal(skills.hidden, true);
     assert.ok(pages.slice(1).every(e => e.hidden));
     const endpoint = f.all(connection).find(e => e.type === 'url');
     const budget = f.all(limits).find(e => e.type === 'number');

@@ -16,7 +16,7 @@ export const bytes = value => new TextEncoder().encode(JSON.stringify(value)).le
 // Deliberately conservative heuristic for mixed-language JSON; never labelled actual tokens.
 export const estimateTokens = value => Math.ceil(bytes(value) / 2);
 export function measurePayload(payload) {
-    const messages = payload.messages || [];
+    const messages = [...(payload.taskGuides || []), ...(payload.messages || [])];
     return { estimatedTokens: estimateTokens(payload), requestBytes: bytes(payload), instructionBytes: payload.instructions ? bytes(payload.instructions) : messages.filter(m => m.role === 'system').reduce((sum, m) => sum + bytes(m), 0),
         toolDefinitionBytes: bytes(payload.tools || []), toolResultBytes: bytes(messages.filter(m => m.role === 'tool')),
         reasoningBytes: bytes(messages.map(m => m.reasoning_content || '')), messageBytes: bytes(messages) };

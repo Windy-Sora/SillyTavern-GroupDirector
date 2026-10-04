@@ -1,3 +1,6 @@
+import { createToolboxModule } from './toolbox.js';
+import { createSkillModule } from './skills/index.js';
+import { createSkillRuntimeModule } from './skills/runtime.js';
 import { createSelectionEditorModule } from './selection-editor/index.js';
 import { createLedgerEditorModule } from './ledger-editor/index.js';
 import { createBlueprintNodeEditorModule } from './blueprint-node-editor/index.js';
@@ -63,6 +66,9 @@ export function createBuiltins(host) {
     const profileGeneration = createProfileGenerationModule({ port: host.profileGeneration, charge: (id, bytes) => providers.charge(id, bytes) });
     const memoryGeneration = createMemoryGenerationModule({ port: host.memoryGeneration, charge: (id, bytes) => providers.charge(id, bytes) });
     const customAgents = createCustomAgentModule({ port: host.customAgents, charge: (id, bytes) => providers.charge(id, bytes) });
+    const toolbox = createToolboxModule();
+    const skills = createSkillModule({ port: host.skills, charge: (id, bytes) => providers.charge(id, bytes) });
+    const skillRuntime = createSkillRuntimeModule({ port: host.skills, charge: (id, bytes) => providers.charge(id, bytes) });
     const customPrompts = createCustomPromptModule({ port: host.customPrompts, charge: (id, bytes) => providers.charge(id, bytes) });
     const profileLibraries = createProfileLibraryModule({ port: host.profileLibraries, charge: (id, bytes) => providers.charge(id, bytes) });
     const profileLibraryChat = createProfileLibraryChatModule({ port: host.profileLibraryChat });
@@ -76,8 +82,9 @@ export function createBuiltins(host) {
     const selectionEditor = createSelectionEditorModule({port:host.selectionEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const ledgerEditor = createLedgerEditorModule({port:host.ledgerEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const blueprintNodeEditor = createBlueprintNodeEditorModule({port:host.blueprintNodeEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
-    const modules = [generationBatch, npcGeneration, profileGeneration, memoryGeneration, selectionEditor, ledgerEditor, blueprintNodeEditor, npcEditor, profileEditor, memoryEditor, variableEditor, blueprintLibraries, npcLibraryChat, blueprintLibraryChat, npcLibraries, profileLibraryChat, profileLibraries, customPrompts, customAgents, scripts, memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles, web, notes, providerAssets];
+    const modules = [toolbox, generationBatch, npcGeneration, profileGeneration, memoryGeneration, selectionEditor, ledgerEditor, blueprintNodeEditor, npcEditor, profileEditor, memoryEditor, variableEditor, blueprintLibraries, npcLibraryChat, blueprintLibraryChat, npcLibraries, profileLibraryChat, profileLibraries, skills, customPrompts, customAgents, scripts, memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles, web, notes, providerAssets];
     const unified = new Map();
+    modules.push(skillRuntime);
     const legacyPreview = (args, ctx) => {
         const run = unified.get(ctx.runId);
         if (run && !run.bound) {
@@ -87,6 +94,7 @@ export function createBuiltins(host) {
         return draft.handlers['muyu.config.preview'](args, ctx);
     };
     const entries = [
+        { id: 'toolbox', module: toolbox },
         ...(host.generationBatch ? [{ id: 'generation-batch', module: generationBatch }] : []),
         ...(host.npcGeneration ? [{ id: 'npc-generation', module: npcGeneration }] : []),
         ...(host.profileGeneration ? [{ id: 'profile-generation', module: profileGeneration }] : []),
@@ -111,6 +119,8 @@ export function createBuiltins(host) {
         ...(host.blueprintLibraries ? [{ id: 'blueprint-libraries', module: blueprintLibraries }] : []),
         ...(host.npcLibraries ? [{ id: 'npc-libraries', module: npcLibraries }] : []),
         ...(host.profileLibraries ? [{ id: 'profile-libraries', module: profileLibraries }] : []),
+        ...(host.skills ? [{ id: 'skills', module: skills }] : []),
+        ...(host.skills?.catalog ? [{ id: 'skill-runtime', module: skillRuntime }] : []),
         ...(host.customPrompts ? [{ id: 'custom-prompts', module: customPrompts }] : []),
         ...(host.customAgents ? [{ id: 'custom-agents', module: customAgents }] : []),
         ...(host.scriptExecutors ? [{ id: 'script-executors', module: scripts }] : []),
@@ -118,7 +128,8 @@ export function createBuiltins(host) {
         { id: 'web', module: web },
         { id: 'agent-memory', module: notes },
     ];
-    const labels = Object.fromEntries(Object.entries(toolLabels).filter(([id]) => (host.generationBatch || !generationBatch.registry.list().some(tool => tool.id === id)) && (host.npcGeneration || !npcGeneration.registry.list().some(tool => tool.id === id)) && (host.profileGeneration || !profileGeneration.registry.list().some(tool => tool.id === id)) && (host.memoryGeneration || !memoryGeneration.registry.list().some(tool => tool.id === id)) && (host.selectionEditor || !selectionEditor.registry.list().some(tool=>tool.id===id)) && (host.ledgerEditor || !ledgerEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintNodeEditor || !blueprintNodeEditor.registry.list().some(tool=>tool.id===id)) && (host.npcEditor || !npcEditor.registry.list().some(tool=>tool.id===id)) && (host.profileEditor || !profileEditor.registry.list().some(tool=>tool.id===id)) && (host.memoryEditor || !memoryEditor.registry.list().some(tool=>tool.id===id)) && (host.variableEditor || !variableEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintLibraryChat || !blueprintLibraryChat.registry.list().some(tool => tool.id === id)) && (host.blueprintLibraries || !blueprintLibraries.registry.list().some(tool => tool.id === id)) && (host.npcLibraryChat || !npcLibraryChat.registry.list().some(tool => tool.id === id)) && (host.npcLibraries || !npcLibraries.registry.list().some(tool => tool.id === id)) && (host.profileLibraryChat || !profileLibraryChat.registry.list().some(tool => tool.id === id)) && (host.profileLibraries || !profileLibraries.registry.list().some(tool => tool.id === id)) && (host.customPrompts || !customPrompts.registry.list().some(tool => tool.id === id)) && (host.customAgents || !customAgents.registry.list().some(tool => tool.id === id)) && (host.providerAssets || !providerAssets.registry.list().some(tool => tool.id === id)) && (host.scriptExecutors || !scripts.registry.list().some(tool => tool.id === id))));
+    const labels = Object.fromEntries(Object.entries(toolLabels).filter(([id]) => (host.generationBatch || !generationBatch.registry.list().some(tool => tool.id === id)) && (host.npcGeneration || !npcGeneration.registry.list().some(tool => tool.id === id)) && (host.profileGeneration || !profileGeneration.registry.list().some(tool => tool.id === id)) && (host.memoryGeneration || !memoryGeneration.registry.list().some(tool => tool.id === id)) && (host.selectionEditor || !selectionEditor.registry.list().some(tool=>tool.id===id)) && (host.ledgerEditor || !ledgerEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintNodeEditor || !blueprintNodeEditor.registry.list().some(tool=>tool.id===id)) && (host.npcEditor || !npcEditor.registry.list().some(tool=>tool.id===id)) && (host.profileEditor || !profileEditor.registry.list().some(tool=>tool.id===id)) && (host.memoryEditor || !memoryEditor.registry.list().some(tool=>tool.id===id)) && (host.variableEditor || !variableEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintLibraryChat || !blueprintLibraryChat.registry.list().some(tool => tool.id === id)) && (host.blueprintLibraries || !blueprintLibraries.registry.list().some(tool => tool.id === id)) && (host.npcLibraryChat || !npcLibraryChat.registry.list().some(tool => tool.id === id)) && (host.npcLibraries || !npcLibraries.registry.list().some(tool => tool.id === id)) && (host.profileLibraryChat || !profileLibraryChat.registry.list().some(tool => tool.id === id)) && (host.profileLibraries || !profileLibraries.registry.list().some(tool => tool.id === id)) && (host.skills || !skills.registry.list().some(tool => tool.id === id)) && (host.customPrompts || !customPrompts.registry.list().some(tool => tool.id === id)) && (host.customAgents || !customAgents.registry.list().some(tool => tool.id === id)) && (host.providerAssets || !providerAssets.registry.list().some(tool => tool.id === id)) && (host.scriptExecutors || !scripts.registry.list().some(tool => tool.id === id))));
+    if (!host.skills?.catalog) for (const definition of skillRuntime.registry.list()) delete labels[definition.id];
     const { registry, handlers } = createToolPlan(entries, { capabilityFor: toolCapability, labels });
     const artifacts = createArtifactOwners([
         {toolId:'muyu.selection.preview',moduleId:'selection-editor',owner:selectionEditor},
@@ -139,6 +150,7 @@ export function createBuiltins(host) {
         { toolId: 'muyu.libraries.preview', moduleId: 'profile-library', owner: profileLibraries },
         { toolId: 'muyu.prompts.batch_preview', moduleId: 'custom-prompt', owner: customPrompts },
         { toolId: 'muyu.prompts.import_preview', moduleId: 'custom-prompt', owner: customPrompts },
+        { toolId: 'muyu.skills.preview', moduleId: 'skill', owner: skills },
         { toolId: 'muyu.prompts.preview', moduleId: 'custom-prompt', owner: customPrompts },
         { toolId: 'muyu.agents.preview', moduleId: 'custom-agent', owner: customAgents },
         { toolId: 'muyu.agents.batch_preview', moduleId: 'custom-agent', owner: customAgents },
@@ -157,7 +169,7 @@ export function createBuiltins(host) {
     const shared = [...context.registry.list(), ...interaction.registry.list()].map(d => d.id);
     const tasks = {
         assistant: { module: null,
-            bind(identity, intent) { unified.set(identity.id, { identity, intent, bound: false }); selectionEditor.bindRun(identity); ledgerEditor.bindRun(identity); blueprintNodeEditor.bindRun(identity); npcEditor.bindRun(identity); profileEditor.bindRun(identity); memoryEditor.bindRun(identity); settings.bindRun(identity); taskPlan.bindRun(identity); variables.bindRun(identity); variableEditor.bindRun(identity); bundle.bindRun(identity); profiles.bindRun(identity); providerAssets.bindRun(identity); scripts.bindRun(identity); customAgents.bindRun(identity); generationBatch.bindRun(identity); npcGeneration.bindRun(identity); profileGeneration.bindRun(identity); memoryGeneration.bindRun(identity); customPrompts.bindRun(identity); profileLibraries.bindRun(identity); npcLibraries.bindRun(identity); blueprintLibraries.bindRun(identity); profileLibraryChat.bindRun(identity); npcLibraryChat.bindRun(identity); blueprintLibraryChat.bindRun(identity); web.bindRun(identity, intent); notes.bindRun(identity, intent); },
+            bind(identity, intent) { unified.set(identity.id, { identity, intent, bound: false }); selectionEditor.bindRun(identity); ledgerEditor.bindRun(identity); blueprintNodeEditor.bindRun(identity); npcEditor.bindRun(identity); profileEditor.bindRun(identity); memoryEditor.bindRun(identity); settings.bindRun(identity); taskPlan.bindRun(identity); variables.bindRun(identity); variableEditor.bindRun(identity); bundle.bindRun(identity); profiles.bindRun(identity); providerAssets.bindRun(identity); scripts.bindRun(identity); customAgents.bindRun(identity); generationBatch.bindRun(identity); npcGeneration.bindRun(identity); profileGeneration.bindRun(identity); memoryGeneration.bindRun(identity); customPrompts.bindRun(identity); skills.bindRun(identity); profileLibraries.bindRun(identity); npcLibraries.bindRun(identity); blueprintLibraries.bindRun(identity); profileLibraryChat.bindRun(identity); npcLibraryChat.bindRun(identity); blueprintLibraryChat.bindRun(identity); web.bindRun(identity, intent); notes.bindRun(identity, intent); },
             publish(app, id, intent) {
                 let failed = false; const published = new Map();
                 const publish = fn => { try { fn(); } catch { failed = true; } };
@@ -177,10 +189,16 @@ export function createBuiltins(host) {
         },
     };
     for (const task of Object.values(tasks)) task.tools = task.module ? [...shared, ...task.module.registry.list().map(d => d.id)] : registry.list().map(d => d.id);
+    const bindAssistant = tasks.assistant.bind;
+    tasks.assistant.bind = (identity, intent) => { bindAssistant(identity, intent); if (host.skills?.catalog) skillRuntime.bindRun(identity, intent.selectedSkill); };
     tasks.chat.tools.push(...permission.registry.list().map(d => d.id));
     return { registry, handlers, tasks, candidateTool: artifacts.produces, candidateGroup: artifacts.group, invalidateSettingsAttempt: (id, fields) => settings.invalidateAttempt(id, fields), takeInvalidatedSettingsCandidates: id => settings.takeInvalidatedCandidates(id),
+        skillGuides: id => host.skills?.catalog ? { prepare: signal => skillRuntime.prepare(id, signal), project: () => skillRuntime.project(id) } : null,
+        skillUsage: id => { try { return skillRuntime.usage(id); } catch { return []; } },
+        parkSkillRun: (id, artifact) => host.skills?.catalog ? skillRuntime.parkRun(id, artifact) : true,
+        forgetSkillTask: id => skillRuntime.forgetTask(id),
         transferRun(from, identity, intent) { const previous = unified.get(from); if (previous) { unified.delete(from); unified.set(identity.id, { ...previous, identity, intent }); } for (const module of modules) if (module !== providers) module.transferRun?.(from, identity); },
         bindBudget: (id, limit, from = null) => from ? providers.transferRun(from, id, limit) : providers.bindRun(id, limit),
         retainArtifacts: values => modules.forEach(m => m.retainArtifacts?.(values)),
-        resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetTask: id => { web.forgetTask(id); scripts.forgetTask(id); customAgents.forgetTask(id); generationBatch.forgetTask(id); npcGeneration.forgetTask(id); profileGeneration.forgetTask(id); memoryGeneration.forgetTask(id); }, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };
+        resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetTask: id => { skillRuntime.forgetTask(id); web.forgetTask(id); scripts.forgetTask(id); customAgents.forgetTask(id); generationBatch.forgetTask(id); npcGeneration.forgetTask(id); profileGeneration.forgetTask(id); memoryGeneration.forgetTask(id); }, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };
 }

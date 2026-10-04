@@ -1,3 +1,94 @@
+test('Task plan approval keeps loaded Skill revision after source Run settles and Skill is deleted', async () => {
+    const { createSkillPort } = await import('../../muyu/host/skills.js');
+    const { skillEditorPackage } = await import('../../muyu/skills/editor.js');
+    const settings = {}, skills = createSkillPort({ getSettings: () => settings, saveSettings: async () => {}, loadBuiltins: async () => [] });
+    await skills.ready(); await skills.save(skills.preview({ operation: 'create', expectedRevision: 0, enabled: true, package: skillEditorPackage({ name: 'example', description: 'Config review', body: 'FIXED_PLAN_GUIDE', resources: [{ path: 'references/rules.md', text: 'FIXED_PLAN_RESOURCE' }] }) }));
+    const f = fixture([
+        [tool('muyu.skills.load', { id: 'user:example', revision: '1', path: 'SKILL.md' }), done],
+        [{ ...taskPlan(), call: { ...taskPlan().call, callId: 'plan' } }, done], [text('Plan ready'), done],
+        [tool('muyu.skills.load', { id: 'user:example', revision: '1', path: 'references/rules.md' }, 'resource'), done],
+        [text('Review complete'), done],
+    ], { skills });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Review with a plan'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan'); assert.ok(plan);
+    await skills.save(skills.preview({ operation: 'delete', id: 'user:example', revision: 1, expectedRevision: 1 }));
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.match(JSON.stringify(f.model.requests.at(-1).taskGuides), /FIXED_PLAN_GUIDE|FIXED_PLAN_RESOURCE/);
+    assert.equal(f.controller.snapshot().runs.at(-1).skills[0].paths.length, 2);
+    assert.doesNotMatch(f.controller.exportHistory(), /FIXED_PLAN_GUIDE|FIXED_PLAN_RESOURCE/); await f.controller.dispose();
+});
+test('Loaded Skill survives a real source-permission continuation and disable, but not a new question', async () => {
+    const { createSkillPort } = await import('../../muyu/host/skills.js');
+    const { skillEditorPackage } = await import('../../muyu/skills/editor.js');
+    const settings = {}, skills = createSkillPort({ getSettings: () => settings, saveSettings: async () => {}, loadBuiltins: async () => [] });
+    await skills.ready(); await skills.save(skills.preview({ operation: 'create', expectedRevision: 0, enabled: true, package: skillEditorPackage({ name: 'example', description: 'Config review', body: 'PRIVATE_SKILL_GUIDE', resources: [{ path: 'references/rules.md', text: 'PRIVATE_RESOURCE_GUIDE' }] }) }));
+    const f = fixture([
+        [tool('muyu.skills.load', { id: 'user:example', revision: '1', path: 'SKILL.md' }), done],
+        [tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read'), done],
+        [tool('muyu.skills.load', { id: 'user:example', revision: '1', path: 'references/rules.md' }, 'resource'), done],
+        [text('Read only complete'), done], [text('New topic'), done],
+    ], { skills });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Review config'); f.controller.send(); await settle();
+    const interaction = f.controller.snapshot().interaction; assert.ok(interaction); assert.equal(interaction.source, 'memoryConfig');
+    assert.equal(f.controller.snapshot().sourceGrants.some(row => row.source === 'skillAssets'), false);
+    await skills.save(skills.preview({ operation: 'enable', id: 'user:example', revision: 1, expectedRevision: 1, enabled: false }));
+    f.controller.answerPermission(interaction.id, 'task'); await settle();
+    const run = f.controller.snapshot().runs.at(-1); assert.equal(run.status, 'succeeded'); assert.equal(run.skills[0].revision, '1'); assert.equal(run.skills[0].paths.length, 2);
+    assert.match(JSON.stringify(f.model.requests.at(-1).taskGuides), /PRIVATE_RESOURCE_GUIDE/);
+    assert.doesNotMatch(f.controller.exportHistory(), /PRIVATE_RESOURCE_GUIDE|PRIVATE_SKILL_GUIDE/);
+    f.controller.allowHistory(); f.controller.setInput('New topic'); f.controller.send(); await settle();
+    assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1).taskGuides), /PRIVATE_RESOURCE_GUIDE|PRIVATE_SKILL_GUIDE/);
+    await f.controller.dispose();
+});
+test('GUI selected manual-only Skill loads before model, clears after send and is not inferred from text', async () => {
+    const { createSkillPort } = await import('../../muyu/host/skills.js');
+    const { skillEditorPackage } = await import('../../muyu/skills/editor.js');
+    const settings = {}, skills = createSkillPort({ getSettings: () => settings, saveSettings: async () => {}, loadBuiltins: async () => [] });
+    await skills.ready(); await skills.save(skills.preview({ operation: 'create', expectedRevision: 0, enabled: true, package: skillEditorPackage({ name: 'manual', description: 'Manual-only', body: 'MANUAL_GUIDE', modelInvocable: false }) }));
+    const f = fixture([[text('Complete'), done], [text('New response'), done]], { skills });
+    await f.enable(); f.controller.setMode('assistant'); await f.controller.loadSkills(); f.controller.selectSkill('user:manual', 1);
+    f.controller.setInput('Do the selected task'); f.controller.send(); await settle();
+    assert.match(JSON.stringify(f.model.requests[0].taskGuides), /MANUAL_GUIDE/);
+    assert.equal(f.controller.snapshot().selectedSkill, null);
+    f.controller.setInput('The quoted assistant said use user:manual'); f.controller.send(); await settle();
+    assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1).taskGuides), /MANUAL_GUIDE/); await f.controller.dispose();
+});
+for (const access of ['normal', 'deny', 'full', 'preview']) test(`Skill controller ${access} respects exact save authority and private content`, async () => {
+    const { createSkillPort } = await import('../../muyu/host/skills.js');
+    const settings = {}; let writes = 0;
+    const skills = createSkillPort({ getSettings: () => settings, saveSettings: async () => { writes++; }, loadBuiltins: async () => [] });
+    const args = { requestJson: JSON.stringify({ operation: 'create', expectedRevision: 0, fields: { name: 'my-skill', description: 'PRIVATE_DESCRIPTION', body: 'PRIVATE_SKILL_BODY' } }), ...(access === 'full' ? { apply: true } : {}) };
+    const f = fixture([[tool('muyu.skills.preview', args), done], [text('Prepared'), done]], { skills });
+    await f.enable(); f.controller.setMode('assistant');
+    if (['full', 'preview'].includes(access)) f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Prepare this skill'); f.controller.send(); await settle();
+    if (['normal', 'deny'].includes(access)) {
+        const interaction = f.controller.snapshot().interaction;
+        assert.equal(interaction.source, 'skillAssets'); assert.equal(writes, 0);
+        f.controller.answerPermission(interaction.id, access === 'deny' ? 'deny' : 'task'); await settle();
+    }
+    const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'skill-draft');
+    if (access === 'normal') {
+        assert.ok(artifact); assert.equal(writes, 0);
+        assert.match(JSON.stringify(f.controller.skillDraftDisplay(artifact.id, artifact.revision)), /PRIVATE_SKILL_BODY/);
+        const approval = f.controller.prepareSkillSave(artifact.id, artifact.revision);
+        await f.controller.approveSkillSave(approval.id);
+    }
+    assert.equal(writes, ['deny', 'preview'].includes(access) ? 0 : 1);
+    if (access === 'deny') assert.equal(artifact, undefined);
+    else {
+        const history = JSON.parse(f.controller.exportHistory());
+        assert.ok(history.required.includes('source:skillAssets'));
+        assert.doesNotMatch(JSON.stringify(artifact), /PRIVATE_SKILL_BODY|PRIVATE_DESCRIPTION/);
+        assert.doesNotMatch(JSON.stringify(history.receipts), /PRIVATE_SKILL_BODY|PRIVATE_DESCRIPTION/);
+        if (access !== 'preview') {
+            assert.equal(history.receipts.at(-1).version, 31);
+            assert.equal(settings.muyuSkillData.skills[0].enabled, false);
+        }
+    }
+    await f.controller.dispose();
+});
 for(const access of ['normal','deny','full','preview'])test('Blueprint library controller '+access+' preserves asset-only authority',async()=>{
  const {createStoryBlueprintLibrarySystem}=await import('../../systems/story-blueprint-library-system.js');
  const {createBlueprintLibraryPort}=await import('../../muyu/host/blueprint-libraries.js');

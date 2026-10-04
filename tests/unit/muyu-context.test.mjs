@@ -125,6 +125,18 @@ function run(steps, extra = {}) {
 }
 const candidate = () => { const messages = history(), c = summaryCandidate(messages, config); return { ...c, tail: planContext(messages.slice(c.through), null, config).messages }; };
 
+test('History compaction never summarizes Task Skill bodies and reprojects full guides after summarizing', async () => {
+    const guides = [{ role: 'user', content: 'CURRENT TASK SKILL GUIDE\nPRIVATE_FULL_SKILL' }];
+    const s = run([[text('Earlier task summary'), done], [text('Current answer'), done]], {
+        previousMessages: planContext(history(), null, config).messages, compaction: candidate(),
+        taskGuidePort: { prepare: async () => {}, project: () => guides },
+    });
+    const result = await s.handle.completion; assert.equal(result.answer, 'Current answer');
+    assert.doesNotMatch(JSON.stringify(s.model.requests[0]), /PRIVATE_FULL_SKILL/);
+    assert.match(JSON.stringify(s.model.requests[1].taskGuides), /PRIVATE_FULL_SKILL/);
+    assert.doesNotMatch(JSON.stringify(result.messages), /PRIVATE_FULL_SKILL/);
+});
+
 test('Automatic pressure follows complete measured input and transport budgets, not history turn count', () => {
     assert.equal(compactionPressure({ estimatedTokens: 25599, requestBytes: 100 }, config), false);
     assert.equal(compactionPressure({ estimatedTokens: 25600, requestBytes: 100 }, config), true);

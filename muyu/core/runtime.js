@@ -6,8 +6,9 @@ import { copyModelMessage, copyModelText } from './model-message.js';
 import { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES } from './context-limits.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
-export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
+export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
+    if (taskGuidePort !== null && (typeof taskGuidePort.prepare !== 'function' || typeof taskGuidePort.project !== 'function')) throw new TypeError('Invalid task guide port');
     let state = createRunState(identity);
     const budget = { modelCalls: RUN_DEFAULTS.modelCalls, toolCalls: RUN_DEFAULTS.toolCalls, corrections: 2, timeMs: RUN_DEFAULTS.timeMs, ...limits };
     const ceilings = { modelCalls: 16, toolCalls: 64, corrections: 2, timeMs: RUN_RANGES.timeMs[1] };
@@ -53,10 +54,17 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     // Opaque run-local identity for private provider state; never part of messages or snapshots.
     const modelContext = resume?.modelContext || Object.freeze({});
     const drain = createDrainTracker();
-    const pinned = registry.list().filter(d => (resume ? resume.toolIds : allowedTools).includes(d.id)).map(d => copyJson(d));
-    const recovery = resume ? [] : registry.list().filter(d => trimRecoveryTools.includes(d.id) && !allowedTools.includes(d.id)).map(d => copyJson(d));
+    const selector = toolSelectionPort?.create(registry.list(), allowedTools);
+    const initialTools = resume ? resume.toolIds : selector?.enabled ? selector.select().map(d => d.id) : allowedTools;
+    const pinned = registry.list().filter(d => initialTools.includes(d.id)).map(d => copyJson(d));
+    let selectedTools = null;
+    const recovery = registry.list().filter(d => trimRecoveryTools.includes(d.id) && !allowedTools.includes(d.id)).map(d => copyJson(d));
     const activeTools = new Set(pinned.map(d => d.id));
-    const broker = createBroker({ registry, handlers, runId: state.id, target: state.target, allowedTools: [...activeTools, ...recovery.map(d => d.id)], policy: call => activeTools.has(call.definition.id) && (typeof policy === 'function' ? policy(call) : false), signal, maxCalls: budget.toolCalls, clock, track: drain.track,
+    const selectionHandlers = selector ? {
+        'muyu.tools.list': () => ({ text: JSON.stringify(selector.list()) }),
+        'muyu.tools.select': args => { selectedTools = selector.select(args.groups); return { text: JSON.stringify({ selected: args.groups, visibleCount: selectedTools.length, permissionGranted: false }) }; },
+    } : {};
+    const broker = createBroker({ registry, handlers: { ...handlers, ...selectionHandlers }, runId: state.id, target: state.target, allowedTools: [...allowedTools, ...initialTools, ...recovery.map(d => d.id)], policy: call => activeTools.has(call.definition.id) && (typeof policy === 'function' ? policy(call) : false), signal, maxCalls: budget.toolCalls, clock, track: drain.track,
         onEvent: ({ type, attemptId, toolId }) => emit(type, { attemptId, toolId }) });
     const messages = resume ? resume.messages.map(copyModelMessage) : [...initialMessages, { role: 'user', content: input }];
     if (messages.length > MAX_CONTEXT_MESSAGES) throw new TypeError('Tool continuation too large');
@@ -77,16 +85,32 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     }
     function move(status) { state = transitionRun(state, { eventId: 'control:' + (state.seq + 1), runId: state.id, seq: state.seq + 1, status }); }
     function history() { return messages.map(copyModelMessage); }
+    function projectedGuides() {
+        const guides = taskGuidePort?.project() || [];
+        if (!Array.isArray(guides) || guides.length > 257 || guides.some(m => m.role !== 'user')) throw new TypeError('Invalid task guides');
+        if (guides.length + messages.length > MAX_CONTEXT_MESSAGES) throw new ExecutionError('CONTEXT_LIMIT');
+        return guides.map(copyModelMessage);
+    }
     function coverageEvent(status) {
         if (historyCoverage && !resume) emit('run.context', { phase: 'history_coverage', status, coverage: historyCoverage });
     }
-    const requestFor = () => ({ messages: history(), tools: pinned.map(d => copyJson(d)), maxTokens, finalize: finalizing, ...(instructions ? { instructions } : {}), ...(contextConfig?.inputTokens != null ? { inputTokenLimit: contextConfig.inputTokens } : {}) });
+    const requestFor = () => {
+        if (selectedTools) {
+            const keep = recovery.filter(d => activeTools.has(d.id) && !selectedTools.some(row => row.id === d.id));
+            if (selectedTools.length + keep.length > 64) throw new ExecutionError('MODEL_PROTOCOL_ERROR');
+            pinned.splice(0, pinned.length, ...selectedTools, ...keep); selectedTools = null;
+            activeTools.clear(); pinned.forEach(d => activeTools.add(d.id));
+        }
+        return { messages: history(), taskGuides: projectedGuides(), tools: pinned.map(d => copyJson(d)), maxTokens, finalize: finalizing, ...(instructions ? { instructions } : {}), ...(contextConfig?.inputTokens != null ? { inputTokenLimit: contextConfig.inputTokens } : {}) };
+    };
     function checkContext(request, context, trim = false) {
         if (!contextConfig) return request;
         const plannedHistoricalMessages = historyPrefix;
         let value = model.inspect ? model.inspect(request, context) : measurePayload(request);
         if (trim && historyPrefix > 0 && recovery.length && ((contextConfig.inputTokens !== null && value.estimatedTokens > contextConfig.inputTokens) || value.requestBytes > MAX_REQUEST_BYTES)) {
-            pinned.push(...recovery); recovery.forEach(d => activeTools.add(d.id)); request.tools = pinned.map(d => copyJson(d));
+            const added = recovery.filter(d => !activeTools.has(d.id));
+            if (pinned.length + added.length > 64) throw new ExecutionError('MODEL_PROTOCOL_ERROR');
+            pinned.push(...added); recovery.forEach(d => activeTools.add(d.id)); request.tools = pinned.map(d => copyJson(d));
             if (instructions && trimRecoveryNote) {
                 const field = instructions.task.length + trimRecoveryNote.length + 1 <= 4000 ? 'task' : 'base';
                 instructions = instructionPort.validate({ ...instructions, [field]: instructions[field] + '\n' + trimRecoveryNote });
@@ -284,8 +308,8 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             const message = { role: 'assistant', content: response.text, toolCalls: response.tools };
             copyModelMessage(message); messages.push(message);
             if (!response.tools.length) return response.text;
-            if (response.tools.length > 1 && response.tools.some(call => interactionPort?.isControl(call))) {
-                for (const call of response.tools) messages.push({ role: 'tool', callId: call.callId, result: { ok: false, error: { code: 'INVALID_ARGUMENT', message: 'Clarification must be the only tool call in this response; no tools were executed.', retryable: false }, effectState: 'not_started' } });
+            if (response.tools.length > 1 && response.tools.some(call => interactionPort?.isControl(call) || call.toolId === 'muyu.tools.select')) {
+                for (const call of response.tools) messages.push({ role: 'tool', callId: call.callId, result: { ok: false, error: { code: 'INVALID_ARGUMENT', message: 'Clarification or tool-group selection must be the only tool call in this response; no tools were executed.', retryable: false }, effectState: 'not_started' } });
                 if (++corrections > budget.corrections) exhausted('corrections');
                 continue;
             }
@@ -299,6 +323,10 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
         let answer = null, error = null;
         try {
             assertActive(signal); move('running'); emit('run.started');
+            if (taskGuidePort) {
+                await bounded(childSignal => taskGuidePort.prepare(childSignal), { signal, timeoutMs: budget.timeMs, clock, track: drain.track });
+                assertActive(signal);
+            }
             coverageEvent('planned');
             // Only pre-run history is eligible. Never rewrite a resumed tool or
             // reasoning trajectory, and never compact based solely on its length.

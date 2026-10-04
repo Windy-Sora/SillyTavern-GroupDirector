@@ -1268,6 +1268,37 @@
 .gd-muyu-memory-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-block: 6px; }
 .gd-muyu-memory-row > span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
 .gd-muyu-agent-memory textarea { min-height: 120px; resize: vertical; }
+.gd-muyu-skills { min-width: 0; }
+.gd-muyu-skills label { margin-block: 0; }
+.gd-muyu-skills .gd-muyu-skill-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; margin-block: 8px; font-size: .9em; }
+.gd-muyu-skills .gd-muyu-skill-field > .text_pole { width: 100%; min-width: 0; box-sizing: border-box; }
+.gd-muyu-skills .gd-muyu-skill-check { display: flex; align-items: center; flex-direction: row-reverse; justify-content: flex-end; gap: 8px; margin-block: 8px; }
+.gd-muyu-skills .gd-muyu-skill-check > input { flex: 0 0 auto; }
+.gd-muyu-skills textarea { min-width: 0; resize: vertical; }
+.gd-muyu-skills .menu_button { margin: 0; width: auto; max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.gd-muyu-skill-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 10px; }
+.gd-muyu-skill-actions > .menu_button { flex: 0 1 auto; }
+.gd-muyu-skill-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; }
+.gd-muyu-skill-filters > label:first-child { grid-column: 1 / -1; }
+.gd-muyu-skill-list { max-height: min(320px, 40dvh); overflow: auto; overscroll-behavior: contain; margin-top: 6px; }
+.gd-muyu-skills .gd-muyu-skill-row { padding: 0 8px; border-bottom: 1px solid var(--SmartThemeBorderColor, #777); overflow-wrap: anywhere; }
+.gd-muyu-skill-row > summary { padding: 9px 0; cursor: pointer; }
+.gd-muyu-skill-row > summary > strong { font-size: .95em; }
+.gd-muyu-skill-row > summary > small { display: block; padding-top: 3px; opacity: .7; font-size: .8em; }
+.gd-muyu-skill-row[data-selected="true"] { border-inline-start: 3px solid var(--SmartThemeQuoteColor, #888); }
+.gd-muyu-skills p { margin-block: 8px; line-height: 1.5; }
+.gd-muyu-skills small { overflow-wrap: anywhere; }
+.gd-muyu-skill-status { display: block; margin-block: 6px; line-height: 1.5; opacity: .8; }
+.gd-muyu-skills > details { margin-block: 8px; border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 8px; padding: 0 10px; }
+.gd-muyu-skills details > summary { cursor: pointer; padding-block: 8px; overflow-wrap: anywhere; }
+.gd-muyu-skill-editor > details { margin-block: 6px; border-top: 1px solid var(--SmartThemeBorderColor, #777); }
+.gd-muyu-skill-confirm { border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 8px; padding: 0 10px; margin-block: 8px; }
+@container gd-muyu (min-width: 600px) {
+    .gd-muyu-skill-filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+    .gd-muyu-skill-filters > label:first-child { grid-column: auto; }
+    .gd-muyu-skill-basic { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; }
+    .gd-muyu-skill-basic > label:last-child { grid-column: 1 / -1; }
+}
 .gd-muyu-conversation-tools { flex: 0 0 auto; min-width: 0; max-height: 35%; overflow: auto; font-size: .8em; }
 .gd-muyu-conversation-tools > summary { padding: 8px 12px; cursor: pointer; opacity: .8; }
 .gd-muyu-conversation-tools-content { max-height: min(240px, 30dvh); overflow: auto; padding: 0 12px 10px; overscroll-behavior: contain; overflow-wrap: anywhere; }
@@ -1275,7 +1306,7 @@
 .gd-muyu-conversation-tools-content summary { cursor: pointer; }
 .gd-muyu-conversation-tools-content small { display: block; opacity: .75; line-height: 1.5; }
 @container gd-muyu (min-width: 460px) {
-    .gd-muyu-settings-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .gd-muyu-settings-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 .gd-muyu-authorization { border: 1px solid var(--SmartThemeBorderColor, #777); border-radius: 8px; padding: 10px; margin: 8px 0; font-size: .85em; }
 .gd-muyu-authorization > small { display: block; margin: 6px 0; overflow-wrap: anywhere; }
@@ -1381,3 +1412,7 @@
     white-space: pre-line;
     overflow-wrap: anywhere;
 }
+.gd-muyu-skill-picker { font-size: .9em; margin-bottom: .3em; }
+.gd-muyu-skill-picker > label { display: grid; gap: .35em; margin-top: .4em; }
+.gd-muyu-skill-picker > small { display: block; opacity: .8; margin-top: .35em; }
+.gd-muyu-skill-picker select { width: 100%; min-width: 0; }

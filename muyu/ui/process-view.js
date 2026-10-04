@@ -13,6 +13,10 @@ const labels = {
     cancelled: ['任务已取消', 'Run cancelled'], interrupted: ['任务中断', 'Run interrupted'],
 };
 const errors = {
+    SKILL_STALE: ['所选技能版本已变化，请重新选择后发送', 'Selected Skill changed; select it again and send'],
+    SKILL_DISABLED: ['所选技能已停用或不允许手动调用', 'Selected Skill is disabled or disallows manual invocation'],
+    SKILL_UNAVAILABLE: ['技能暂不可读取，未加载该说明', 'Skill unavailable; document was not loaded'],
+    PROVIDER_BUDGET_EXCEEDED: ['完整资料超过本轮读取预算，未截断加载', 'Complete document exceeds the read budget; not loaded partially'],
     CONTEXT_LIMIT: ['输入上下文超过预算（含历史、工具定义、结果及思考回传）；请调整输入上下文预算，不是单次输出上限', 'Input context exceeds budget (history, tools, results and thinking); adjust the input context budget, not output tokens'],
     CONTEXT_INCOMPLETE: ['未摘要历史无法完整携带；增加输入预算、整理历史或明确不带历史', 'Unsummarized history cannot fit; increase input budget, summarize or explicitly omit history'],
     MODEL_OUTPUT_TRUNCATED: ['模型输出被截断；提高单次输出上限或缩小任务', 'Model output truncated; increase output tokens or narrow the task'],
@@ -65,6 +69,7 @@ export function createProcessView({ doc, lang = 'zh' }) {
                 view.list.scrollTop = scrollTop;
             }
             const notes = [];
+            if (run.skills?.length) notes.push(local(['本任务技能（完整读取）：', 'Task Skills (read completely): '], lang) + run.skills.map(row => `${row.displayName} · ${row.revision} · ${row.paths.join(', ')} · ${row.bytes} B`).join('；'));
             if (p.toolFailures) notes.push(local(['包含失败或被拒绝的工具调用', 'Includes failed/rejected tool calls'], lang));
             if (p.dropped) notes.push(local(['较早过程记录已截断', 'Earlier process records were truncated'], lang));
             if (p.terminal === 'succeeded' && expectsArtifact && !artifactPresent) notes.push(local(['回答已结束；尚无可信报告或草稿', 'Answer ended; no verified report or draft available'], lang));

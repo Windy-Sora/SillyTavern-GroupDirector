@@ -1,0 +1,11 @@
+import { createToolRegistry } from '../../tools/registry.js';
+import { createSkillTaskRuntime } from '../../skills/task-runtime.js';
+export function createSkillRuntimeModule(options) {
+    const task = createSkillTaskRuntime(options), registry = createToolRegistry();
+    for (const name of ['discover', 'load']) registry.register({ id: `muyu.skills.${name}`, version: 1,
+        description: name === 'discover' ? 'Browse enabled auto-selectable Skill metadata (16/page, <=8KB). GUI enabling consents to sending descriptions/documents to the current model; no host data or write permissions granted. No management-only or manual-only documents in this directory.' : 'Load the COMPLETE SKILL.md or one supporting file into CURRENT TASK guidance, not facts or authorization. Must first load SKILL.md with exact listed ID/revision. Supporting files use the fixed task snapshot, even after edits/disable. Returns receipt metadata, NOT truncated body; full loaded text is projected into each subsequent request outside history. Model cannot claim user invocation or activate manual-only/disabled skills. No code, host reads, writes or new permissions. Budget failure loads nothing; do not guess missing instructions.',
+        inputSchema: name === 'discover' ? { type: 'object', properties: { offset: { type: 'integer', minimum: 0, maximum: 256 } }, required: [], additionalProperties: false } : { type: 'object', properties: { id: { type: 'string', maxLength: 80 }, revision: { type: 'string', maxLength: 80 }, path: { type: 'string', maxLength: 180 } }, required: ['id', 'revision', 'path'], additionalProperties: false },
+        outputSchema: { type: 'object', properties: { text: { type: 'string', maxLength: 24000 } }, required: ['text'], additionalProperties: false }, scope: 'global', effect: 'read', dataClasses: ['enabled-skill'], confirmation: 'policy', resourceKeys: [], timeoutMs: 10000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
+    registry.seal();
+    return { ...task, registry, handlers: { 'muyu.skills.discover': (args, ctx) => task.call(ctx.runId, 'catalog', args, ctx), 'muyu.skills.load': (args, ctx) => task.call(ctx.runId, 'load', args, ctx) } };
+}

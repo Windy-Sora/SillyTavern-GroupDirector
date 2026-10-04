@@ -3,7 +3,7 @@ import { createToolRegistry } from '../../tools/registry.js';
 
 const string = maxLength => ({ type: 'string', maxLength });
 export const variablePreviewSchema = { type: 'object', properties: {
-    action: { type: 'string', enum: ['create', 'update'] }, id: string(64), label: string(100), rule: string(500),
+    action: { type: 'string', enum: ['create', 'update'] }, id: { ...string(64), description: 'Normalized current-chat variable ID: lowercase ASCII letters, digits and underscore only, 1..64 chars, e.g. party_gold. No camelCase, hyphens, Chinese or reserved __proto__/constructor/prototype. Display label can be Chinese. Host rejects invalid IDs; it does not silently normalize.' }, label: string(100), rule: string(500),
     initialValue: { type: 'number', minimum: -1e9, maximum: 1e9 }, autoUpdate: { type: 'boolean' },
     injectMode: { type: 'string', enum: ['manual', 'always'] }, updateMode: { type: 'string', enum: ['replace', 'delta'] },
     min: { type: 'number', minimum: -1e9, maximum: 1e9 }, max: { type: 'number', minimum: -1e9, maximum: 1e9 },

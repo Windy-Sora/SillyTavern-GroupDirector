@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVariableDraftPort } from '../../muyu/host/variable-draft.js';
+import { variablePreviewSchema } from '../../muyu/modules/variables/index.js';
+import { taskBundleSchema } from '../../muyu/host/task-bundle-draft.js';
 
 const target = { kind: 'chat', userKey: 'page:test', chatKey: 'group:A' };
 const create = { action: 'create', id: 'party_gold', label: '队伍金币', rule: '有明确收支依据时更新',
     initialValue: 0, min: 0, autoUpdate: true, injectMode: 'always', updateMode: 'delta', showInDashboard: true };
+
+test('Numeric variable ID guidance is exposed in single and bundle schemas without permitting silent normalization', () => {
+    assert.match(variablePreviewSchema.properties.id.description, /party_gold/);
+    assert.equal(taskBundleSchema.properties.variables.items.properties.id.description, variablePreviewSchema.properties.id.description);
+    const metadata = {}, port = createVariableDraftPort({ getTarget: () => target, getMetadata: () => metadata, extensionKey: 'gd' });
+    for (const id of ['partyGold', 'party-gold', '金币', '__proto__', 'constructor', 'prototype']) assert.throws(() => port.prepare(target, { ...create, id }), /INVALID_VARIABLE_ID/);
+    assert.deepEqual(metadata, {});
+    assert.equal(port.prepare(target, create).definition.id, 'party_gold');
+});
 
 test('Variable draft previews one chat-local numeric definition without mutating metadata', () => {
     let current = target; const metadata = {};

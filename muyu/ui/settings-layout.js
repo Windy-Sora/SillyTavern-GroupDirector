@@ -11,6 +11,7 @@ export function createSettingsLayout({ doc, root, lang }) {
         ['data', '资料与历史', 'Data & history', en ? 'Control shared data and local conversation storage.' : '管理可读取资料，以及本地对话保存。'],
         ['behavior', '行为偏好', 'Behavior', en ? 'Customize response style, without changing permissions.' : '定制回答方式，不改变工具权限。'],
         ['limits', '运行预算', 'Budgets', en ? 'Manage input context and per-run limits.' : '管理输入上下文和每轮执行上限。'],
+        ['skills', '技能', 'Skills', en ? 'Manage reusable procedures, not permissions.' : '管理可复用方法，不授予额外权限。'],
     ]) {
         const button = doc.createElement('button'); button.type = 'button'; button.className = 'menu_button'; button.textContent = en ? english : zh;
         nav.append(button); buttons[id] = button;
