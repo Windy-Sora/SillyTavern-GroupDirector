@@ -52,7 +52,7 @@ export function createBlueprintLibraryChatPort({getSettings,getMetadata,getTarge
         if(live.metadata!==plan.live.metadata||live.settings!==plan.live.settings||live.vars!==plan.live.vars||jsonKey(live.snapshot)!==jsonKey(plan.live.snapshot))throw Error('STALE_LIBRARY_CHAT');
         plan.checkLibrary();return plan;
     }
-    return Object.freeze({capture,prepareApply,assertFresh,clearPlans:()=>plans.clear(),
+    return Object.freeze({capture,prepareApply,assertFresh,release:content=>plans.delete(content?.ticket),clearPlans:()=>plans.clear(),
         async save(content) {
             const plan=assertFresh(content);
             try {

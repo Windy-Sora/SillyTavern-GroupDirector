@@ -13,7 +13,7 @@ export function createProviderAssetPort({ getSettings, loader, getProviders, reg
     liveProviders();
     const store = () => {
         const rows = getSettings()?.userProviders ?? [];
-        if (!Array.isArray(rows) || rows.length > 256) throw Error('PROVIDER_STORE_UNAVAILABLE');
+        if (!Array.isArray(rows) || rows.length > 4096) throw Error('PROVIDER_STORE_UNAVAILABLE');
         return rows;
     };
     const revisions = new Map();
@@ -26,6 +26,7 @@ export function createProviderAssetPort({ getSettings, loader, getProviders, reg
     function assertNew(content) {
         const checked = prepareProviderDraft(content);
         if (jsonKey(checked) !== jsonKey(content)) throw Error('INVALID_PROVIDER_DRAFT');
+        if (store().length >= 256) throw Error('PROVIDER_ASSET_CAPACITY');
         const current = liveProviders();
         if (store().some(row => row.name === content.name) || content.ids.some(id => protectedIds.has(id) || store().some(row => (row.ids || []).includes(id))) || current.some(p => content.ids.includes(p.id))) throw Error('PROVIDER_ASSET_EXISTS');
     }
@@ -111,10 +112,19 @@ export function createProviderAssetPort({ getSettings, loader, getProviders, reg
                 } finally { busy = false; try { changed(); } catch { /* UI only. */ } }
             }
             assertNew(content); busy = true;
+            const settings = getSettings();
+            const validate = expectedRows => {
+                if (getSettings() !== settings) throw Error('STALE_PROVIDER_ASSET');
+                const rows = store();
+                if (expectedRows && rows !== expectedRows) throw Error('STALE_PROVIDER_ASSET');
+                if (rows.length >= 256) throw Error('PROVIDER_ASSET_CAPACITY');
+                if (rows.some(row => row.name === content.name)) throw Error('PROVIDER_ASSET_EXISTS');
+            };
             let started = false;
             try {
                 const registered = new Set();
                 const guardedRegister = provider => {
+                    validate();
                     if (!provider || typeof provider.render !== 'function' || typeof provider.placeholder !== 'string' || !provider.placeholder || !content.ids.includes(provider.id) || registered.has(provider.id) || (getProviders() || []).some(p => p.id === provider.id)) throw Error('PROVIDER_REGISTRATION_CONFLICT');
                     const result = registerProvider(provider);
                     if (!result || typeof result.render !== 'function') throw Error('PROVIDER_REGISTRATION_INVALID');
@@ -122,7 +132,7 @@ export function createProviderAssetPort({ getSettings, loader, getProviders, reg
                 };
                 started = true;
                 const result = await loader.importSource(content.name, content.source, { registerProvider: guardedRegister,
-                    log: () => {}, verifyRegistration: ids => ids.length === content.ids.length && content.ids.every(id => ids.includes(id)) }, { approvedSource: content.source });
+                    log: () => {}, verifyRegistration: ids => ids.length === content.ids.length && content.ids.every(id => ids.includes(id)) }, { approvedSource: content.source, validate });
                 try { changed(); } catch { /* Rendering cannot change the import result. */ }
                 // Loader return cannot prove persistence, nor undo arbitrary top-level effects.
                 return { status: result.ok ? 'saved_unconfirmed' : 'outcome_unknown', name: content.name,

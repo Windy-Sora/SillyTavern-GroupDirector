@@ -65,7 +65,7 @@ export function createNpcEditorPort({getTarget,getMetadata,extensionKey,system,s
             live.list.length!==plan.entries.length||live.list.some((e,i)=>e!==plan.entries[i])||jsonKey(live.layout)!==jsonKey(plan.live.layout)||jsonKey(r.before)!==jsonKey(plan.baseline))throw Error('STALE_NPC_EDIT');
         return plan;
     }
-    return Object.freeze({list,read,preview,createRead:creation.createRead,createPreview:creation.createPreview,assertFresh,clear:()=>{plans.clear();versions.clear();creation.clear();},async apply(content){
+    return Object.freeze({list,read,preview,createRead:creation.createRead,createPreview:creation.createPreview,assertFresh,release:content=>{plans.delete(content?.ticket);creation.release(content);},clear:()=>{plans.clear();versions.clear();creation.clear();},async apply(content){
         if(content?.operation==='create')return creation.apply(content);
         const plan=assertFresh(content);if(typeof system?.applyApprovedEdit!=='function')throw Error('WRITE_UNAVAILABLE');
         const layout=copyJson(plan.live.layout);if(content.after===null)layout.splice(plan.index,1);else layout[plan.index].name=content.after.name;

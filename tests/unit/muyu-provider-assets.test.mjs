@@ -11,6 +11,43 @@ import { renderProviderInstall } from '../../muyu/ui/provider-install-view.js';
 
 const source = 'export function register({registerProvider}) { registerProvider({id:"gold",placeholder:"{{gold}}",render:()=>({content:"10"})}); }';
 const draft = () => prepareProviderDraft({ name: 'gold-system', source, ids: ['gold'] });
+const fillProviders = (f, count) => { f.settings.userProviders = Array.from({ length: count }, (_, i) => ({ name: 'Saved ' + i, source: 'export function register() {}', ids: [] })); };
+test('BUG-91F-03 Provider allows 256th and refuses 257th before loading code or saving', async () => runtime(async () => {
+    let saves = 0; const f = fixture(async () => { saves++; }); fillProviders(f, 255);
+    assert.equal((await f.port.install(draft())).status, 'saved_unconfirmed');
+    assert.equal(f.settings.userProviders.length, 256);
+    const next = prepareProviderDraft({ name: 'capacity', source: 'globalThis.__capacityProbe++; ' + source.replaceAll('gold', 'extra'), ids: ['extra'] });
+    globalThis.__capacityProbe = 0;
+    try { await assert.rejects(f.port.install(next), /PROVIDER_ASSET_CAPACITY/); assert.equal(globalThis.__capacityProbe, 0); }
+    finally { delete globalThis.__capacityProbe; }
+    assert.equal(saves, 1); assert.equal(f.port.list().items.length, 32);
+}));
+test('BUG-91F-03 concurrent capacity fill during digest prevents module execution', async () => runtime(async () => {
+    let saves = 0; const f = fixture(async () => { saves++; }); fillProviders(f, 255);
+    globalThis.__capacityProbe = 0;
+    try {
+        const content = prepareProviderDraft({ name: 'digest-race', source: 'globalThis.__capacityProbe++; ' + source, ids: ['gold'] });
+        const pending = f.port.install(content); fillProviders(f, 256);
+        assert.equal((await pending).status, 'outcome_unknown');
+        assert.equal(globalThis.__capacityProbe, 0); assert.equal(saves, 0); assert.equal(f.registered.size, 0);
+    } finally { delete globalThis.__capacityProbe; }
+}));
+test('BUG-91F-03 final Provider append check catches fill after registration', async () => runtime(async () => {
+    let saves = 0; const f = fixture(async () => { saves++; }); fillProviders(f, 255);
+    globalThis.__fillProviderCapacity = () => f.settings.userProviders.push({ name: 'Concurrent', source: '', ids: [] });
+    try {
+        const content = prepareProviderDraft({ name: 'register-race', source: source.replace('}); }', '}); globalThis.__fillProviderCapacity(); }'), ids: ['gold'] });
+        assert.equal((await f.port.install(content)).status, 'outcome_unknown');
+        assert.equal(f.settings.userProviders.length, 256); assert.equal(saves, 0); assert.equal(f.registered.size, 0);
+        assert.ok(f.settings.userProviders.some(r => r.name === 'Concurrent'));
+    } finally { delete globalThis.__fillProviderCapacity; }
+}));
+test('BUG-91F-03 over-limit legacy Provider collection remains readable and deletable', async () => {
+    const f = fixture(); fillProviders(f, 257);
+    const row = f.port.list().items[0]; assert.ok(f.port.read(row.name, row.revision).text);
+    assert.equal((await f.port.install(f.port.previewDelete(row))).status, 'saved_unconfirmed');
+    assert.equal(f.settings.userProviders.length, 256); assert.equal(f.port.list().items.length, 32);
+});
 function fixture(save = async () => {}, registrationTimeoutMs) {
     const settings = {}, registered = new Map();
     const registerProvider = p => { registered.set(p.id, p); return p; };

@@ -77,7 +77,7 @@ export function createProfileEditorPort({getTarget,getMetadata,getCharacters,get
         if(live.metadata!==plan.live.metadata||live.root!==plan.live.root||live.store!==plan.live.store||live.archive!==plan.live.archive||fingerprint(live,r)!==plan.fp)throw Error('STALE_PROFILE_EDIT');
         return plan;
     }
-    return Object.freeze({list,read,preview,createTargets:creation.createTargets,createPreview:creation.createPreview,assertFresh,clear:()=>{plans.clear();versions.clear();creation.clear();},async apply(content){
+    return Object.freeze({list,read,preview,createTargets:creation.createTargets,createPreview:creation.createPreview,assertFresh,release:content=>{plans.delete(content?.ticket);creation.release(content);},clear:()=>{plans.clear();versions.clear();creation.clear();},async apply(content){
         if(content?.operation==='create')return creation.apply(content);
         const plan=assertFresh(content);
         try{return await applyApprovedProfileEdit({metadata:plan.live.metadata,extensionKey,avatar:plan.avatar,after:content.after,validate:()=>assertFresh(content),saveChatConfirmed,changed,

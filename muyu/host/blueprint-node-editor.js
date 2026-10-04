@@ -74,7 +74,7 @@ export function createBlueprintNodeEditorPort({getTarget,getMetadata,extensionKe
             live.rows.some((row,i)=>row.node!==plan.live.rows[i]?.node)||jsonKey(live.layout)!==jsonKey(plan.live.layout)||jsonKey(live.progress)!==jsonKey(plan.live.progress)||jsonKey(r.before)!==jsonKey(plan.before))throw Error('STALE_BLUEPRINT_NODE_EDIT');
         return plan;
     }
-    return Object.freeze({list,read,preview,initializeRead:initialization.read,initializePreview:initialization.preview,structureRead:structure.read,structurePreview:structure.preview,assertFresh,clear:()=>{plans.clear();versions.clear();structure.clear();initialization.clear();},async apply(content){
+    return Object.freeze({list,read,preview,initializeRead:initialization.read,initializePreview:initialization.preview,structureRead:structure.read,structurePreview:structure.preview,assertFresh,release:content=>{plans.delete(content?.ticket);structure.release(content);initialization.release(content);},clear:()=>{plans.clear();versions.clear();structure.clear();initialization.clear();},async apply(content){
         if(content?.operation==='initialize')return initialization.apply(content);
         if(content?.operation)return structure.apply(content);
         const plan=assertFresh(content);

@@ -74,7 +74,7 @@ export function createSelectionEditorPort({getTarget,getSettings,getWorldNames,w
   if(live.settings!==p.live.settings||fp(live)!==fp(p.live)||live.refs.some((e,i)=>e!==p.live.refs[i]))throw Error('STALE_SELECTION_EDIT');
   return p;
  }
- return Object.freeze({read,preview,assertFresh,clear:()=>{plans.clear();versions.clear();},async apply(content){
+ return Object.freeze({read,preview,assertFresh,release:content=>plans.delete(content?.ticket),clear:()=>{plans.clear();versions.clear();},async apply(content){
   const p=assertFresh(content);
   const isCurrent=()=>{const live=context(content.target,content.kind);return live.settings===p.live.settings&&jsonKey(live.before)===jsonKey(content.after)&&jsonKey(live.options)===jsonKey(p.live.options)&&JSON.stringify(live.fingerprints)===JSON.stringify(p.live.fingerprints)&&live.refs.every((e,i)=>e===p.live.refs[i]);};
   try{

@@ -470,6 +470,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             running = handle; return handle;
         } });
         appUnsubscribe = app.subscribe(event => {
+            if (['artifact.deleted', 'artifact.updated', 'session.unloaded'].includes(event.type)) builtins.retainArtifacts(app.snapshot().artifacts);
             if (event.type === 'run.settled') {
                 const intent = intentions.get(event.runId), run = app.snapshot().runs.find(r => r.id === event.runId);
                 tracePermission('controller.settled', { target: run?.target, taskId: run?.taskId, runId: event.runId, decision: run?.status });

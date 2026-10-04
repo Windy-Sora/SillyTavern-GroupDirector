@@ -57,7 +57,7 @@ export function createBlueprintInitializationPort({ getTarget, getMetadata, getS
         if (live.state?.blueprint != null || !sameRefs(live,plan.live) || jsonKey(live.snapshot) !== jsonKey(plan.live.snapshot)) throw Error('STALE_BLUEPRINT_NODE_EDIT');
         return plan;
     }
-    return Object.freeze({read,preview,assertFresh,clear(){versions.clear();plans.clear();},async apply(content){
+    return Object.freeze({read,preview,assertFresh,release:content=>plans.delete(content?.ticket),clear(){versions.clear();plans.clear();},async apply(content){
         const plan = assertFresh(content);
         try {
             const result = await applyApprovedBlueprintLibraryChat({ metadata:plan.live.metadata,extensionKey,after:content.after,completion:content.completion.before,validate:()=>assertFresh(content),saveChatConfirmed:saveStructureConfirmed,

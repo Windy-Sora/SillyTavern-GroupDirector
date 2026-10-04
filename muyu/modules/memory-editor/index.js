@@ -1,8 +1,9 @@
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createDraftRuns } from '../draft-runs.js';
 const str=maxLength=>({type:'string',maxLength});
 export function createMemoryEditorModule({port,charge}) {
-    const registry=createToolRegistry(),runs=new Map();
+    const registry=createToolRegistry(),runs=createDraftRuns(port);
     const outputSchema={type:'object',properties:{candidateId:str(100),text:str(24000),applyRequested:{type:'boolean'}},required:['candidateId','text'],additionalProperties:false};
     const inputs={
         list:{properties:{offset:{type:'integer',minimum:0,maximum:512}},required:[]},
@@ -26,7 +27,7 @@ export function createMemoryEditorModule({port,charge}) {
         'muyu.memory_editor.create_targets':(args,ctx)=>encode(port.createTargets(ctx.target,args.offset||0),ctx),
         'muyu.memory_editor.create_preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
-            run.candidate=null;
+            runs.discardCandidate(ctx.runId);
             const content=port.createPreview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='memory-editor:'+crypto.randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:'create',character:content.character,index:content.index,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
@@ -35,25 +36,25 @@ export function createMemoryEditorModule({port,charge}) {
         'muyu.memory_editor.read':(args,ctx)=>encode(port.read(ctx.target,args.character,args.revision,args.offset),ctx),
         'muyu.memory_editor.preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
-            run.candidate=null;
+            runs.discardCandidate(ctx.runId);
             const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='memory-editor:'+crypto.randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:content.operation,character:content.character,index:content.index,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
         },
     },
         bindRun(identity){if(runs.size>=128||runs.has(identity.id))throw Error('RUN_CAPACITY');runs.set(identity.id,{taskId:identity.taskId,target:copyJson(identity.target),candidate:null});},
-        transferRun(from,identity){const run=runs.get(from);if(!run)return;if(runs.has(identity.id)||run.taskId!==identity.taskId||jsonKey(run.target)!==jsonKey(identity.target))throw Error('INVALID_RUN_TRANSFER');runs.delete(from);runs.set(identity.id,run);},
+        transferRun(from,identity){const run=runs.get(from);if(!run)return;if(runs.has(identity.id)||run.taskId!==identity.taskId||jsonKey(run.target)!==jsonKey(identity.target))throw Error('INVALID_RUN_TRANSFER');runs.take(from);runs.set(identity.id,run);},
         publishDraft(app,id,candidateId){
             const run=runs.get(id),state=app.snapshot().runs.find(r=>r.id===id);
             if(!run?.candidate||run.candidate.candidateId!==candidateId||state?.status!=='succeeded'||state.taskId!==run.taskId||jsonKey(state.target)!==jsonKey(run.target))throw Error('INVALID_CANDIDATE_SOURCE');
             port.assertFresh(run.candidate.content);
-            const artifact=app.createArtifact({taskId:run.taskId,sourceRunId:id,kind:'memory-edit-draft',content:run.candidate.content});runs.delete(id);return artifact;
+            const artifact=app.createArtifact({taskId:run.taskId,sourceRunId:id,kind:'memory-edit-draft',content:run.candidate.content});runs.publish(id,artifact);return artifact;
         },
         validateSaved(app,id,revision){
             const artifact=app.getArtifact(id),state=app.snapshot().runs.find(r=>r.id===artifact.sourceRunId);
             if(artifact.kind!=='memory-edit-draft'||artifact.revision!==revision||state?.status!=='succeeded'||state.taskId!==artifact.taskId)throw Error('INVALID_MEMORY_DRAFT');
             port.assertFresh(artifact.content);return app.validateArtifact(id,revision,{structural:'passed',baseline:'matched-at-validation',intent:'requires_user_review',writes:'one-chat-memory-entry'});
         },
-        forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
+        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
     };
 }

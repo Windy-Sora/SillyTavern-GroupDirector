@@ -54,7 +54,7 @@ export function createLedgerEditorPort({getTarget,getMetadata,extensionKey,saveC
         if(live.metadata!==plan.live.metadata||live.root!==plan.live.root||!layoutMatches(plan.live,live)||r.entry!==plan.entry||jsonKey(r.full)!==jsonKey(plan.full))throw Error('STALE_LEDGER_EDIT');
         return plan;
     }
-    return Object.freeze({list,read,preview,assertFresh,clear:()=>{plans.clear();versions.clear();},async apply(content){
+    return Object.freeze({list,read,preview,assertFresh,release:content=>plans.delete(content?.ticket),clear:()=>{plans.clear();versions.clear();},async apply(content){
         const plan=assertFresh(content),internal=Object.fromEntries(Object.entries(plan.full).filter(([k])=>k.startsWith('_'))),expected={...internal,...content.after};
         try{return await applyApprovedLedgerEdit({list:plan.live.list,index:plan.index,after:content.after,metadata:plan.live.metadata,saveChatConfirmed,changed,validate:()=>assertFresh(content),
             isCurrent:()=>{const live=context(content.target),r=selected(live,content.selector);return live.metadata===plan.live.metadata&&live.root===plan.live.root&&layoutMatches(plan.live,live)&&r.entry===plan.entry&&jsonKey(r.full)===jsonKey(expected);}});

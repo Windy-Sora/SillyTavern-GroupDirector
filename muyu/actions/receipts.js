@@ -283,7 +283,7 @@ export function receiptContext(receipts) {
         const { chatKey, ...publicPrune } = r.memoryPrune || {};
         const { chatKey: toggleChatKey, ...publicToggle } = r.blueprintToggle || {};
         const { chatKey: variableChatKey, ...publicVariable } = r.completionVariable || {};
-        return [5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(r.version) ? r : [4, 9].includes(r.version) ? { ...r, steps: r.steps.map(step => ({ ...step, omittedDiffs: Math.max(0, step.diff.length - 12),
+        return [5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].includes(r.version) ? r : [4, 9].includes(r.version) ? { ...r, steps: r.steps.map(step => ({ ...step, omittedDiffs: Math.max(0, step.diff.length - 12),
             diff: step.diff.slice(0, 12).map(d => ({ ...d, before: clipBundle(d.before), after: clipBundle(d.after) })) })) } :
             { ...r, ...(r.blueprintToggle ? { blueprintToggle: publicToggle } : {}), ...(r.memoryPrune ? { memoryPrune: publicPrune } : {}), ...(r.completionVariable ? { completionVariable: publicVariable } : {}), diff: r.diff.map(d => ({ ...d, before: clip(d.before), after: clip(d.after) })) };
     });

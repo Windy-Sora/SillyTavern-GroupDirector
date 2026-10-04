@@ -223,7 +223,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
     /**
      * Import a user-selected .js file as a provider or capability.
      */
-    async function importAsset(file, type, deps = {}, sourceText = null, approvedSource = null) {
+    async function importAsset(file, type, deps = {}, sourceText = null, approvedSource = null, validate = () => {}) {
         if (!STORE_KEYS[type]) {
             return { ok: false, name: file?.name || 'unknown', error: `Unsupported user asset type: ${type}` };
         }
@@ -244,6 +244,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         try {
             const source = sourceText === null ? await readFileAsText(file) : sourceText;
             const digest = type === 'provider' ? await sourceDigest(name, source) : null;
+            validate(store);
 
             const findings = scanSource(source);
             if (findings.length > 0) {
@@ -286,6 +287,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
 
             // Persist with enabled state
             insertedEntry = { name, source, importedAt: Date.now(), ids: addedIds, enabled: true };
+            validate(store);
             store.push(insertedEntry);
             await saveStore();
             ensureManagedIds(type);
@@ -498,9 +500,9 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
     }
 
     // approvedSource is supplied only by the trusted action executor after exact-source review.
-    function importSource(name, source, deps = {}, { approvedSource = null } = {}) {
+    function importSource(name, source, deps = {}, { approvedSource = null, validate = () => {} } = {}) {
         if (typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(name) || typeof source !== 'string' || !source.trim() || source.length > 24000) throw Error('INVALID_PROVIDER_DRAFT');
-        return importAsset({ name: name + '.js' }, 'provider', deps, source, approvedSource);
+        return importAsset({ name: name + '.js' }, 'provider', deps, source, approvedSource, validate);
     }
     return { importAsset, importSource, replaceProviderSource, deleteAsset, listAssets, restoreAll, persistCapabilityEnabled, restoreCapabilityEnabled };
 }

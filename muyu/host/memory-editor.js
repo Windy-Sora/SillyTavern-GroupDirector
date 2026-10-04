@@ -74,7 +74,7 @@ export function createMemoryEditorPort({ getTarget, getMetadata, getCharacters, 
         if (live.metadata !== plan.live.metadata || live.root !== plan.live.root || live.store !== plan.live.store || r.avatar !== plan.avatar || jsonKey(r.entries) !== jsonKey(plan.entries) || jsonKey(live.characters) !== jsonKey(plan.live.characters)) throw Error('STALE_MEMORY_EDIT');
         return plan;
     }
-    return Object.freeze({ list, read, preview, assertFresh, createTargets: creation.createTargets, createPreview: creation.createPreview, clear: () => { versions.clear(); plans.clear(); creation.clear(); },
+    return Object.freeze({ list, read, preview, assertFresh, createTargets: creation.createTargets, createPreview: creation.createPreview, release: content => { plans.delete(content?.ticket); creation.release(content); }, clear: () => { versions.clear(); plans.clear(); creation.clear(); },
         async apply(content) {
             if (content?.operation === 'create') return creation.apply(content);
             const plan = assertFresh(content);

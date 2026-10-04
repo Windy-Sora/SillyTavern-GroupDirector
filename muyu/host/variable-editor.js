@@ -87,7 +87,7 @@ export function createVariableEditorPort({getTarget,getMetadata,getSettings,getC
         if(live.metadata!==plan.live.metadata||live.vars!==plan.live.vars||live.settings!==plan.live.settings||jsonKey(snapshot(live,content.id))!==jsonKey(plan.baseline))throw Error('STALE_VARIABLE_EDIT');
         editable(live,content.id,selected(live,content.id));return plan;
     }
-    return Object.freeze({list,read,preview,assertFresh,clear:()=>{plans.clear();versions.clear();},
+    return Object.freeze({list,read,preview,assertFresh,release:content=>plans.delete(content?.ticket),clear:()=>{plans.clear();versions.clear();},
         async apply(content){
             const plan=assertFresh(content);
             try{return await applyApprovedVariableEdit({metadata:plan.live.metadata,extensionKey,id:content.id,after:plan.after,operation:content.operation,saveChatConfirmed,changed,

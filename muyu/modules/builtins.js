@@ -181,5 +181,6 @@ export function createBuiltins(host) {
     return { registry, handlers, tasks, candidateTool: artifacts.produces, candidateGroup: artifacts.group, invalidateSettingsAttempt: (id, fields) => settings.invalidateAttempt(id, fields), takeInvalidatedSettingsCandidates: id => settings.takeInvalidatedCandidates(id),
         transferRun(from, identity, intent) { const previous = unified.get(from); if (previous) { unified.delete(from); unified.set(identity.id, { ...previous, identity, intent }); } for (const module of modules) if (module !== providers) module.transferRun?.(from, identity); },
         bindBudget: (id, limit, from = null) => from ? providers.transferRun(from, id, limit) : providers.bindRun(id, limit),
+        retainArtifacts: values => modules.forEach(m => m.retainArtifacts?.(values)),
         resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetTask: id => { web.forgetTask(id); scripts.forgetTask(id); customAgents.forgetTask(id); generationBatch.forgetTask(id); npcGeneration.forgetTask(id); profileGeneration.forgetTask(id); memoryGeneration.forgetTask(id); }, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };
 }

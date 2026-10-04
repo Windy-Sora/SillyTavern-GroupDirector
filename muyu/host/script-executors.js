@@ -14,7 +14,7 @@ export function createScriptExecutorPort({ getSettings, getTarget, getContext, s
     const versions = new Map();
     const rows = () => {
         const list = getSettings()?.scriptExecutors ?? [];
-        if (!Array.isArray(list) || list.length > 256) throw Error('SCRIPT_STORE_UNAVAILABLE');
+        if (!Array.isArray(list) || list.length > 4096) throw Error('SCRIPT_STORE_UNAVAILABLE');
         return list;
     };
     function revision(row) {
@@ -30,6 +30,7 @@ export function createScriptExecutorPort({ getSettings, getTarget, getContext, s
     function preview({ operation, id = '', revision: expected = '', changes = {} }) {
         if (!['create', 'update', 'delete'].includes(operation)) throw Error('INVALID_SCRIPT_DRAFT');
         if (operation === 'create' && (id || expected)) throw Error('INVALID_SCRIPT_DRAFT');
+        if (operation === 'create' && rows().length >= 256) throw Error('SCRIPT_ASSET_CAPACITY');
         const previous = operation === 'create' ? null : copyJson(existing(id, expected));
         if (operation === 'delete' && Object.keys(changes).length) throw Error('INVALID_SCRIPT_DRAFT');
         if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw Error('INVALID_SCRIPT_DRAFT');

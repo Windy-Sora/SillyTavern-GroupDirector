@@ -15,6 +15,32 @@ function fixture(saveSettings = async () => {}) {
     return { settings, system, port };
 }
 const create = port => port.preview({ operation: 'create', changes: { name: '金币脚本', code: 'globalThis.__scriptProbe++;' } });
+const fillScripts = (f, count) => { f.settings.scriptExecutors = Array.from({ length: count }, (_, i) => ({ id: 's' + i, name: 'Saved ' + i, enabled: false, code: '' })); };
+test('BUG-91F-03 script creation permits 256th, refuses 257th without save or execution', async () => {
+    let saves = 0; const f = fixture(async () => { saves++; }); fillScripts(f, 255);
+    assert.equal((await f.port.save(create(f.port))).status, 'saved_unconfirmed');
+    assert.equal(f.settings.scriptExecutors.length, 256);
+    assert.throws(() => create(f.port), /SCRIPT_ASSET_CAPACITY/);
+    assert.equal(saves, 1); assert.equal(f.port.list().items.length, 32);
+});
+test('BUG-91F-03 script mutation queue rechecks capacity after approval', async () => {
+    let saves = 0; const f = fixture(async () => { saves++; }); fillScripts(f, 255);
+    const draft = create(f.port);
+    const blocker = gate(), started = gate();
+    f.system = createScriptExecutorSystem({ settings: f.settings, saveSettings: async () => { started.resolve(); await blocker.promise; } });
+    const port = createScriptExecutorPort({ getSettings: () => f.settings, system: f.system });
+    const other = f.system.mutateApproved({ operation: 'create', definition: { name: 'Queued other', enabled: false, code: '' }, validate() {} });
+    await started.promise;
+    const pending = port.save(draft); blocker.resolve(); await other;
+    await assert.rejects(pending, /SCRIPT_ASSET_CAPACITY/);
+    assert.equal(f.settings.scriptExecutors.length, 256); assert.equal(saves, 0);
+});
+test('BUG-91F-03 over-limit legacy script collection remains readable and deletable', async () => {
+    const f = fixture(); fillScripts(f, 257);
+    const row = f.port.list().items[0]; assert.ok(f.port.read(row.id, row.revision).text);
+    await f.port.save(f.port.preview({ operation: 'delete', id: row.id, revision: row.revision, changes: {} }));
+    assert.equal(f.settings.scriptExecutors.length, 256); assert.equal(f.port.list().items.length, 32);
+});
 test('Script preview never runs or saves code, defaults off, and rejects invalid fields', () => {
     const f = fixture(); globalThis.__scriptProbe = 0;
     const content = create(f.port);

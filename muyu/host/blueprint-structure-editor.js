@@ -49,7 +49,7 @@ export function createBlueprintStructureEditorPort({getTarget,getMetadata,getSet
   const p=plans.get(content?.ticket);if(!p||jsonKey(content)!==jsonKey(p.content))throw Error('STALE_BLUEPRINT_NODE_EDIT');
   const live=context(content.target);if(!sameRefs(live,p.live)||jsonKey(live.snapshot)!==jsonKey(p.live.snapshot))throw Error('STALE_BLUEPRINT_NODE_EDIT');return p;
  }
- return Object.freeze({read,preview,assertFresh,clear(){plans.clear();versions.clear();},async apply(content){
+ return Object.freeze({read,preview,assertFresh,release:content=>plans.delete(content?.ticket),clear(){plans.clear();versions.clear();},async apply(content){
   const p=assertFresh(content);
   try{return await applyApprovedBlueprintStructure({state:p.live.state,after:content.after,metadata:p.live.metadata,completion:content.completion.before,vars:p.live.vars,saveChatConfirmed:saveStructureConfirmed,changed,validate:()=>assertFresh(content),isCurrent:()=>{
    const live=context(content.target);

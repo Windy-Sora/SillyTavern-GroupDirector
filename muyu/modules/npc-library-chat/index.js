@@ -1,8 +1,9 @@
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createDraftRuns } from '../draft-runs.js';
 const str = maxLength => ({ type: 'string', maxLength });
 export function createNpcLibraryChatModule({ port, charge }) {
-    const registry = createToolRegistry(), runs = new Map();
+    const registry = createToolRegistry(), runs = createDraftRuns(port);
     const outputSchema = { type: 'object', properties: { candidateId: str(100), text: str(24000), applyRequested: { type: 'boolean' } }, required: ['candidateId', 'text'], additionalProperties: false };
     const inputs = {
         capture_preview: { properties: { name: str(80), description: str(1000), apply: { type: 'boolean' } }, required: ['name'] },
@@ -17,7 +18,7 @@ export function createNpcLibraryChatModule({ port, charge }) {
     function candidate(args,ctx,operation) {
         const run=runs.get(ctx.runId);
         if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
-        run.candidate=null;
+        runs.discardCandidate(ctx.runId);
         const content=operation==='capture'?port.capture(args,ctx.target):port.prepareApply(args,ctx.target);
         const candidateId='library-chat:'+crypto.randomUUID();run.candidate={candidateId,content};
         return {candidateId,text:JSON.stringify({state:'draft_only',operation,name:content.name,count:content.count,skipped:content.skipped,importsGlobalTemplate:!!content.template,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
@@ -27,12 +28,12 @@ export function createNpcLibraryChatModule({ port, charge }) {
         'muyu.npc_library_chat.apply_preview':(args,ctx)=>candidate(args,ctx,'apply'),
     },
         bindRun(identity) { if (runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { taskId: identity.taskId, target: copyJson(identity.target), candidate: null }); },
-        transferRun(from, identity) { const run = runs.get(from); if (!run) return; if (runs.has(identity.id) || run.taskId !== identity.taskId || jsonKey(run.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); runs.delete(from); runs.set(identity.id, run); },
+        transferRun(from, identity) { const run = runs.get(from); if (!run) return; if (runs.has(identity.id) || run.taskId !== identity.taskId || jsonKey(run.target) !== jsonKey(identity.target)) throw Error('INVALID_RUN_TRANSFER'); runs.take(from); runs.set(identity.id, run); },
         publishDraft(app, id, candidateId) {
             const run = runs.get(id), state = app.snapshot().runs.find(row => row.id === id);
             if (!run?.candidate || run.candidate.candidateId !== candidateId || state?.status !== 'succeeded' || state.taskId !== run.taskId || jsonKey(state.target) !== jsonKey(run.target)) throw Error('INVALID_CANDIDATE_SOURCE');
             port.assertFresh(run.candidate.content);
-            const artifact = app.createArtifact({ taskId: run.taskId, sourceRunId: id, kind: 'npc-library-chat-draft', content: run.candidate.content }); runs.delete(id); return artifact;
+            const artifact = app.createArtifact({ taskId: run.taskId, sourceRunId: id, kind: 'npc-library-chat-draft', content: run.candidate.content }); runs.publish(id, artifact); return artifact;
         },
         validateSaved(app, id, revision) {
             const artifact = app.getArtifact(id), state = app.snapshot().runs.find(row => row.id === artifact.sourceRunId);
@@ -40,6 +41,7 @@ export function createNpcLibraryChatModule({ port, charge }) {
             port.assertFresh(artifact.content);
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'chat-npcs-and-optional-global-prompt' });
         },
+        retainArtifacts: artifacts => runs.retainArtifacts(artifacts),
         forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); port?.clearPlans(); },
     };
 }

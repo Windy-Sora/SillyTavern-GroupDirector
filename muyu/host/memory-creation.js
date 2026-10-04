@@ -65,7 +65,7 @@ export function createMemoryCreationPort({ getTarget, getMetadata, getCharacters
         if (live.metadata !== plan.live.metadata || live.root !== plan.live.root || live.store !== plan.live.store || fingerprint(live) !== plan.fp) throw Error('STALE_MEMORY_EDIT');
         return plan;
     }
-    return { createTargets, createPreview, assertFresh, clear() { versions.clear(); plans.clear(); }, async apply(content) {
+    return { createTargets, createPreview, assertFresh, release: content => plans.delete(content?.ticket), clear() { versions.clear(); plans.clear(); }, async apply(content) {
         const plan = assertFresh(content);
         try { return await applyApprovedMemoryCreation({ metadata: plan.live.metadata, extensionKey, avatar: plan.live.avatar, after: content.after, validate: () => assertFresh(content), saveChatConfirmed, changed,
             isCurrent(next, root, store) {
