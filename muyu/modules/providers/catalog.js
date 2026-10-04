@@ -22,7 +22,16 @@ export const providerCatalog = Object.freeze([
     source('stExtensions', 'SillyTavern 扩展目录与配置启用状态 / Extension directory and configured status', 'source-only', 'empty; search:NAME', null, 'global', 'text', 'stExtensions'),
 ]);
 export const providerSource = id => providerCatalog.find(p => p.id === id);
-export const publicProviderCatalog = () => providerCatalog.map(({ provider, reader, outputContract, maxTextChars, pageChars, ...p }) => ({ ...p }));
+const routingHints = Object.freeze({
+    variables: '资源/金币/数值：读取当前聊天存储值；不提供兑换条件或剧情规则。',
+    variableDiagnostics: '变量定义与求值尝试的诊断，不替代存储值或剧情规则。',
+    storyBlueprint: '任务目标、完成条件、兑换门槛、剧情计划：先读节点目录，再核对相关节点正文。可与变量值对照；不证明实际完成。',
+    chatHistory: '剧情发生了什么、角色说过什么：可检索历史正文；不覆盖蓝图或世界书规则。',
+    recentMessages: '近期对话正文；不覆盖其他资料来源。',
+    charMemory: '角色记忆记录；不覆盖全部剧情规则。',
+    stWorldBookEntries: '世界设定与规则：查相关世界书条目；库中存在不证明实际注入。',
+});
+export const publicProviderCatalog = () => providerCatalog.map(({ provider, reader, outputContract, maxTextChars, pageChars, ...p }) => ({ ...p, routingHint: routingHints[p.id] || '' }));
 export const sourcePermission = id => providerCatalog.find(p => p.id === id)?.permission || 'denied';
 export function sourceParentSelector(id, selector) {
     if (id === 'stWorldBookEntries') {

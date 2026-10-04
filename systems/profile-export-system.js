@@ -18,7 +18,7 @@ const PROFILE_EXPORT_VERSION = 1;
  * Validate that a loaded object is a valid profile export file.
  * Returns { ok, error }.
  */
-function validateExportFormat(obj) {
+export function validateExportFormat(obj) {
     if (!obj || typeof obj !== 'object') return { ok: false, error: 'Not a valid JSON object' };
     if (obj.type !== 'profile-export') return { ok: false, error: 'Not a profile export file (missing "type":"profile-export")' };
     if (!obj.version || obj.version < 1) return { ok: false, error: `Unsupported version: ${obj.version}` };

@@ -36,6 +36,8 @@ test('Provider directory is metadata-only; trusted pure readers do not initializ
     const f = fixture(), before = structuredClone(f.ctx);
     const catalog = f.module.handlers['muyu.provider.list']();
     assert.equal(catalog.length, providerCatalog.length); validateJson(f.module.registry.get('muyu.provider.list').outputSchema, catalog); assert.doesNotMatch(JSON.stringify(catalog), /Alice|hello|a.png/);
+    assert.match(catalog.find(p => p.id === 'storyBlueprint').routingHint, /兑换门槛/);
+    assert.match(catalog.find(p => p.id === 'variables').routingHint, /不提供兑换条件/);
     assert.match(f.read().text, /hello/); assert.equal(f.read({ id: 'chatSummary' }).text, 'summary');
     for (const id of ['charMemory', 'character_profiles']) {
         const directory = f.read({ id }); assert.match(directory.text, /character:0 Alice/); assert.doesNotMatch(JSON.stringify(directory), /a.png/);

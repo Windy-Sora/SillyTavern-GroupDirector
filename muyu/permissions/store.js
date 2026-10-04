@@ -1,5 +1,5 @@
 import { jsonKey } from '../core/json-contract.js';
-import { permissionSources, sourceKey, validatePermission, permissionSource, parseExecutionSource } from './contract.js';
+import { permissionSources, sourceKey, validatePermission, permissionSource, parseExecutionSource, parseAgentExecutionSource, parseGenerationBatchExecutionSource, parseNpcExecutionSource, parseProfileExecutionSource, parseMemoryExecutionSource, parseScriptExecutionSource, permissionFields, requestSource } from './contract.js';
 import { tracePermission, permissionTraceError } from '../core/permission-debug.js';
 
 /** Connection-local source grants. Only the application may commit a UI decision. */
@@ -19,6 +19,8 @@ export function createSourcePermissions() {
         allowsExecution(target, taskId, providerId, providerRevision) { return executions.has(executionKey(target, taskId, providerId, providerRevision)); },
         deniedExecution(target, taskId, providerId, providerRevision) { return executionDenials.has(executionKey(target, taskId, providerId, providerRevision)); },
         allows(source, target, taskId) {
+            const script = parseScriptExecutionSource(source) || parseAgentExecutionSource(source) || parseGenerationBatchExecutionSource(source) || parseNpcExecutionSource(source) || parseProfileExecutionSource(source) || parseMemoryExecutionSource(source);
+            if (script) return target?.kind === 'chat' && contains(tasks, taskKey(target, taskId), source);
             const execution = parseExecutionSource(source);
             if (execution) return !!key(target) && target.kind === 'chat' && executions.has(executionKey(target, taskId, execution.providerId, execution.providerRevision));
             const chatGrant = contains(chats, scope(source, target), source), taskGrant = contains(tasks, taskKey(target, taskId), source);
@@ -30,14 +32,15 @@ export function createSourcePermissions() {
         list(target) { return permissionSources.filter(source => contains(chats, scope(source, target), source)); },
         grantSource(source, target) {
             const id = scope(source, target);
-            if (!permissionSources.includes(source) || source === 'source:providerExecution' || !id) throw Error('INVALID_PERMISSION');
+            if (!permissionSources.includes(source) || permissionSource(source.slice(7))?.permission === 'code' || !id) throw Error('INVALID_PERMISSION');
             if (!chats.has(id) && chats.size >= 1024) throw Error('PERMISSION_CAPACITY');
             const next = new Set(chats.get(id)); next.add(source); chats.set(id, next);
         },
         decide(request, decision, continuation) {
-            validatePermission({ source: request.source, reason: request.reason, ...(request.source === 'providerExecution' ? { providerId: request.providerId, providerRevision: request.providerRevision } : {}) });
+            validatePermission(permissionFields(request));
             const scopeId = scope(sourceKey(request.source), request.target);
             if (!['task', 'chat', 'deny'].includes(decision) || !scopeId || !request.taskId) throw Error('INVALID_PERMISSION_DECISION');
+            if (permissionSource(request.source)?.permission === 'code' && decision === 'chat') throw Error('INVALID_PERMISSION_DECISION');
             if (request.source === 'providerExecution') {
                 if (decision === 'chat') throw Error('INVALID_PERMISSION_DECISION');
                 const map = decision === 'task' ? executions : executionDenials;
@@ -49,7 +52,7 @@ export function createSourcePermissions() {
             const map = decision === 'chat' ? chats : decision === 'task' ? tasks : denied;
             const id = decision === 'chat' ? scopeId : taskKey(request.target, request.taskId);
             if (!map.has(id) && map.size >= 1024) throw Error('PERMISSION_CAPACITY');
-            const old = map.get(id), next = new Set(old); next.add(sourceKey(request.source)); map.set(id, next);
+            const old = map.get(id), next = new Set(old); next.add(requestSource(request)); map.set(id, next);
             tracePermission('store.commit', { target: request.target, taskId: request.taskId, source: sourceKey(request.source), decision });
             // Enqueue is synchronous. No observer callback runs between commit and rollback.
             try { return continuation(); } catch (error) { if (old) map.set(id, old); else map.delete(id); tracePermission('store.rollback', { target: request.target, taskId: request.taskId, source: sourceKey(request.source), decision, errorCode: permissionTraceError(error) }); throw error; }
@@ -57,7 +60,7 @@ export function createSourcePermissions() {
         grantTaskSources(sources, target, taskId, continuation) {
             const id = taskKey(target, taskId);
             if (!id || !Array.isArray(sources) || sources.length > 12 || new Set(sources).size !== sources.length ||
-                sources.some(source => !permissionSources.includes(source) || source === 'source:providerExecution' || !scope(source, target) || contains(denied, id, source)) ||
+                sources.some(source => !permissionSources.includes(source) || permissionSource(source.slice(7))?.permission === 'code' || !scope(source, target) || contains(denied, id, source)) ||
                 typeof continuation !== 'function') throw Error('INVALID_TASK_SCOPE');
             if (!tasks.has(id) && tasks.size >= 1024) throw Error('PERMISSION_CAPACITY');
             const old = tasks.get(id), next = new Set(old);

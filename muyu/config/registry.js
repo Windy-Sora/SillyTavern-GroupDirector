@@ -17,12 +17,15 @@ import { npcRuleDefinitions } from './npc-rules.js';
 import { worldBookRuleDefinitions } from './world-book-rules.js';
 import { postSpeechRuleDefinitions } from './post-speech-rules.js';
 import { memoryRuleDefinitions } from './memory-rules.js';
+import { generalRuleDefinitions } from './general-rules.js';
+import { settingsSwitchRules, settingsSwitchDependencies, validateSettingsSwitchPatch } from './settings-switch-rules.js';
 import { inspectMemorySchema } from '../../agents/memory-schema.js';
 import { inspectMemoryRenderTemplate } from '../../assets/providers/memory-template.js';
 
 // Registered leaf paths only. This is not an arbitrary settings-path writer.
 const integer = minimum => ({ type: 'integer', minimum, maximum: Number.MAX_SAFE_INTEGER });
 const definitions = {
+    ...generalRuleDefinitions,
     ...Object.fromEntries(Object.entries(memoryFieldSchemas).map(([id, schema]) => [id, { domain: 'memory', schema, dependencies: ['memoryEnabled', 'autoMemoryEnabled'] }])),
     ...memoryRuleDefinitions,
     memoryMaxEntries: { domain: 'memory', schema: { type: 'integer', minimum: 10, maximum: 2000 }, idle: true, source: 'ui/sections/memory.js', description: '每角色保留条数上限。仅可单独预览和批准；调低会在当前聊天裁剪各角色最旧的超额记忆，且影响所有聊天后续记忆生成与导入。全局设置保存与当前聊天裁剪是两个保存域，可能部分完成；本工具范围 10..2000，原界面输入处理仅强制下限。' },
@@ -35,6 +38,7 @@ const definitions = {
     ...summaryRuleDefinitions,
     ...critiqueRuleDefinitions,
     ...profileRuleDefinitions,
+    ...settingsSwitchRules,
     ...storyBlueprintRuleDefinitions,
     ...npcRuleDefinitions,
     ...worldBookRuleDefinitions,
@@ -44,14 +48,9 @@ const definitions = {
     identityPrompt: { domain: 'prompt', schema: { type: 'string', maxLength: 4000 }, idle: true, source: 'ui/sections/identity.js', description: '全局身份锚定 Prompt 原文；仅后续 Prompt 显式引用 {{identity}} 时注入，空串使用内置身份模板，不是关闭身份 Provider。内置模板包含角色档案和记忆占位符，实际是否继续解析取决于调用方的模板渲染设置。可能发送角色资料给配置模型；最多 4000 字符。' },
     providerTimeoutMs: { domain: 'provider', schema: integer(0) },
 };
-// These values may be projected into a proposal baseline, but cannot appear in changes.
-// In particular, enabling Story Blueprint has chat-variable side effects and needs its own action.
-const readOnlyDependencies = {
-    storyBlueprintEnabled: { domain: 'storyBlueprint', schema: { type: 'boolean' }, editable: false, source: 'ui/sections/storyBlueprint.js', description: '故事蓝图总开关；普通配置草稿只读取它以复核自动续写和节点数的前置状态，不能通过通用设置写入器修改。开启或关闭涉及当前聊天完成变量，需专用动作。' },
-    lang: { domain: 'prompt', schema: { type: 'string' }, editable: false, source: 'ui/i18n.js', description: '当前界面语言；仅用于确认强制发言 Prompt 空串采用哪种内置指令，不由通用配置草稿修改。' },
-};
+const readOnlyDependencies = settingsSwitchDependencies;
 export const configFields = Object.freeze(Object.keys(definitions));
-export const configDomains = Object.freeze(['memory', 'director', 'scoring', 'prompt', 'provider', 'summary', 'critique', 'profiles', 'storyBlueprint', 'npc', 'worldBook', 'postSpeech']);
+export const configDomains = Object.freeze(['memory', 'director', 'scoring', 'prompt', 'provider', 'summary', 'critique', 'profiles', 'storyBlueprint', 'npc', 'worldBook', 'postSpeech', 'general']);
 export const configChangesSchema = { type: 'object', properties: Object.fromEntries(configFields.map(id => [id, definitions[id].schema])), additionalProperties: false };
 export function fieldDefinition(id) {
     const definition = Object.hasOwn(definitions, id) ? definitions[id] : Object.hasOwn(readOnlyDependencies, id) ? readOnlyDependencies[id] : null;
@@ -70,7 +69,7 @@ export function selectedFields(fields) {
     fields.forEach(fieldDefinition); return fields;
 }
 export function dependencyFields(fields) {
-    return [...new Set(selectedFields(fields).flatMap(id => [id, ...(definitions[id].dependencies || [])]))].sort();
+    return [...new Set(selectedFields(fields).flatMap(id => [id, ...(fieldDefinition(id).dependencies || [])]))].sort();
 }
 function leaf(settings, field) {
     let value = settings;
@@ -98,6 +97,7 @@ export function projectBaseline(baseline, fields) {
 export function previewSettings({ baseline, changes, allowEmpty = false }) {
     const patch = validateJson(configChangesSchema, changes), keys = Object.keys(patch);
     if (!keys.length) throw Error('EMPTY_CHANGES');
+    validateSettingsSwitchPatch(baseline, patch);
     const critiqueTemplate = keys.includes('critiqueSchema') ? inspectCritiqueTemplate(patch.critiqueSchema) : null;
     if (keys.includes('profileJsonSchema')) inspectProfileSchema(patch.profileJsonSchema);
     if (keys.includes('memoryCompressPrompt') && patch.memoryCompressPrompt && !patch.memoryCompressPrompt.includes('{{memories}}')) throw Error('MEMORY_COMPRESS_PROMPT_MISSING_MEMORIES');
@@ -115,6 +115,13 @@ export function previewSettings({ baseline, changes, allowEmpty = false }) {
     const diff = keys.filter(id => !Object.hasOwn(observed, id) || jsonKey(observed[id]) !== jsonKey(patch[id])).map(field => ({ field, before: Object.hasOwn(observed, field) ? JSON.stringify(observed[field]) : '(missing)', after: JSON.stringify(patch[field]) }));
     if (!diff.length && !allowEmpty) throw Error('NO_EFFECTIVE_CHANGE');
     const effective = { ...observed, ...patch }, warnings = [];
+    if (keys.some(id => id.startsWith('profileLibraryAutoLoad.'))) {
+        if (!effective.profileEnabled) warnings.push('PROFILE_NOT_ENABLED');
+        if (!effective['profileLibraryAutoLoad.enabled']) warnings.push('PROFILE_AUTO_LOAD_DISABLED');
+        if (effective['profileLibraryAutoLoad.overwriteExisting']) warnings.push('PROFILE_LIBRARY_MAY_OVERWRITE_EXISTING');
+        if (effective['profileLibraryAutoLoad.importTemplate']) warnings.push('PROFILE_LIBRARY_MAY_IMPORT_GLOBAL_TEMPLATES');
+    }
+    if (keys.includes('debugLogging') && patch.debugLogging) warnings.push('DEBUG_LOGGING_MAY_RECORD_PRIVATE_DATA');
     if (keys.some(id => definitions[id].domain === 'memory' && id !== 'memoryMaxEntries')) {
         if (effective.memoryEnabled !== true) warnings.push('MEMORY_NOT_ENABLED');
         if (keys.some(id => ['autoMemoryEnabled', 'autoMemoryInterval', 'autoMemorySpeakers'].includes(id)) && effective.autoMemoryEnabled !== true) warnings.push('AUTO_NOT_ENABLED');
@@ -228,6 +235,12 @@ export function previewSettings({ baseline, changes, allowEmpty = false }) {
         keys.includes('storyBlueprintContinuePrompt') ? '蓝图续写 Prompt 只影响之后的手动或自动续写；空串使用当前界面语言的内置值。现有蓝图全文和进度可通过局部占位符注入并发送给模型，缺少蓝图时续写入口会拒绝；本次修改不立即追加节点。' : '',
         keys.includes('storyBlueprintJsonSchema') ? '蓝图 storyBlueprintJsonSchema 实际是附加在生成与续写 Prompt 后的输出格式说明文本，不是模型原生 JSON Schema，也不用于校验结果；空串使用内置说明。结果仍须能解析出非空 nodes 或 chapters。' : '',
         keys.includes('storyBlueprintProviderTemplate') ? '蓝图 Provider 模板只影响以后 storyBlueprintCurrent 的注入文本；空串使用内置模板。它只替换点分数据路径，未知路径变为空，不执行其他 Provider；蓝图完成时另用固定提示。遗漏当前节点详情或完成变量可能使导演缺少推进依据。' : '',
+        keys.includes('lang') ? '语言仅修改插件界面及后续语言相关内置文本；保留当前暮羽窗口输入，窗口完整翻译下次打开生效。不翻译已有内容，不改变酒馆全局语言。' : '',
+        keys.includes('debugLogging') ? '调试设置仅控制后续输出与追踪，可能记录业务资料；关闭不删除旧记录，不授予终端或日志读取权限。' : '',
+        keys.includes('customPromptsEnabled') ? '本次通过业务接口注册或注销现有自定义 Prompt Provider；不删除条目、不渲染内容、不立即调用模型。启用后引用它们的 Prompt 可能包含这些资料。冲突会导致失败；保存异常后按业务规则恢复，结果未知，不自动重试。' : '',
+        keys.some(id => id.startsWith('profileLibraryAutoLoad.')) ? '仅保存档案库加载策略，不立即导入或生成。影响所有聊天后续加载及手动导入默认选项；允许覆盖会替换匹配档案，导入模板可能改变全局档案模板。现有模式、固定包ID及匹配规则保持不变；自动加载禁用仅姓名匹配，固定模式无ID会退回最佳匹配。不确认库存在或当前可匹配角色数。' : '',
+        keys.some(id => id.startsWith('profileLibraryAutoLoad.')) ? `此次策略：模式为${effective['profileLibraryAutoLoad.mode'] === 'fixed' ? '固定档案包' : '最佳匹配'}；固定包 ID：${effective['profileLibraryAutoLoad.fixedId'] || '未选择'}；` +
+            Object.entries({ enabled: '自动加载', matchHash: '内容哈希匹配', matchAvatarName: '头像与名称匹配', overwriteExisting: '覆盖已有档案', importTemplate: '导入模板设置' }).map(([key, label]) => `${label}：${effective['profileLibraryAutoLoad.' + key] ? '开' : '关'}`).join('；') + '。' : '',
     ].filter(Boolean).join('');
     return copyJson({ contractVersion: 2, scope: 'global', structural: 'passed', range: 'passed', semantic: warnings.length ? 'warnings' : 'passed', intent: 'requires_user_review', warnings, diff,
         manifest: { type: 'settings-patch', version: 2, settings: Object.fromEntries(diff.map(d => [d.field, patch[d.field]])) }, notice: '仅预览，未应用。影响所有聊天；仅修改列出的字段。Prompt 最多4000字符，整份草稿仍受DTO字节预算限制。' + postSpeechNotice });

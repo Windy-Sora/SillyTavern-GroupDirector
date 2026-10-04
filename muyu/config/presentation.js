@@ -2,6 +2,11 @@ import { uiLabel } from '../../ui/i18n.js';
 
 // Explicit, reviewed UI-key aliases. No DOM scraping, inferred paths or write aliases.
 const groups = {
+    '@profileAutoSection': { 'profileLibraryAutoLoad.enabled': '@profileAuto', 'profileLibraryAutoLoad.overwriteExisting': '@profileOverwrite',
+        'profileLibraryAutoLoad.importTemplate': '@profileImportTemplate', 'profileLibraryAutoLoad.mode': '@profileAutoMode',
+        'profileLibraryAutoLoad.fixedId': '@profileFixed', 'profileLibraryAutoLoad.matchHash': '@profileHash',
+        'profileLibraryAutoLoad.matchAvatarName': '@profileAvatar', 'profileLibraryAutoLoad.matchNameOnly': '@profileName' },
+    customPromptsEnabled: { customPromptsEnabled: 'customPromptsEnabled' },
     memoryTitle: {
         memoryEnabled: 'memoryEnabled', autoMemoryEnabled: 'autoMemoryEnabled', autoMemoryInterval: '@memoryInterval', autoMemorySpeakers: 'autoMemorySpeakers',
         memoryPrompt: 'memoryPromptLabel', memoryCompressPrompt: 'memoryCompressPromptLabel', memoryJsonSchema: 'memoryJsonSchemaTitle', memoryRenderTemplate: 'memoryRenderTemplateTitle',
@@ -35,10 +40,16 @@ const groups = {
     psRoundEnabled: { postSpeechRoundEnabled: 'psRoundEnabled', postSpeechRoundPrompt: 'psRoundPromptLabel' },
     promptTitle: { llmPrompt: 'promptTitle' }, jsonSchemaCard: { llmJsonSchema: 'jsonSchemaCard' },
     knowledgeTitle: { knowledgeText: 'knowledgeTitle' }, identityTitle: { identityPrompt: 'identityTitle' },
-    providerTimeout: { providerTimeoutMs: 'providerTimeout' }, langLabel: { lang: 'langLabel' },
+    providerTimeout: { providerTimeoutMs: 'providerTimeout' }, langLabel: { lang: 'langLabel' }, debug: { debugLogging: 'debug' },
 };
 // Interval controls are a label/input/suffix sentence, not a standalone UI label.
 const composedLabels = {
+    '@profileAutoSection': ['档案库', 'Profile library'],
+    '@profileAuto': ['自动补缺', 'Auto-fill'], '@profileOverwrite': ['覆盖已有', 'Overwrite existing'],
+    '@profileImportTemplate': ['应用模板', 'Apply template'], '@profileAutoMode': ['档案库自动加载模式', 'Profile library auto-load mode'],
+    '@profileFixed': ['固定档案包 ID', 'Fixed profile package ID'], '@profileHash': ['按角色内容哈希匹配', 'Match character hash'],
+    '@profileAvatar': ['按头像与名称匹配', 'Match avatar and name'], '@profileName': ['仅按名称匹配', 'Match name only'],
+    '@zh': ['中文', 'Chinese'], '@en': ['英文', 'English'],
     '@memoryInterval': ['自动提取间隔（每 N 条新消息）', 'Auto-extraction interval (every N new messages)'],
     '@summaryInterval': ['自动总结间隔（每 N 条新消息）', 'Auto-summary interval (every N new messages)'],
     '@critiqueInterval': ['自动批判间隔（每 N 条新消息）', 'Auto-critique interval (every N new messages)'],
@@ -55,6 +66,7 @@ const units = {
     storyBlueprintMaxNodes: ['个节点', 'nodes'], npcMaxCount: ['个', 'NPCs'], npcBatchSize: ['个', 'NPCs'], providerTimeoutMs: ['毫秒', 'ms'],
 };
 const enumKeys = {
+    lang: { zh: '@zh', en: '@en' },
     mode: { off: 'modeOff', formula: 'modeFormula', llm: 'modeLlm' }, forceSpeakMode: { native: 'forceSpeakNative', block: 'forceSpeakBlock', llm: 'forceSpeakLlm' },
     llmCharDescMode: { full: 'charDescFull', slice: 'charDescSlice' }, llmScriptPosition: { 0: 'llmScriptPositionTop', 1: 'llmScriptPositionChat' },
     llmScriptContinuityMode: { last: 'continuityLast', history: 'continuityHistory' }, worldBookSourceMode: { st: 'worldBookSourceSt', manual: 'worldBookSourceManual' },

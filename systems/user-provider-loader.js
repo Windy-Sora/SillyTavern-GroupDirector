@@ -223,7 +223,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
     /**
      * Import a user-selected .js file as a provider or capability.
      */
-    async function importAsset(file, type, deps = {}) {
+    async function importAsset(file, type, deps = {}, sourceText = null, approvedSource = null) {
         if (!STORE_KEYS[type]) {
             return { ok: false, name: file?.name || 'unknown', error: `Unsupported user asset type: ${type}` };
         }
@@ -242,7 +242,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         const previousEntries = new Map();
         let insertedEntry = null;
         try {
-            const source = await readFileAsText(file);
+            const source = sourceText === null ? await readFileAsText(file) : sourceText;
             const digest = type === 'provider' ? await sourceDigest(name, source) : null;
 
             const findings = scanSource(source);
@@ -252,9 +252,9 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
                     `<b>Security warning</b><br>Dangerous APIs detected:<br><br>${lines.replace(/\n/g, '<br>')}<br><br>` +
                     `This code could: steal chat logs, exfiltrate API keys, or hijack the page.<br>` +
                     `Only import from trusted sources.`;
-                const userConfirmed = typeof confirmImport === 'function'
+                const userConfirmed = approvedSource === source || (typeof confirmImport === 'function'
                     ? await confirmImport(warningHtml)
-                    : false;
+                    : false);
                 if (!userConfirmed) {
                     return { ok: false, name, error: 'Import cancelled by user (security warning)' };
                 }
@@ -281,6 +281,7 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             }
             const liveIds = new Set(getRegistryIds(type, deps));
             const addedIds = [...registeredIds].filter(id => liveIds.has(id));
+            if (typeof deps.verifyRegistration === 'function' && !deps.verifyRegistration(addedIds)) throw Error('Provider registration did not match the approved IDs');
             log(`User ${type} import diff: added=[${addedIds.join(',')}]`);
 
             // Persist with enabled state
@@ -308,12 +309,14 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
     /**
      * Delete a user-imported asset.
      */
-    async function deleteAsset(name, type) {
+    async function deleteAsset(name, type, expectedEntry = null) {
         if (!STORE_KEYS[type]) return false;
         const store = getStore(type);
         const idx = store.findIndex(p => p.name === name);
         if (idx === -1) return false;
         const entry = store[idx];
+        if (expectedEntry && entry !== expectedEntry) throw Error('STALE_PROVIDER_ASSET');
+        const registeredBefore = new Map((entry.ids || []).map(id => [id, getRegistryEntry(type, id)]));
         store.splice(idx, 1);
         try {
             await saveStore();
@@ -321,11 +324,69 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
             if (!store.some(item => item.name === name)) store.splice(Math.min(idx, store.length), 0, entry);
             throw e;
         }
-        for (const id of (entry.ids || [])) unregisterOwned(type, id, name);
+        // Do not unregister a replacement installed by another operation during save.
+        if (!getStore(type).some(item => item.name === name)) for (const id of (entry.ids || [])) {
+            if (getRegistryEntry(type, id) === registeredBefore.get(id)) unregisterOwned(type, id, name);
+        }
         ensureManagedIds(type);
-        managedIds[type].delete(name);
+        if (!getStore(type).some(item => item.name === name)) managedIds[type].delete(name);
         log(`User ${type} "${name}" deleted and unregistered`);
         return true;
+    }
+
+    /** Replace one exact user source asset; never delete first or touch foreign registrations. */
+    async function replaceProviderSource(name, source, ids, deps, { expectedEntry, validate, restoreProvider } = {}) {
+        const store = getStore('provider'), before = expectedEntry;
+        if (!before || before.name !== name || store.find(row => row.name === name) !== before || typeof validate !== 'function') throw Error('STALE_PROVIDER_ASSET');
+        validate();
+        const oldSource = before.source, beforeIds = [...(before.ids || [])], oldIds = JSON.stringify(beforeIds);
+        const registered = new Map(), previous = new Map(), lifecycle = { active: true };
+        const omitted = new Map((before.ids || []).map(id => [id, getRegisteredProvider?.(id)]));
+        const original = new Map(ids.map(id => [id, getRegisteredProvider?.(id)]));
+        let blobUrl = '', inserted = null;
+        const check = () => {
+            if (!lifecycle.active || getStore('provider') !== store || store.find(row => row.name === name) !== before || before.source !== oldSource || JSON.stringify(before.ids || []) !== oldIds) throw Error('STALE_PROVIDER_ASSET');
+        };
+        const owned = getAssetDeps('provider', name, { registerProvider: provider => {
+            check();
+            if (!provider || typeof provider.render !== 'function' || typeof provider.placeholder !== 'string' || !provider.placeholder || !ids.includes(provider.id) || registered.has(provider.id)) throw Error('Provider registration did not match approved IDs');
+            const current = getRegisteredProvider?.(provider.id);
+            if (current !== original.get(provider.id)) throw Error('STALE_PROVIDER_ASSET');
+            if (current && !isOwnedBy('provider', current, name)) throw Error('PROVIDER_PROTECTED');
+            const result = deps.registerProvider(provider);
+            if (!result || getRegisteredProvider?.(provider.id) !== result) throw Error('Provider registration unavailable');
+            registered.set(provider.id, result); return result;
+        }, log: () => {} }, new Set(), previous, lifecycle, await sourceDigest(name, source));
+        try {
+            check(); validate();
+            blobUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+            const mod = await withTimeout(import(blobUrl), 'User Provider replacement module load');
+            check(); validate();
+            if (typeof mod.register !== 'function') throw Error('Module must export function register(deps)');
+            await withTimeout(Promise.resolve().then(() => mod.register(owned)), 'User Provider replacement register()', () => { lifecycle.active = false; });
+            check();
+            if (registered.size !== ids.length || ids.some(id => getRegisteredProvider?.(id) !== registered.get(id))) throw Error('Provider registration did not match approved IDs');
+            inserted = { ...before, source, ids: [...ids], updatedAt: Date.now() };
+            store[store.indexOf(before)] = inserted;
+            await saveStore();
+            // Only prune omitted IDs if this replacement is still the live source asset.
+            if (getStore('provider') !== store || store.find(row => row.name === name) !== inserted || inserted.source !== source || JSON.stringify(inserted.ids) !== JSON.stringify(ids) || ids.some(id => getRegisteredProvider?.(id) !== registered.get(id)) || beforeIds.some(id => !ids.includes(id) && getRegisteredProvider?.(id) !== omitted.get(id))) return { ok: false, name };
+            for (const id of beforeIds) if (!ids.includes(id)) {
+                // Omitted providers were not registered by this operation: preserve concurrent replacements.
+                if (getRegisteredProvider?.(id) === omitted.get(id)) unregisterOwned('provider', id, name);
+            }
+            ensureManagedIds('provider'); managedIds.provider.set(name, new Set(ids));
+            return { ok: true, name };
+        } catch {
+            const stillOurs = !inserted || getStore('provider') === store && store.includes(inserted) && inserted.source === source && JSON.stringify(inserted.ids) === JSON.stringify(ids);
+            if (inserted && stillOurs) store[store.indexOf(inserted)] = before;
+            for (const [id, instance] of registered) if (stillOurs && getRegisteredProvider?.(id) === instance) {
+                unregisterOwned('provider', id, name);
+                const old = previous.get(id);
+                if (old) restoreProvider?.(old);
+            }
+            return { ok: false, name };
+        } finally { lifecycle.active = false; if (blobUrl) URL.revokeObjectURL(blobUrl); }
     }
 
     function listAssets(type) {
@@ -436,5 +497,10 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         });
     }
 
-    return { importAsset, deleteAsset, listAssets, restoreAll, persistCapabilityEnabled, restoreCapabilityEnabled };
+    // approvedSource is supplied only by the trusted action executor after exact-source review.
+    function importSource(name, source, deps = {}, { approvedSource = null } = {}) {
+        if (typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(name) || typeof source !== 'string' || !source.trim() || source.length > 24000) throw Error('INVALID_PROVIDER_DRAFT');
+        return importAsset({ name: name + '.js' }, 'provider', deps, source, approvedSource);
+    }
+    return { importAsset, importSource, replaceProviderSource, deleteAsset, listAssets, restoreAll, persistCapabilityEnabled, restoreCapabilityEnabled };
 }

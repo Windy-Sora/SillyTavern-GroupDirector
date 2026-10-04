@@ -24,6 +24,21 @@ test('Task plan is bounded, read-only and labels unavailable write paths', () =>
     assert.throws(() => projectTaskPlan({ ...input, steps: [{ kind: 'write-anywhere', title: 'x', detail: 'x' }] }, target));
 });
 
+test('plan operation availability cannot be mistaken for source read availability', () => {
+    const module = createTaskPlanModule(); module.bindRun({ id: 'routing', taskId: 'task', target });
+    const definition = module.registry.get('muyu.task.plan');
+    assert.match(definition.inputSchema.properties.steps.items.properties.kind.description, /Operation kind, not subject/);
+    assert.match(definition.description, /Every reading\/contract-lookup\/analysis step uses kind=read/);
+    const proposal = { ...input, sources: ['variables', 'storyBlueprint'], steps: [
+        { kind: 'read', title: 'Read blueprint condition', detail: 'Read current task requirements' },
+        { kind: 'blueprint', title: 'Future write', detail: 'Unavailable through this plan' },
+    ] };
+    const result = JSON.parse(module.handlers['muyu.task.plan'](proposal, { runId: 'routing', target }).text);
+    assert.equal(result.steps[0].availability, 'read-only');
+    assert.equal(result.steps[1].availability, 'not-available');
+    assert.match(result.notice, /write restrictions do not prohibit reading/);
+});
+
 test('Broad infinite-flow proposals remain bounded and cannot include undeclared execution', () => {
     const plan = projectTaskPlan({ goal: '设计当前聊天的无限流规则', scope: 'mixed', sources: ['variables', 'storyBlueprint', 'configSettings'],
         steps: Array.from({ length: 8 }, (_, index) => ({ kind: index % 2 ? 'variables' : 'read', title: `步骤 ${index}`, detail: '仅核对或预览已列出的范围' })),

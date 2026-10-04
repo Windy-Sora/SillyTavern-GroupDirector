@@ -12,7 +12,7 @@ const strings = { type: 'array', items: { type: 'string', enum: configFields }, 
 // JSON text keeps the global tool schema small; the domain owner validates its contents.
 const output = { type: 'object', properties: { text: string, candidateId: { type: 'string', maxLength: 100 }, applyRequested: { type: 'boolean' } }, required: ['text', 'candidateId'], additionalProperties: false };
 
-export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, completionVariablePort }) {
+export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, completionVariablePort, blueprintTogglePort }) {
     const registry = createToolRegistry(), handlers = {}, runs = new Map(); let disposed = false;
     function target(expected) {
         const actual = getTarget();
@@ -43,6 +43,23 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         if (existingPlan) { completionVariablePort.assertFresh(existingPlan); return existingPlan; }
         return completionVariablePort.plan(target, baseline.storyBlueprintCompletionVariable, changes.storyBlueprintCompletionVariable);
     }
+    function inspectBlueprintToggle(changes, target, existingPlan = null) {
+        if (!Object.hasOwn(changes, 'storyBlueprintEnabled')) {
+            if (existingPlan) throw Error('INVALID_DRAFT');
+            return null;
+        }
+        if (Object.keys(changes).length !== 1) throw new ExecutionError('BLUEPRINT_TOGGLE_REQUIRES_SEPARATE_DRAFT');
+        if (!blueprintTogglePort) throw Error('BLUEPRINT_TOGGLE_UNAVAILABLE');
+        if (existingPlan) { blueprintTogglePort.assertFresh(existingPlan); return existingPlan; }
+        return blueprintTogglePort.plan(target, changes.storyBlueprintEnabled);
+    }
+    function withBlueprintImpact(preview, plan) {
+        if (!plan) return preview;
+        return copyJson({ ...preview, impact: { scope: 'current-chat', variableId: plan.variableId, operation: plan.operation,
+            before: plan.before, after: plan.operation === 'none' ? null : false,
+            enableAutoUpdate: plan.enableAutoUpdate, useManualInjection: plan.useManualInjection },
+            notice: '仅预览，未应用。蓝图开关影响所有聊天；当前聊天完成变量将创建或重置为 false（关闭且无变量时不创建）。启用会将兼容完成变量设为自动更新、手动注入。先确认聊天保存，再保存全局开关，可能部分完成；不改蓝图正文、进度或其他聊天变量。已有自动续写设置可能带来后续模型调用。' });
+    }
     function withCompletionImpact(preview, plan) {
         if (!plan) return preview;
         return copyJson({ ...preview, impact: { scope: 'current-chat', newVariableId: plan.newId, initialValue: false, oldVariable: 'retained' },
@@ -63,13 +80,15 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             if (!fields.some(field => Object.hasOwn(candidate.content.requestedChanges, field))) continue;
             if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan);
             if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan);
+            if (candidate.content.blueprintTogglePlan) blueprintTogglePort?.forget(candidate.content.blueprintTogglePlan);
             run.candidates.delete(id); run.invalidatedCandidateIds.push(id);
         }
     }
     register('muyu.settings.catalog', '列出当前可编辑配置领域和字段，以及尚未接入或暂缓的配置键；deferred 表示暮羽暂不支持修改，不能靠额外授权解锁。目录不读取配置值。', object({}), () => ({ candidateId: '', text: JSON.stringify({ version: 2,
         supported: configDomains.map(domain => ({ domain, fields: configFields.filter(id => fieldDefinition(id).domain === domain) })),
         labels: Object.fromEntries(configFields.map(id => [id, configPresentation(id).label])),
-        pending: configurationCoverage().filter(row => row.status !== 'supported' && row.status !== 'internal').map(({ key, owner, status }) => ({ key, owner, status })), dynamicPending: Object.keys(dynamicSettings),
+        partial: configurationCoverage().filter(row => row.partial).map(({ key, pendingFields }) => ({ key, pendingFields })),
+        pending: configurationCoverage().filter(row => !['supported', 'internal', 'special-editor-supported'].includes(row.status)).map(({ key, owner, status }) => ({ key, owner, status })), specialEditors: configurationCoverage().filter(row => row.status === 'special-editor-supported').map(({ key, writer }) => ({ key, writer })), dynamicPending: Object.keys(dynamicSettings),
     }) }));
     register('muyu.settings.contract', '查询字段用途、类型、限制和生效时机，也用于只读分析，不限于修改前校验。已知字段名时用fields一次查询多个领域，跨领域时省略domain；仅探索一个领域时用domain。两者同时提供时fields必须属于该领域；INVALID_CONTRACT_QUERY后改用fields单独查询或拆分领域，勿重复原组合。scope=global影响所有聊天；未指定字段保持原值，不填默认值。', {
         type: 'object', properties: { domain: { type: 'string', enum: configDomains }, fields: { type: 'array', items: { type: 'string', enum: configFields }, maxItems: 16 } },
@@ -85,21 +104,22 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         return { candidateId: '', text: JSON.stringify({ scope: 'global', persistence: 'unknown', fields: ids, values,
             labels: Object.fromEntries(ids.map(id => [id, configPresentation(id).label])), displayValues: settingDisplayValues(values) }) };
     });
-    register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。memoryMaxEntries、storyBlueprintCompletionVariable各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
+    register('muyu.settings.preview', '生成已登记配置的局部changes草稿。仅在全权限模式且用户明确要求直接修改时设置apply=true：宿主在本轮成功结束后重新校验并写入，不需额外授权调用。用户要求只预览或不修改时省略apply。普通模式只允许预览。不隐式开启功能。customPromptsEnabled必须单独预览；profileLibraryAutoLoad的已接入叶字段可相互组合但不可与其他配置混合，使用专用业务保存，不立即导入。memoryMaxEntries、storyBlueprintCompletionVariable、storyBlueprintEnabled各须单独出草稿；若收到对应 REQUIRES_SEPARATE_DRAFT 错误，按字段拆分后重新预览，不重复原调用。', { type: 'object', properties: { changes: configChangesSchema, apply: { type: 'boolean' } }, required: ['changes'], additionalProperties: false }, ({ changes, apply }, ctx) => {
         const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         run.invalidatedCandidateIds = [];
         invalidateCandidates(run, Object.keys(changes));
         const fields = dependencyFields(Object.keys(changes)), baseline = read(ctx.target, fields);
         const basePreview = previewSettings({ baseline, changes });
-        let plan, completionPlan, content;
+        let plan, completionPlan, togglePlan, content;
         try {
             plan = inspectMemoryLimit(changes, ctx.target);
             completionPlan = inspectCompletionVariable(changes, ctx.target, baseline);
-            const preview = withCompletionImpact(withMemoryImpact(basePreview, plan), completionPlan);
-            content = copyJson({ module: 'settings-config', producedByRunId: ctx.runId, baseline, requestedChanges: changes, preview, ...(plan ? { memoryPrunePlan: plan } : {}), ...(completionPlan ? { completionVariablePlan: completionPlan } : {}) });
+            togglePlan = inspectBlueprintToggle(changes, ctx.target);
+            const preview = withBlueprintImpact(withCompletionImpact(withMemoryImpact(basePreview, plan), completionPlan), togglePlan);
+            content = copyJson({ module: 'settings-config', producedByRunId: ctx.runId, baseline, requestedChanges: changes, preview, ...(plan ? { memoryPrunePlan: plan } : {}), ...(completionPlan ? { completionVariablePlan: completionPlan } : {}), ...(togglePlan ? { blueprintTogglePlan: togglePlan } : {}) });
             // Reserve envelope space for artifact, validation and operation metadata.
             if (new TextEncoder().encode(JSON.stringify(content)).length > 24000) throw Error('DRAFT_TOO_LARGE');
-        } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); throw error; }
+        } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); if (togglePlan) blueprintTogglePort?.forget(togglePlan); throw error; }
         const candidateId = 'settings:' + crypto.randomUUID();
         const result = copyJson({ candidateId, text: JSON.stringify(apply ? { ...content.preview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : content.preview) });
         run.candidates.set(candidateId, { candidateId, content }); return { ...result, ...(apply ? { applyRequested: true } : {}) };
@@ -112,7 +132,8 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
         if (jsonKey(baseline) !== jsonKey(content.baseline)) throw Error('STALE_BASELINE');
         const plan = inspectMemoryLimit(changes, expectedTarget, content.memoryPrunePlan);
         const completionPlan = inspectCompletionVariable(changes, expectedTarget, baseline, content.completionVariablePlan);
-        if (jsonKey(withCompletionImpact(withMemoryImpact(previewSettings({ baseline, changes }), plan), completionPlan)) !== jsonKey(content.preview)) throw Error('INVALID_DRAFT');
+        const togglePlan = inspectBlueprintToggle(changes, expectedTarget, content.blueprintTogglePlan);
+        if (jsonKey(withBlueprintImpact(withCompletionImpact(withMemoryImpact(previewSettings({ baseline, changes }), plan), completionPlan), togglePlan)) !== jsonKey(content.preview)) throw Error('INVALID_DRAFT');
     }
     return { registry, handlers,
         bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidates: new Map(), invalidatedCandidateIds: [] }); },
@@ -132,6 +153,6 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             verifyContent(a.content, run.target);
             return app.validateArtifact(id, revision, { contractVersion: 2, structural: 'passed', semantic: a.content.preview.semantic, intent: 'requires_user_review', baseline: 'matched-at-validation' });
         },
-        forgetRun(id) { const run = runs.get(id); for (const candidate of run?.candidates.values() || []) { if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan); if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan); } runs.delete(id); }, dispose() { disposed = true; runs.clear(); memoryLimitPort?.clear(); completionVariablePort?.clear(); },
+        forgetRun(id) { const run = runs.get(id); for (const candidate of run?.candidates.values() || []) { if (candidate.content.memoryPrunePlan) memoryLimitPort?.forget(candidate.content.memoryPrunePlan); if (candidate.content.completionVariablePlan) completionVariablePort?.forget(candidate.content.completionVariablePlan); if (candidate.content.blueprintTogglePlan) blueprintTogglePort?.forget(candidate.content.blueprintTogglePlan); } runs.delete(id); }, dispose() { disposed = true; runs.clear(); memoryLimitPort?.clear(); completionVariablePort?.clear(); blueprintTogglePort?.clear(); },
     };
 }

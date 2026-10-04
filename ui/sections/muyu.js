@@ -1,14 +1,39 @@
+import { createSelectionEditorPort } from '../../muyu/host/selection-editor.js';
+import { createLedgerEditorPort } from '../../muyu/host/ledger-editor.js';
+import { createBlueprintNodeEditorPort } from '../../muyu/host/blueprint-node-editor.js';
+import { createNpcEditorPort } from '../../muyu/host/npc-editor.js';
+import { createProfileEditorPort } from '../../muyu/host/profile-editor.js';
+import { createMemoryEditorPort } from '../../muyu/host/memory-editor.js';
 import { registerSection } from './registry.js';
 import { createHostBridge } from '../../muyu/host/bridge.js';
 import { createProfileWriter } from '../../muyu/host/profile-write.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { createMemoryLimitPort } from '../../muyu/host/memory-limit.js';
+import { createStoryBlueprintTogglePort } from '../../muyu/host/story-blueprint-toggle.js';
+import { createSettingsSwitchPort } from '../../muyu/host/settings-switches.js';
 import { createStoryCompletionVariablePort } from '../../muyu/host/story-completion-variable.js';
 import { createVariableDraftPort } from '../../muyu/host/variable-draft.js';
+import { createVariableEditorPort } from '../../muyu/host/variable-editor.js';
 import { createVariableWriter } from '../../muyu/host/variable-write.js';
 import { createTaskBundleDraftPort } from '../../muyu/host/task-bundle-draft.js';
 import { createTaskBundleWriter } from '../../muyu/host/task-bundle-write.js';
 import { createProviderPort } from '../../muyu/host/providers.js';
+import { createBrowserScriptTester } from '../../muyu/host/script-test.js';
+import { createBlueprintLibraryChatPort } from '../../muyu/host/blueprint-library-chat.js';
+import { createNpcLibraryChatPort } from '../../muyu/host/npc-library-chat.js';
+import { createProfileLibraryChatPort } from '../../muyu/host/profile-library-chat.js';
+import { createBlueprintLibraryPort } from '../../muyu/host/blueprint-libraries.js';
+import { createNpcLibraryPort } from '../../muyu/host/npc-libraries.js';
+import { createProfileLibraryPort } from '../../muyu/host/profile-libraries.js';
+import { createCustomPromptPort } from '../../muyu/host/custom-prompts.js';
+import { createCustomAgentPort } from '../../muyu/host/custom-agents.js';
+import { createMemoryGenerationPort } from '../../muyu/host/memory-generation.js';
+import { createProfileGenerationPort } from '../../muyu/host/profile-generation.js';
+import { createGenerationBatchPort } from '../../muyu/host/generation-batch.js';
+import { createNpcGenerationPort } from '../../muyu/host/npc-generation.js';
+import { createScriptExecutorPort } from '../../muyu/host/script-executors.js';
+import { createProviderAssetPort } from '../../muyu/host/provider-assets.js';
+import { createBrowserProviderTester } from '../../muyu/host/provider-test.js';
 import { createCredentialStore } from '../../muyu/host/credentials.js';
 import { createRunConfigStore } from '../../muyu/host/run-config.js';
 import { createContextConfigStore } from '../../muyu/host/context-config.js';
@@ -23,6 +48,7 @@ import { createFloatingShell } from '../floating/shell.js';
 import { getQuickActions } from '../quick-actions.js';
 import { syncConfigPromptEditors } from '../../muyu/ui/config-prompt-editors.js';
 import { toggleContinuityMode } from '../i18n.js';
+import { syncGeneralSettingsView } from '../general-settings-view.js';
 
 // deps survives reloadSettingsUI; the section owns only the disposable view.
 registerSection('muyu', ctx => {
@@ -45,14 +71,55 @@ registerSection('muyu', ctx => {
             changed: () => { const live = owner.currentContext || ctx; live.refreshMemoryList?.(); window.__gdRefreshDashboard?.(); } });
         const completionVariablePort = createStoryCompletionVariablePort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata,
             getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, saveChatConfirmed: ctx.saveVariablesChatConfirmed });
+        const blueprintTogglePort = createStoryBlueprintTogglePort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata,
+            getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, saveChatConfirmed: ctx.saveVariablesChatConfirmed,
+            changed: () => { window.__gdRefreshVariables?.(); window.__gdRefreshDashboard?.(); } });
         const variableDraftPort = createVariableDraftPort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY });
-        const variableWriter = createVariableWriter({ draftPort: variableDraftPort, getTarget: () => host?.currentTarget(),
+        const selectionEditor = createSelectionEditorPort({getTarget:()=>host?.globalTarget,getSettings:()=>ctx.settings,getWorldNames:()=>(owner.currentContext||ctx).world_names,
+            worldBookScanner:ctx.worldBookScanner,profileLibrarySystem:ctx.profileLibrarySystem,saveSettings:ctx.saveMuyuCredentials,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;}});
+        const ledgerEditor = createLedgerEditorPort({getTarget:()=>host?.currentTarget(),getMetadata:ctx.getChatMetadata,extensionKey:ctx.EXT_KEY,saveChatConfirmed:ctx.saveLedgerChatConfirmed,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;},
+            changed:index=>{const live=owner.currentContext||ctx;const history=live.getDirectorHistory?.()||[];
+                if(index===history.length-1)live.onLatestEntryEdited?.();
+                live.$c?.('ledger-count')?.text(live.settings.lang==='en'?'Ledger updated in memory; see Muyu receipt. Refresh to view; editor draft kept.':'账本已更新内存；保存结果见暮羽回执。点击刷新查看，编辑草稿已保留。');}});
+        const blueprintNodeEditor = createBlueprintNodeEditorPort({getTarget:()=>host?.currentTarget(),getMetadata:ctx.getChatMetadata,extensionKey:ctx.EXT_KEY,saveChatConfirmed:ctx.saveStoryBlueprintChatConfirmed,
+            getSettings:()=>ctx.settings,getChatLength:()=>ctx.getContext().chat?.length,saveStructureConfirmed:ctx.saveBlueprintLibraryChatConfirmed,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending||!!ctx.storyBlueprintSystem?.isGenerating?.();},
+            changed:()=>{const live=owner.currentContext||ctx;live.$c?.('story-blueprint-status')?.text(live.settings.lang==='en'?'Blueprint data updated in memory; see Muyu save receipt. Refresh Blueprint to view; JSON draft kept.':'蓝图数据已更新内存；保存结果见暮羽回执。点击刷新查看，JSON草稿已保留。');}});
+        const npcEditor = createNpcEditorPort({getTarget:()=>host?.currentTarget(),getMetadata:ctx.getChatMetadata,extensionKey:ctx.EXT_KEY,system:ctx.npcSystem,saveChatConfirmed:ctx.saveNpcChatConfirmed,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;},
+            changed:()=>{const live=owner.currentContext||ctx;live.refreshNpcList?.();window.__gdRefreshDashboard?.();}});
+        const profileEditor = createProfileEditorPort({getTarget:()=>host?.currentTarget(),getMetadata:ctx.getChatMetadata,getCharacters:ctx.getCharacters,getCreationContext:()=>ctx.profileSystem.inspectManualCreation(),extensionKey:ctx.EXT_KEY,saveChatConfirmed:ctx.saveProfileEditorChatConfirmed,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending||!!ctx.profileSystem?.isGenerating?.()||!!ctx.profileLibrarySystem?.isAutoLoading?.()||getQuickActions(owner.currentContext||ctx).unavailable('profiles')==='busy';},
+            changed:()=>{const live=owner.currentContext||ctx;live.profileSystem?.refreshProfileManagementUI?.();window.__gdRefreshDashboard?.();}});
+        const memoryEditor = createMemoryEditorPort({getTarget:()=>host?.currentTarget(),getMetadata:ctx.getChatMetadata,getCharacters:ctx.getCharacters,getSettings:()=>ctx.settings,getChatLength:()=>ctx.getContext().chat?.length,extensionKey:ctx.EXT_KEY,saveChatConfirmed:ctx.saveMemoriesChatConfirmed,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending||!!ctx.memorySystem?.isGenerating?.()||getQuickActions(owner.currentContext||ctx).unavailable('memory')==='busy';},
+            changed:()=>{const live=owner.currentContext||ctx;live.renderMemoryList?.();window.__gdRefreshDashboard?.();}});
+        const variableEditor = createVariableEditorPort({
+            getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, getSettings: () => ctx.settings,
+            getCharacters: () => (ctx.getCharacters?.() || []).map(c => ({avatar:c.avatar,name:c.name})), getGroup: ctx.getCurrentGroup,
+            extensionKey: ctx.EXT_KEY, saveChatConfirmed: ctx.saveVariablesChatConfirmed,
+            isBusy: () => {
+                const guards=ctx.getMuyuGuards?.()||{};
+                return !!guards.roundActive||!!guards.manualGenerating||!!guards.takeoverPending||!!ctx.storyBlueprintSystem?.isGenerating?.();
+            },
+            changed: () => { window.__gdRefreshVariables?.(); window.__gdRefreshDashboard?.(); },
+        });
+        const variableWriter = createVariableWriter({ draftPort: variableDraftPort, editorPort: variableEditor, getTarget: () => host?.currentTarget(),
             getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY, saveChatConfirmed: ctx.saveVariablesChatConfirmed,
             changed: () => { window.__gdRefreshVariables?.(); window.__gdRefreshDashboard?.(); } });
-        const configWriter = createConfigWriter({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, memoryLimitPort, completionVariablePort,
+        const configWriter = createConfigWriter({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, memoryLimitPort, completionVariablePort, blueprintTogglePort,
+            settingsSwitchPort: createSettingsSwitchPort({ customPromptsSystem: ctx.customPromptsSystem, profileLibrarySystem: ctx.profileLibrarySystem }),
             isBusy: () => !ctx.getMuyuGuards || Object.entries(ctx.getMuyuGuards()).some(([key, value]) => ['roundActive', 'takeoverPending', 'manualGenerating'].includes(key) && value) || !!ctx.summarySystem?.isGenerating?.() || !!ctx.critiqueSystem?.isGenerating?.() || !!ctx.profileSystem?.isGenerating?.() || !!ctx.storyBlueprintSystem?.isGenerating?.() || !!ctx.npcSystem?.isGenerating?.() || ['profiles', 'memory', 'summary', 'blueprint'].some(id => getQuickActions(ctx).unavailable(id) === 'busy'),
             changed: fields => {
                 const live = owner.currentContext || ctx;
+                syncGeneralSettingsView(live, fields);
+                if (fields.includes('customPromptsEnabled')) live.$c('cp-enabled').prop('checked', live.settings.customPromptsEnabled !== false);
+                for (const [key, id] of Object.entries({ enabled: 'profile-library-auto-enabled', overwriteExisting: 'profile-library-overwrite', importTemplate: 'profile-library-import-template' })) {
+                    if (fields.includes('profileLibraryAutoLoad.' + key)) live.$c(id).prop('checked', !!live.settings.profileLibraryAutoLoad?.[key]);
+                }
+                if (fields.some(key => key.startsWith('profileLibraryAutoLoad.'))) window.__gdRefreshDashboard?.();
                 getQuickActions(live).refresh();
                 if (fields.includes('profileEnabled')) {
                     live.$c('profile-enabled').prop('checked', live.settings.profileEnabled);
@@ -66,6 +133,10 @@ registerSection('muyu', ctx => {
                 }
                 if (fields.includes('profileTokenBudget')) live.$c('profile-token-budget').val(live.settings.profileTokenBudget);
                 if (fields.includes('profileConcurrency')) live.$c('profile-concurrency').val(live.settings.profileConcurrency);
+                if (fields.includes('storyBlueprintEnabled')) {
+                    live.$c('story-blueprint-enabled').prop('checked', live.settings.storyBlueprintEnabled);
+                    window.__gdRefreshDashboard?.();
+                }
                 if (fields.includes('storyBlueprintAutoContinue')) live.$c('story-blueprint-auto-continue').prop('checked', live.settings.storyBlueprintAutoContinue);
                 if (fields.includes('storyBlueprintMaxNodes')) live.$c('story-blueprint-max-nodes').val(live.settings.storyBlueprintMaxNodes);
                 if (fields.includes('llmHistoryEnabled')) live.$c('llm-history-enabled').prop('checked', live.settings.llmHistoryEnabled);
@@ -127,11 +198,67 @@ registerSection('muyu', ctx => {
                     if (fields.includes('worldBookMaxEntries')) live.$c('world-book-max-entries').val(live.settings.worldBookMaxEntries);
                 }
             } });
-        const bundleDraftPort = createTaskBundleDraftPort({ getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings, variableDraftPort });
-        const bundleWriter = createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget: () => host?.currentTarget(), variableWriter, configWriter });
+        const blueprintLibraries = ctx.storyBlueprintLibrarySystem ? createBlueprintLibraryPort({ getSettings: () => ctx.settings, system: ctx.storyBlueprintLibrarySystem }) : null;
+        const npcLibraries = ctx.npcLibrarySystem ? createNpcLibraryPort({ getSettings: () => ctx.settings, system: ctx.npcLibrarySystem }) : null;
+        const profileLibraries = ctx.profileLibrarySystem ? createProfileLibraryPort({ getSettings: () => ctx.settings, system: ctx.profileLibrarySystem }) : null;
+        const memoryGeneration = ctx.memorySystem?.generateApproved ? createMemoryGenerationPort({ getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings,
+            getContext: ctx.getContext, getCharacters: ctx.getCharacters, getProviders: ctx.getMuyuProviders, system: ctx.memorySystem,
+            saveChatConfirmed: ctx.saveMemoriesChatConfirmed,
+            isBusy: () => { const g = ctx.getMuyuGuards?.() || {}; return !!g.roundActive || !!g.manualGenerating || !!g.takeoverPending || !!ctx.summarySystem?.isGenerating?.() || !!ctx.critiqueSystem?.isGenerating?.() || !!ctx.profileSystem?.isGenerating?.() || !!ctx.npcSystem?.isGenerating?.() || !!ctx.storyBlueprintSystem?.isGenerating?.(); },
+            changed: () => { const live = owner.currentContext || ctx; live.renderMemoryList?.(); window.__gdRefreshDashboard?.(); } }) : null;
+        const profileGeneration = ctx.profileSystem?.generateApproved ? createProfileGenerationPort({ getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings,
+            getContext: ctx.getContext, getCharacters: ctx.getCharacters, getProviders: ctx.getMuyuProviders, system: ctx.profileSystem,
+            saveChatConfirmed: ctx.saveProfilesChatConfirmed,
+            // Do not include profileSystem's own physical lease: current() also runs inside this generation.
+            isBusy: () => { const g = ctx.getMuyuGuards?.() || {}; return !!g.roundActive || !!g.manualGenerating || !!g.takeoverPending || !!ctx.profileLibrarySystem?.isAutoLoading?.() || !!ctx.memorySystem?.isGenerating?.() || !!ctx.summarySystem?.isGenerating?.() || !!ctx.critiqueSystem?.isGenerating?.() || !!ctx.npcSystem?.isGenerating?.() || !!ctx.storyBlueprintSystem?.isGenerating?.(); } }) : null;
+        const npcGeneration = ctx.npcSystem?.generateApproved ? createNpcGenerationPort({ getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings,
+            getContext: ctx.getContext, getProviders: ctx.getMuyuProviders, system: ctx.npcSystem,
+            saveChatConfirmed: ctx.saveNpcChatConfirmed,
+            // Its own physical lease is checked by npcSystem, not by this cross-business guard.
+            isBusy: () => { const g = ctx.getMuyuGuards?.() || {}; return !!g.roundActive || !!g.manualGenerating || !!g.takeoverPending || !!ctx.profileLibrarySystem?.isAutoLoading?.() || !!ctx.memorySystem?.isGenerating?.() || !!ctx.profileSystem?.isGenerating?.() || !!ctx.summarySystem?.isGenerating?.() || !!ctx.critiqueSystem?.isGenerating?.() || !!ctx.storyBlueprintSystem?.isGenerating?.(); } }) : null;
+        const generationBatch = memoryGeneration && profileGeneration && npcGeneration && ctx.AgentRegistry ? createGenerationBatchPort({
+            getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings, getContext: ctx.getContext,
+            getCharacters: ctx.getCharacters, getProviders: ctx.getMuyuProviders,
+            getAgents: () => ctx.AgentRegistry.list().map(row => ctx.AgentRegistry.get(row.id)),
+            extensionKey: ctx.EXT_KEY, memoryGeneration, profileGeneration, npcGeneration,
+            isBusy: () => { const g = ctx.getMuyuGuards?.() || {}; return !!g.roundActive || !!g.manualGenerating || !!g.takeoverPending || !!ctx.profileLibrarySystem?.isAutoLoading?.() || !!ctx.memorySystem?.isGenerating?.() || !!ctx.profileSystem?.isGenerating?.() || !!ctx.npcSystem?.isGenerating?.() || !!ctx.summarySystem?.isGenerating?.() || !!ctx.critiqueSystem?.isGenerating?.() || !!ctx.storyBlueprintSystem?.isGenerating?.(); },
+        }) : null;
+        const customPrompts = ctx.customPromptsSystem ? createCustomPromptPort({ getSettings: () => ctx.settings, system: ctx.customPromptsSystem }) : null;
+        const customAgents = ctx.customAgentSystem ? createCustomAgentPort({ getSettings: () => ctx.settings, system: ctx.customAgentSystem, getProviders: ctx.getMuyuProviders, getContext: ctx.getContext, getTarget: () => host?.currentTarget(),
+            changed: () => owner.currentContext?.refreshCustomAgentList?.() }) : null;
+        const scriptExecutors = createScriptExecutorPort({ getSettings: () => ctx.settings, getContext: ctx.getContext, getTarget: () => host?.currentTarget(), system: ctx.scriptExecutorSystem, testRunner: createBrowserScriptTester(),
+            changed: () => owner.currentContext?.refreshScriptExecutorList?.() });
+        const bundleDraftPort = createTaskBundleDraftPort({ getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings, variableDraftPort, scriptPort: scriptExecutors });
+        const bundleWriter = createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget: () => host?.currentTarget(), variableWriter, configWriter, scriptWriter: scriptExecutors });
         const profileWriter = createProfileWriter({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials,
             getDrawerKeys: () => ctx.configProfileSystem.getDrawerKeys(), onSaved: () => window.__gdRefreshConfigList?.() });
-        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, credentials, runConfig, contextConfig, instructionConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort });
+        const providerAssets = createProviderAssetPort({ getSettings: () => ctx.settings, loader: ctx.userProviderLoader,
+            testRunner: createBrowserProviderTester(),
+            getProviders: ctx.getMuyuProviders, registerProvider: provider => window.GroupDirector.registerProvider(provider),
+            changed: () => owner.currentContext?.refreshUserProviderList?.() });
+        const profileLibraryChat = profileLibraries ? createProfileLibraryChatPort({
+            getSettings: () => ctx.settings, getMetadata: ctx.getChatMetadata, getTarget: () => host?.currentTarget(),
+            system: ctx.profileLibrarySystem, libraryPort: profileLibraries, saveChatConfirmed: ctx.saveProfilesChatConfirmed,
+            isBusy: () => !!ctx.profileSystem?.isGenerating?.() || ['busy', 'round-active'].includes(getQuickActions(ctx).unavailable('profiles')),
+        }) : null;
+        const blueprintLibraryChat = blueprintLibraries ? createBlueprintLibraryChatPort({
+            getSettings: () => ctx.settings, getMetadata: ctx.getChatMetadata, getTarget: () => host?.currentTarget(),
+            getChatLength: () => ctx.getContext()?.chat?.length ?? 0, extensionKey: ctx.EXT_KEY,
+            system: ctx.storyBlueprintLibrarySystem, libraryPort: blueprintLibraries, saveChatConfirmed: ctx.saveBlueprintLibraryChatConfirmed,
+            isBusy: () => {
+                const guards = ctx.getMuyuGuards?.() || {};
+                return !!ctx.storyBlueprintSystem?.isGenerating?.() || !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending;
+            },
+        }) : null;
+        const npcLibraryChat = npcLibraries ? createNpcLibraryChatPort({
+            getSettings: () => ctx.settings, getMetadata: ctx.getChatMetadata, getTarget: () => host?.currentTarget(),
+            system: ctx.npcLibrarySystem, libraryPort: npcLibraries, saveChatConfirmed: ctx.saveNpcChatConfirmed,
+            isBusy: () => {
+                const guards = ctx.getMuyuGuards?.() || {};
+                return !!ctx.npcSystem?.isGenerating?.() || !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending;
+            },
+        }) : null;
+        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
         owner.controller = createMuyuController({ host });
         owner.floatingRegistry = createFloatingRegistry();
         owner.floatingRegistry.register({
@@ -177,8 +304,8 @@ registerSection('muyu', ctx => {
             owner.floating.dispose(); owner.floatingRegistry.dispose(); void owner.controller.dispose().catch(() => {});
         });
     }
-    owner.refreshView = () => {
-        root.__gdMuyuDispose?.(); owner.floating.setLanguage(ctx.settings.lang);
+    owner.refreshView = (options = {}) => {
+        root.__gdMuyuDispose?.(); owner.floating.setLanguage(ctx.settings.lang, options);
         const en = ctx.settings.lang === 'en'; root.classList.add('gd-muyu-entry');
         const label = document.createElement('label'); label.className = 'checkbox_label';
         const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.id = 'gd-muyu-floating-ball-visible';

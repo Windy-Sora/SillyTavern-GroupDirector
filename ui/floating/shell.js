@@ -136,8 +136,9 @@ export function createFloatingShell({ registry, doc = document, win = window, la
             if (!ballVisible) menu.hidden = true;
             render();
         },
-        setLanguage(value) {
+        setLanguage(value, { preserveActive = false } = {}) {
             if (value === language || disposed) return;
+            if (preserveActive) { language = value; render(); return; }
             const id = activeId; if (id) close(); language = value; render(); if (id) open(id);
         },
         dispose() { if (disposed) return; close(); disposed = true; unsubscribe(); observer?.disconnect(); win.removeEventListener('resize', layout); dragCleanups.forEach(fn => fn()); root.remove(); },

@@ -2,6 +2,44 @@
 
 本目录管理可编辑配置的登记、选择性读取、纯预览与写入前条件。业务值仍存放于插件 settings；没有新增配置仓库，也不使用配置档导入作为通用写入器。
 
+## 普通设置第三轮：有业务效果的开关（2026-10-03）
+
+当前13领域、96叶字段；115个默认顶层键中91 supported、12 pending、7 special-editor-pending、2 special-editor-supported、3 internal。supported 含部分接入对象：`profileLibraryAutoLoad` 仅三项叶字段已接入，目录用 partial/pendingFields 明示剩余子字段，不表示整个对象任意可改。
+
+- 开放 `profileLibraryAutoLoad.enabled / overwriteExisting / importTemplate`，保留整个既有策略作为前置基线，但不把资源正文放进上下文。这三个布尔选项可共同预览，不可与其他设置混合；缺失或不支持的旧策略拒绝，不在暮羽路径静默补默认值。
+- 调用原 `updateAutoLoadSettings` 队列保存，不执行 autoLoadForCurrentGroup、不导入包、不生成。自动补缺影响后续启动或聊天切换；覆盖已有、应用模板也影响原手动导入所用默认选项。预览显示现有匹配模式及风险开关；不宣称当前存在可用包或匹配角色。
+- 模式、固定包 ID、匹配规则本轮只读作依赖，不写入。自动加载路径强制 matchNameOnly=false；GUI 的该选项仍可能用于手动导入。固定模式但空 fixedId 在现有运行时退回最佳匹配；不在本轮擅自改为选书／选包。
+- 开放单字段 `customPromptsEnabled`，调用原 `setMasterEnabled` 业务队列注册／注销自定义 Prompt Provider，不删除条目、不改正文、不执行 render 或模型请求。启用只注册当前有效且单项启用的条目；后续 Prompt 引用可能将内容送入模型或参与递归解析。此开关不授予独立 Provider 执行权限。
+- `muyu/host/settings-switches.js` 负责窄适配；两个业务 API 新增可选同步 beforeApply 钩子，在队列实际轮到操作时复核基线及忙碌状态，旧 GUI 调用不变。自动加载正在执行时拒绝暮羽修改加载策略。不要将注册等业务效果放在可忽略异常的 UI 回调里。
+- 保存失败沿用各业务系统原有的字段级条件恢复及注册状态重建，保留无关并发修改；writer 报 outcome_unknown，不宣称落盘成功或绝对未执行，不自动重试。成功无本操作持久化凭据则 applied_unconfirmed。复用 v2 回执和 configSettings 来源权限。
+- 暂不进入混合整单或生成配置档，避免对象合并或遗漏业务注册。UI 仅同步开关与摘要，保留编辑器和输入草稿。
+- 回归入口：`muyu-settings-switches.test.mjs`；控制器分别覆盖普通审批、全权限及仅预览。未做真实模型或真实宿主 UI 验收。
+
+## 普通设置第二轮：蓝图总开关（2026-10-03）
+
+当轮共13领域、92叶字段，覆盖115个默认顶层键中的89个 supported；14 pending、7 special-editor-pending、2 special-editor-supported、3 internal。
+
+- `storyBlueprintEnabled` 必须单独成草稿。读取开关只需 configSettings；预览还需当前聊天 variables 读取授权，绑定当前聊天、完成变量定义与存储值、开关及自动续写设置基线。
+- 启用：完成变量不存在时创建插件所有的布尔 global 变量；已有兼容变量按现有蓝图语义设为自动更新、手动注入，保留规则等其他字段。启用和禁用都重置当前聊天完成值为 false；禁用且变量不存在则不创建、不保存聊天。
+- 名称须为运行时可直接使用的规范 ID；非规范名称、孤立值、重复定义、锁定、非布尔/非 global、外部 owner 或内部 guard 冲突均拒绝，不擅自覆盖。这比旧 GUI 更保守；应先在原变量编辑器处理冲突。
+- 两域顺序：完成变量修改并确认聊天保存 → 再检查目标、变量和设置基线及忙碌状态 → 写入全局开关并请求保存。切聊天、相关并发变化或保存失败阻止后续步骤；无关变量更新保留，不进行整仓回滚。全局保存未知不伪装成持久化成功。
+- 不修改蓝图正文、节点或模式进度；不修改其他聊天完成变量。不立即生成；开启后已有自动续写规则可能带来后续模型调用。
+- v2 回执增加可选 `blueprintToggle`，分别记录 chatSave/settingsSave；历史携带 variables 来源权限，导入不会恢复批准。完成变量日志保留有界记录，不伪造消息锚点。
+- 当前不允许放入 task-bundle 或 generated-profile；全权限仅在用户明确要求应用且模型设置 apply=true 后经原协调器执行，单纯预览仍不写入。
+- 回归：`muyu-blueprint-toggle.test.mjs`，控制器普通审批/全权限/仅预览，以及中英文卡片渲染。
+
+## 普通设置第一轮（2026-10-03，历史记录）
+
+新增 general 领域：`lang`（仅 zh/en）与 `debugLogging`（严格布尔）。共13领域、91叶字段，覆盖115个默认顶层键中的88个 supported；15 pending、7 special-editor-pending、2 special-editor-supported、3 internal。
+
+- 复用 settings 的读取、合同、纯预览、精确批准及全权限显式 apply；读权限沿用 configSettings。可进入现有 settings-only 或混合整单，不创建新的工具。未指定字段保持不变。
+- 语言只影响插件界面及后续语言相关内置文本，不翻译历史、自定义 Prompt，不修改 ST 全局语言。`ui/general-settings-view.js` 只更新普通标签和控件，不把已保存历史文本覆盖到编辑器；悬浮框以 preserveActive 更新外壳语言，当前业务视图保持挂载，完整翻译下次打开生效。保留未发送消息、当前窗口编辑内容；部分旧动态内容仍遵循原刷新时机。
+- 调试开关控制后续插件调试输出及相关追踪；开启提示可能记录业务输入／输出等隐私资料。关闭不清除旧日志，不停止已开始的采集，不授予终端、日志正文或密钥读取权。
+- 这两项是用户个人偏好，不加入暮羽生成的剧情配置档；profile.preview 明确提示使用 settings.preview。已有外部配置档导入契约不在本轮扩展范围。
+- 保存沿用普通配置写入结果：异常不声称落盘成功，内存可能已变化；不整仓回滚或覆盖并发编辑。UI 刷新失败不改变保存结果。
+- 当轮蓝图总开关、档案库自动加载及 Prompt 总开关尚未开放（蓝图开关现已按上述第二轮接入）；memoryTokenBudget 和 llmJsonSchemaHint 无运行消费者，本轮不开放无效写入。
+- 回归：`muyu-general-settings.test.mjs`、控制器全权限实际保存／仅预览、floating-ui 保留挂载测试，并检查整单和生成配置档边界。
+
 ## 用户可读展示
 
 `presentation.js` 显式映射已登记字段到现有 UI 的中英文名称、功能区、单位和枚举文案，通过 `ui/i18n.js` 的纯文本 `uiLabel()` 复用字典，不读取 DOM。目录与读取结果提供 `labels`，字段合同提供 `presentation`；暮羽默认使用界面名称说明配置，只有代码、JSON或排错需求才附原字段 ID。名称不是生效机制或缺省行为的证据，仍需查原合同。
@@ -53,7 +91,7 @@ PostSpeech／执行追踪的七项普通配置已开放暮羽写入，均需预�
 
 导演普通控制另开放九项。`llmScriptEnabled` 生成的是舞台指导文本，不是可执行脚本；`llmScriptPosition=1` 放在对话附近，可能比 0 的 Prompt 开头影响更直接。连续性仅在 LLM 模式且已有当前聊天导演历史时有内容可注入；关闭历史记录开关不删除旧历史，`llmScriptContinuityCount=0` 会使用全部保存的计划，可能显著增加上下文。`forceSpeakMode=llm` 需要独立模型连接并可能增加调用，`block` 则直接截停对应强制发言。模板递归/轮数/未知占位符调试影响导演、强制发言、蓝图等后续渲染；本工具的 1–10 轮限制比旧 UI 和运行时更保守，递归复用同次 Provider 结果而非重新执行 Provider。以上均只写入批准的全局叶字段，不立即启动生成；经典复选框、单选项、数值和相关显隐在应用后同步。
 
-`scriptExecutors` 同样标为 `deferred`。脚本执行器及用户 Provider／Capability 等可执行代码资产暂不由暮羽创建、编辑、导入或删除；这不改变现有手动编辑入口，也不改变经过单独批准的 Provider 调用机制。若将来开放代码写入，须先设计独立的内容审阅、危险能力提示、目标隔离与批准合同，不能塞进普通配置叶字段写入器。
+`scriptExecutors` 标为 `special-editor-supported`，通过独立脚本模块读取定义、预览增删改及精确批准保存，不属于普通叶字段写入器。新脚本默认关闭；保存启用版本会允许后续匹配事件自动执行，确认卡必须提示页面权限和超时不能终止副作用。合成测试用scripts.test且仅任务授权；整单可包含精确脚本定义，未确认保存停止后续项。指定脚本真实执行使用prepare_execution→execute，绑定版本／聊天／阶段并单独申请任务代码授权；全权限跳过弹窗但不跳过基线核验。用户 Provider 工作台已独立开放；Capability 写入仍未开放。
 
 统一助手使用 `muyu.settings.catalog` 查询支持状态，`contract` 按领域取契约，`read` 按字段读取当前内存值，`preview` 提交闭合 changes。工具 wire 版本为 1，配置草稿契约版本为 2。字段多时仍按领域逐步提供契约，不发送整个 settings。
 
@@ -73,7 +111,7 @@ NPC 基础设置只修改四个全局叶字段，不读取或修改当前聊天�
 
 当前同一草稿只跨越同一个 settings 保存域。运行中限制及属性可写性先检查，然后同步赋值并调用宿主保存入口。没有自动重试、全仓库回滚或跨域原子提交。保存异常、并发更新和持久化未确认如实写入回执。UI 只通知共享快捷操作刷新，不重建整个设置面板或覆盖编辑器草稿。
 
-故事蓝图已开放自动续写、生成节点数、推进模式、层级、生成 Prompt、续写 Prompt、输出格式说明和 Provider 模板八个普通全局叶字段。自动续写仅在启用蓝图、存在可推进蓝图且随后完成时可能启动；节点数仅进入后续生成/续写 Prompt，作为约略目标，不裁剪或改写已有蓝图。本工具支持节点数 1–50、层级 0–1000；经典界面与运行时没有同等硬上限。两条 Prompt 独立生效：空串使用当前界面语言的内置值；运行时先替换 `{{storyBlueprintMaxNodes}}`，再渲染已注册 Provider 和 `{{storyBlueprintFullJson}}`、`{{storyBlueprintProgress}}` 局部资料，最后追加输出格式文本。续写必须有当前聊天蓝图；Prompt 修改本身不生成或续写。非空生成 Prompt 缺少 `{{newRecentMessages}}`、续写 Prompt 缺少蓝图全文或进度局部占位符时预览警告，不禁止自定义 Provider 表达；引用的聊天资料可能发送给配置的模型。经典编辑器在应用后同步，聚焦草稿不覆盖。推进进度现在按 `leaf`、`all`、`level:N` 分槽保存在各聊天中；切换配置不会删除其他槽，目标槽可能从零开始。旧版没有模式标记的完成信号在首次读取时归入当时所选模式，并保留 `legacyDoneSignals` 备份，无法反推它原本的模式。蓝图替换会清空全部槽；“重置进度”只清当前槽。导出和导入可保留全部槽。正在生成或保存蓝图时，本通道拒绝配置写入。`storyBlueprintEnabled` 作为只读前置基线参与复核，不列为可写字段。模式／层级草稿提示分槽切换，不承诺全局进度统计。
+故事蓝图已开放自动续写、生成节点数、推进模式、层级、生成 Prompt、续写 Prompt、输出格式说明和 Provider 模板八个普通全局叶字段。自动续写仅在启用蓝图、存在可推进蓝图且随后完成时可能启动；节点数仅进入后续生成/续写 Prompt，作为约略目标，不裁剪或改写已有蓝图。本工具支持节点数 1–50、层级 0–1000；经典界面与运行时没有同等硬上限。两条 Prompt 独立生效：空串使用当前界面语言的内置值；运行时先替换 `{{storyBlueprintMaxNodes}}`，再渲染已注册 Provider 和 `{{storyBlueprintFullJson}}`、`{{storyBlueprintProgress}}` 局部资料，最后追加输出格式文本。续写必须有当前聊天蓝图；Prompt 修改本身不生成或续写。非空生成 Prompt 缺少 `{{newRecentMessages}}`、续写 Prompt 缺少蓝图全文或进度局部占位符时预览警告，不禁止自定义 Provider 表达；引用的聊天资料可能发送给配置的模型。经典编辑器在应用后同步，聚焦草稿不覆盖。推进进度现在按 `leaf`、`all`、`level:N` 分槽保存在各聊天中；切换配置不会删除其他槽，目标槽可能从零开始。旧版没有模式标记的完成信号在首次读取时归入当时所选模式，并保留 `legacyDoneSignals` 备份，无法反推它原本的模式。蓝图替换会清空全部槽；“重置进度”只清当前槽。导出和导入可保留全部槽。正在生成或保存蓝图时，本通道拒绝配置写入。`storyBlueprintEnabled` 仍作为这些字段的前置基线参与复核，其自身写入走上述专用双域单字段流程。模式／层级草稿提示分槽切换，不承诺全局进度统计。
 
 完成变量名称是专用单字段草稿，除 `configSettings` 外还需要当前聊天的 `variables` 读取授权。新 ID 必须是 1–64 位小写字母、数字或下划线且当前聊天未占用；不静默规范化、不与其他字段合并。批准后先创建初值为 `false` 的变量并确认当前聊天保存，再写全局名称。旧变量及旧值保留；其他聊天不会立即迁移。首次使用新名称时，如果当地已有同名非插件变量，运行时拒绝覆写和推进并提示冲突。`storyBlueprintCompletionVariableGuard` 是内部归属标记，不暴露为可编辑字段。两次保存不是原子事务；聊天保存未知时不改全局名称，设置保存失败时会留下新变量并逐域回执，不自动删除或重试。已占用的旧名称不能通过此简版动作直接改回。
 
@@ -92,3 +130,17 @@ Prompt 不截断保存。草稿内容限 24000 UTF-8 字节，另受公共 DTO 3
 分层参考了本地 DeepSeek harness 的 settings namespace/validate/applies/revision 和秘密字段投影思路；未引入其框架或复制实现。这里的并发检查依赖真实值，而不是仅供 Agent 自己递增的修订号。
 
 验收入口：`tests/unit/muyu-settings.test.mjs`、`tests/unit/muyu-unified.test.mjs`，以及原有 config-apply/receipts/history/permissions 回归。真实浏览器验收仍需人工进行。
+
+## 自定义 Agent 专用定义编辑器
+
+`customAgents` 已归类为 special-editor-supported，但不进入普通叶字段 settings.read/preview。通过 `muyu.agents.list/read/preview` 与 `customAgentAssets` 来源读取、预览，另由精确批准保存；模型连接和密钥仍不在此范围内。
+
+支持用户定义的八个字段；新增默认关闭，启用注册结果 Provider，自动运行会带来后续模型调用和费用。定义编辑工具本身不生成、不读取或编辑聊天结果。第三轮另设独立执行授权，可按指定保存版本试跑或生成并替换当前聊天结果；不开放结果任意编辑。第二轮已支持纯 Agent 批量操作和用户提供的导出 JSON 导入预览；尚未接入与变量／普通配置／脚本混合的整单步骤。完整容量、并发和语义约束见 [自定义 Agent 模块](../modules/custom-agents/README.md)。
+
+## 自定义 Prompt 单条管理
+
+`customPrompts` 已接入专用编辑器，仍不允许用普通 settings 字段整体覆盖。使用 `muyu.prompts.list/read/preview` 与 `customPromptAssets` 来源，支持单条创建、更新（含改名／启停）和删除，新增默认关闭。普通模式需另行批准完整差异；全权限只对显式 apply 执行。保存走原业务队列、重核版本，保持总开关不变，不渲染 Provider 或调用模型。v12 回执仅记录操作元数据，不携带正文／JSON，不确认持久化。第二轮已支持最多6条批量与导入预览，以及指定版本的只读JSON导出；批量单次审批／保存使用v13回执。导入条目统一关闭，导出不自动下载文件；混合整单尚未开放。详见 [模块合同](../modules/custom-prompts/README.md)。
+
+## 角色档案库第一轮（2026-10-03）
+
+profileLibraries已接专用资源编辑器；通过独立profileLibraryAssets授权与muyu.libraries.list/read/export/preview管理保存的包。支持单包创建／导入／修改／删除和有界JSON导出；不读取当前聊天打包，不立即应用档案或全局模板。删除固定目标会按预览清除选择并关闭自动加载；队列内重核包版本与加载关联，v14回执只含操作元数据。未来自动加载仍可能使用保存的库内容。完整合同见[档案库模块](../modules/profile-libraries/README.md)；当前聊天应用、批量及NPC/蓝图库另轮实现。

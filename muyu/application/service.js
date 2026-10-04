@@ -7,7 +7,7 @@ import { createProcessStore } from './process-store.js';
 import { selectHistory } from '../sessions/contract.js';
 import { createInteractionStore } from '../interactions/store.js';
 import { describeAnswer, validateAnswer } from '../interactions/contract.js';
-import { permissionAnswer, permissionTitle } from '../permissions/contract.js';
+import { permissionAnswer, permissionTitle, permissionSource } from '../permissions/contract.js';
 import { interactionLimit } from '../interactions/limits.js';
 
 /** Trusted application facade. startRun must expose completion AND physical drained promises. */
@@ -105,7 +105,7 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
                                 if (result.resume) resumes.set(record.taskId, result.resume);
                                 t.interactionCount = (t.interactionCount || 0) + 1;
                                 if (!permission) t.clarifications = (t.clarifications || 0) + 1;
-                                else { const counter = result.interaction.source === 'providerExecution' ? 'codePermissions' : 'readPermissions'; t[counter] = (t[counter] || 0) + 1; }
+                                else { const counter = permissionSource(result.interaction.source)?.permission === 'code' ? 'codePermissions' : 'readPermissions'; t[counter] = (t[counter] || 0) + 1; }
                             } catch (error) { status = 'failed'; settlementError = ['PERMISSION_LIMIT', 'CLARIFICATION_LIMIT', 'TARGET_UNAVAILABLE', 'INVALID_CONTINUATION'].includes(error?.message) ? error.message : null; }
                         }
                         let answer = null;

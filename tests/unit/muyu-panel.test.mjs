@@ -1,7 +1,102 @@
 import test from 'node:test';
+for(const lang of ['zh','en'])for(const operation of ['create','delete','move'])test('Blueprint structure card '+operation+' / '+lang+' shows progress and exact approval',async()=>{
+ const f=fixture(lang,true,{initialMode:'assistant'});let approved=0;
+ const content={module:'blueprint-node-editor',operation,name:'Tree',selector:'blueprint-tree',affected:['a'],before:{progressTracks:{leaf:{doneSignals:[{nodeId:'a'}]}}},after:{progressTracks:{leaf:{doneSignals:[]}}},completion:{before:{exists:true,value:true},after:{exists:true,value:false}},warnings:['Full diff required']};
+ f.state.artifacts=[{id:'draft',kind:'blueprint-node-edit-draft',revision:1,sourceRunId:'r',content}];f.state.canApplyBlueprintNodeEdit=true;
+ f.state.blueprintNodeEditActions=[{id:'op',artifactId:'draft',revision:1,status:'pending'}];
+ f.controller.approveBlueprintNodeEditApply=id=>{assert.equal(id,'op');approved++;};
+ f.emit();const progress=f.all().find(e=>e.tag==='p'&&e.textContent?.includes(lang==='en'?'Stored completion signals':'存储的完成标记'));assert.match(progress.textContent,/1 → 0/);
+ const warning=f.all().find(e=>e.tag==='small'&&e.textContent?.includes(lang==='en'?'Structure changes':'结构调整'));assert.ok(warning);
+ await f.find('button',lang==='en'?'Apply this blueprint node change':'应用这份蓝图节点修改').click();assert.equal(approved,1);assert.equal(f.sent.length,0);f.root.__gdMuyuDispose();
+});
+for(const lang of ['zh','en'])for(const kind of ['selection-draft','ledger-edit-draft'])test('Dedicated selection / ledger cards render exact approval with live panel state '+kind+' / '+lang,async()=>{
+ const f=fixture(lang,true,{initialMode:'assistant'}),selection=kind==='selection-draft';let prepared=0,approved=0;
+ const content=selection?{module:'selection-editor',kind:'worldbooks',name:'World books',before:{sourceMode:'st',selection:{}},after:{sourceMode:'manual',selection:{'<script>book</script>':true}},warnings:['Save only']}:{module:'ledger-editor',name:'Ledger',operation:'update',selector:'ledger:0',before:{reason:'old'},after:{reason:'new'},warnings:['Chat only']};
+ f.state.artifacts=[{id:'draft',kind,revision:1,sourceRunId:'r',content}];
+ f.state[selection?'canApplySelection':'canApplyLedgerEdit']=true;
+ const key=selection?'selectionActions':'ledgerEditActions';
+ f.state[key]=[];
+ f.controller[selection?'prepareSelectionApply':'prepareLedgerEditApply']=(id,revision)=>{assert.equal(id,'draft');assert.equal(revision,1);prepared++;};
+ f.controller[selection?'approveSelectionApply':'approveLedgerEditApply']=id=>{assert.equal(id,'op');approved++;};
+ f.emit();assert.equal(f.find('script'),undefined);
+ const label=selection?(lang==='en'?'Review and save selection policy':'查看并保存选择策略'):(lang==='en'?'Review and apply ledger entry':'查看并应用账本');
+ assert.ok(f.find('button',label));await f.find('button',label).click();assert.equal(prepared,1);assert.equal(approved,0);
+ f.state[key]=[{id:'op',artifactId:'draft',revision:1,status:'pending'}];f.emit();
+ const confirm=selection?(lang==='en'?'Save this change':'保存这份修改'):(lang==='en'?'Apply this ledger entry change':'应用这份账本修改');
+ await f.find('button',confirm).click();assert.equal(approved,1);assert.equal(f.sent.length,0);f.root.__gdMuyuDispose();
+});
 import assert from 'node:assert/strict';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
 import { createPermissionView } from '../../muyu/ui/permission-view.js';
+for (const lang of ['zh', 'en']) test('Generation batch card shows the exact ordered modes and one nonpersistent approval / ' + lang, async () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
+    const decisions = [], controller = { generationBatchExecutionDetails: () => ({ maximumModelCalls: 3, steps: [
+        { kind: 'memory', name: '<script>Alice</script>', mode: 'save' }, { kind: 'profile', name: 'Bob', mode: 'trial' }, { kind: 'npc', requested: 5, effectiveCount: 2, mode: 'save' },
+    ] }), answerPermission: (id, decision) => decisions.push([id, decision]) };
+    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    view.render({ interaction: { id: 'request', kind: 'permission', source: 'generationBatchExecution', executionId: 'ticket', status: 'pending', reason: 'Generate list' } });
+    const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
+    assert.equal(actions[1].hidden, true); const summary = card.children.find(row => row.className === 'gd-muyu-generation-summary');
+    assert.match(summary.textContent, /1\. .*Alice[\s\S]*2\. .*Bob[\s\S]*3\. .*5\/2/);
+    assert.match(summary.textContent, /Trial, no save|试跑，不保存/); assert.match(summary.textContent, /may be pruned|可能裁剪/);
+    assert.match(summary.textContent, /Non-atomic|不是原子事务/); assert.match(summary.textContent, /No character-card import|no character-card import|不导入角色卡/);
+    assert.equal(card.children.some(row => row.tag === 'script'), false);
+    await actions[0].click(); assert.deepEqual(decisions, [['request', 'task']]); view.dispose();
+});
+for (const lang of ['zh', 'en']) test('Expired batch definition is explicit without displaying old step data / ' + lang, () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
+    const view = createPermissionView({ doc, parent, settings, controller: { generationBatchExecutionDetails: () => null }, act: fn => fn(), lang });
+    view.render({ interaction: { id: 'request', kind: 'permission', source: 'generationBatchExecution', executionId: 'ticket', status: 'pending', reason: 'Generate' } });
+    assert.match(parent.children[0].children.find(row => row.className === 'gd-muyu-generation-summary').textContent, /expired|失效/); view.dispose();
+});
+for (const lang of ['zh', 'en']) for (const mode of ['trial', 'save']) test(`NPC generation consent ${mode} / ${lang} displays count, capacity and card-import boundary`, async () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
+    const decisions = [], controller = { npcExecutionDetails: () => ({ mode, requested: 5, effectiveCount: 2, existingCount: 8, limit: 10 }),
+        answerPermission: (id, decision) => decisions.push([id, decision]) };
+    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    view.render({ interaction: { id: 'request', kind: 'permission', source: 'npcExecution', executionId: 'ticket', status: 'pending', reason: '<script>Generate</script>' } });
+    const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
+    assert.equal(actions[1].hidden, true);
+    const content = card.children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
+    assert.match(content, /5\/2/); assert.match(content, /8\/10/); assert.match(content, /No character-card import|不导入角色卡/);
+    assert.match(content, lang === 'en' ? /extra costs/ : /额外产生费用/);
+    assert.match(content, mode === 'trial' ? /Trial, no save|试生成，不保存/ : /Generate and save|生成并保存/);
+    assert.equal(card.children.some(row => row.tag === 'script'), false); assert.equal(decisions.length, 0);
+    await actions[0].click(); assert.deepEqual(decisions, [['request', 'task']]);
+    view.render({ interaction: null }); assert.equal(card.hidden, true); view.dispose();
+});
+for (const lang of ['zh', 'en']) for (const mode of ['trial', 'save']) test(`Profile generation consent ${mode} / ${lang} exposes target and risk without persistent approval`, async () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
+    const decisions = [], controller = { profileExecutionDetails: () => ({ name: '<script>Alice</script>', mode, existing: false }),
+        answerPermission: (id, decision) => decisions.push([id, decision]) };
+    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    view.render({ interaction: { id: 'request', kind: 'permission', source: 'profileExecution', executionId: 'ticket', status: 'pending', reason: 'Generate profile' } });
+    const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
+    assert.equal(actions[1].hidden, true);
+    const content = card.children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
+    assert.match(content, /<script>Alice<\/script>/); assert.match(content, /No existing profile|尚无档案/);
+    assert.match(content, lang === 'en' ? /extra costs/ : /额外产生费用/);
+    assert.match(content, mode === 'trial' ? /Trial, no save|试生成，不保存/ : /Generate and save|生成并保存/);
+    assert.equal(card.children.some(row => row.tag === 'script'), false); assert.equal(decisions.length, 0);
+    await actions[0].click(); assert.deepEqual(decisions, [['request', 'task']]);
+    view.render({ interaction: null }); assert.equal(card.hidden, true); view.dispose();
+});
+for (const lang of ['zh', 'en']) for (const mode of ['trial', 'save']) test(`Memory extraction consent ${mode} / ${lang} exposes target and risk without persistent approval`, async () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
+    const decisions = [], controller = { memoryExecutionDetails: () => ({ name: '<script>Alice</script>', mode, existingCount: 2, limit: 3 }),
+        answerPermission: (id, decision) => decisions.push([id, decision]) };
+    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    view.render({ interaction: { id: 'request', kind: 'permission', source: 'memoryExecution', executionId: 'ticket', status: 'pending', reason: 'Extract memories' } });
+    const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
+    assert.equal(actions[1].hidden, true);
+    const content = card.children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
+    assert.match(content, /<script>Alice<\/script>/); assert.match(content, /2\/3/);
+    assert.match(content, lang === 'en' ? /extra costs/ : /额外产生费用/);
+    assert.match(content, mode === 'trial' ? /Trial, no save|试跑，不保存/ : /Generate and save|生成并保存/);
+    assert.equal(card.children.some(row => row.tag === 'script'), false); assert.equal(decisions.length, 0);
+    await actions[0].click(); assert.deepEqual(decisions, [['request', 'task']]);
+    view.render({ interaction: null }); assert.equal(card.hidden, true); view.dispose();
+});
 import { importPreview } from '../../muyu/sessions/exchange.js';
 import { createHistoryView } from '../../muyu/ui/history-view.js';
 
@@ -53,6 +148,17 @@ test('Permission request stays inside the transcript and disposes its card', () 
     assert.equal(card.hidden, true);
     view.dispose();
     assert.equal(parent.children.includes(card), false);
+});
+
+test('Real script consent shows host-bound source as text and offers no persistent grant', () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
+    const controller = { scriptExecutionDetails: () => ({ name: 'user script', stage: 'message', messageIndex: 2, definition: { code: '<script>not HTML</script>' } }) };
+    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang: 'en' });
+    view.render({ interaction: { id: 'r', kind: 'permission', source: 'scriptExecution', executionId: 'ticket', status: 'pending', reason: 'run' } });
+    const card = parent.children[0], details = card.children.find(row => row.tag === 'details'), buttons = card.children.find(row => row.className === 'gd-muyu-actions').children;
+    assert.equal(details.hidden, false); assert.match(details.children.find(row => row.tag === 'pre').textContent, /<script>not HTML<\/script>/);
+    assert.match(details.children.find(row => row.tag === 'pre').textContent, /messageIndex/); assert.equal(buttons[1].hidden, true);
+    view.render({ interaction: null }); assert.equal(details.hidden, true);
 });
 
 for (const lang of ['zh', 'en']) test(`Long-term memory editor survives view rebuilds and deletes only after explicit confirmation (${lang})`, async () => {
@@ -549,6 +655,21 @@ for (const lang of ['zh', 'en']) test(`Receipts remain distinct, inert on remoun
     f.state.permissions.diagnostics = false; f.emit(); assert.equal(f.find('button', label).disabled, true);
     f.state.readOnly = true; f.emit(); assert.equal(f.find('button', label), undefined);
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`Blueprint side-effect preview renders without a memory-pruning table (${lang})`, () => {
+    const f = fixture(lang, true);
+    f.state.canApplyConfig = true; f.state.mode = 'draft';
+    f.state.configActions = [{ id: 'op', artifactId: 'a', revision: 1, status: 'pending' }];
+    f.state.artifacts = [{ id: 'a', revision: 1, kind: 'config-draft', content: {
+        blueprintTogglePlan: { variableId: 'done', operation: 'reset', before: { stored: true, value: true }, enableAutoUpdate: true, useManualInjection: true },
+        preview: { diff: [{ field: 'storyBlueprintEnabled', before: 'false', after: 'true' }], manifest: { settings: { storyBlueprintEnabled: true } },
+            warnings: [], notice: 'Preview only', impact: { scope: 'current-chat', variableId: 'done', operation: 'reset' } } } }];
+    f.emit();
+    assert.ok(f.all().some(e => e.textContent?.includes('done') && e.textContent.includes('true → false')));
+    assert.ok(f.find('button', lang === 'en' ? 'Apply these changes' : '应用这份修改'));
+    assert.ok(!f.all().some(e => e.textContent?.includes(lang === 'en' ? 'Character slots' : '角色序号')));
+    f.root.__gdMuyuDispose();
 });
 
 for (const lang of ['zh', 'en']) test(`Config application requires a separate confirmation and keeps pending state on remount (${lang})`, async () => {

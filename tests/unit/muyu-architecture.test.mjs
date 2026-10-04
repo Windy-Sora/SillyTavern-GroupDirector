@@ -57,6 +57,15 @@ test('Artifact owner routing uses the producing tool, not a candidate ID prefix'
         { toolId: 'muyu.config.preview', moduleId: 'other', owner: makeOwner('two') }]), /INVALID_ARTIFACT_OWNER/);
 });
 
+test('Multiple preview tools can share one owner/candidate group but cannot hijack its module', () => {
+    const owner = { publishDraft() {}, validateSaved() {} };
+    const owners = createArtifactOwners([{ toolId: 'muyu.provider.preview', moduleId: 'provider-asset', owner },
+        { toolId: 'muyu.provider.remove_preview', moduleId: 'provider-asset', owner }]);
+    assert.equal(owners.group('muyu.provider.remove_preview'), 'muyu.provider.preview');
+    assert.throws(() => createArtifactOwners([{ toolId: 'muyu.provider.preview', moduleId: 'provider-asset', owner },
+        { toolId: 'muyu.provider.remove_preview', moduleId: 'provider-asset', owner: { ...owner } }]), /INVALID_ARTIFACT_OWNER/);
+});
+
 test('A second action contract can reuse approval lifecycle without granting model write access', async () => {
     let executions = 0;
     const artifact = { id: 'asset', revision: 1, sessionId: 's', kind: 'example-draft', content: { value: 7 } };

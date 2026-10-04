@@ -99,6 +99,16 @@ test('Language remounts once; resize and dragging never create additional busine
     f.shell.dispose(); f.registry.dispose();
 });
 
+test('Agent language changes preserve active drafts and use the new language on next mount', () => {
+    const languages = [], f = surface(options => languages.push(options.lang));
+    f.shell.open('chat');
+    const content = f.find('gd-floating-content'), draft = f.doc.createElement('textarea'); draft.value = 'unsaved configuration'; content.append(draft);
+    f.shell.setLanguage('en', { preserveActive: true }); f.shell.setLanguage('en', { preserveActive: true });
+    assert.equal(f.mounts(), 1); assert.equal(f.disposals(), 0); assert.equal(content.children[0], draft); assert.equal(draft.value, 'unsaved configuration');
+    f.shell.close(); f.shell.open('chat'); assert.equal(f.mounts(), 2); assert.deepEqual(languages, ['zh', 'en']);
+    f.shell.dispose(); f.registry.dispose();
+});
+
 test('History rail grows left without shrinking chat, stays in viewport and restores the base geometry', () => {
     const base = { x: 460, y: 70, width: 520, height: 660 };
     const expanded = fitSidebarRect(base, { width: 1000, height: 800 }, true);

@@ -1,7 +1,7 @@
 /** Bounded JSON DTOs and a deliberately small, fail-closed schema dialect. */
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
 const types = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
-const keywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minimum', 'maximum', 'maxLength', 'maxItems', 'description']);
+const keywords = new Set(['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'minimum', 'maximum', 'maxLength', 'maxItems', 'description', 'oneOf']);
 
 /** Copy data without invoking accessors or accepting non-JSON values. */
 export function copyJson(value) {
@@ -55,6 +55,10 @@ export function checkSchema(schema) {
     function check(s) {
         if (!s || typeof s !== 'object' || Array.isArray(s) || !types.has(s.type)) throw new TypeError('Schema requires one supported type');
         for (const k of Object.keys(s)) if (!keywords.has(k)) throw new TypeError('Unsupported schema keyword: ' + k);
+        if (s.oneOf !== undefined) {
+            if (!Array.isArray(s.oneOf) || s.oneOf.length < 2 || s.oneOf.length > 8) throw new TypeError('Invalid schema alternatives');
+            s.oneOf.forEach(check);
+        }
         if (s.description !== undefined && typeof s.description !== 'string') throw new TypeError('Invalid description');
         if (s.enum !== undefined && (!Array.isArray(s.enum) || !s.enum.length)) throw new TypeError('Invalid enum');
         for (const k of ['minimum', 'maximum']) if (s[k] !== undefined && (!['number', 'integer'].includes(s.type) || typeof s[k] !== 'number')) throw new TypeError('Invalid numeric bound');
@@ -91,6 +95,11 @@ export function validateJson(schema, value) {
                 if (!Object.hasOwn(rule.properties, k)) throw new TypeError('Unknown JSON field');
                 check(rule.properties[k], item);
             }
+        }
+        if (rule.oneOf) {
+            let matched = 0;
+            for (const alternative of rule.oneOf) { try { check(alternative, v); matched++; } catch { /* A non-matching alternative is expected. */ } }
+            if (matched !== 1) throw new TypeError('JSON alternative mismatch');
         }
     }
     check(s, data);

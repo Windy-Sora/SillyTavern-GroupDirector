@@ -1,4 +1,475 @@
+for(const access of ['normal','deny','full','preview'])test('Blueprint library controller '+access+' preserves asset-only authority',async()=>{
+ const {createStoryBlueprintLibrarySystem}=await import('../../systems/story-blueprint-library-system.js');
+ const {createBlueprintLibraryPort}=await import('../../muyu/host/blueprint-libraries.js');
+ const settings={};let saves=0;
+ const forbidden=()=>{throw Error('chat or generation forbidden');};
+ const system=createStoryBlueprintLibrarySystem({settings,extension_settings:{},EXT_KEY:'gd',saveSettings:()=>{saves++;},storyBlueprintSystem:new Proxy({}, {get:()=>forbidden}),getCurrentGroup:forbidden,saveChatConditional:forbidden,log(){}});
+ const blueprintLibraries=createBlueprintLibraryPort({getSettings:()=>settings,system});
+ const args={operation:'create',changesJson:JSON.stringify({name:'Blueprint pack',exportData:{version:1,type:'group-director-story-blueprint',storyBlueprint:{blueprint:{version:1,title:'PRIVATE_PROMPT',nodes:[{id:'one',type:'chapter',title:'Alice',content:{text:'PRIVATE_Blueprint'}}]}}}}),...(access==='full'?{apply:true}:{})};
+ const f=fixture([[tool('muyu.blueprint_libraries.preview',args),done],[text('Prepared'),done]],{blueprintLibraries});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare the Blueprint package');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){
+  const request=f.controller.snapshot().interaction;assert.equal(request.source,'blueprintLibraryAssets');assert.equal(saves,0);
+  f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();
+ }
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='blueprint-library-draft');
+ if(access==='normal'){assert.ok(artifact);assert.equal(saves,0);const a=f.controller.prepareBlueprintLibrarySave(artifact.id,artifact.revision);await f.controller.approveBlueprintLibrarySave(a.id);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);
+ else{
+  assert.ok(artifact);
+  const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:blueprintLibraryAssets'));
+  assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_Blueprint|PRIVATE_PROMPT|Alice/);
+  if(access!=='preview'){assert.equal(history.receipts.at(-1).version,18);assert.equal(settings.storyBlueprintLibraries[0].nodeCount,1);}
+ }
+ await f.controller.dispose();
+});
+for (const access of ['normal', 'deny', 'full']) test(`Custom Prompt real writer: ${access} keeps permission, save and history boundaries`, async () => {
+    const { createCustomPromptsSystem } = await import('../../systems/custom-prompts-system.js');
+    const { createCustomPromptPort } = await import('../../muyu/host/custom-prompts.js');
+    const settings = {}, providers = new Map(); let saves = 0;
+    const system = createCustomPromptsSystem({ settings, getProviders: () => [...providers.values()],
+        registerProvider: p => providers.set(p.id, p), unregisterProvider: id => providers.delete(id), log() {}, saveSettings: () => { saves++; } });
+    const customPrompts = createCustomPromptPort({ getSettings: () => settings, system });
+    const args = { operation: 'create', changesJson: JSON.stringify({ name: 'story_tone', content: 'PRIVATE_PROMPT {{other}}', enabled: true }), ...(access === 'full' ? { apply: true } : {}) };
+    const f = fixture([[tool('muyu.prompts.preview', args), done], [text('Result'), done]], { customPrompts });
+    await f.enable(); f.controller.setMode('assistant');
+    if (access === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Create this custom Prompt'); f.controller.send(); await settle();
+    if (access !== 'full') {
+        const request = f.controller.snapshot().interaction; assert.equal(request.source, 'customPromptAssets'); assert.equal(saves, 0);
+        f.controller.answerPermission(request.id, access === 'deny' ? 'deny' : 'task'); await settle();
+    }
+    const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'custom-prompt-draft');
+    if (access === 'normal') {
+        assert.ok(artifact); assert.equal(saves, 0);
+        const approval = f.controller.prepareCustomPromptSave(artifact.id, artifact.revision);
+        await f.controller.approveCustomPromptSave(approval.id);
+    }
+    if (access === 'deny') { assert.equal(artifact, undefined); assert.equal(saves, 0); }
+    else {
+        assert.equal(saves, 1); assert.equal(settings.customPrompts[0].enabled, true); assert.ok(providers.has('story_tone'));
+        const exported = JSON.parse(f.controller.exportHistory()); assert.ok(exported.required.includes('source:customPromptAssets'));
+        assert.equal(exported.receipts.at(-1).version, 12); assert.doesNotMatch(JSON.stringify(exported.receipts), /PRIVATE_PROMPT/);
+    }
+    await f.controller.dispose();
+});
+for (const operation of ['create', 'update', 'delete']) test(`Custom Prompt ${operation} pauses for source permission, then requires one exact save approval`, async () => {
+    let writes = 0;
+    const content = { module: 'custom-prompt', operation, id: operation === 'create' ? '' : 'se_user', baseRevision: '', previous: { name: 'user', providerName: 'user_agent', prompt: 'OLD_SOURCE' }, next: operation === 'delete' ? null : { name: 'user', providerName: 'user_agent', enabled: false, prompt: 'NEW_SOURCE' }, warnings: [] };
+    const customPrompts = { preview: () => content, assertDraft() {}, save: async () => { writes++; return { status: 'saved_unconfirmed', id: 'se_user', enabled: false, persistence: 'unconfirmed' }; } };
+    const f = fixture([[tool('muyu.prompts.preview', { operation, changesJson: '{}' }), done], [text('Only preview'), done]], { customPrompts });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Preview script'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction; assert.equal(request.source, 'customPromptAssets'); assert.equal(writes, 0);
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'custom-prompt-draft'); assert.ok(artifact); assert.equal(writes, 0);
+    const approval = f.controller.prepareCustomPromptSave(artifact.id, artifact.revision); await f.controller.approveCustomPromptSave(approval.id);
+    assert.equal(writes, 1); const receipt = JSON.parse(f.controller.exportHistory()).receipts.find(row => row.version === 12);
+    assert.equal(receipt.operation, operation); assert.doesNotMatch(JSON.stringify(receipt), /OLD_SOURCE|NEW_SOURCE/);
+    assert.throws(() => f.controller.approveCustomPromptSave(approval.id), /STALE/); await f.controller.dispose();
+});
+
+test('Custom Prompt full access only saves explicitly requested apply candidates', async () => {
+    let writes = 0;
+    const customPrompts = { assertDraft() {}, preview: () => ({ module: 'custom-prompt', operation: 'create', id: '', baseRevision: '', previous: null, next: { name: 'user', providerName: 'user_agent', enabled: false }, warnings: [] }),
+        save: async () => { writes++; return { status: 'saved_unconfirmed', id: 'se_user', enabled: false, persistence: 'unconfirmed' }; } };
+    const args = { operation: 'create', changesJson: '{"name":"user"}' };
+    const f = fixture([[tool('muyu.prompts.preview', args), done], [text('Preview'), done], [tool('muyu.prompts.preview', { ...args, apply: true }), done], [text('Save requested'), done]], { customPrompts });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Preview only'); f.controller.send(); await settle(); assert.equal(writes, 0);
+    f.controller.setInput('Save it'); f.controller.send(); await settle(); assert.equal(writes, 1); assert.equal(f.controller.snapshot().receipts.at(-1).version, 12);
+    await f.controller.dispose();
+});
+for (const kind of ['batch', 'import']) for (const access of ['normal', 'full', 'deny']) test(`Custom Prompt ${kind} preview ${access} uses the real queued writer and one global save`, async () => {
+    const { createCustomPromptsSystem } = await import('../../systems/custom-prompts-system.js');
+    const { createCustomPromptPort } = await import('../../muyu/host/custom-prompts.js');
+    const settings = {}, registry = new Map(); let saves = 0;
+    const getProviders = () => [...registry.values()];
+    const system = createCustomPromptsSystem({ settings, getProviders, registerProvider: p => registry.set(p.id, p), unregisterProvider: id => registry.delete(id),
+        log() {}, saveSettings: () => { saves++; }, getChatMetadata: () => { throw Error('no chat read'); }, getChat: () => [], EXT_KEY: 'gd' });
+    const customPrompts = createCustomPromptPort({ getSettings: () => settings, getProviders, system });
+    const definitions = ['a', 'b'].map(name => ({ name, content: 'PRIVATE_PROMPT_' + name }));
+    const args = kind === 'batch' ? { requestsJson: JSON.stringify(definitions.map(changes => ({ operation: 'create', changes }))) }
+        : { exportJson: JSON.stringify({ type: 'custom-prompt-export', version: 1, prompts: definitions }) };
+    if (access === 'full') args.apply = true;
+    const f = fixture([[tool('muyu.prompts.' + kind + '_preview', args), done], [text('Result'), done]], { customPrompts });
+    await f.enable(); f.controller.setMode('assistant');
+    if (access === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Prepare both custom agents'); f.controller.send(); await settle();
+    if (access !== 'full') {
+        const request = f.controller.snapshot().interaction; assert.equal(request.source, 'customPromptAssets'); assert.equal(saves, 0);
+        f.controller.answerPermission(request.id, access === 'deny' ? 'deny' : 'task'); await settle();
+    }
+    if (access === 'normal') {
+        const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'custom-prompt-draft'); assert.ok(artifact); assert.equal(saves, 0);
+        const approval = f.controller.prepareCustomPromptSave(artifact.id, artifact.revision); await f.controller.approveCustomPromptSave(approval.id);
+    }
+    assert.equal(saves, access === 'deny' ? 0 : 1);
+    if (access !== 'deny') {
+        assert.equal(settings.customPrompts.length, 2);
+        const receipt = JSON.parse(f.controller.exportHistory()).receipts.at(-1); assert.equal(receipt.version, 13); assert.equal(receipt.items.length, 2);
+        assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE_PROMPT/);
+    } else assert.equal(f.controller.snapshot().artifacts.some(row => row.kind === 'custom-prompt-draft'), false);
+    await f.controller.dispose();
+});
+for (const access of ['normal','deny','full']) test(`Profile library real writer ${access}: global assets only and exact approval`, async()=>{
+ const {createProfileLibrarySystem}=await import('../../systems/profile-library-system.js');
+ const {createProfileLibraryPort}=await import('../../muyu/host/profile-libraries.js');
+ const settings={};let saves=0;
+ const system=createProfileLibrarySystem({settings,extension_settings:{},EXT_KEY:'gd',saveSettings:()=>{saves++;},getProfiles:()=>{throw Error('chat read forbidden');},applyImport:()=>{throw Error('chat apply forbidden');},log(){}});
+ const profileLibraries=createProfileLibraryPort({getSettings:()=>settings,system});
+ const changes={name:'pack',exportData:{version:1,type:'profile-export',template:{generatorPrompt:'',jsonSchema:'{}',renderTemplate:''},profiles:[{avatar:'a.png',name:'Alice',profile:{note:'PRIVATE_LIBRARY'}}]}};
+ const args={operation:'create',changesJson:JSON.stringify(changes),...(access==='full'?{apply:true}:{})};
+ const f=fixture([[tool('muyu.libraries.preview',args),done],[text('Preview result'),done]],{profileLibraries});
+ await f.enable();f.controller.setMode('assistant');if(access==='full')f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Create the specified library package');f.controller.send();await settle();
+ if(access!=='full'){const request=f.controller.snapshot().interaction;assert.equal(request.source,'profileLibraryAssets');assert.equal(saves,0);f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(r=>r.kind==='profile-library-draft');
+ if(access==='normal'){assert.ok(artifact);assert.equal(saves,0);const a=f.controller.prepareProfileLibrarySave(artifact.id,artifact.revision);await f.controller.approveProfileLibrarySave(a.id);}
+ assert.equal(saves,access==='deny'?0:1);
+ if(access!=='deny'){
+  const history=JSON.parse(f.controller.exportHistory());assert.equal(history.receipts.at(-1).version,14);assert.ok(history.required.includes('source:profileLibraryAssets'));
+  assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_LIBRARY|Alice/);assert.equal(settings.profileLibraries[0].name,'pack');
+ }else assert.equal(artifact,undefined);
+ await f.controller.dispose();
+});
+for (const operation of ['capture','apply']) for (const access of ['normal','deny','full']) test(`Profile chat library ${operation} / ${access} preserves two sources and exact action`, async()=>{
+ const {createProfileLibrarySystem}=await import('../../systems/profile-library-system.js');
+ const {createProfileLibraryPort}=await import('../../muyu/host/profile-libraries.js');
+ const {createProfileLibraryChatPort}=await import('../../muyu/host/profile-library-chat.js');
+ let f,settingsSaves=0,chatSaves=0;const settings={},metadata={gd:{characterProfiles:{'a.png':{state:'ready',hash:'h',profile:{note:'PRIVATE_CHAT'}}}}};
+ const system=createProfileLibrarySystem({settings,EXT_KEY:'gd',extension_settings:{},saveSettings:()=>{settingsSaves++;},
+ getCurrentGroup:()=>({id:1,name:'group',members:['a.png']}),getCharacters:()=>[{avatar:'a.png',name:'Alice'}],hashChar:()=> 'h',
+ getProfiles:()=>{throw Error('impure getter');},getDefaultProfileGeneratorPrompt:()=>'',getDefaultProfileSchema:()=>'{}',getDefaultProfileRenderTemplate:()=>'',log(){}});
+ const profileLibraries=createProfileLibraryPort({getSettings:()=>settings,system});
+ const profileLibraryChat=createProfileLibraryChatPort({getSettings:()=>settings,getMetadata:()=>metadata,getTarget:()=>f.host.currentTarget(),
+ system,libraryPort:profileLibraries,saveChatConfirmed:async()=>{chatSaves++;}});
+ let args={name:'saved'};
+ if(operation==='apply'){
+  await profileLibraries.save(profileLibraries.preview({operation:'create',changes:{name:'pack',exportData:{version:1,type:'profile-export',template:{generatorPrompt:'',jsonSchema:'{}',renderTemplate:''},profiles:[{avatar:'a.png',name:'Alice',hash:'h',profile:{note:'PRIVATE_LIBRARY'}}]}}}));
+  const row=profileLibraries.list().items[0];args={id:row.id,revision:row.revision,overwriteExisting:true};settingsSaves=0;
+ }
+ if(access==='full')args.apply=true;
+ f=fixture([[tool('muyu.library_chat.'+(operation==='capture'?'capture_preview':'apply_preview'),args),done],[text('Prepared'),done]],{profileLibraries,profileLibraryChat});
+ await f.enable();f.controller.setMode('assistant');if(access==='full')f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare the requested library operation');f.controller.send();await settle();
+ const sources=[];
+ if(access!=='full')for(let i=0;i<2;i++){
+  const request=f.controller.snapshot().interaction;assert.ok(request,JSON.stringify(f.controller.snapshot().runs));sources.push(request.source);
+  f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();if(access==='deny')break;
+ }
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='profile-library-chat-draft');
+ if(access==='normal'){
+  assert.deepEqual(sources,['profileLibraryAssets','profileLibraryChat']);assert.ok(artifact);assert.equal(settingsSaves+chatSaves,0);
+  const a=f.controller.prepareProfileLibraryChat(artifact.id,artifact.revision);await f.controller.approveProfileLibraryChat(a.id);
+ }
+ if(access==='deny'){assert.equal(artifact,undefined);assert.equal(settingsSaves+chatSaves,0);}
+ else {
+  assert.equal(settingsSaves,operation==='capture'?1:0);assert.equal(chatSaves,operation==='apply'?1:0);
+  const exported=JSON.parse(f.controller.exportHistory());assert.equal(exported.receipts.at(-1).version,15);
+  assert.ok(exported.required.includes('source:profileLibraryChat'));assert.ok(exported.required.includes('source:profileLibraryAssets'));
+  assert.doesNotMatch(JSON.stringify(exported.receipts),/PRIVATE_CHAT|PRIVATE_LIBRARY|Alice/);
+ }
+ await f.controller.dispose();
+});
+for(const access of ['normal','deny','full','preview'])test('NPC library controller '+access+' preserves asset-only authority',async()=>{
+ const {createNpcLibrarySystem}=await import('../../systems/npc-library-system.js');
+ const {createNpcLibraryPort}=await import('../../muyu/host/npc-libraries.js');
+ const settings={};let saves=0;
+ const forbidden=()=>{throw Error('chat or generation forbidden');};
+ const system=createNpcLibrarySystem({settings,extension_settings:{},EXT_KEY:'gd',saveSettings:()=>{saves++;},npcSystem:{getNpcs:forbidden},getCurrentGroup:forbidden,parseNpcImportFile:forbidden,applyNpcImport:forbidden,log(){}});
+ const npcLibraries=createNpcLibraryPort({getSettings:()=>settings,system});
+ const args={operation:'create',changesJson:JSON.stringify({name:'NPC pack',exportData:{version:1,type:'npc-export',template:{npcPrompt:'PRIVATE_PROMPT'},npcs:[{name:'Alice',description:'PRIVATE_NPC'}]}}),...(access==='full'?{apply:true}:{})};
+ const f=fixture([[tool('muyu.npc_libraries.preview',args),done],[text('Prepared'),done]],{npcLibraries});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare the NPC package');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){
+  const request=f.controller.snapshot().interaction;assert.equal(request.source,'npcLibraryAssets');assert.equal(saves,0);
+  f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();
+ }
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='npc-library-draft');
+ if(access==='normal'){assert.ok(artifact);assert.equal(saves,0);const a=f.controller.prepareNpcLibrarySave(artifact.id,artifact.revision);await f.controller.approveNpcLibrarySave(a.id);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);
+ else{
+  assert.ok(artifact);
+  const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:npcLibraryAssets'));
+  assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NPC|PRIVATE_PROMPT|Alice/);
+  if(access!=='preview'){assert.equal(history.receipts.at(-1).version,16);assert.equal(settings.npcLibraries[0].npcCount,1);}
+ }
+ await f.controller.dispose();
+});
+for(const operation of ['capture','apply'])for(const access of ['normal','deny','full','preview'])test(`NPC chat library ${operation} / ${access} uses exact bound sources and one action`,async()=>{
+ const {createNpcLibrarySystem}=await import('../../systems/npc-library-system.js');
+ const {createNpcLibraryPort}=await import('../../muyu/host/npc-libraries.js');
+ const {createNpcLibraryChatPort}=await import('../../muyu/host/npc-library-chat.js');
+ let f,settingsSaves=0,chatSaves=0;const settings={},metadata={gd:{npcs:[{name:'Alice',description:'PRIVATE_CHAT',imported:true,importedAvatar:'card.png'}]}};
+ const system=createNpcLibrarySystem({settings,EXT_KEY:'gd',extension_settings:{},saveSettings:()=>{settingsSaves++;},getCurrentGroup:()=>null,
+ npcSystem:{getNpcs:()=>{throw Error('no impure getter');}},getDefaultNpcPrompt:()=>'',log(){}});
+ const npcLibraries=createNpcLibraryPort({getSettings:()=>settings,system});
+ const npcLibraryChat=createNpcLibraryChatPort({getSettings:()=>settings,getMetadata:()=>metadata,getTarget:()=>f.host.currentTarget(),
+ system,libraryPort:npcLibraries,saveChatConfirmed:async()=>{chatSaves++;}});
+ let args={name:'saved'};
+ if(operation==='apply'){
+  await npcLibraries.save(npcLibraries.preview({operation:'create',changes:{name:'pack',exportData:{type:'npc-export',version:1,template:{npcPrompt:''},npcs:[{name:'Alice',description:'PRIVATE_LIBRARY'}]}}}));
+  const row=npcLibraries.list().items[0];args={id:row.id,revision:row.revision,overwriteExisting:true};settingsSaves=0;
+ }
+ if(access==='full')args.apply=true;
+ f=fixture([[tool('muyu.npc_library_chat.'+(operation==='capture'?'capture_preview':'apply_preview'),args),done],[text('Prepared'),done]],{npcLibraries,npcLibraryChat});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare the specified NPC package operation');f.controller.send();await settle();
+ const sources=[];
+ if(['normal','deny'].includes(access))for(let i=0;i<2;i++){
+  const r=f.controller.snapshot().interaction;assert.ok(r);sources.push(r.source);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();if(access==='deny')break;
+ }
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='npc-library-chat-draft');
+ if(access==='normal'){
+  assert.deepEqual(sources,['npcLibraryAssets','npcLibraryChat']);assert.ok(artifact);assert.equal(settingsSaves+chatSaves,0);
+  const a=f.controller.prepareNpcLibraryChat(artifact.id,artifact.revision);await f.controller.approveNpcLibraryChat(a.id);
+ }
+ if(access==='deny'){assert.equal(artifact,undefined);assert.equal(settingsSaves+chatSaves,0);}
+ else{
+  assert.ok(artifact);assert.equal(settingsSaves,operation==='capture'&&access!=='preview'?1:0);assert.equal(chatSaves,operation==='apply'&&access!=='preview'?1:0);
+  const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:npcLibraryChat'));assert.ok(history.required.includes('source:npcLibraryAssets'));
+  if(access!=='preview')assert.equal(history.receipts.at(-1).version,17);
+  assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_CHAT|PRIVATE_LIBRARY|Alice|card.png/);
+ }
+ await f.controller.dispose();
+});
 import test from 'node:test';
+for(const kind of ['profile','npc'])for(const access of ['normal','deny','full','preview'])test('Manual '+kind+' creation controller / '+access,async()=>{
+ const {createProfileEditorPort}=await import('../../muyu/host/profile-editor.js');const {createNpcEditorPort}=await import('../../muyu/host/npc-editor.js');const {createNpcSystem}=await import('../../systems/npc-system.js');
+ let f,saves=0;const metadata={},deps={getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}};
+ const port=kind==='profile'?createProfileEditorPort({...deps,getCharacters:()=>[{avatar:'a.png',name:'PRIVATE_ROLE'}],getCreationContext:()=>({schemaHash:'hash',characters:[{avatar:'a.png',name:'PRIVATE_ROLE',hash:'character_hash'}]})}):createNpcEditorPort({...deps,system:createNpcSystem({settings:{npcMaxCount:10},EXT_KEY:'gd',getChatMetadata:()=>metadata,getCharacters:()=>[{name:'Known role'}],log(){}})});
+ const field=kind==='profile'?'profileEditor':'npcEditor';
+ f=fixture([()=>{const row=kind==='profile'?port.createTargets(f.host.currentTarget()).items[0]:port.createRead(f.host.currentTarget());return[tool('muyu.'+kind+'_editor.create_preview',{...(kind==='profile'?{character:row.character}:{}),revision:row.revision,changesJson:kind==='profile'?'{"summary":"PRIVATE_PROFILE"}':'{"name":"PRIVATE_NPC","description":"PRIVATE_BODY"}',...(access==='full'?{apply:true}:{})}),done];},[text('Prepared'),done]],{[field]:port});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});f.controller.setInput('Prepare one new '+kind);f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,kind+'CreateState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind===kind+'-edit-draft');
+ if(access==='normal'){assert.ok(artifact);assert.equal(saves,0);const a=f.controller[kind==='profile'?'prepareProfileEditApply':'prepareNpcEditApply'](artifact.id,artifact.revision);await f.controller[kind==='profile'?'approveProfileEditApply':'approveNpcEditApply'](a.id);assert.throws(()=>f.controller[kind==='profile'?'approveProfileEditApply':'approveNpcEditApply'](a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);if(access==='deny'){assert.equal(artifact,undefined);assert.deepEqual(metadata,{});}else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:'+kind+'CreateState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_|a.png/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,30);}
+ await f.controller.dispose();
+});
+for(const kind of ['profile','npc'])test('Normal '+kind+' creation rejects model apply=true before source read',async()=>{
+ let called=0;const port={createPreview(){called++;throw Error('must not run');},clear(){}};
+ const args={...(kind==='profile'?{character:'profile-character:0'}:{}),revision:'bad',changesJson:'{}',apply:true};
+ const f=fixture([[tool('muyu.'+kind+'_editor.create_preview',args),done],[text('Not applied'),done]],{[kind==='profile'?'profileEditor':'npcEditor']:port});await f.enable();f.controller.setMode('assistant');f.controller.setInput('Preview');f.controller.send();await settle();assert.equal(called,0);assert.equal(f.controller.snapshot().interaction,null);assert.equal(f.controller.snapshot().artifacts.filter(a=>a.kind===kind+'-edit-draft').length,0);await f.controller.dispose();
+});
+test('Normal mode rejects first Blueprint apply=true without reading or writing',async()=>{
+ const metadata={},f=fixture([[tool('muyu.blueprint_node_editor.initialize_preview',{revision:'made-up',changesJson:'{}',apply:true}),done],[text('Not applied'),done]],{blueprintNodeEditor:{initializePreview(){throw Error('must not run');},clear(){}}});
+ await f.enable();f.controller.setMode('assistant');f.controller.setInput('Preview only');f.controller.send();await settle();assert.equal(f.controller.snapshot().interaction,null);assert.equal(f.controller.snapshot().artifacts.filter(a=>a.kind==='blueprint-node-edit-draft').length,0);assert.deepEqual(metadata,{});await f.controller.dispose();
+});
+for(const access of ['normal','deny','full','preview'])test('First blank Blueprint controller / '+access,async()=>{
+ const {createBlueprintNodeEditorPort}=await import('../../muyu/host/blueprint-node-editor.js');
+ let f,saves=0;const metadata={};
+ const settings={lang:'zh',storyBlueprintProgressionMode:'leaf'};
+ // Stable settings object is part of the host snapshot contract.
+ const stablePort=createBlueprintNodeEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,getSettings:()=>settings,getChatLength:()=>5,extensionKey:'gd',saveStructureConfirmed:async()=>{saves++;}});
+ f=fixture([()=>{const r=stablePort.initializeRead(f.host.currentTarget());return[tool('muyu.blueprint_node_editor.initialize_preview',{revision:r.revision,changesJson:'{}',...(access==='full'?{apply:true}:{})}),done];},[text('Prepared'),done]],{blueprintNodeEditor:stablePort});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Create first blank Blueprint');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'blueprintStructureState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='blueprint-node-edit-draft');
+ if(access==='normal'){assert.ok(artifact);assert.equal(saves,0);const a=f.controller.prepareBlueprintNodeEditApply(artifact.id,artifact.revision);await f.controller.approveBlueprintNodeEditApply(a.id);assert.throws(()=>f.controller.approveBlueprintNodeEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny'){assert.equal(artifact,undefined);assert.deepEqual(metadata,{});}else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:blueprintStructureState'));assert.doesNotMatch(JSON.stringify(history.receipts),/node_001|用户自建/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,29);}
+ await f.controller.dispose();
+});
+for(const access of ['normal','deny','full','preview'])test('Manual memory creation controller / '+access,async()=>{
+ const {createMemoryEditorPort}=await import('../../muyu/host/memory-editor.js');
+ let f,saves=0;const metadata={};
+ const memoryEditor=createMemoryEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,getCharacters:()=>[{avatar:'a.png',name:'PRIVATE_ROLE'}],getSettings:()=>({memoryMaxEntries:200}),getChatLength:()=>7,extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}});
+ f=fixture([()=>{const row=memoryEditor.createTargets(f.host.currentTarget()).items[0];return [tool('muyu.memory_editor.create_preview',{character:row.character,revision:row.revision,changesJson:'{"event":"PRIVATE_NEW"}',...(access==='full'?{apply:true}:{})}),done];},[text('Prepared'),done]],{memoryEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Append one memory');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'memoryCreateState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='memory-edit-draft');
+ if(access==='normal'){assert.ok(artifact);assert.equal(saves,0);const a=f.controller.prepareMemoryEditApply(artifact.id,artifact.revision);await f.controller.approveMemoryEditApply(a.id);assert.throws(()=>f.controller.approveMemoryEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny'){assert.equal(artifact,undefined);assert.deepEqual(metadata,{});}else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:memoryCreateState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NEW|PRIVATE_ROLE|a.png/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,28);}
+ await f.controller.dispose();
+});
+for(const operation of ['create','delete','move'])for(const access of ['normal','deny','full','preview'])test('Blueprint structure controller '+operation+' / '+access+' exact approval',async()=>{
+ const {createBlueprintNodeEditorPort}=await import('../../muyu/host/blueprint-node-editor.js');
+ let f,saves=0;const settings={storyBlueprintProgressionMode:'leaf'},metadata={gd:{storyBlueprint:{blueprint:{version:1,title:'PRIVATE_TREE',nodes:[{id:'a',type:'chapter',title:'PRIVATE_A',content:{text:'PRIVATE_BODY'},children:[]},{id:'b',type:'chapter',title:'B',content:{},children:[]}]},doneSignals:[]}}};
+ const blueprintNodeEditor=createBlueprintNodeEditorPort({getTarget:()=>f?.host.currentTarget(),getMetadata:()=>metadata,getSettings:()=>settings,getChatLength:()=>1,extensionKey:'gd',saveStructureConfirmed:async()=>{saves++;}});
+ const changes=operation==='create'?{parentId:'',index:2,node:{id:'new',type:'chapter',title:'New',content:{}}}:operation==='delete'?{nodeId:'a'}:{nodeId:'a',parentId:'',index:1};
+ f=fixture([()=>[tool('muyu.blueprint_node_editor.structure_preview',{operation,revision:blueprintNodeEditor.structureRead(f.host.currentTarget(),0).revision,changesJson:JSON.stringify(changes),...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{blueprintNodeEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare Blueprint structure change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'blueprintStructureState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='blueprint-node-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareBlueprintNodeEditApply(artifact.id,artifact.revision);await f.controller.approveBlueprintNodeEditApply(a.id);assert.throws(()=>f.controller.approveBlueprintNodeEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const h=JSON.parse(f.controller.exportHistory());assert.ok(h.required.includes('source:blueprintStructureState'));assert.doesNotMatch(JSON.stringify(h.receipts),/PRIVATE|nodeId|before|after/);if(access!=='preview')assert.equal(h.receipts.at(-1).version,27);}
+ await f.controller.dispose();
+});
+for(const kind of ['worldbooks','profile-autoload'])for(const access of ['normal','deny','full','preview'])test('Selection controller '+kind+' / '+access+' exact global approval',async()=>{
+ const {createSelectionEditorPort}=await import('../../muyu/host/selection-editor.js');
+ const {createProfileLibrarySystem}=await import('../../systems/profile-library-system.js');
+ const target={kind:'global',userKey:'page:test'},settings={worldBookSourceMode:'st',worldBookSelection:{},profileLibraryAutoLoad:{enabled:false,mode:'best',fixedId:'',matchHash:true,matchAvatarName:true,matchNameOnly:false,overwriteExisting:false,importTemplate:false},profileLibraries:[{id:'p1',name:'PRIVATE_PACK',exportData:{text:'PRIVATE_BODY'}}]};let saves=0;
+ const system=createProfileLibrarySystem({settings,extension_settings:{},EXT_KEY:'gd',saveSettings:async()=>{saves++;},log(){}});
+ const selectionEditor=createSelectionEditorPort({getTarget:()=>target,getSettings:()=>settings,getWorldNames:()=>['PRIVATE_BOOK'],worldBookScanner:{clearCache(){}},profileLibrarySystem:system,saveSettings:async()=>{saves++;return{confirmed:true};}});
+ const row=selectionEditor.read(target,kind);
+ const changes=kind==='worldbooks'?{sourceMode:'manual',selectedNames:['PRIVATE_BOOK']}:{mode:'fixed',fixedId:'p1'};
+ const f=fixture([[tool('muyu.selection.preview',{kind,revision:row.revision,changesJson:JSON.stringify(changes),...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{selectionEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare selection policy');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'selectionState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='selection-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareSelectionApply(artifact.id,artifact.revision);await f.controller.approveSelectionApply(a.id);assert.throws(()=>f.controller.approveSelectionApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:selectionState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_PACK|PRIVATE_BOOK|PRIVATE_BODY/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,26);}
+ await f.controller.dispose();
+});
+for(const operation of ['update','clear'])for(const access of ['normal','deny','full','preview'])test('Ledger editor controller '+operation+' / '+access+' uses exact approval',async()=>{
+ const {createLedgerEditorPort}=await import('../../muyu/host/ledger-editor.js');
+ let f,saves=0;const metadata={gd:{directorHistory:[{reason:'PRIVATE_BODY',speakers:['PRIVATE_NAME'],scripts:{},_anchorDate:'PRIVATE_ANCHOR',_chatLength:1}]}};
+ const ledgerEditor=createLedgerEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}});
+ f=fixture([],{ledgerEditor});const row=ledgerEditor.list(f.host.currentTarget()).items[0];await f.controller.dispose();
+ f=fixture([[tool('muyu.ledger_editor.preview',{operation,selector:row.selector,revision:row.revision,changesJson:operation==='clear'?'{}':'{"reason":"NEW_REASON"}',...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{ledgerEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare node change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'ledgerEditState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='ledger-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareLedgerEditApply(artifact.id,artifact.revision);await f.controller.approveLedgerEditApply(a.id);assert.throws(()=>f.controller.approveLedgerEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:ledgerEditState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NAME|PRIVATE_BODY|PRIVATE_ANCHOR|NEW_REASON/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,25);}
+ await f.controller.dispose();
+});
+for(const access of ['normal','deny','full','preview'])test('Blueprint node editor controller / '+access+' uses exact approval',async()=>{
+ const {createBlueprintNodeEditorPort}=await import('../../muyu/host/blueprint-node-editor.js');
+ let f,saves=0;const metadata={gd:{storyBlueprint:{blueprint:{version:1,title:'Story',nodes:[{id:'PRIVATE_ID',type:'chapter',title:'PRIVATE_TITLE',content:{text:'PRIVATE_BODY'},children:[]}]},doneSignals:[],progressTracks:{}}}};
+ const blueprintNodeEditor=createBlueprintNodeEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}});
+ f=fixture([],{blueprintNodeEditor});const row=blueprintNodeEditor.list(f.host.currentTarget()).items[0];await f.controller.dispose();
+ f=fixture([[tool('muyu.blueprint_node_editor.preview',{selector:row.selector,revision:row.revision,changesJson:'{"content":{"text":"NEW_NODE"}}',...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{blueprintNodeEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare node change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'blueprintNodeEditState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='blueprint-node-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareBlueprintNodeEditApply(artifact.id,artifact.revision);await f.controller.approveBlueprintNodeEditApply(a.id);assert.throws(()=>f.controller.approveBlueprintNodeEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:blueprintNodeEditState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_ID|PRIVATE_BODY|PRIVATE_TITLE|NEW_NODE/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,24);}
+ await f.controller.dispose();
+});
+for(const operation of ['update','delete'])for(const access of ['normal','deny','full','preview'])test('NPC editor controller '+operation+' / '+access+' uses exact approval',async()=>{
+ const {createNpcEditorPort}=await import('../../muyu/host/npc-editor.js');const {createNpcSystem}=await import('../../systems/npc-system.js');
+ let f,saves=0;const metadata={gd:{npcs:[{name:'PRIVATE_NPC',description:'PRIVATE_BODY',imported:true,importedAvatar:'PRIVATE_CARD',createdAt:1}]}};
+ const system=createNpcSystem({settings:{},EXT_KEY:'gd',getChatMetadata:()=>metadata,getCharacters:()=>[],saveChatConditional:async()=>{},log(){}});
+ const npcEditor=createNpcEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,extensionKey:'gd',system,saveChatConfirmed:async()=>{saves++;}});
+ f=fixture([],{npcEditor});const row=npcEditor.list(f.host.currentTarget()).items[0];await f.controller.dispose();
+ f=fixture([[tool('muyu.npc_editor.preview',{operation,selector:row.selector,revision:row.revision,changesJson:operation==='delete'?'{}':'{"description":"NEW_NPC"}',...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{npcEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare NPC change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'npcEditState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='npc-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareNpcEditApply(artifact.id,artifact.revision);await f.controller.approveNpcEditApply(a.id);assert.throws(()=>f.controller.approveNpcEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:npcEditState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NPC|PRIVATE_BODY|PRIVATE_CARD|NEW_NPC/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,23);}
+ await f.controller.dispose();
+});
+for(const operation of ['update','delete'])for(const access of ['normal','deny','full','preview'])test('Profile editor controller '+operation+' / '+access+' uses exact approval',async()=>{
+ const {createProfileEditorPort}=await import('../../muyu/host/profile-editor.js');
+ let f,saves=0;const metadata={gd:{characterProfiles:{'a.png':{profile:{summary:'PRIVATE_PROFILE',custom:'PRIVATE_CUSTOM'},state:'ready'}},archivedProfiles:{}}};
+ const profileEditor=createProfileEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,getCharacters:()=>[{avatar:'a.png',name:'PRIVATE_ROLE'}],extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}});
+ f=fixture([],{profileEditor});const row=profileEditor.list(f.host.currentTarget()).items[0];await f.controller.dispose();
+ f=fixture([[tool('muyu.profile_editor.preview',{operation,character:row.character,revision:row.revision,changesJson:operation==='delete'?'{}':'{"summary":"NEW_PROFILE"}',...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{profileEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare profile change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'profileEditState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='profile-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareProfileEditApply(artifact.id,artifact.revision);await f.controller.approveProfileEditApply(a.id);assert.throws(()=>f.controller.approveProfileEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:profileEditState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_PROFILE|NEW_PROFILE|PRIVATE_CUSTOM|PRIVATE_ROLE|a.png/);if(access!=='preview'){assert.equal(history.receipts.at(-1).version,22);if(operation==='delete')assert.ok(metadata.gd.archivedProfiles['a.png']);}}
+ await f.controller.dispose();
+});
+for(const operation of ['update','delete'])for(const access of ['normal','deny','full','preview'])test('Memory editor controller '+operation+' / '+access+' uses exact approval',async()=>{
+ const {createMemoryEditorPort}=await import('../../muyu/host/memory-editor.js');
+ let f,saves=0;const metadata={gd:{charMemories:{'a.png':[{event:'PRIVATE_MEMORY',mood:'neutral'}]}}};
+ const memoryEditor=createMemoryEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,getCharacters:()=>[{avatar:'a.png',name:'PRIVATE_ROLE'}],extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}});
+ f=fixture([],{memoryEditor});const row=memoryEditor.list(f.host.currentTarget()).items[0];await f.controller.dispose();
+ f=fixture([[tool('muyu.memory_editor.preview',{operation,character:row.character,revision:row.revision,index:0,changesJson:operation==='delete'?'{}':'{"event":"NEW_MEMORY"}',...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],{memoryEditor});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare memory change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){const r=f.controller.snapshot().interaction;assert.equal(r.source,'memoryEditState');assert.equal(saves,0);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='memory-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const a=f.controller.prepareMemoryEditApply(artifact.id,artifact.revision);await f.controller.approveMemoryEditApply(a.id);assert.throws(()=>f.controller.approveMemoryEditApply(a.id),/STALE/);}
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:memoryEditState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_MEMORY|NEW_MEMORY|PRIVATE_ROLE|a.png/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,21);}
+ await f.controller.dispose();
+});
+for(const operation of ['create','set_value','delete'])for(const access of ['normal','deny','full','preview'])test('Variable editor controller '+operation+' / '+access+' uses one exact approval',async()=>{
+ const {createVariableEditorPort}=await import('../../muyu/host/variable-editor.js');
+ let f,saves=0;const metadata={},settings={};
+ const variableEditor=createVariableEditorPort({getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,getSettings:()=>settings,
+ getCharacters:()=>[{avatar:'a.png',name:'Alice'}],getGroup:()=>null,extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}});
+ let args={operation,id:'coins',changesJson:JSON.stringify({label:'金币',type:'array',scope:'global',defaultValue:['PRIVATE_VALUE']})};
+ f=fixture([],{variableEditor,variableSaveConfirmed:async()=>{}});
+ if(operation!=='create'){
+  await variableEditor.apply(variableEditor.preview(f.host.currentTarget(),{operation:'create',id:'coins',changes:{label:'金币',type:'array',scope:'global',defaultValue:['PRIVATE_VALUE']}}));
+  saves=0;args={operation,id:'coins',revision:variableEditor.list(f.host.currentTarget()).items[0].revision,changesJson:operation==='delete'?'{}':JSON.stringify({value:['NEW_PRIVATE']})};
+ }
+ await f.controller.dispose();
+ f=fixture([[tool('muyu.variable_editor.preview',{...args,...(access==='full'?{apply:true}:{})}),done],[text('Prepared'),done]],
+ {variableEditor,variableSaveConfirmed:async()=>{}});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare variable change');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){
+  const request=f.controller.snapshot().interaction;assert.equal(request.source,'variableEditState');assert.equal(saves,0);
+  f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();
+ }
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='variable-editor-draft');
+ if(access==='normal'){
+  assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);
+  const a=f.controller.prepareVariableApply(artifact.id,artifact.revision);await f.controller.approveVariableApply(a.id);
+ }
+ assert.equal(saves,['deny','preview'].includes(access)?0:1);
+ if(access==='deny')assert.equal(artifact,undefined);
+ else{
+  assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:variableEditState'));
+  assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_VALUE|NEW_PRIVATE|a.png/);
+  if(access!=='preview')assert.equal(history.receipts.at(-1).version,20);
+ }
+ await f.controller.dispose();
+});
+for(const operation of ['capture','apply'])for(const access of ['normal','deny','full','preview'])test(`Blueprint chat library ${operation} / ${access} uses exact bound sources and one action`,async()=>{
+ const {createStoryBlueprintLibrarySystem}=await import('../../systems/story-blueprint-library-system.js');
+ const {createBlueprintLibraryPort}=await import('../../muyu/host/blueprint-libraries.js');
+ const {createBlueprintLibraryChatPort}=await import('../../muyu/host/blueprint-library-chat.js');
+ let f,settingsSaves=0,chatSaves=0;const settings={},blueprint={version:1,title:'PRIVATE_CHAT',nodes:[{id:'a',type:'scene',title:'Alice',content:{text:'PRIVATE_CHAT'}}]},metadata={gd:{storyBlueprint:{blueprint}}};
+ const system=createStoryBlueprintLibrarySystem({settings,EXT_KEY:'gd',extension_settings:{},saveSettings:()=>{settingsSaves++;},getCurrentGroup:()=>null,
+ storyBlueprintSystem:new Proxy({}, {get:()=>()=>{throw Error('no impure getter');}}),log(){}});
+ const blueprintLibraries=createBlueprintLibraryPort({getSettings:()=>settings,system});
+ const blueprintLibraryChat=createBlueprintLibraryChatPort({getSettings:()=>settings,getMetadata:()=>metadata,getTarget:()=>f.host.currentTarget(),
+ extensionKey:'gd',getChatLength:()=>3,system,libraryPort:blueprintLibraries,saveChatConfirmed:async()=>{chatSaves++;}});
+ let args={name:'saved'};
+ if(operation==='apply'){
+  await blueprintLibraries.save(blueprintLibraries.preview({operation:'create',changes:{name:'pack',exportData:{type:'group-director-story-blueprint',version:1,storyBlueprint:{blueprint}}}}));
+  const row=blueprintLibraries.list().items[0];args={id:row.id,revision:row.revision};settingsSaves=0;
+ }
+ if(access==='full')args.apply=true;
+ f=fixture([[tool('muyu.blueprint_library_chat.'+(operation==='capture'?'capture_preview':'apply_preview'),args),done],[text('Prepared'),done]],{blueprintLibraries,blueprintLibraryChat});
+ await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ f.controller.setInput('Prepare the specified Blueprint package operation');f.controller.send();await settle();
+ const sources=[];
+ if(['normal','deny'].includes(access))for(let i=0;i<2;i++){
+  const r=f.controller.snapshot().interaction;assert.ok(r);sources.push(r.source);f.controller.answerPermission(r.id,access==='deny'?'deny':'task');await settle();if(access==='deny')break;
+ }
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='blueprint-library-chat-draft');
+ if(access==='normal'){
+  assert.deepEqual(sources,['blueprintLibraryAssets','blueprintLibraryChat']);assert.ok(artifact);assert.equal(settingsSaves+chatSaves,0);
+  const a=f.controller.prepareBlueprintLibraryChat(artifact.id,artifact.revision);await f.controller.approveBlueprintLibraryChat(a.id);
+ }
+ if(access==='deny'){assert.equal(artifact,undefined);assert.equal(settingsSaves+chatSaves,0);}
+ else{
+  assert.ok(artifact);assert.equal(settingsSaves,operation==='capture'&&access!=='preview'?1:0);assert.equal(chatSaves,operation==='apply'&&access!=='preview'?1:0);
+  const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:blueprintLibraryChat'));assert.ok(history.required.includes('source:blueprintLibraryAssets'));
+  if(access!=='preview')assert.equal(history.receipts.at(-1).version,19);
+  assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_CHAT|PRIVATE_LIBRARY|Alice|card.png/);
+ }
+ await f.controller.dispose();
+});
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createHostBridge } from '../../muyu/host/bridge.js';
@@ -35,9 +506,416 @@ import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { openSettingsHistoryStore } from '../../muyu/sessions/settings-store.js';
 import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subject.mjs';
 
-const tool = (toolId, args = {}, callId = 'c1') => ({ type: 'tool_call_complete', call: { toolId, callId, version: toolId.startsWith('muyu.provider.') ? 2 : 1, args } });
+const tool = (toolId, args = {}, callId = 'c1') => ({ type: 'tool_call_complete', call: { toolId, callId, version: toolId.startsWith('muyu.provider.') && !['muyu.provider.assets', 'muyu.provider.source', 'muyu.provider.preview', 'muyu.provider.test', 'muyu.provider.update_preview', 'muyu.provider.remove_preview'].includes(toolId) ? 2 : 1, args } });
 
 const ask = () => tool('muyu.interaction.ask', { question: 'Which part?', options: ['Frequency', 'Content'] });
+
+async function profileExecutionControllerFixture(mode, { saveFails = false, budget = false, paused = false } = {}) {
+    const { createProfileSystem } = await import('../../systems/profile-system.js');
+    const { createProfileGenerationPort } = await import('../../muyu/host/profile-generation.js');
+    let f, calls = 0, saves = 0, finish;
+    const wait = new Promise(resolve => { finish = resolve; }), characters = [{ avatar: 'Alice.png', name: 'Alice', description: 'character' }];
+    const settings = { profileEnabled: true, profileJsonSchema: '', agentConfigs: { profile: { useCustom: false } } };
+    const system = createProfileSystem({ settings, EXT_KEY: 'gd', getChatMetadata: () => f.ctx.chatMetadata, getChat: () => f.ctx.chat,
+        getCharacters: () => characters, getCurrentGroup: () => f.ctx.groups[0], getContext: () => f.ctx, isRoundActive: () => false,
+        hashChar: (...values) => values.join('|'), djb2Hash: value => String(value.length),
+        renderPrompt: async p => p, extractJsonObject: () => null, sanitizeJson: value => value,
+        setExtensionPrompt() {}, inject_ids: { QUIET_PROMPT: 'quiet' }, extension_prompt_types: { IN_PROMPT: 0 },
+        saveChatConditional: () => { throw Error('conditional fallback forbidden'); },
+        createCaller: () => ({ generate: async () => { calls++; if (paused) await wait;
+            return '{"summary":"PRIVATE_GENERATED_PROFILE","tags":["owl"],"motivation":"help","relationships":"team"}'; } }) });
+    const profileGeneration = createProfileGenerationPort({ getTarget: () => f.host.currentTarget(), getContext: () => f.ctx,
+        getSettings: () => settings, getCharacters: () => characters, getProviders: () => [], system,
+        saveChatConfirmed: async () => { saves++; if (saveFails) throw Error('save failure'); } });
+    const last = () => JSON.parse(f.model.requests.at(-1).messages.findLast(m => m.role === 'tool' && m.result?.data?.text)?.result.data.text);
+    f = fixture([[tool('muyu.profile_generation.targets', {}), done],
+        () => { const row = last().items[0]; return [tool('muyu.profile_generation.prepare', { character: row.character, revision: row.revision, mode }, 'profile-prepare'), done]; },
+        () => [tool('muyu.profile_generation.execute', { executionId: last().executionId }, 'profile-extract'), done],
+        [text('Historical result; no extra execution'), done]], { profileGeneration });
+    await f.enable(); f.controller.setMode('assistant');
+    if (budget) await f.controller.saveRunConfig({ ...RUN_DEFAULTS, providerBytes: 6000 });
+    return { f, settings, system, finish, calls: () => calls, saves: () => saves };
+}
+
+for (const mode of ['trial', 'save']) for (const decision of ['task', 'deny', 'full']) test(`Profile generation ${mode}/${decision}: source read is not paid-write authority; resume exactly once`, async () => {
+    const { f, settings, calls, saves } = await profileExecutionControllerFixture(mode);
+    if (decision === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput(mode === 'trial' ? 'Test Alice profile extraction without saving' : 'Extract and save Alice profile once'); f.controller.send(); await settle();
+    if (decision !== 'full') {
+        let r = f.controller.snapshot().interaction; assert.equal(r.source, 'profileGenerationTargets'); assert.equal(calls(), 0);
+        f.controller.answerPermission(r.id, 'task'); await settle(); r = f.controller.snapshot().interaction;
+        assert.equal(r.source, 'profileExecution'); assert.equal(calls(), 0); assert.equal(saves(), 0);
+        assert.equal(f.controller.profileExecutionDetails(r.executionId).mode, mode);
+        assert.throws(() => f.controller.answerPermission(r.id, 'chat'), /INVALID_PERMISSION_DECISION/);
+        // Conversation storage is independent of the approved business context.
+        settings.muyuHistoryAccount = { writes: 1 };
+        f.controller.answerPermission(r.id, decision); await settle();
+    }
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded'); assert.equal(calls(), decision === 'deny' ? 0 : 1);
+    assert.equal(saves(), mode === 'save' && decision !== 'deny' ? 1 : 0);
+    const saved = JSON.parse(f.controller.exportHistory());
+    assert.ok(saved.required.some(source => source.startsWith('source:profileExecution:')) || decision === 'deny');
+    if (mode === 'trial' || decision === 'deny') assert.deepEqual(f.ctx.chatMetadata, {});
+    else assert.equal(f.ctx.chatMetadata.gd.characterProfiles['Alice.png'].profile.summary, 'PRIVATE_GENERATED_PROFILE');
+    assert.equal(settings.profileEnabled, true); assert.equal(f.model.requests.length, 4);
+    await f.controller.dispose();
+});
+test('profile generation refuses stale exact approval after business configuration changes', async () => {
+    const { f, settings, calls } = await profileExecutionControllerFixture('save'); f.controller.setInput('Generate Alice profile'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle(); const r = f.controller.snapshot().interaction;
+    settings.profileGeneratorPrompt = 'changed'; assert.throws(() => f.controller.answerPermission(r.id, 'task'), /INTERACTION_STALE/);
+    assert.equal(calls(), 0); f.controller.cancelInteraction(r.id); await f.controller.dispose();
+});
+test('profile generation lacks result budget: consent does not start paid effects', async () => {
+    const { f, calls, saves } = await profileExecutionControllerFixture('save', { budget: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate Alice profile'); f.controller.send(); await settle(); assert.equal(calls(), 0); assert.equal(saves(), 0);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /RESULT_BUDGET_EXCEEDED/); await f.controller.dispose();
+});
+test('profile generation returns unknown saving as data without retry or conditional-save fallback', async () => {
+    const { f, calls, saves } = await profileExecutionControllerFixture('save', { saveFails: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate and save Alice profile'); f.controller.send(); await settle(); assert.equal(calls(), 1); assert.equal(saves(), 1);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /outcome_unknown/);
+    assert.equal(f.ctx.chatMetadata.gd.characterProfiles['Alice.png'].state, 'ready'); await f.controller.dispose();
+});
+test('profile controller cancellation retains physical busy lease and blocks late generated writes', async () => {
+    const { f, system, finish, calls, saves } = await profileExecutionControllerFixture('save', { paused: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate Alice profile'); f.controller.send(); await settle(); assert.equal(calls(), 1);
+    f.controller.stop(); await settle(); assert.equal(system.isGenerating(), true); assert.equal(saves(), 0);
+    finish(); await settle(); assert.equal(system.isGenerating(), false); assert.equal(saves(), 0); assert.deepEqual(f.ctx.chatMetadata, {});
+    await f.controller.dispose();
+});
+
+async function npcExecutionControllerFixture(mode, { saveFails = false, budget = false, paused = false } = {}) {
+    const { createNpcSystem } = await import('../../systems/npc-system.js');
+    const { createNpcAgent } = await import('../../agents/npc.js');
+    const { execute } = await import('../../systems/agent-runtime.js');
+    const { createNpcGenerationPort } = await import('../../muyu/host/npc-generation.js');
+    let f, calls = 0, saves = 0, finish;
+    const wait = new Promise(resolve => { finish = resolve; }), characters = [{ avatar: 'Alice.png', name: 'Alice' }];
+    const settings = { npcEnabled: true, npcMaxCount: 10, npcBatchSize: 3, npcGenerateFirstMes: false,
+        agentConfigs: { npc: { call: { retries: 2, timeout: 1000 } } } };
+    const agent = createNpcAgent({ renderPrompt: async p => p, extractJsonObject: () => null, log() {} });
+    const system = createNpcSystem({ settings, EXT_KEY: 'gd', getChatMetadata: () => f.ctx.chatMetadata, getChat: () => f.ctx.chat,
+        getCharacters: () => characters, getCurrentGroup: () => f.ctx.groups[0], getContext: () => f.ctx,
+        AgentRegistry: { get: () => agent }, execute, log() {},
+        saveChatConditional: () => { throw Error('conditional fallback forbidden'); },
+        buildContextPool: ({ group, npcExistingList, npcBatchSize, npcGenerateFirstMes }) => ({ group: () => group,
+            characters: () => characters, recentMessages: () => f.ctx.chat, npcExistingList, npcBatchSize, npcGenerateFirstMes }),
+        createCaller: () => ({ supportsAbort: false, generate: async () => { calls++; if (paused) await wait;
+            return '{"npcs":[{"name":"PRIVATE_GENERATED_NPC","description":"A merchant","personality":"Calm","scenario":"Tavern"}]}'; } }) });
+    const npcGeneration = createNpcGenerationPort({ getTarget: () => f.host.currentTarget(), getContext: () => f.ctx,
+        getSettings: () => settings, getProviders: () => [], system,
+        saveChatConfirmed: async () => { saves++; if (saveFails) throw Error('save failure'); } });
+    const last = () => JSON.parse(f.model.requests.at(-1).messages.findLast(m => m.role === 'tool' && m.result?.data?.text)?.result.data.text);
+    f = fixture([[tool('muyu.npc_generation.state', {}), done],
+        () => [tool('muyu.npc_generation.prepare', { revision: last().revision, mode, count: 2 }, 'npc-prepare'), done],
+        () => [tool('muyu.npc_generation.execute', { executionId: last().executionId }, 'npc-generate'), done],
+        [text('Historical NPC result; not a character-card import'), done]], { npcGeneration });
+    await f.enable(); f.controller.setMode('assistant');
+    if (budget) await f.controller.saveRunConfig({ ...RUN_DEFAULTS, providerBytes: 6000 });
+    return { f, settings, system, finish, calls: () => calls, saves: () => saves };
+}
+
+for (const mode of ['trial', 'save']) for (const decision of ['task', 'deny', 'full']) test(`NPC generation ${mode}/${decision}: exact consent resumes original call with no extra model request`, async () => {
+    const { f, settings, calls, saves } = await npcExecutionControllerFixture(mode);
+    if (decision === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput(mode === 'trial' ? 'Test NPC generation without saving' : 'Generate and save two NPC records, no card import');
+    f.controller.send(); await settle();
+    if (decision !== 'full') {
+        let r = f.controller.snapshot().interaction; assert.equal(r.source, 'npcGenerationState'); assert.equal(calls(), 0);
+        f.controller.answerPermission(r.id, 'task'); await settle(); r = f.controller.snapshot().interaction;
+        assert.equal(r.source, 'npcExecution'); assert.equal(calls(), 0); assert.equal(saves(), 0);
+        const details = f.controller.npcExecutionDetails(r.executionId); assert.equal(details.mode, mode); assert.equal(details.requested, 2);
+        assert.throws(() => f.controller.answerPermission(r.id, 'chat'), /INVALID_PERMISSION_DECISION/);
+        settings.muyuHistoryAccount = { writes: 1 }; f.controller.answerPermission(r.id, decision); await settle();
+    }
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded'); assert.equal(calls(), decision === 'deny' ? 0 : 1);
+    assert.equal(saves(), mode === 'save' && decision !== 'deny' ? 1 : 0);
+    const saved = JSON.parse(f.controller.exportHistory());
+    assert.ok(saved.required.some(source => source.startsWith('source:npcExecution:')) || decision === 'deny');
+    if (mode === 'trial' || decision === 'deny') assert.deepEqual(f.ctx.chatMetadata, {});
+    else { assert.equal(f.ctx.chatMetadata.gd.npcs[0].name, 'PRIVATE_GENERATED_NPC'); assert.equal(f.ctx.chatMetadata.gd.npcs[0].imported, false); }
+    assert.equal(settings.npcEnabled, true); assert.equal(f.model.requests.length, 4); await f.controller.dispose();
+});
+
+test('NPC approval refuses stale business settings without model work', async () => {
+    const { f, settings, calls } = await npcExecutionControllerFixture('save'); f.controller.setInput('Generate NPC records'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle(); const r = f.controller.snapshot().interaction;
+    settings.npcBatchSize = 4; assert.throws(() => f.controller.answerPermission(r.id, 'task'), /INTERACTION_STALE/);
+    assert.equal(calls(), 0); f.controller.cancelInteraction(r.id); await f.controller.dispose();
+});
+
+test('NPC insufficient result budget prevents all paid/write effects even in full access', async () => {
+    const { f, calls, saves } = await npcExecutionControllerFixture('save', { budget: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate NPC records'); f.controller.send(); await settle(); assert.equal(calls(), 0); assert.equal(saves(), 0);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /RESULT_BUDGET_EXCEEDED/); await f.controller.dispose();
+});
+
+test('NPC unknown save is historical data, not a retry or rollback', async () => {
+    const { f, calls, saves } = await npcExecutionControllerFixture('save', { saveFails: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate NPC records'); f.controller.send(); await settle(); assert.equal(calls(), 1); assert.equal(saves(), 1);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /outcome_unknown/); assert.equal(f.ctx.chatMetadata.gd.npcs.length, 1);
+    await f.controller.dispose();
+});
+
+test('NPC controller stop keeps the native physical lease and prevents late writes', async () => {
+    const { f, system, finish, calls, saves } = await npcExecutionControllerFixture('save', { paused: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate NPC records'); f.controller.send(); await settle(); assert.equal(calls(), 1);
+    f.controller.stop(); await settle(); assert.equal(system.isGenerating(), true); assert.equal(saves(), 0);
+    finish(); await settle(); assert.equal(system.isGenerating(), false); assert.equal(saves(), 0); assert.deepEqual(f.ctx.chatMetadata, {});
+    await f.controller.dispose();
+});
+
+async function memoryExecutionControllerFixture(mode, { saveFails = false, budget = false, paused = false } = {}) {
+    const { createMemorySystem } = await import('../../systems/memory-system.js');
+    const { createMemoryAgent } = await import('../../agents/memory.js');
+    const { execute } = await import('../../systems/agent-runtime.js');
+    const { createMemoryGenerationPort } = await import('../../muyu/host/memory-generation.js');
+    let f, calls = 0, saves = 0, finish;
+    const wait = new Promise(resolve => { finish = resolve; }), characters = [{ avatar: 'Alice.png', name: 'Alice', description: 'character' }];
+    const settings = { memoryMaxEntries: 3, llmContextDepth: 10, agentConfigs: { memory: { call: { retries: 2, timeout: 1000 } } } };
+    const agent = createMemoryAgent({ renderPrompt: async p => p, extractJsonObject: () => null, log() {} });
+    const system = createMemorySystem({ settings, EXT_KEY: 'gd', getChatMetadata: () => f.ctx.chatMetadata, getChat: () => f.ctx.chat,
+        getCharacters: () => characters, AgentRegistry: { get: () => agent }, execute, getCurrentGroup: () => f.ctx.groups[0],
+        getContext: () => f.ctx, log() {}, saveChatConditional: () => { throw Error('conditional fallback forbidden'); },
+        buildContextPool: ({ memoryCharacter, memoryExistingList }) => ({ chat: () => f.ctx.chat, memoryCharacter: () => memoryCharacter, memoryExistingList, recentMessages: () => f.ctx.chat }),
+        createCaller: () => ({ supportsAbort: false, generate: async () => { calls++; if (paused) await wait; return '{"memories":[{"event":"PRIVATE_GENERATED_MEMORY","mood":"happy"}]}'; } }) });
+    const memoryGeneration = createMemoryGenerationPort({ getTarget: () => f.host.currentTarget(), getContext: () => f.ctx,
+        getSettings: () => settings, getCharacters: () => characters, getProviders: () => [], system,
+        saveChatConfirmed: async () => { saves++; if (saveFails) throw Error('save failure'); } });
+    const last = () => JSON.parse(f.model.requests.at(-1).messages.findLast(m => m.role === 'tool' && m.result?.data?.text)?.result.data.text);
+    f = fixture([[tool('muyu.memory_generation.targets', {}), done],
+        () => { const row = last().items[0]; return [tool('muyu.memory_generation.prepare', { character: row.character, revision: row.revision, mode }, 'prepare'), done]; },
+        () => [tool('muyu.memory_generation.execute', { executionId: last().executionId }, 'extract'), done], [text('Historical result; no extra execution'), done]], { memoryGeneration });
+    await f.enable(); f.controller.setMode('assistant');
+    if (budget) await f.controller.saveRunConfig({ ...RUN_DEFAULTS, providerBytes: 6000 });
+    return { f, settings, system, finish, calls: () => calls, saves: () => saves };
+}
+for (const mode of ['trial', 'save']) for (const decision of ['task', 'deny', 'full']) test(`Memory generation ${mode}/${decision}: source read is not paid-write authority; resume exactly once`, async () => {
+    const { f, settings, calls, saves } = await memoryExecutionControllerFixture(mode);
+    if (decision === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput(mode === 'trial' ? 'Test Alice memory extraction without saving' : 'Extract and save Alice memory once'); f.controller.send(); await settle();
+    if (decision !== 'full') {
+        let r = f.controller.snapshot().interaction; assert.equal(r.source, 'memoryGenerationTargets'); assert.equal(calls(), 0);
+        f.controller.answerPermission(r.id, 'task'); await settle(); r = f.controller.snapshot().interaction;
+        assert.equal(r.source, 'memoryExecution'); assert.equal(calls(), 0); assert.equal(saves(), 0);
+        assert.equal(f.controller.memoryExecutionDetails(r.executionId).mode, mode);
+        assert.throws(() => f.controller.answerPermission(r.id, 'chat'), /INVALID_PERMISSION_DECISION/);
+        // Conversation storage is independent of the approved business context.
+        settings.muyuHistoryAccount = { writes: 1 };
+        f.controller.answerPermission(r.id, decision); await settle();
+    }
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded'); assert.equal(calls(), decision === 'deny' ? 0 : 1);
+    assert.equal(saves(), mode === 'save' && decision !== 'deny' ? 1 : 0);
+    const saved = JSON.parse(f.controller.exportHistory());
+    assert.ok(saved.required.some(source => source.startsWith('source:memoryExecution:')) || decision === 'deny');
+    if (mode === 'trial' || decision === 'deny') assert.deepEqual(f.ctx.chatMetadata, {});
+    else assert.equal(f.ctx.chatMetadata.gd.charMemories['Alice.png'][0].event, 'PRIVATE_GENERATED_MEMORY');
+    assert.equal(settings.memoryEnabled, undefined); await f.controller.dispose();
+});
+test('memory generation refuses stale exact approval after business configuration changes', async () => {
+    const { f, settings, calls } = await memoryExecutionControllerFixture('save'); f.controller.setInput('Generate Alice memory'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle(); const r = f.controller.snapshot().interaction;
+    settings.memoryMaxEntries++; assert.throws(() => f.controller.answerPermission(r.id, 'task'), /INTERACTION_STALE/);
+    assert.equal(calls(), 0); f.controller.cancelInteraction(r.id); await f.controller.dispose();
+});
+test('memory generation lacks result budget: consent does not start paid effects', async () => {
+    const { f, calls, saves } = await memoryExecutionControllerFixture('save', { budget: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate Alice memory'); f.controller.send(); await settle(); assert.equal(calls(), 0); assert.equal(saves(), 0);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /RESULT_BUDGET_EXCEEDED/); await f.controller.dispose();
+});
+test('memory generation returns unknown saving as data without retry or conditional-save fallback', async () => {
+    const { f, calls, saves } = await memoryExecutionControllerFixture('save', { saveFails: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate and save Alice memory'); f.controller.send(); await settle(); assert.equal(calls(), 1); assert.equal(saves(), 1);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /outcome_unknown/);
+    assert.equal(f.ctx.chatMetadata.gd.charMemories['Alice.png'].length, 1); await f.controller.dispose();
+});
+test('controller cancellation retains physical busy lease and blocks late generated writes', async () => {
+    const { f, system, finish, calls, saves } = await memoryExecutionControllerFixture('save', { paused: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate Alice memory'); f.controller.send(); await settle(); assert.equal(calls(), 1);
+    f.controller.stop(); await settle(); assert.equal(system.isGenerating(), true); assert.equal(saves(), 0);
+    finish(); await settle(); assert.equal(system.isGenerating(), false); assert.equal(saves(), 0); assert.deepEqual(f.ctx.chatMetadata, {});
+    await f.controller.dispose();
+});
+
+for (const mode of ['trial', 'save']) for (const decision of ['task', 'deny', 'full']) test(`Custom Agent real ${mode} execution ${decision} consent resumes once and keeps result scope`, async () => {
+    const { createCustomAgentSystem } = await import('../../systems/custom-agent-system.js');
+    const { createCustomAgentPort } = await import('../../muyu/host/custom-agents.js');
+    let f, modelCalls = 0, chatSaves = 0; const settings = {};
+    const system = createCustomAgentSystem({ settings, getChatMetadata: () => f.ctx.chatMetadata, getChat: () => f.ctx.chat, EXT_KEY: 'gd',
+        getProviders: () => [], registerProvider() {}, unregisterProvider() {}, saveSettings() {}, renderPrompt: async p => p,
+        createCaller: () => ({ generate: async () => { modelCalls++; return 'business reply'; } }), saveChatConditional: async () => { chatSaves++; } });
+    const row = await system.add({ name: 'manual', providerName: 'manual', prompt: 'test', enabled: false });
+    const customAgents = createCustomAgentPort({ getSettings: () => settings, getContext: () => f.ctx, getTarget: () => f.host.currentTarget(), getProviders: () => [], system });
+    const revision = customAgents.list().items[0].revision;
+    const execute = () => {
+        const output = f.model.requests.at(-1).messages.findLast(row => row.role === 'tool' && row.result?.data?.text)?.result.data.text;
+        return [tool('muyu.agents.execute', { executionId: JSON.parse(output).executionId }, 'execute'), done];
+    };
+    f = fixture([[tool('muyu.agents.prepare_execution', { id: row.id, revision, mode }), done], execute, [text('Historical execution result'), done]], { customAgents });
+    await f.enable(); f.controller.setMode('assistant'); if (decision === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Run the specified custom agent once'); f.controller.send(); await settle();
+    if (decision !== 'full') {
+        let request = f.controller.snapshot().interaction; assert.equal(request.source, 'customAgentAssets');
+        f.controller.answerPermission(request.id, 'task'); await settle(); request = f.controller.snapshot().interaction;
+        assert.equal(request.source, 'agentExecution'); assert.equal(modelCalls, 0); assert.equal(f.controller.agentExecutionDetails(request.executionId).mode, mode);
+        assert.throws(() => f.controller.answerPermission(request.id, 'chat'), /INVALID_PERMISSION_DECISION/);
+        f.controller.answerPermission(request.id, decision); await settle();
+    }
+    assert.equal(modelCalls, decision === 'deny' ? 0 : 1); assert.equal(chatSaves, decision !== 'deny' && mode === 'save' ? 1 : 0);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded'); assert.equal(settings.customAgents[0].enabled, false);
+    if (chatSaves) assert.equal(f.ctx.chatMetadata.gd._caData[row.id].content, 'business reply');
+    const exported = JSON.parse(f.controller.exportHistory());
+    assert.ok(exported.required.some(source => source.startsWith('source:agentExecution:')) || decision === 'deny');
+    await f.controller.dispose();
+});
+
+for (const kind of ['batch', 'import']) for (const access of ['normal', 'full', 'deny']) test(`Custom Agent ${kind} preview ${access} uses the real queued writer and one global save`, async () => {
+    const { createCustomAgentSystem } = await import('../../systems/custom-agent-system.js');
+    const { createCustomAgentPort } = await import('../../muyu/host/custom-agents.js');
+    const settings = {}, registry = new Map(); let saves = 0;
+    const getProviders = () => [...registry.values()];
+    const system = createCustomAgentSystem({ settings, getProviders, registerProvider: p => registry.set(p.id, p), unregisterProvider: id => registry.delete(id),
+        saveSettings: () => { saves++; }, getChatMetadata: () => { throw Error('no chat read'); }, getChat: () => [], EXT_KEY: 'gd' });
+    const customAgents = createCustomAgentPort({ getSettings: () => settings, getProviders, system });
+    const definitions = ['a', 'b'].map(name => ({ name, providerName: name, prompt: 'PRIVATE_PROMPT_' + name }));
+    const args = kind === 'batch' ? { requestsJson: JSON.stringify(definitions.map(changes => ({ operation: 'create', changes }))) }
+        : { exportJson: JSON.stringify({ type: 'custom-agent-export', version: 1, agents: definitions }) };
+    if (access === 'full') args.apply = true;
+    const f = fixture([[tool('muyu.agents.' + kind + '_preview', args), done], [text('Result'), done]], { customAgents });
+    await f.enable(); f.controller.setMode('assistant');
+    if (access === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Prepare both custom agents'); f.controller.send(); await settle();
+    if (access !== 'full') {
+        const request = f.controller.snapshot().interaction; assert.equal(request.source, 'customAgentAssets'); assert.equal(saves, 0);
+        f.controller.answerPermission(request.id, access === 'deny' ? 'deny' : 'task'); await settle();
+    }
+    if (access === 'normal') {
+        const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'custom-agent-draft'); assert.ok(artifact); assert.equal(saves, 0);
+        const approval = f.controller.prepareCustomAgentSave(artifact.id, artifact.revision); await f.controller.approveCustomAgentSave(approval.id);
+    }
+    assert.equal(saves, access === 'deny' ? 0 : 1);
+    if (access !== 'deny') {
+        assert.equal(settings.customAgents.length, 2);
+        const receipt = JSON.parse(f.controller.exportHistory()).receipts.at(-1); assert.equal(receipt.version, 11); assert.equal(receipt.items.length, 2);
+        assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE_PROMPT/);
+    } else assert.equal(f.controller.snapshot().artifacts.some(row => row.kind === 'custom-agent-draft'), false);
+    await f.controller.dispose();
+});
+
+for (const operation of ['create', 'update', 'delete']) test(`Custom Agent ${operation} pauses for source permission, then requires one exact save approval`, async () => {
+    let writes = 0;
+    const content = { module: 'custom-agent', operation, id: operation === 'create' ? '' : 'se_user', baseRevision: '', previous: { name: 'user', providerName: 'user_agent', prompt: 'OLD_SOURCE' }, next: operation === 'delete' ? null : { name: 'user', providerName: 'user_agent', enabled: false, prompt: 'NEW_SOURCE' }, warnings: [] };
+    const customAgents = { preview: () => content, assertDraft() {}, save: async () => { writes++; return { status: 'saved_unconfirmed', id: 'se_user', enabled: false, persistence: 'unconfirmed' }; } };
+    const f = fixture([[tool('muyu.agents.preview', { operation, changesJson: '{}' }), done], [text('Only preview'), done]], { customAgents });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Preview script'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction; assert.equal(request.source, 'customAgentAssets'); assert.equal(writes, 0);
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'custom-agent-draft'); assert.ok(artifact); assert.equal(writes, 0);
+    const approval = f.controller.prepareCustomAgentSave(artifact.id, artifact.revision); await f.controller.approveCustomAgentSave(approval.id);
+    assert.equal(writes, 1); const receipt = JSON.parse(f.controller.exportHistory()).receipts.find(row => row.version === 10);
+    assert.equal(receipt.operation, operation); assert.doesNotMatch(JSON.stringify(receipt), /OLD_SOURCE|NEW_SOURCE/);
+    assert.throws(() => f.controller.approveCustomAgentSave(approval.id), /STALE/); await f.controller.dispose();
+});
+
+test('Custom Agent full access only saves explicitly requested apply candidates', async () => {
+    let writes = 0;
+    const customAgents = { assertDraft() {}, preview: () => ({ module: 'custom-agent', operation: 'create', id: '', baseRevision: '', previous: null, next: { name: 'user', providerName: 'user_agent', enabled: false }, warnings: [] }),
+        save: async () => { writes++; return { status: 'saved_unconfirmed', id: 'se_user', enabled: false, persistence: 'unconfirmed' }; } };
+    const args = { operation: 'create', changesJson: '{"name":"user"}' };
+    const f = fixture([[tool('muyu.agents.preview', args), done], [text('Preview'), done], [tool('muyu.agents.preview', { ...args, apply: true }), done], [text('Save requested'), done]], { customAgents });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Preview only'); f.controller.send(); await settle(); assert.equal(writes, 0);
+    f.controller.setInput('Save it'); f.controller.send(); await settle(); assert.equal(writes, 1); assert.equal(f.controller.snapshot().receipts.at(-1).version, 10);
+    await f.controller.dispose();
+});
+
+for (const decision of ['task', 'deny', 'full']) test(`Real script execution ${decision} consent resumes once with an exact ticket`, async () => {
+    const { createScriptExecutorSystem } = await import('../../systems/script-executor-system.js');
+    const { createScriptExecutorPort } = await import('../../muyu/host/script-executors.js');
+    const { normalizeScriptExecutor } = await import('../../systems/script-executor-validation.js');
+    let f;
+    const settings = { scriptExecutors: [{ id: 'se_manual', ...normalizeScriptExecutor({ name: 'manual', triggerOn: 'round', enabled: false, code: 'ctx.settings.runs=(ctx.settings.runs||0)+1; return "done";' }) }] };
+    const scriptExecutors = createScriptExecutorPort({ getSettings: () => settings, getContext: () => f.ctx, getTarget: () => f.host.currentTarget(), system: createScriptExecutorSystem({ settings, saveSettings() {} }) });
+    const revision = scriptExecutors.list().items[0].revision;
+    const execute = () => {
+        const output = f.model.requests.at(-1).messages.findLast(row => row.role === 'tool' && row.result?.data?.text)?.result.data.text;
+        return [tool('muyu.scripts.execute', { executionId: JSON.parse(output).executionId }, 'execute'), done];
+    };
+    f = fixture([[tool('muyu.scripts.prepare_execution', { id: 'se_manual', revision, stage: 'round' }), done], execute, [text('Result recorded'), done]], { scriptExecutors });
+    await f.enable(); f.controller.setMode('assistant');
+    if (decision === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Run this script once'); f.controller.send(); await settle();
+    if (decision !== 'full') {
+        let request = f.controller.snapshot().interaction; assert.equal(request.source, 'scriptAssets');
+        f.controller.answerPermission(request.id, 'task'); await settle();
+        request = f.controller.snapshot().interaction; assert.equal(request.source, 'scriptExecution'); assert.equal(settings.runs, undefined);
+        assert.equal(f.controller.scriptExecutionDetails(request.executionId).definition.name, 'manual');
+        assert.throws(() => f.controller.answerPermission(request.id, 'chat'), /INVALID_PERMISSION_DECISION/);
+        f.controller.answerPermission(request.id, decision); await settle();
+    }
+    assert.equal(settings.runs || 0, decision === 'deny' ? 0 : 1);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.equal(f.controller.snapshot().interaction?.status === 'pending', false);
+    const exported = JSON.parse(f.controller.exportHistory()); assert.ok(exported.required.some(source => source.startsWith('source:scriptExecution:')) || decision === 'deny');
+    await f.controller.dispose();
+});
+
+test('Script synthetic test pauses for task-only code consent, resumes exact call and never saves', async () => {
+    let tested=0,saved=0,f;
+    const scriptExecutors={assertDraft(){},preview:()=>({module:'script-executor',operation:'create',id:'',baseRevision:'',previous:null,next:{name:'x',code:'return 1',enabled:false},warnings:[]}),
+        test:async()=>{tested++;return {status:'passed',phase:'execute',rows:[]};},save:async()=>{saved++;}};
+    const testCall=()=>{const request=f.model.requests.at(-1),candidateId=request.messages.findLast(row=>row.role==='tool'&&row.result?.data?.candidateId)?.result.data.candidateId;return [tool('muyu.scripts.test',{candidateId},'synthetic'),done];};
+    f=fixture([[tool('muyu.scripts.preview',{operation:'create',changesJson:'{"name":"x"}'}),done],testCall,[text('Synthetic test only'),done]],{scriptExecutors});
+    await f.enable();f.controller.setMode('assistant');f.controller.setInput('Draft and test');f.controller.send();await settle();
+    let request=f.controller.snapshot().interaction;assert.equal(request.source,'scriptAssets');f.controller.answerPermission(request.id,'task');await settle();
+    request=f.controller.snapshot().interaction;assert.equal(request.source,'scriptTests');assert.equal(tested,0);
+    assert.throws(()=>f.controller.answerPermission(request.id,'chat'),/INVALID_PERMISSION_DECISION/);
+    f.controller.answerPermission(request.id,'task');await settle();assert.equal(tested,1);assert.equal(saved,0);
+    assert.equal(f.controller.snapshot().runs.at(-1).status,'succeeded');assert.ok(f.controller.snapshot().artifacts.some(row=>row.kind==='script-draft'));
+    await f.controller.dispose();
+});
+
+test('Script bundle source permission never saves; one exact approval records v9 without code', async () => {
+    let saved=0;
+    const scriptExecutors={assertDraft(){},preview:()=>({module:'script-executor',operation:'create',id:'',baseRevision:'',previous:null,next:{name:'x',code:'CODE_SENTINEL',enabled:true},warnings:['Enables future automatic execution']}),
+        save:async()=>{saved++;return {status:'saved_unconfirmed',persistence:'unconfirmed',id:'se_x',enabled:true};}};
+    const f=fixture([[tool('muyu.task.preview',{scripts:[{operation:'create',changesJson:'{"name":"x","enabled":true}'}]}),done],[text('Bundle draft only'),done]],{scriptExecutors});
+    await f.enable();f.controller.setMode('assistant');f.controller.setInput('Preview bundle');f.controller.send();await settle();
+    const request=f.controller.snapshot().interaction;assert.equal(request.source,'scriptAssets');f.controller.answerPermission(request.id,'task');await settle();
+    const artifact=f.controller.snapshot().artifacts.find(row=>row.kind==='task-bundle');assert.ok(artifact);assert.equal(saved,0);
+    const approval=f.controller.prepareBundleApply(artifact.id,artifact.revision);const result=await f.controller.approveBundleApply(approval.id);
+    assert.equal(result.status,'applied_unconfirmed');assert.equal(saved,1);
+    const receipt=JSON.parse(f.controller.exportHistory()).receipts.at(-1);assert.equal(receipt.version,9);assert.doesNotMatch(JSON.stringify(receipt),/CODE_SENTINEL/);
+    await f.controller.dispose();
+});
+
+for (const operation of ['create', 'update', 'delete']) test(`Script ${operation} pauses for source permission, then requires one exact save approval`, async () => {
+    let writes = 0;
+    const content = { module: 'script-executor', operation, id: operation === 'create' ? '' : 'se_user', baseRevision: '', previous: { name: 'user', code: 'OLD_SOURCE' }, next: operation === 'delete' ? null : { name: 'user', enabled: false, code: 'NEW_SOURCE' }, warnings: [] };
+    const scriptExecutors = { preview: () => content, assertDraft() {}, save: async () => { writes++; return { status: 'saved_unconfirmed', id: 'se_user', enabled: false, persistence: 'unconfirmed' }; } };
+    const f = fixture([[tool('muyu.scripts.preview', { operation, changesJson: '{}' }), done], [text('Only preview'), done]], { scriptExecutors });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Preview script'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction; assert.equal(request.source, 'scriptAssets'); assert.equal(writes, 0);
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'script-draft'); assert.ok(artifact); assert.equal(writes, 0);
+    const approval = f.controller.prepareScriptSave(artifact.id, artifact.revision); await f.controller.approveScriptSave(approval.id);
+    assert.equal(writes, 1); const receipt = JSON.parse(f.controller.exportHistory()).receipts.find(row => row.version === 8);
+    assert.equal(receipt.operation, operation); assert.doesNotMatch(JSON.stringify(receipt), /OLD_SOURCE|NEW_SOURCE/);
+    assert.throws(() => f.controller.approveScriptSave(approval.id), /STALE/); await f.controller.dispose();
+});
+
+test('Script full access only saves explicitly requested apply candidates', async () => {
+    let writes = 0;
+    const scriptExecutors = { assertDraft() {}, preview: () => ({ module: 'script-executor', operation: 'create', id: '', baseRevision: '', previous: null, next: { name: 'user', enabled: false }, warnings: [] }),
+        save: async () => { writes++; return { status: 'saved_unconfirmed', id: 'se_user', enabled: false, persistence: 'unconfirmed' }; } };
+    const args = { operation: 'create', changesJson: '{"name":"user"}' };
+    const f = fixture([[tool('muyu.scripts.preview', args), done], [text('Preview'), done], [tool('muyu.scripts.preview', { ...args, apply: true }), done], [text('Save requested'), done]], { scriptExecutors });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Preview only'); f.controller.send(); await settle(); assert.equal(writes, 0);
+    f.controller.setInput('Save it'); f.controller.send(); await settle(); assert.equal(writes, 1); assert.equal(f.controller.snapshot().receipts.at(-1).version, 8);
+    await f.controller.dispose();
+});
 test('Long-term memory is opt-in even in full access, and explicit remembering survives into a later conversation', async () => {
     let f; const settings = { muyuAgentMemoryEnabled: false };
     const agentMemory = createAgentMemoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {}, getTarget: () => f.host.currentTarget() });
@@ -768,18 +1646,101 @@ test('Idle runtime eviction frees capacity without deleting recorded conversatio
     await f.controller.selectSession(first); assert.equal(f.controller.snapshot().messages.length, 2);
     f.controller.setInput('continue'); f.controller.send({ consent: true }); await settle(); assert.equal(f.controller.snapshot().messages.length, 4); await f.controller.dispose();
 });
+async function generationBatchControllerFixture(mode, { budget = false, saveFails = false, paused = false } = {}) {
+    const { createProfileSystem } = await import('../../systems/profile-system.js');
+    const { createNpcSystem } = await import('../../systems/npc-system.js');
+    const { createNpcAgent } = await import('../../agents/npc.js');
+    const { execute } = await import('../../systems/agent-runtime.js');
+    const { createProfileGenerationPort } = await import('../../muyu/host/profile-generation.js');
+    const { createNpcGenerationPort } = await import('../../muyu/host/npc-generation.js');
+    const { createGenerationBatchPort } = await import('../../muyu/host/generation-batch.js');
+    let f, finish; const wait = new Promise(resolve => { finish = resolve; });
+    const calls = [], saved = [], characters = [{ avatar: 'alice.png', name: 'Alice' }], providers = [];
+    const settings = { profileEnabled: true, profileJsonSchema: '', npcEnabled: true, npcMaxCount: 10, npcBatchSize: 2,
+        agentConfigs: { profile: {}, npc: { call: { timeout: 1000, retries: 2 } } } };
+    const caller = kind => () => ({ supportsAbort: false, generate: async () => {
+        calls.push(kind); if (paused) await wait;
+        return kind === 'profile' ? '{"summary":"Generated","tags":[],"motivation":"Help","relationships":"Team"}' : '{"npcs":[{"name":"Merchant","description":"Trader","personality":"Calm","scenario":"Town"}]}';
+    } });
+    const saver = async metadata => { assert.equal(metadata, f.ctx.chatMetadata); saved.push(calls.at(-1)); if (saveFails) throw Error('unknown save'); };
+    const npcAgent = createNpcAgent({ renderPrompt: async p => p, extractJsonObject: () => null, log() {} });
+    const common = { settings, EXT_KEY: 'gd', getChatMetadata: () => f.ctx.chatMetadata, getChat: () => f.ctx.chat, getContext: () => f.ctx,
+        getCharacters: () => characters, getCurrentGroup: () => f.ctx.groups[0], saveChatConditional: () => { throw Error('conditional fallback forbidden'); }, log() {} };
+    const profile = createProfileSystem({ ...common, createCaller: caller('profile'), renderPrompt: async p => p, hashChar: (...a) => a.join('|'), djb2Hash: s => String(s.length),
+        extractJsonObject: () => null, sanitizeJson: v => v, isRoundActive: () => false, setExtensionPrompt() {}, inject_ids: { QUIET_PROMPT: 'quiet' }, extension_prompt_types: { IN_PROMPT: 0 } });
+    const npc = createNpcSystem({ ...common, createCaller: caller('npc'), AgentRegistry: { get: () => npcAgent }, execute,
+        buildContextPool: opts => ({ group: () => opts.group, characters: () => characters, recentMessages: () => f.ctx.chat, npcExistingList: opts.npcExistingList, npcBatchSize: opts.npcBatchSize, npcGenerateFirstMes: opts.npcGenerateFirstMes }) });
+    const portCommon = { getTarget: () => f.host.currentTarget(), getSettings: () => settings, getContext: () => f.ctx, getCharacters: () => characters, getProviders: () => providers, saveChatConfirmed: saver };
+    const profileGeneration = createProfileGenerationPort({ ...portCommon, system: profile }), npcGeneration = createNpcGenerationPort({ ...portCommon, system: npc });
+    const generationBatch = createGenerationBatchPort({ ...portCommon, extensionKey: 'gd', getAgents: () => [npcAgent], profileGeneration, npcGeneration });
+    const proposal = () => ({ steps: [{ kind: 'profile', mode, character: 'profile-character:0', revision: profileGeneration.listTargets(f.host.currentTarget()).items[0].revision },
+        { kind: 'npc', mode, count: 2, revision: npcGeneration.readState(f.host.currentTarget()).revision }] });
+    const ticket = () => JSON.parse(f.model.requests.at(-1).messages.filter(m => m.role === 'tool' && m.result?.data?.text).at(-1).result.data.text).executionId;
+    f = fixture([[tool('muyu.profile_generation.targets', {}, 'profile-dir'), tool('muyu.npc_generation.state', {}, 'npc-dir'), done],
+        () => [tool('muyu.generation_batch.prepare', proposal(), 'batch-prepare'), done],
+        () => [tool('muyu.generation_batch.execute', { executionId: ticket(), maxModelCalls: 2 }, 'batch-run'), done],
+        [text('Historical per-step generation result'), done]], { profileGeneration, npcGeneration, generationBatch,
+        ...(budget ? { runConfig: { read: () => ({ ...RUN_DEFAULTS, providerBytes: 6000 }) } } : {}) });
+    f.ctx.groups[0].members = ['alice.png']; await f.enable(); f.controller.setMode('assistant');
+    return { f, calls, saved, settings, finish, profile, npc };
+}
+
+for (const mode of ['trial', 'save']) for (const decision of ['task', 'deny', 'full']) test(`Generation batch ${mode}/${decision}: one exact approval continues both real pipelines`, async () => {
+    const { f, calls, saved } = await generationBatchControllerFixture(mode);
+    if (decision === 'full') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput(mode === 'trial' ? 'Test a profile and NPCs without saving' : 'Generate and save a profile and NPCs'); f.controller.send(); await settle();
+    if (decision !== 'full') {
+        for (const source of ['profileGenerationTargets', 'npcGenerationState']) {
+            const r = f.controller.snapshot().interaction; assert.equal(r.source, source); assert.deepEqual(calls, []);
+            f.controller.answerPermission(r.id, 'task'); await settle();
+        }
+        const r = f.controller.snapshot().interaction; assert.equal(r.source, 'generationBatchExecution'); assert.deepEqual(calls, []);
+        const details = f.controller.generationBatchExecutionDetails(r.executionId); assert.equal(details.maximumModelCalls, 2); assert.equal(details.steps.length, 2);
+        assert.equal(f.model.requests.length, 3); f.controller.answerPermission(r.id, decision); await settle();
+    }
+    assert.deepEqual(calls, decision === 'deny' ? [] : ['profile', 'npc']); assert.equal(f.model.requests.length, 4);
+    assert.equal(saved.length, decision !== 'deny' && mode === 'save' ? 2 : 0);
+    assert.equal(f.controller.snapshot().interaction?.status === 'pending', false);
+    if (mode === 'save' && decision !== 'deny') { assert.equal(f.ctx.chatMetadata.gd.characterProfiles['alice.png'].profile.summary, 'Generated'); assert.equal(f.ctx.chatMetadata.gd.npcs[0].imported, false); }
+    const history = JSON.parse(f.controller.exportHistory()); assert.ok(history.required.some(s => s.startsWith('source:generationBatchExecution:')) || decision === 'deny');
+    await f.controller.dispose();
+});
+test('batch approval rechecks business settings before any generation', async () => {
+    const { f, settings, calls } = await generationBatchControllerFixture('save'); f.controller.setInput('Generate and save'); f.controller.send(); await settle();
+    for (let i = 0; i < 2; i++) { f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle(); }
+    const r = f.controller.snapshot().interaction; settings.npcBatchSize = 4;
+    assert.throws(() => f.controller.answerPermission(r.id, 'task'), /INTERACTION_STALE/); assert.deepEqual(calls, []); f.controller.cancelInteraction(r.id); await f.controller.dispose();
+});
+test('batch aggregate budget denial is zero-cost even with full access', async () => {
+    const { f, calls, saved } = await generationBatchControllerFixture('save', { budget: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate and save'); f.controller.send(); await settle(); assert.deepEqual(calls, []); assert.deepEqual(saved, []);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /RESULT_BUDGET_EXCEEDED/); await f.controller.dispose();
+});
+test('batch unknown first save stops the second pipeline without retry or rollback', async () => {
+    const { f, calls, saved } = await generationBatchControllerFixture('save', { saveFails: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate and save'); f.controller.send(); await settle(); assert.deepEqual(calls, ['profile']); assert.deepEqual(saved, ['profile']);
+    assert.ok(f.ctx.chatMetadata.gd.characterProfiles['alice.png']); assert.equal(f.ctx.chatMetadata.gd.npcs, undefined);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /outcome_unknown/); await f.controller.dispose();
+});
+test('batch controller stop drains native first call and never starts the second', async () => {
+    const { f, calls, saved, finish, profile } = await generationBatchControllerFixture('save', { paused: true }); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Generate and save'); f.controller.send(); await settle(); assert.deepEqual(calls, ['profile']);
+    f.controller.stop(); await settle(); assert.equal(profile.isGenerating(), true); assert.deepEqual(saved, []);
+    finish(); await settle(); assert.equal(profile.isGenerating(), false); assert.deepEqual(calls, ['profile']); assert.deepEqual(saved, []); assert.deepEqual(f.ctx.chatMetadata, {}); await f.controller.dispose();
+});
+
 function fixture(steps = [[text('answer'), done]], extraHost = {}) {
     const events = new EventEmitter(), settings = { memoryEnabled: true, autoMemoryEnabled: true, autoMemoryInterval: 10, autoMemorySpeakers: false };
     const ctx = { groupId: 'g', chatId: 'A', groups: [{ id: 'g', members: ['private-avatar'] }], chat: [{ mes: 'PRIVATE_BODY' }], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };
     let reads = 0;
     let host;
     const variableDraftPort = createVariableDraftPort({ getTarget: () => host?.currentTarget(), getMetadata: () => ctx.chatMetadata, extensionKey: 'gd' });
-    const variableWriter = extraHost.variableSaveConfirmed && createVariableWriter({ draftPort: variableDraftPort,
+    const variableWriter = extraHost.variableSaveConfirmed && createVariableWriter({ draftPort: variableDraftPort, editorPort:extraHost.variableEditor,
         getTarget: () => host?.currentTarget(), getMetadata: () => ctx.chatMetadata, extensionKey: 'gd', saveChatConfirmed: extraHost.variableSaveConfirmed });
     const getSettings = () => { reads++; return settings; };
-    const bundleDraftPort = createTaskBundleDraftPort({ getTarget: () => host?.currentTarget(), getSettings, variableDraftPort });
+    const bundleDraftPort = createTaskBundleDraftPort({ getTarget: () => host?.currentTarget(), getSettings, variableDraftPort, scriptPort: extraHost.scriptExecutors });
     const configWriter = extraHost.bundleSaveSettings ? createConfigWriter({ getSettings, saveSettings: extraHost.bundleSaveSettings, isBusy: () => false }) : extraHost.configWriter;
-    const bundleWriter = variableWriter && configWriter && createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget: () => host?.currentTarget(), variableWriter, configWriter });
+    const bundleWriter = (variableWriter && configWriter || extraHost.scriptExecutors) && createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget: () => host?.currentTarget(), variableWriter, configWriter, scriptWriter: extraHost.scriptExecutors });
     // Existing permission tests explicitly exercise the optional approval mode.
     host = createHostBridge({ getContext: () => ctx, getSettings, extensionKey: 'gd', pageId: 'test', contextConfig: { read: () => ({ ...CONTEXT_DEFAULTS, historyAuthorization: 'ask' }), save: async () => {} }, ...extraHost, configWriter, variableDraftPort, variableWriter, bundleDraftPort, bundleWriter });
     const model = scriptedModel(steps), configs = [];
@@ -790,6 +1751,122 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
         switchChat: id => { ctx.chatId = id; events.emit('chat'); } };
 }
 const settle = async () => { for (let i = 0; i < 12; i++) await flush(); };
+
+test('Provider source draft requires separate import approval, saves once, and exports a v6 receipt', async () => {
+    let installs = 0;
+    const providerAssets = { assertNew() {}, install: async () => { installs++; return { status: 'saved_unconfirmed', registered: true, persistence: 'unconfirmed' }; } };
+    const args = { name: 'gold', ids: ['gold'], source: 'export function register({registerProvider}) { registerProvider({id:"gold",placeholder:"{{gold}}",render:()=>"10"}); }' };
+    const f = fixture([[tool('muyu.provider.preview', args), done], [text('Draft only'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Prepare a gold Provider'); f.controller.send(); await settle();
+    const artifact = f.controller.snapshot().artifacts.find(a => a.kind === 'provider-draft');
+    assert.ok(artifact, JSON.stringify(f.controller.snapshot().runs)); assert.equal(installs, 0);
+    const approval = f.controller.prepareProviderInstall(artifact.id, artifact.revision);
+    assert.equal(installs, 0);
+    const result = await f.controller.approveProviderInstall(approval.id);
+    assert.equal(result.status, 'saved_unconfirmed'); assert.equal(installs, 1);
+    assert.throws(() => f.controller.approveProviderInstall(approval.id), /STALE/);
+    const saved = JSON.parse(f.controller.exportHistory());
+    assert.ok(saved.receipts.some(r => r.version === 6 && r.name === 'gold'));
+    await f.controller.dispose();
+});
+
+test('Full access imports Provider only when the exact draft requests installation', async () => {
+    let installs = 0;
+    const providerAssets = { assertNew() {}, install: async () => { installs++; return { status: 'saved_unconfirmed', registered: true, persistence: 'unconfirmed' }; } };
+    const args = { name: 'gold', ids: ['gold'], source: 'export function register(deps) {}' };
+    const f = fixture([[tool('muyu.provider.preview', args), done], [text('Preview'), done],
+        [tool('muyu.provider.preview', { ...args, install: true }), done], [text('Install requested'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Only preview'); f.controller.send(); await settle(); assert.equal(installs, 0);
+    f.controller.setInput('Install now'); f.controller.send(); await settle(); assert.equal(installs, 1);
+    assert.ok(f.controller.snapshot().receipts.some(r => r.version === 6));
+    await f.controller.dispose();
+});
+
+test('Synthetic Provider tests require separate task code approval and never import drafts', async () => {
+    let calls = 0;
+    const providerAssets = { assertNew() {}, test: async () => { calls++; return { status: 'passed', phase: 'render', rows: [] }; } };
+    const args = { name: 'gold', ids: ['gold'], source: 'export function register(deps) {}' };
+    let f;
+    const testCall = () => {
+        const request = f.model.requests.at(-1);
+        const candidateId = request.messages.findLast(row => row.role === 'tool' && row.result?.data?.candidateId)?.result.data.candidateId;
+        assert.ok(candidateId, JSON.stringify(request.messages));
+        return [tool('muyu.provider.test', { candidateId }, 'test'), done];
+    };
+    f = fixture([[tool('muyu.provider.preview', args), done], testCall, [text('Synthetic report only; not imported'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Draft and synthetic-test'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction;
+    assert.equal(request?.source, 'providerTests', JSON.stringify(f.controller.snapshot().runs)); assert.equal(calls, 0);
+    assert.throws(() => f.controller.answerPermission(request.id, 'chat'), /INVALID_PERMISSION_DECISION/);
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    assert.equal(calls, 1, JSON.stringify(f.controller.snapshot().runs)); assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.deepEqual(f.controller.snapshot().sourceGrants, []);
+    assert.equal(f.controller.snapshot().receipts.length, 0);
+    assert.ok(f.controller.snapshot().artifacts.some(row => row.kind === 'provider-draft'));
+    await f.controller.dispose();
+});
+
+for (const operation of ['update', 'remove']) test(`User Provider ${operation} uses read grant plus exact approval, recording a non-replayable receipt`, async () => {
+    let writes = 0;
+    const content = { module: 'provider-asset', operation: operation === 'update' ? 'update' : 'delete', name: 'user-import', ids: ['user'], baseRevision: 'v1', warnings: [],
+        ...(operation === 'update' ? { source: 'export function register(deps){}', previous: { source: 'OLD_SOURCE', ids: ['user'] } } : {}) };
+    const providerAssets = { assertDraft() {}, previewUpdate: () => content, previewDelete: () => content,
+        install: async () => { writes++; return { status: 'saved_unconfirmed', registered: operation === 'update', persistence: 'unconfirmed' }; } };
+    const args = { name: 'user-import', revision: 'v1', ...(operation === 'update' ? { source: content.source, ids: content.ids } : {}) };
+    const f = fixture([[tool(`muyu.provider.${operation}_preview`, args), done], [text('Draft only'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Preview user asset change'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction;
+    assert.equal(request.source, 'providerAssets'); assert.equal(writes, 0);
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    const artifact = f.controller.snapshot().artifacts.find(row => row.kind === 'provider-draft'); assert.ok(artifact);
+    assert.equal(writes, 0); const approval = f.controller.prepareProviderInstall(artifact.id, artifact.revision);
+    const result = await f.controller.approveProviderInstall(approval.id);
+    assert.equal(result.status, 'saved_unconfirmed'); assert.equal(writes, 1);
+    const receipt = JSON.parse(f.controller.exportHistory()).receipts.find(row => row.version === 7);
+    assert.equal(receipt.operation, content.operation); assert.doesNotMatch(JSON.stringify(receipt), /OLD_SOURCE|export function/);
+    assert.throws(() => f.controller.approveProviderInstall(approval.id), /STALE/); await f.controller.dispose();
+});
+
+test('Full access previews are inert unless an explicit user-asset apply flag is present', async () => {
+    let writes = 0;
+    const providerAssets = { assertDraft() {}, previewDelete: () => ({ module: 'provider-asset', operation: 'delete', name: 'user', ids: ['user'], baseRevision: 'v1', warnings: [] }),
+        install: async () => { writes++; return { status: 'saved_unconfirmed', registered: false, persistence: 'unconfirmed' }; } };
+    const f = fixture([[tool('muyu.provider.remove_preview', { name: 'user', revision: 'v1' }), done], [text('Only preview'), done],
+        [tool('muyu.provider.remove_preview', { name: 'user', revision: 'v1', apply: true }), done], [text('Delete requested'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Preview only'); f.controller.send(); await settle(); assert.equal(writes, 0);
+    f.controller.setInput('Delete now'); f.controller.send(); await settle(); assert.equal(writes, 1);
+    assert.equal(f.controller.snapshot().receipts.at(-1).operation, 'delete'); await f.controller.dispose();
+});
+
+test('A delete preview supersedes a prior replacement candidate without publishing stale code', async () => {
+    const base = { module: 'provider-asset', name: 'user', ids: ['user'], baseRevision: 'v1', warnings: [] };
+    const providerAssets = { assertDraft() {}, previewUpdate: () => ({ ...base, operation: 'update', source: 'export function register(deps){}', previous: { source: 'old', ids: ['user'] } }),
+        previewDelete: () => ({ ...base, operation: 'delete' }) };
+    const f = fixture([[tool('muyu.provider.update_preview', { name: 'user', revision: 'v1', source: 'export function register(deps){}', ids: ['user'] }, 'replace'), done],
+        [tool('muyu.provider.remove_preview', { name: 'user', revision: 'v1' }, 'delete'), done], [text('Latest draft only'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Prepare latest user asset change'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle();
+    const state = f.controller.snapshot(), artifacts = state.artifacts.filter(row => row.kind === 'provider-draft');
+    assert.equal(artifacts.length, 1); assert.equal(artifacts[0].content.operation, 'delete');
+    assert.equal(state.runs.at(-1).status, 'succeeded'); assert.ok(!Object.values(state.notices || {}).includes('RESULT_NEEDS_REVIEW'));
+    await f.controller.dispose();
+});
+
+test('Provider source access pauses once and resumes the original read after permission', async () => {
+    let reads = 0;
+    const providerAssets = { list() { reads++; return { items: [{ name: 'asset', revision: 'v1', ids: ['p'] }], nextOffset: -1 }; } };
+    const f = fixture([[tool('muyu.provider.assets', {}), done], [text('Listed'), done]], { providerAssets });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('List my saved Providers'); f.controller.send(); await settle();
+    const request = f.controller.snapshot().interaction;
+    assert.ok(request, JSON.stringify(f.controller.snapshot().runs)); assert.equal(request.source, 'providerAssets'); assert.equal(reads, 0);
+    f.controller.answerPermission(request.id, 'task'); await settle();
+    assert.equal(reads, 1); assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.ok(JSON.parse(f.controller.exportHistory()).required.includes('source:providerAssets'));
+    await f.controller.dispose();
+});
 
 test('Three failed automatic operations pause repeated summaries; manual success resets only that conversation', async () => {
     let saved = { ...CONTEXT_DEFAULTS, inputTokens: 32000, autoSummary: false };
@@ -839,7 +1916,8 @@ for (const historyAuthorization of ['auto', 'ask']) test(`BUG-CTX-1: ${historyAu
 
 test('BUG-CTX-1: automatic compaction saves quoted evidence without reviving task read grants', async () => {
     let reads = 0;
-    let savedContext = { ...CONTEXT_DEFAULTS, inputTokens: 40000, autoSummary: false };
+    // Seed history with headroom; source/tool catalog growth must not fail a seed request.
+    let savedContext = { ...CONTEXT_DEFAULTS, inputTokens: 80000, autoSummary: false };
     const answer = () => [...Array.from({ length: 4 }, () => text('OLD_EVIDENCE'.repeat(375))), done];
     const f = fixture([[readSource('variables'), done], answer(), answer(), answer(), answer(), [text('summary reference'), done], [text('final answer'), done]], {
         contextConfig: { read: () => savedContext, save: async value => { savedContext = value; } },
@@ -847,8 +1925,11 @@ test('BUG-CTX-1: automatic compaction saves quoted evidence without reviving tas
     });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Read variables'); f.controller.send(); await settle();
     f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle();
-    for (let i = 0; i < 3; i++) { f.controller.setInput('Continue ' + i); f.controller.send(); await settle(); }
-    await f.controller.saveContextConfig({ ...savedContext, autoSummary: true });
+    for (let i = 0; i < 3; i++) {
+        f.controller.setInput('Continue ' + i); f.controller.send(); await settle();
+        assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    }
+    await f.controller.saveContextConfig({ ...savedContext, inputTokens: 40000, autoSummary: true });
     f.controller.setInput('Summarize and continue'); f.controller.send(); await settle();
     assert.equal(f.controller.snapshot().context.summary, 'summary reference');
     assert.deepEqual(f.model.requests[5].tools, []); assert.equal(reads, 1);
@@ -993,7 +2074,7 @@ test('Original-history reads stay in the active session and cannot undo an omitt
     const f = fixture([[text('PRIVATE_HISTORY_MARKER'), done], [text('second answer'), done], [tool('muyu.history.list', { offset: 0 }), done],
         [text('listed'), done], [readAttempt, done], [text('read'), done], [omittedAttempt, done], [text('denied'), done]],
     // Leave room for stable instructions; this test concerns history authorization, not the exact instruction size.
-    { contextConfig: { read: () => ({ inputTokens: 40000, recentTurns: 1, autoSummary: false }) } });
+    { contextConfig: { read: () => ({ inputTokens: 50000, recentTurns: 1, autoSummary: false }) } });
     await f.enable(); f.controller.setMode('assistant');
     f.controller.setInput('First question'); f.controller.send(); await settle();
     const original = JSON.parse(f.controller.exportHistory()).messages[1];
@@ -1001,6 +2082,7 @@ test('Original-history reads stay in the active session and cannot undo an omitt
     omittedAttempt.call.args.fingerprint = fingerprint(original);
     f.controller.setInput('Second question'); f.controller.send(); await settle();
     f.controller.setInput('List the original messages'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded', JSON.stringify(f.controller.snapshot().runs.at(-1).process));
     assert.match(JSON.stringify(f.model.requests[3]), /fingerprint/);
     f.controller.setInput('Read the original answer'); f.controller.send(); await settle();
     assert.match(JSON.stringify(f.model.requests.at(-1)), /PRIVATE_HISTORY_MARKER/);
@@ -1107,6 +2189,85 @@ test('A profile tool cannot request direct saving outside full-access mode', asy
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Save directly'); f.controller.send(); await settle();
     assert.equal(saves, 0); assert.equal(profileSettings.configProfiles.length, 0);
     assert.equal(f.controller.snapshot().artifacts.some(a => a.kind === 'profile-draft'), false);
+    await f.controller.dispose();
+});
+
+for (const field of ['customPromptsEnabled', 'profileLibraryAutoLoad.enabled']) for (const mode of ['full', 'preview', 'normal']) test(`Business settings ${field} ${mode} save through controller`, async () => {
+    const { createSettingsSwitchPort } = await import('../../muyu/host/settings-switches.js');
+    const { createCustomPromptsSystem } = await import('../../systems/custom-prompts-system.js');
+    const { createProfileLibrarySystem } = await import('../../systems/profile-library-system.js');
+    const { DEFAULT_SETTINGS } = await import('../../settings.js');
+    let writer, saves = 0; const providers = new Map(), apply = mode === 'full';
+    const f = fixture([[tool('muyu.settings.preview', { changes: { [field]: true }, ...(apply ? { apply: true } : {}) }), done], [text('Result'), done]],
+        { configWriter: { apply: request => writer.apply(request) } });
+    Object.assign(f.settings, { customPromptsEnabled: false, customPrompts: [{ id: 'p', name: 'test_prompt', content: 'text', enabled: true }],
+        profileEnabled: true, profileLibraryAutoLoad: structuredClone(DEFAULT_SETTINGS.profileLibraryAutoLoad) });
+    const saveSettings = async () => { saves++; };
+    const customPromptsSystem = createCustomPromptsSystem({ settings: f.settings, saveSettings, registerProvider: p => providers.set(p.id, p),
+        unregisterProvider: id => providers.delete(id), getProviders: () => [...providers.values()], log() {} });
+    const profileLibrarySystem = createProfileLibrarySystem({ settings: f.settings, extension_settings: {}, EXT_KEY: 'gd', saveSettings });
+    writer = createConfigWriter({ getSettings: () => f.settings, saveSettings: async () => { throw Error('must use business save'); }, isBusy: () => false,
+        settingsSwitchPort: createSettingsSwitchPort({ customPromptsSystem, profileLibrarySystem }) });
+    await f.enable(); f.controller.setMode('assistant'); if (mode !== 'normal') f.controller.setFullAccess(true);
+    f.controller.setInput(mode === 'preview' ? '只预览，不应用' : '打开所选开关'); f.controller.send(); await settle();
+    if (mode === 'normal') {
+        const request = f.controller.snapshot().interaction; assert.equal(request.source, 'configSettings');
+        f.controller.answerPermission(request.id, 'task'); await settle(); assert.equal(saves, 0);
+        const draft = f.controller.snapshot().artifacts.find(a => a.kind === 'config-draft');
+        const pending = f.controller.prepareConfigApply(draft.id, draft.revision);
+        await f.controller.approveConfigApply(pending.id); await settle();
+    }
+    assert.equal(saves, mode === 'preview' ? 0 : 1);
+    assert.equal(field === 'customPromptsEnabled' ? f.settings.customPromptsEnabled : f.settings.profileLibraryAutoLoad.enabled, mode !== 'preview');
+    if (field === 'customPromptsEnabled') assert.equal(providers.has('test_prompt'), mode !== 'preview');
+    await f.controller.dispose();
+});
+
+for (const mode of ['full', 'preview', 'normal']) test(`Blueprint toggle ${mode} through controller and historical receipt`, async () => {
+    const apply = mode === 'full', writes = mode !== 'preview';
+    const { createStoryBlueprintTogglePort } = await import('../../muyu/host/story-blueprint-toggle.js');
+    let f, saves = 0, chatSaves = 0;
+    const blueprintTogglePort = createStoryBlueprintTogglePort({ getTarget: () => f.host.currentTarget(), getMetadata: () => f.ctx.chatMetadata,
+        getSettings: () => f.settings, extensionKey: 'gd', saveChatConfirmed: async () => { chatSaves++; } });
+    const configWriter = createConfigWriter({ getSettings: () => f.settings, isBusy: () => false, blueprintTogglePort,
+        saveSettings: async () => { saves++; return { confirmed: true }; } });
+    f = fixture([[tool('muyu.settings.preview', { changes: { storyBlueprintEnabled: true }, ...(apply ? { apply: true } : {}) }), done], [text('Result'), done]], { blueprintTogglePort, configWriter });
+    Object.assign(f.settings, { storyBlueprintEnabled: false, storyBlueprintCompletionVariable: 'done', storyBlueprintAutoContinue: false });
+    await f.enable(); f.controller.setMode('assistant'); if (mode !== 'normal') f.controller.setFullAccess(true);
+    f.controller.setInput(apply ? '开启故事蓝图' : '预览开启故事蓝图，不应用'); f.controller.send(); await settle();
+    if (mode === 'normal') {
+        for (let i = 0; i < 2; i++) {
+            const interaction = f.controller.snapshot().interaction;
+            assert.equal(interaction.kind, 'permission');
+            f.controller.answerPermission(interaction.id, 'task'); await settle();
+        }
+        assert.equal(saves, 0); assert.equal(chatSaves, 0);
+        const draft = f.controller.snapshot().artifacts.find(a => a.content.blueprintTogglePlan);
+        const pending = f.controller.prepareConfigApply(draft.id, draft.revision);
+        assert.equal(saves, 0);
+        await f.controller.approveConfigApply(pending.id); await settle();
+    }
+    assert.equal(f.settings.storyBlueprintEnabled, writes);
+    assert.equal(saves, writes ? 1 : 0); assert.equal(chatSaves, writes ? 1 : 0);
+    assert.ok(f.controller.snapshot().artifacts.some(a => a.content.blueprintTogglePlan));
+    if (writes) {
+        const history = JSON.parse(f.controller.exportHistory());
+        assert.ok(JSON.stringify(history).includes('blueprintToggle'));
+        assert.ok(history.required.includes('source:variables'));
+    }
+    await f.controller.dispose();
+});
+
+for (const apply of [true, false]) test(`General settings full access respects apply=${apply} and retains unsent input`, async () => {
+    let saves = 0;
+    const f = fixture([[tool('muyu.settings.preview', { changes: { lang: 'en', debugLogging: true }, ...(apply ? { apply: true } : {}) }), done], [text('Result'), done]],
+        { bundleSaveSettings: async () => { saves++; } });
+    f.settings.lang = 'zh'; f.settings.debugLogging = false;
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput(apply ? '修改语言为英文，打开调试日志' : '只预览语言和调试修改'); f.controller.send();
+    f.controller.setInput('未发送的下一条消息'); await settle();
+    assert.equal(f.settings.lang, apply ? 'en' : 'zh'); assert.equal(f.settings.debugLogging, apply);
+    assert.equal(saves, apply ? 1 : 0); assert.equal(f.controller.snapshot().input, '未发送的下一条消息');
     await f.controller.dispose();
 });
 
@@ -1284,7 +2445,7 @@ test('Blocked controller history is recoverable only by explicit omission or a f
     const f = fixture([...Array.from({ length: 4 }, () => [text('answer'), done]), [text('old summary'), done],
         [...Array.from({ length: 8 }, () => text('中'.repeat(4000))), done], [text('fresh answer'), done]],
         // Fits the initial requests, but not the deliberately oversized generated history below.
-        { contextConfig: { read: () => ({ inputTokens: 40000, recentTurns: 2, autoSummary: false }) } });
+        { contextConfig: { read: () => ({ inputTokens: 50000, recentTurns: 2, autoSummary: false }) } });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true); await seedTurns(f);
     await f.controller.compactHistory(); f.controller.setInput('Long answer'); f.controller.send(); await settle();
     const before = f.model.requests.length, rawCount = f.controller.snapshot().messages.length;

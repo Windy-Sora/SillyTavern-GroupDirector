@@ -19,7 +19,7 @@ export function createReadObservation({ permissions, target, taskId, decisions, 
             if (registry.get(call.toolId)?.effect !== 'read') return null;
             const sources = [];
             for (const source of requiredSources(call.toolId, call.args) || []) {
-                if (source.startsWith('source:providerExecution')) continue;
+                if ((source.startsWith('source:providerExecution') || source.startsWith('source:scriptExecution') || source.startsWith('source:agentExecution') || source.startsWith('source:generationBatchExecution') || source.startsWith('source:npcExecution') || source.startsWith('source:profileExecution') || source.startsWith('source:memoryExecution'))) continue;
                 const id = source.slice(7), spec = permissionSource(id);
                 if (!spec) continue;
                 if (permissions.denied(source, target, taskId)) sources.push({ source: id, status: 'denied', grantScope: 'none' });

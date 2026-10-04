@@ -518,6 +518,37 @@ export function projectStoryBlueprintProgress({ blueprint, doneSignals = [], pro
     };
 }
 
+/** Pure structural-edit reconciliation using the same ordering/prefix rules as runtime.
+ * Preserves custom signal fields; never advances variables or initializes host state. */
+export function reconcileBlueprintStructureProgress(state, blueprint, {chatLength,mode='leaf',level=0,at=Date.now()}={}) {
+    const result=clone(state),tracks=result.progressTracks||{},active=result.activeProgressKey||progressScopeKey(mode,level);
+    if(!validProgressKey(active)||!isJsonObject(tracks)||Object.keys(tracks).length>32)throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+    function reconcile(signals,key) {
+        if(!Array.isArray(signals)||signals.length>256||signals.some(s=>!isJsonObject(s)||typeof s.nodeId!=='string'||
+            ['chatLength','stepIndex','time'].some(k=>s[k]!==undefined&&(!Number.isSafeInteger(s[k])||s[k]<0))))throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+        const options=key.startsWith('level:')?{mode:'level',level:Number(key.slice(6))}:{mode:key};
+        const steps=flattenNodes(blueprint.nodes,options);
+        const original=new Map();
+        for(const s of signals)if(!original.has(s.nodeId))original.set(s.nodeId,s);
+        const valid=signals.filter(s=>s.chatLength==null||s.chatLength<=chatLength).map(s=>({...s,time:s.time??at}));
+        return sanitizeDoneSignals(valid,steps,chatLength,'structure').map(s=>({...original.get(s.nodeId),...s}));
+    }
+    for(const [key,track] of Object.entries(tracks)){
+        if(!validProgressKey(key)||!isProgressTrack(track))throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+        tracks[key]={...track,doneSignals:reconcile(key===active?(result.doneSignals||track.doneSignals):track.doneSignals,key),completeNoticeKey:''};
+    }
+    if(!tracks[active])tracks[active]={doneSignals:reconcile(result.doneSignals||[],active),completeNoticeKey:''};
+    if(Object.keys(tracks).length>32)throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+    result.progressTracks=tracks;result.activeProgressKey=active;
+    result.doneSignals=tracks[active].doneSignals;result.completeNoticeKey='';
+    if(result.legacyDoneSignals!==undefined){
+        if(!Array.isArray(result.legacyDoneSignals))throw Error('UNSUPPORTED_BLUEPRINT_PROGRESS');
+        const ids=collectNodeIds(blueprint.nodes);
+        result.legacyDoneSignals=result.legacyDoneSignals.filter(s=>isJsonObject(s)&&ids.has(s.nodeId));
+    }
+    result.blueprint=clone(blueprint);return result;
+}
+
 export function createStoryBlueprintSystem({
     settings,
     getChatMetadata,

@@ -19,7 +19,7 @@ export function createToolRegistry() {
             if (typeof d.description !== 'string' || !d.description.trim()) throw new TypeError('Missing description');
             if (!['global', 'chat'].includes(d.scope) || !['read', 'workspace', 'navigate', 'write', 'external'].includes(d.effect)) throw new TypeError('Invalid scope/effect');
             if (d.confirmation !== 'policy') throw new TypeError('Policy must own confirmation');
-            if (!Number.isInteger(d.timeoutMs) || d.timeoutMs < 1 || d.timeoutMs > 15000) throw new TypeError('Invalid tool timeout');
+            if (!Number.isInteger(d.timeoutMs) || d.timeoutMs < 1 || d.timeoutMs > (['muyu.agents.execute', 'muyu.memory_generation.execute', 'muyu.profile_generation.execute', 'muyu.npc_generation.execute', 'muyu.generation_batch.execute'].includes(d.id) && d.effect === 'external' ? 300000 : 15000)) throw new TypeError('Invalid tool timeout');
             for (const key of ['dataClasses', 'resourceKeys']) if (!Array.isArray(d[key]) || d[key].some(v => typeof v !== 'string' || !v.trim()) || new Set(d[key]).size !== d[key].length) throw new TypeError('Invalid tool tags');
             if (!d.retryPolicy || Object.keys(d.retryPolicy).sort().join(',') !== 'kind,maxAttempts' || !['none', 'read'].includes(d.retryPolicy.kind) || !Number.isInteger(d.retryPolicy.maxAttempts) || d.retryPolicy.maxAttempts < 1 || d.retryPolicy.maxAttempts > 2) throw new TypeError('Invalid retry policy');
             if ((d.retryPolicy.kind === 'read' && d.effect !== 'read') || (d.retryPolicy.kind === 'none' && d.retryPolicy.maxAttempts !== 1)) throw new TypeError('Unsafe retry policy');

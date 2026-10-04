@@ -362,11 +362,11 @@ test('Director continuity wrappers preview both history paths before one reviewe
     const pending = busy.actions.prepare('a', 1); busy.busy();
     assert.equal((await busy.actions.approve(pending.id)).status, 'not_executed'); assert.equal(busy.saves(), 0);
 });
-test('Script executors are deferred as executable assets, not editable settings', () => {
+test('Script executors use a specialized asset editor, not editable settings', () => {
     const row = configurationCoverage().find(item => item.key === 'scriptExecutors');
-    assert.equal(row?.status, 'deferred');
+    assert.equal(row?.status, 'special-editor-supported');
     assert.equal(row.executable, true);
-    assert.equal(row.writer, null);
+    assert.equal(row.writer, 'muyu/host/script-executors.js');
     assert.deepEqual(row.fields, []);
     assert.equal(configFields.includes('scriptExecutors'), false);
     assert.throws(() => previewSettings({ baseline: {}, changes: { scriptExecutors: [] } }));
@@ -490,7 +490,7 @@ test('Settings catalog is public without host reads; unauthorized reads never en
     assert.equal(catalog.ok, true); assert.equal(reads, 0);
     const listing = JSON.parse(catalog.data.text);
     assert.ok(listing.supported.find(row => row.domain === 'postSpeech')?.fields.includes('postSpeechMessageEnabled'));
-    assert.equal(listing.pending.find(row => row.key === 'scriptExecutors')?.status, 'deferred');
+    assert.equal(listing.specialEditors.find(row => row.key === 'scriptExecutors')?.writer, 'muyu/host/script-executors.js');
     assert.equal(listing.pending.some(row => row.key === 'postSpeechMessageEnabled'), false);
     assert.equal((await broker.call({ toolId: 'muyu.settings.read', version: 1, callId: '2', args: { fields: ['mode'] } })).ok, false); assert.equal(reads, 0);
     for (const [callId, domain, field] of [['3', 'summary', 'summaryPrompt'], ['4', 'critique', 'critiquePrompt']]) {
@@ -538,7 +538,7 @@ test('Provider timeout update calls the host save path with the new setting', as
 
 test('Speaker rules declare their real consumers, bounded inputs and dependent conditions', () => {
     const fields = ['recentMessageCount', 'consecutivePenalty', 'triggerEnabled', 'triggerScore', 'initiativeEnabled', 'initiativeBaseScore', 'llmContextDepth', 'llmRespectOrder', 'llmCharDescMode', 'llmCharDescLength'];
-    assert.equal(configFields.length, 89);
+    assert.equal(configFields.length, 96);
     assert.equal(configurationCoverage().find(row => row.key === 'recentMessageCount').status, 'supported');
     assert.equal(configurationCoverage().find(row => row.key === 'llmContextDepth').status, 'supported');
     for (const id of fields) {
@@ -1042,16 +1042,15 @@ test('Story Blueprint ordinary settings are bounded, scoped and do not implicitl
         assert.deepEqual(dependencyFields([id]), [id, 'storyBlueprintEnabled', ...(id === 'storyBlueprintProgressionMode' ? ['storyBlueprintProgressionLevel'] : id === 'storyBlueprintProgressionLevel' ? ['storyBlueprintProgressionMode'] : [])].sort());
     }
     assert.deepEqual(requiredSources('muyu.settings.preview', { changes: { storyBlueprintMaxNodes: 12 } }), ['source:configSettings']);
-    for (const changes of [{ storyBlueprintAutoContinue: 'true' }, { storyBlueprintMaxNodes: 0 }, { storyBlueprintMaxNodes: 51 }, { storyBlueprintMaxNodes: 1.5 }, { storyBlueprintEnabled: true }, { storyBlueprintProgressionMode: 'invalid' }, { storyBlueprintProgressionLevel: -1 }, { storyBlueprintProgressionLevel: 1001 }, { storyBlueprintCompletionVariable: 'Bad Name!' }, { storyBlueprintCompletionVariableGuard: 'done' }]) {
+    for (const changes of [{ storyBlueprintAutoContinue: 'true' }, { storyBlueprintMaxNodes: 0 }, { storyBlueprintMaxNodes: 51 }, { storyBlueprintMaxNodes: 1.5 }, { storyBlueprintEnabled: 'true' }, { storyBlueprintProgressionMode: 'invalid' }, { storyBlueprintProgressionLevel: -1 }, { storyBlueprintProgressionLevel: 1001 }, { storyBlueprintCompletionVariable: 'Bad Name!' }, { storyBlueprintCompletionVariableGuard: 'done' }]) {
         assert.throws(() => previewSettings({ baseline: {}, changes }));
     }
     const patch = { storyBlueprintAutoContinue: true, storyBlueprintMaxNodes: 12 };
     const f = fixture(patch), preview = previewSettings({ baseline: f.baseline, changes: patch });
     assert.equal(f.baseline.storyBlueprintEnabled, false);
-    assert.equal(fieldDefinition('storyBlueprintEnabled').editable, false);
-    assert.equal(configurationCoverage().find(row => row.key === 'storyBlueprintEnabled').status, 'pending');
-    assert.throws(() => assertWritable(f.settings, ['storyBlueprintEnabled'], () => false), /WRITE_UNAVAILABLE/);
-    assert.throws(() => assignSettingsFields(f.settings, { storyBlueprintEnabled: true }), /WRITE_UNAVAILABLE/);
+    assert.equal(configurationCoverage().find(row => row.key === 'storyBlueprintEnabled').status, 'supported');
+    await assert.rejects(createConfigWriter({ getSettings: () => f.settings, saveSettings: async () => {}, isBusy: () => false }).apply({
+        baseline: readSettingsFields(f.settings, dependencyFields(['storyBlueprintEnabled'])), changes: { storyBlueprintEnabled: true }, contractVersion: 2 }), /WRITE_UNAVAILABLE/);
     assert.deepEqual(preview.warnings, ['STORY_BLUEPRINT_DISABLED']);
     assert.deepEqual(preview.manifest.settings, patch);
     assert.equal(f.saves(), 0);

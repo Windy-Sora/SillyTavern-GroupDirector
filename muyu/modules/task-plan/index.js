@@ -2,11 +2,11 @@ import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { permissionSource, requestableSources } from '../../permissions/contract.js';
 
-const sourceIds = requestableSources.filter(item => item.id !== 'providerExecution').map(item => item.id);
+const sourceIds = requestableSources.filter(item => item.permission !== 'code').map(item => item.id);
 const stepKinds = ['read', 'settings', 'variables', 'blueprint', 'resource', 'code', 'other'];
 const string = maxLength => ({ type: 'string', maxLength });
 const stepSchema = { type: 'object', properties: {
-    kind: { type: 'string', enum: stepKinds }, title: string(100), detail: string(600),
+    kind: { type: 'string', enum: stepKinds, description: 'Operation kind, not subject/domain. All reading, contract lookup and analysis use read, including blueprint/variables/world-book reads. Other kinds denote proposed writes/actions.' }, title: string(100), detail: string(600),
 }, required: ['kind', 'title', 'detail'], additionalProperties: false };
 export const taskPlanSchema = { type: 'object', properties: {
     goal: string(300), scope: { type: 'string', enum: ['global', 'current-chat', 'mixed'] },
@@ -33,7 +33,7 @@ export function projectTaskPlan(input, target) {
 export function createTaskPlanModule() {
     const registry = createToolRegistry(), runs = new Map(); let disposed = false;
     registry.register({ id: 'muyu.task.plan', version: 1,
-        description: 'Propose a bounded multi-step task plan. Name only sources needed to investigate; do not read them here. After authorized reads, ordinary settings and numeric current-chat variables can be proposed together with muyu.task.preview, then require one separate exact-bundle UI approval. The task-plan read approval grants no writes. Blueprint/resource writes and code changes are not available through this plan. Do not claim the task is complete.',
+        description: 'Propose a bounded multi-step task plan. Name only sources needed to investigate; do not read them here. Every reading/contract-lookup/analysis step uses kind=read, even when its subject is blueprint, variables or settings. Other kinds refer to proposed writes/actions; availability is not a probe of data sources. A blueprint write being unavailable does not mean storyBlueprint cannot be read. Only provider.read results establish source read status. After authorized reads, ordinary settings and numeric current-chat variables can be proposed together with muyu.task.preview, then require one separate exact-bundle UI approval. The task-plan read approval grants no writes. Blueprint/resource writes and code changes are not available through this plan. Do not claim the task is complete.',
         inputSchema: taskPlanSchema, outputSchema: { type: 'object', properties: { candidateId: string(100), text: string(10000) }, required: ['candidateId', 'text'], additionalProperties: false },
         scope: 'global', effect: 'read', dataClasses: ['public-knowledge'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     registry.seal();
@@ -43,7 +43,7 @@ export function createTaskPlanModule() {
         if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         const plan = projectTaskPlan(args, ctx.target), candidateId = 'plan:' + crypto.randomUUID();
         run.candidate = { candidateId, plan };
-        return { candidateId, text: JSON.stringify({ ...plan, notice: 'Only a proposal. No data access granted and no changes applied.' }) };
+        return { candidateId, text: JSON.stringify({ ...plan, notice: 'Only a proposal. No data access granted and no changes applied. Step availability describes operation support, not whether any data source exists or can be read. Blueprint/resource write restrictions do not prohibit reading those sources; use provider.read to verify.' }) };
     } };
     return { registry, handlers,
         bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidate: null }); },

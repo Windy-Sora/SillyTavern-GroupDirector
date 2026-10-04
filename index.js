@@ -305,15 +305,40 @@ const saveSummaryChatConfirmed = createConfirmedChatMetadataSave({
     selectValue: metadata => metadata[EXT_KEY]?.summaries ?? [],
     label: 'Chat Summary',
 });
+const saveLedgerChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.directorHistory ?? [],
+    label: 'Director Ledger',
+});
 const saveStoryBlueprintChatConfirmed = createConfirmedChatMetadataSave({
     ...confirmedChatSaveDependencies,
     selectValue: metadata => metadata[EXT_KEY]?.storyBlueprint ?? null,
     label: 'Story Blueprint',
 });
+const saveBlueprintLibraryChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => ({blueprint:metadata[EXT_KEY]?.storyBlueprint??null,variables:metadata[EXT_KEY]?.variables??null}),
+    label: 'Blueprint library and completion signal',
+});
 const saveVariablesChatConfirmed = createConfirmedChatMetadataSave({
     ...confirmedChatSaveDependencies,
     selectValue: metadata => metadata[EXT_KEY]?.variables ?? null,
     label: 'Muyu completion variable',
+});
+const saveMemoriesChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.charMemories ?? {},
+    label: 'Character memories',
+});
+const saveProfileEditorChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => ({profiles:metadata[EXT_KEY]?.characterProfiles??{},archived:metadata[EXT_KEY]?.archivedProfiles??{}}),
+    label: 'Character profile editing and archive',
+});
+const saveProfilesChatConfirmed = createConfirmedChatMetadataSave({
+    ...confirmedChatSaveDependencies,
+    selectValue: metadata => metadata[EXT_KEY]?.characterProfiles ?? {},
+    label: 'Character profiles',
 });
 
 const variableSystem = createVariableSystem({
@@ -2723,7 +2748,7 @@ eventSource.on(event_types.APP_READY, async () => {
             generationType: roundGenerateType,
             canFinalize: roundOrchestrator.canFinalize({ manualGenerationInProgress: manualGenInProgress, generationStopped }),
         }),
-        settings, EXT_KEY, chat_metadata, getChatMetadata, saveChatConditional, saveVariablesChatConfirmed, saveSettings,
+        settings, EXT_KEY, chat_metadata, getChatMetadata, saveChatConditional, saveBlueprintLibraryChatConfirmed, saveMemoriesChatConfirmed, saveLedgerChatConfirmed, saveStoryBlueprintChatConfirmed, saveProfileEditorChatConfirmed, saveVariablesChatConfirmed, saveProfilesChatConfirmed, saveNpcChatConfirmed, saveSettings,
         getCurrentGroup, getDefaultLlmPrompt, generateProfilesBatch, getProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,

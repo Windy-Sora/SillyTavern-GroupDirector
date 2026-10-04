@@ -1,5 +1,20 @@
 # 记忆排查试点
 
+## 2026-10-04：单角色业务生成已独立接入
+
+现在由独立memory-generation模块提供targets／prepare／execute、目录读取来源和一次性执行许可，不改变本诊断模块的只读效果。手工记忆草稿权限不批准业务生成；普通模式另确认角色／模式／费用／裁剪。真实业务底座复用原memory Agent，暮羽自身存档不使批准失效；不批量、不进入整单。详见[工具合同](../memory-generation/README.md)。以下“未注册工具”为第一轮历史状态，不代表当前接入情况。
+
+## 2026-10-04：业务生成底座，未注册工具
+
+`systems/memory-generation.js` 复用原memory Agent／Schema／ContextPool／caller，以generateApproved(avatar,{mode,signal,validate,onPhase,saveChatConfirmed})执行单角色提取。`avatar`是私有宿主定位参数，不能由未校验模型直接指定；muyu/host/memory-generation.js用已有memory-character序号创建执行单，未来工具还须在专用读取权限下提供目标目录。inspectGeneration只供私有基线核验，含完整配置指纹／真实对象引用，禁止直接外发、保存至对话或当作授权。
+
+- prepareExecution无渲染／模型／仓库初始化，返回脱敏名称、模式、已有数量、容量、目标类型与风险说明。单任务单角色不因改变trial/save而获得第二次付费机会。
+- 执行单绑定任务与聊天、配置／业务连接、Agent函数、Provider注册实现、聊天内容及所选角色记忆；变化拒绝执行。不声明已锁定ST内部所有原生连接细节，原生目的地由ST管理。
+- trial不写记忆，报告wouldPrune；save追加并按原上限裁剪，只用注入的确认保存器，不退回条件保存。裁剪可包括本次生成中的较旧条目。不开启功能，不做其他角色提取，不创建角色卡。
+- 实际caller每单最多一次调用，强制retries=0；尝试标志不证明已送达或计费。输出经过原Schema与格式边界，仍为不可信生成内容，不证明剧情事实；超过6000字节的正文省略，不代表生成失败。
+- 执行超时／取消停止等待，但Provider、原生请求计费、在途保存不保证停止；后续受控阶段禁止写入，底层请求未排空保留busy租约。保存未知保留已赋值内容，不重试或覆盖并发编辑；confirmed不等于历史回执代表当前状态。
+- 当前尚无registry/capability/权限来源／GUI接线，不恢复执行单。下一轮必须定义精确任务执行授权、预算、生命周期及中英文状态展示，不能由memoryConfig、记忆正文或手工草稿读权限推导执行权。
+
 2026-09-24。独立内置模块，未从index.js或GUI挂载；不替换现有记忆系统。只读投影与报告在合成宿主数据上测试，真实DeepSeek参与小规模解释测试；不等于真实SillyTavern宿主验收。
 
 ## 分层与入口

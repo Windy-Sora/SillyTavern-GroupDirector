@@ -33,6 +33,16 @@ test('Long answers use readable Markdown without forcing headings onto short rep
     assert.match(base, /不为短回答强加标题或表格/);
 });
 
+test('Latest topic supersedes completed reads and business calls do not prove billing or durable storage', () => {
+    const base = composeInstructions('assistant').base;
+    assert.match(base, /已完成历史问答只是参考/);
+    assert.match(base, /用户插问常识或说不用资料时直接回答新问题/);
+    assert.match(base, /模型调用或输出不证明已扣费/);
+    assert.match(base, /业务被拒只说未启动额外业务调用/);
+    assert.match(base, /没有计费回执就不能断言已收费或零费用/);
+    assert.match(base, /不因新草稿否认此前测试/);
+});
+
 test('Retrieval and memory presentation cannot turn matches into inventory or storage into adoption', () => {
     const instructions = composeInstructions('assistant');
     assert.match(instructions.base, /来源总数只看totalRecords/);

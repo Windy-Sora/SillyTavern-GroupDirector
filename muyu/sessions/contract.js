@@ -1,5 +1,5 @@
 /** Storage DTOs contain conversation text, never executable tasks, grants or credentials. */
-import { permissionSources, parseExecutionSource } from '../permissions/contract.js';
+import { permissionSources, parseExecutionSource, parseGenerationBatchExecutionSource, parseNpcExecutionSource, parseProfileExecutionSource, parseMemoryExecutionSource, parseAgentExecutionSource, parseScriptExecutionSource } from '../permissions/contract.js';
 import { validateReceipt, receiptSources } from '../actions/receipts.js';
 import { MAX_CONTEXT_MESSAGES, MAX_MESSAGE_BYTES } from '../context/policy.js';
 import { validSummaryText } from '../context/summary-contract.js';
@@ -37,7 +37,7 @@ export function validateRecord(value) {
     if (scope[0] !== 'assistant' && (scope[0] === 'draft') !== (scope[1] === 'global')) throw Error('HISTORY_INVALID');
     if (![value.createdAt, value.updatedAt].every(n => Number.isSafeInteger(n) && n >= 0)) throw Error('HISTORY_INVALID');
     if (!['idle', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted'].includes(value.status)) throw Error('HISTORY_INVALID');
-    if (!Array.isArray(value.required) || value.required.length > 3 + permissionSources.length + 64 || new Set(value.required).size !== value.required.length || value.required.some(k => !['diagnostics', 'chat', 'extended', ...permissionSources].includes(k) && !(value.version >= 5 && parseExecutionSource(k)))) throw Error('HISTORY_INVALID');
+    if (!Array.isArray(value.required) || value.required.length > 3 + permissionSources.length + 64 || new Set(value.required).size !== value.required.length || value.required.some(k => !['diagnostics', 'chat', 'extended', ...permissionSources].includes(k) && !(value.version >= 5 && (parseExecutionSource(k) || parseScriptExecutionSource(k) || parseAgentExecutionSource(k) || parseGenerationBatchExecutionSource(k) || parseNpcExecutionSource(k) || parseProfileExecutionSource(k) || parseMemoryExecutionSource(k))))) throw Error('HISTORY_INVALID');
     if (!Array.isArray(value.messages) || value.messages.length > HISTORY_LIMITS.messages) throw Error('HISTORY_CAPACITY');
     for (const m of value.messages) {
         if (!m || Object.keys(m).some(k => !['role', 'content', 'runId', ...(value.version >= 7 ? ['origin'] : [])].includes(k)) || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || historyBytes(m.content) > MAX_MESSAGE_BYTES || typeof m.runId !== 'string' || m.runId.length > 150 ||

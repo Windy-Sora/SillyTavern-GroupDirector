@@ -24,15 +24,16 @@ export const dynamicSettings = Object.freeze({
 });
 const special = new Set('agentConfigs customPrompts scriptExecutors customAgents profileLibraries npcLibraries storyBlueprintLibraries providerReferenceList providerReferenceDeletedDefaultIds'.split(' '));
 // Explicitly deferred by product decision; not an authorization problem.
-const deferred = new Set(['scriptExecutors']);
+const deferred = new Set();
 export function configurationCoverage() {
     return Object.entries(groups).flatMap(([owner, list]) => list.split(' ').map(key => {
         const fields = configFields.filter(id => id === key || id.startsWith(key + '.'));
         const value = DEFAULT_SETTINGS[key];
         return { key, owner, type: Array.isArray(value) ? 'array' : typeof value, scope: 'global',
-            status: ['storyBlueprintCompletionVariableGuard', 'muyuWebSearchConfig', 'muyuFloatingBallVisible'].includes(key) ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
+            ...(key === 'profileLibraryAutoLoad' ? { partial: true, pendingFields: ['matchNameOnly'], selectionWriter: 'muyu/host/selection-editor.js' } : {}),
+            status: ['worldBookSelection', 'scriptExecutors', 'customAgents', 'customPrompts', 'profileLibraries', 'npcLibraries', 'storyBlueprintLibraries'].includes(key) ? 'special-editor-supported' : ['storyBlueprintCompletionVariableGuard', 'muyuWebSearchConfig', 'muyuFloatingBallVisible'].includes(key) ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
             secret: key === 'agentConfigs', executable: key === 'scriptExecutors',
-            writer: fields.length ? 'muyu/host/config-write.js' : null,
+            writer: key === 'worldBookSelection' ? 'muyu/host/selection-editor.js' : key === 'storyBlueprintLibraries' ? 'muyu/host/blueprint-libraries.js' : key === 'npcLibraries' ? 'muyu/host/npc-libraries.js' : key === 'profileLibraries' ? 'muyu/host/profile-libraries.js' : key === 'customPrompts' ? 'muyu/host/custom-prompts.js' : key === 'customAgents' ? 'muyu/host/custom-agents.js' : key === 'scriptExecutors' ? 'muyu/host/script-executors.js' : fields.length ? 'muyu/host/config-write.js' : null,
             contract: fields.map(fieldDefinition),
         };
     }));

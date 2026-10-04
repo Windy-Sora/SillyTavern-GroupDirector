@@ -179,8 +179,33 @@ test('Thinking state cannot cross run contexts; prior text becomes labelled refe
     await collect(s.model);
     const input = request(); input.messages.push({ role: 'assistant', content: 'final' }, { role: 'user', content: 'followup' });
     await collect(s.model, input);
-    assert.equal(s.requests[1].payload.messages[1].role, 'user'); assert.match(s.requests[1].payload.messages[1].content, /reference data/);
+    const replay = s.requests[1].payload.messages;
+    assert.equal(replay[0].role, 'user'); assert.match(replay[0].content, /Completed conversation history/);
+    assert.match(replay[0].content, /"role":"user","content":"question"/);
+    assert.match(replay[0].content, /"role":"assistant","content":"final"/);
+    assert.deepEqual(replay.at(-1), { role: 'user', content: 'followup' });
     assert.ok(!s.requests[1].body.includes('private-old'));
+});
+
+test('Completed history keeps original speaker labels and cannot consume the latest question or live reasoning', async () => {
+    const s = subject([response('', [tc()], { reasoning_content: 'private-current' }), response('owl answer', [], { reasoning_content: 'private-final' })], { connection: { ...connection, profile: 'deepseek' } });
+    const input = request(), context = {};
+    input.messages = [{ role: 'assistant', content: 'orphan historical answer' }, { role: 'user', content: 'Read coins' },
+        { role: 'assistant', content: '35 coins' }, { role: 'user', content: 'Is an owl a bird? Do not read coins.' }];
+    await collect(s.model, input, context);
+    const first = s.requests[0].payload.messages;
+    assert.equal(first.length, 3);
+    assert.match(first[0].content, /"role":"assistant","content":"orphan historical answer"/);
+    assert.match(first[1].content, /"role":"user","content":"Read coins"/);
+    assert.match(first[1].content, /"role":"assistant","content":"35 coins"/);
+    assert.deepEqual(first[2], input.messages.at(-1));
+    input.messages.push({ role: 'assistant', content: '', toolCalls: [{ callId: 'c1', toolId, version: 1, args: { n: 1 } }] },
+        { role: 'tool', callId: 'c1', result: { ok: true, data: 1 } });
+    await collect(s.model, input, context);
+    const live = s.requests[1].payload.messages;
+    assert.equal(live.at(-2).reasoning_content, 'private-current');
+    assert.equal(live.at(-1).role, 'tool');
+    assert.deepEqual(s.model.inspect(input, context), s.model.inspect(input, context));
 });
 
 test('Unsupported tools/thinking and incomplete thinking history fail closed', async () => {

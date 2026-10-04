@@ -1,4 +1,5 @@
 import { peekProfiles } from './provider-read-data.js';
+import { createApprovedProfileGeneration } from './profile-generation.js';
 import {
     assertExecutionSnapshot,
     captureExecutionSnapshot,
@@ -334,9 +335,17 @@ async function generateProfilesBatchInternal(avatars) {
 }
 
 async function trackProfileTask(operation) {
+    if (approvedGeneration.isGenerating()) throw new Error('PROFILE_BUSY');
     activeProfileTasks++;
     try { return await operation(); }
     finally { activeProfileTasks--; }
+}
+
+// Pure creation contract: no profile-container initialization or source body exposure.
+function inspectManualCreation() {
+    return { schemaHash: computeProfileSchemaHash(), characters: (getCharacters() || []).map(c => ({
+        avatar: c.avatar, name: c.name, hash: hashChar(c.description, c.personality, c.scenario),
+    })) };
 }
 
 const generateSingleProfile = avatar => trackProfileTask(() => generateSingleProfileInternal(avatar));
@@ -820,11 +829,17 @@ function bindProfileCardActions() {
     });
 }
 
+    const approvedGeneration = createApprovedProfileGeneration({ settings, EXT_KEY, getChatMetadata, getChat, getCharacters,
+        getCurrentGroup, getContext, hashChar, computeProfileSchemaHash, getDefaultProfileSchema,
+        getDefaultProfileGeneratorPrompt, renderPrompt, createCaller, extractJsonObject, sanitizeJson,
+        clearQuietPrompt: () => setExtensionPrompt(inject_ids.QUIET_PROMPT, '', extension_prompt_types.IN_PROMPT, 0, true),
+        isBusy: () => activeProfileTasks > 0 || isRoundActive() });
     return {
-        computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
+        inspectManualCreation, computeProfileSchemaHash, getProfileContainer, migrateProfileData, getProfiles, getArchivedProfiles, saveProfile, archiveProfiles, diffProfiles,
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         normalizeProfileFields, generateSingleProfile, generateProfilesBatch,
-        isGenerating: () => activeProfileTasks > 0,
+        generateApproved: approvedGeneration.generateApproved, inspectGeneration: approvedGeneration.inspectGeneration,
+        isGenerating: () => activeProfileTasks > 0 || approvedGeneration.isGenerating(),
         buildCharacterProfilesText,
         validateAndWarnProfilePlaceholders,
         syncProfiles,

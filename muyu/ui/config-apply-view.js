@@ -17,6 +17,13 @@ export function renderConfigApply({ doc, card, artifact, state, controller, act,
         node('small', t('只批准此版本一次。保存开始后无法保证取消；不会自动回滚，也不提供一键撤销。', 'Approves this revision once. Saving cannot reliably be cancelled; no automatic rollback or one-click undo.'));
         if (artifact.content.memoryPrunePlan) node('strong', t(`当前聊天预计删除 ${artifact.content.memoryPrunePlan.total} 条最旧记忆；全局设置与聊天裁剪会分别保存，可能部分完成。`, `This chat may lose ${artifact.content.memoryPrunePlan.total} oldest memories. Global settings and chat pruning save separately and may partially complete.`));
         if (artifact.content.completionVariablePlan) node('strong', t(`先在当前聊天创建 ${artifact.content.completionVariablePlan.newId}=false 并确认保存，再保存全局名称；旧变量保留。其他聊天不会立即迁移。`, `First create and confirm ${artifact.content.completionVariablePlan.newId}=false in this chat, then save the global name. The old variable stays; other chats are not migrated immediately.`));
+        if (artifact.content.blueprintTogglePlan) {
+            const p = artifact.content.blueprintTogglePlan;
+            node('strong', p.operation === 'none' ? t('当前聊天没有完成变量：仅关闭全局蓝图开关，不创建变量。', 'No completion variable in this chat: only disable the global switch; do not create a variable.') :
+                t(`当前聊天完成变量 ${p.variableId}：${p.before.stored ? String(p.before.value) : '无存储值'} → false。先保存聊天变量，再保存全局蓝图开关，可能部分完成。`, `Current-chat completion variable ${p.variableId}: ${p.before.stored ? String(p.before.value) : 'no stored value'} → false. Chat and global settings save separately; partial completion is possible.`));
+            if (p.enableAutoUpdate || p.useManualInjection) node('p', t('此变量同时改为自动更新、手动注入；不修改规则正文。', 'This variable will use automatic updates and manual injection; rule text stays unchanged.'));
+            node('small', t('不修改蓝图正文及进度，不修改其他聊天变量。启用后已有自动续写规则可能带来后续模型调用。', 'Blueprint content, progress and other chats stay unchanged. Existing auto-continuation settings may cause future model calls.'));
+        }
         button(t('应用这份修改', 'Apply these changes'), () => controller.approveConfigApply(r.id), disabled);
         button(t('取消应用', 'Cancel application'), () => controller.cancelConfigApply(r.id), disabled);
         return;

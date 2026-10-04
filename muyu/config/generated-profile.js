@@ -1,11 +1,12 @@
 import { copyJson, validateJson } from '../core/json-contract.js';
 import { configChangesSchema, dependencyFields, previewSettings, readSettingsFields } from './registry.js';
 import { DEFAULT_SETTINGS } from '../../settings.js';
+import { settingsSwitchFields } from './settings-switch-rules.js';
 
 // A saved profile is a portable patch, not a snapshot of the user's current settings.
 // These fields require dedicated chat-side effects or would overwrite sibling object keys
 // when the existing profile applier merges an object with defaults.
-const unsupported = new Set(['memoryMaxEntries', 'storyBlueprintCompletionVariable']);
+const unsupported = new Set(['memoryMaxEntries', 'storyBlueprintCompletionVariable', 'storyBlueprintEnabled', 'lang', 'debugLogging', ...settingsSwitchFields]);
 const metadataSchema = { type: 'object', properties: {
     name: { type: 'string', maxLength: 80 },
     description: { type: 'string', maxLength: 500 },

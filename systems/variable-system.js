@@ -221,7 +221,7 @@ function defaultForType(type) {
     return '';
 }
 
-function coerceValue(def, incoming, oldValue) {
+export function coerceValue(def, incoming, oldValue) {
     let value = incoming;
     const mode = def.updateMode;
 

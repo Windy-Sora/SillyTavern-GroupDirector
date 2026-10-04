@@ -1,3 +1,9 @@
+import { renderSelectionEditor } from './selection-editor-view.js';
+import { renderLedgerEditor } from './ledger-editor-view.js';
+import { renderBlueprintNodeEditor } from './blueprint-node-editor-view.js';
+import { renderNpcEditor } from './npc-editor-view.js';
+import { renderProfileEditor } from './profile-editor-view.js';
+import { renderMemoryEditor } from './memory-editor-view.js';
 import { MAX_MESSAGE_BYTES } from '../context/policy.js';
 import { renderConfigDiff } from './config-diff-view.js';
 import { memoryFields } from '../modules/config-draft/contracts.js';
@@ -14,9 +20,20 @@ import { createSettingsLayout } from './settings-layout.js';
 import { createInteractionView } from './interaction-view.js';
 import { createPermissionView } from './permission-view.js';
 import { renderConfigApply } from './config-apply-view.js';
+import { renderVariableEditor } from './variable-editor-view.js';
 import { renderVariableApply } from './variable-apply-view.js';
 import { renderTaskBundleApply } from './task-bundle-apply-view.js';
 import { renderProfileSave } from './profile-save-view.js';
+import { renderBlueprintLibraryChat } from './blueprint-library-chat-view.js';
+import { renderNpcLibraryChat } from './npc-library-chat-view.js';
+import { renderProfileLibraryChat } from './profile-library-chat-view.js';
+import { renderBlueprintLibrarySave } from './blueprint-library-save-view.js';
+import { renderNpcLibrarySave } from './npc-library-save-view.js';
+import { renderProfileLibrarySave } from './profile-library-save-view.js';
+import { renderCustomPromptSave } from './custom-prompt-save-view.js';
+import { renderCustomAgentSave } from './custom-agent-save-view.js';
+import { renderScriptSave } from './script-save-view.js';
+import { renderProviderInstall } from './provider-install-view.js';
 import { permissionTitle } from '../permissions/contract.js';
 import { createReceiptView } from './receipt-view.js';
 import { createWebSearchView } from './web-search-view.js';
@@ -290,7 +307,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         input.disabled = !!s.readOnly;
         const missingHistory = s.history?.missingPermissions || [];
         historyAuthorization.hidden = s.mode !== 'assistant' || !missingHistory.length || !!s.context?.omitHistory || s.readOnly || s.interaction?.status === 'pending';
-        historySources.textContent = missingHistory.map(source => source.startsWith('source:') ? permissionTitle(source.startsWith('source:providerExecution:') ? 'providerExecution' : source.slice(7)) : source).join('、');
+        historySources.textContent = missingHistory.map(source => source.startsWith('source:') ? permissionTitle(source.startsWith('source:providerExecution:') ? 'providerExecution' : source.startsWith('source:agentExecution:') ? 'agentExecution' : source.startsWith('source:npcExecution:') ? 'npcExecution' : source.startsWith('source:profileExecution:') ? 'profileExecution' : source.startsWith('source:memoryExecution:') ? 'memoryExecution' : source.startsWith('source:scriptExecution:') ? 'scriptExecution' : source.slice(7)) : source).join('、');
         allowHistory.disabled = omitHistory.disabled = !s.enabled || s.busy || s.resetting || s.history?.loading;
         send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
         if (s.interaction?.status === 'pending') { send.disabled = true; resetAuthorization(); }
@@ -358,7 +375,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 node('strong', (isPlan ? t('任务方案', 'Task plan') : t('排查报告', 'Diagnostic report')) + ' · v' + artifact.revision, summary);
                 node('span', isPlan ? artifact.content.plan.goal : t('生成时的证据快照 · 展开查看', 'Evidence snapshot · expand to view'), summary);
                 card = node('div', '', wrapper); card.className = 'gd-muyu-plan-body';
-            } else node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
+            } else node('strong', (artifact.kind === 'report' ? t('排查报告', 'Diagnostic report') : artifact.kind === 'selection-draft' ? t('选择策略草稿','Selection policy draft') : artifact.kind === 'ledger-edit-draft' ? t('导演账本编辑草稿','Director ledger editing draft') : artifact.kind === 'blueprint-node-edit-draft' ? t('蓝图节点编辑草稿','Blueprint node editing draft') : artifact.kind === 'npc-edit-draft' ? t('NPC编辑草稿','NPC editing draft') : artifact.kind === 'profile-edit-draft' ? t('角色档案编辑草稿','Character profile editing draft') : artifact.kind === 'memory-edit-draft' ? t('记忆编辑草稿','Memory editing draft') : artifact.kind === 'variable-editor-draft' ? t('变量编辑草稿','Variable editing draft') : artifact.kind === 'variable-draft' ? t('变量草稿', 'Variable draft') : artifact.kind === 'task-bundle' ? t('整单草稿', 'Operation bundle') : artifact.kind === 'blueprint-library-chat-draft' ? t('聊天与蓝图库草稿', 'Chat / Blueprint library draft') : artifact.kind === 'npc-library-chat-draft' ? t('聊天与 NPC 库草稿', 'Chat / NPC library draft') : artifact.kind === 'profile-library-chat-draft' ? t('聊天与档案库草稿', 'Chat / profile library draft') : artifact.kind === 'blueprint-library-draft' ? t('蓝图库草稿', 'Blueprint library draft') : artifact.kind === 'npc-library-draft' ? t('NPC 库草稿', 'NPC library draft') : artifact.kind === 'profile-library-draft' ? t('角色档案库草稿', 'Character profile library draft') : artifact.kind === 'custom-prompt-draft' ? t('自定义 Prompt 草稿', 'Custom Prompt draft') : artifact.kind === 'custom-agent-draft' ? t('自定义 Agent 草稿', 'Custom Agent draft') : artifact.kind === 'script-draft' ? t('脚本执行器草稿', 'Script Executor draft') : artifact.kind === 'provider-draft' ? t('Provider 源码草稿', 'Provider source draft') : artifact.kind === 'profile-draft' ? t('配置档草稿', 'Profile draft') : t('配置草稿', 'Configuration draft')) + ' · v' + artifact.revision, card);
             if (artifact.kind === 'report') {
                 const findingLabels = { fact: t('已确认', 'Confirmed'), unknown: t('尚未确认', 'Unknown'), blocker: t('阻止条件', 'Blocking condition'), condition: t('当前条件', 'Current condition') };
                 for (const f of artifact.content.findings) node('p', `${Object.hasOwn(findingLabels, f.kind) ? findingLabels[f.kind] : t('说明', 'Note')}：${f.text}`, card);
@@ -396,7 +413,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                     decline.onclick = () => act(() => controller.declineTaskPlanReads(artifact.id, artifact.revision));
                 }
             } else if (artifact.kind === 'task-bundle') {
-                node('small', t('仅预览，未修改内容。执行顺序：当前聊天变量 → 全局配置。', 'Preview only; no changes yet. Order: current-chat variables → global settings.'), card);
+                node('small', t('仅预览，未修改内容。执行顺序：当前聊天变量 → 全局配置 → 脚本定义。', 'Preview only; no changes yet. Order: current-chat variables → global settings → script definitions.'), card);
                 for (const variable of artifact.content.variables) {
                     node('strong', t('当前聊天变量：', 'Current-chat variable: ') + variable.preview.id, card);
                     for (const diff of variable.preview.diff) node('p', `${diff.field}: ${JSON.stringify(diff.before)} → ${JSON.stringify(diff.after)}`, card);
@@ -406,9 +423,35 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                     renderConfigDiff({ doc, parent: card, diff: artifact.content.settings.preview.diff, lang });
                     for (const warning of artifact.content.settings.preview.warnings) node('p', warning, card);
                 }
+                for (const script of artifact.content.scripts || []) {
+                    const details = node('details', '', card);
+                    node('summary', t('脚本定义：', 'Script definition: ') + (script.next?.name || script.previous?.name), details);
+                    node('code', JSON.stringify({ operation: script.operation, before: script.previous, after: script.next }, null, 2), node('pre', '', details));
+                    for (const warning of script.warnings) node('p', warning, card);
+                }
                 const recheck = button(t('重新校验整单', 'Revalidate bundle'), card); recheck.disabled = s.busy || s.resetting;
                 recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
                 renderTaskBundleApply({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'blueprint-library-chat-draft') {
+                renderBlueprintLibraryChat({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'npc-library-chat-draft') {
+                renderNpcLibraryChat({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'profile-library-chat-draft') {
+                renderProfileLibraryChat({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'blueprint-library-draft') {
+                renderBlueprintLibrarySave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'npc-library-draft') {
+                renderNpcLibrarySave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'profile-library-draft') {
+                renderProfileLibrarySave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'custom-prompt-draft') {
+                renderCustomPromptSave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'custom-agent-draft') {
+                renderCustomAgentSave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'script-draft') {
+                renderScriptSave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'provider-draft') {
+                renderProviderInstall({ doc, card, artifact, state: s, controller, act, lang });
             } else if (artifact.kind === 'profile-draft') {
                 node('p', artifact.content.name, card);
                 if (artifact.content.description) node('small', artifact.content.description, card);
@@ -418,6 +461,20 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 const recheck = button(t('重新校验配置档', 'Revalidate profile'), card); recheck.disabled = s.busy || s.resetting;
                 recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
                 renderProfileSave({ doc, card, artifact, state: s, controller, act, lang });
+            } else if (artifact.kind === 'selection-draft') {
+                renderSelectionEditor({doc,card,artifact,state:s,controller,act,lang});
+            } else if (artifact.kind === 'ledger-edit-draft') {
+                renderLedgerEditor({doc,card,artifact,state:s,controller,act,lang});
+            } else if (artifact.kind === 'blueprint-node-edit-draft') {
+                renderBlueprintNodeEditor({doc,card,artifact,state:s,controller,act,lang});
+            } else if (artifact.kind === 'npc-edit-draft') {
+                renderNpcEditor({doc,card,artifact,state:s,controller,act,lang});
+            } else if (artifact.kind === 'profile-edit-draft') {
+                renderProfileEditor({doc,card,artifact,state:s,controller,act,lang});
+            } else if (artifact.kind === 'memory-edit-draft') {
+                renderMemoryEditor({doc,card,artifact,state:s,controller,act,lang});
+            } else if (artifact.kind === 'variable-editor-draft') {
+                renderVariableEditor({doc,card,artifact,state:s,controller,act,lang});
             } else if (artifact.kind === 'variable-draft') {
                 const preview = artifact.content.preview;
                 node('p', t('当前聊天变量：', 'Current-chat variable: ') + preview.id, card);
@@ -431,9 +488,14 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 const operation = s.configActions?.find(r => r.artifactId === artifact.id && r.revision === artifact.revision);
                 const attempted = operation && !['pending', 'cancelled', 'expired', 'not_executed'].includes(operation.status);
                 node('p', attempted ? t('上方为本次操作的原始差异；实际结果见下方。', 'Original operation diff above; see actual result below.') : artifact.content.preview.notice, card); node('p', artifact.content.preview.warnings.join(' · '), card);
-                if (artifact.content.preview.impact) {
+                if (Array.isArray(artifact.content.preview.impact?.characters)) {
                     node('small', t('当前聊天记忆仓库中的角色序号；不向模型发送角色标识或记忆正文。', 'Character slots in this chat memory store; identities and memory text are not sent to the model.'), card);
                     for (const row of artifact.content.preview.impact.characters) node('p', t(`角色序号 ${row.slot}：${row.before} → ${row.before - row.remove}（裁剪 ${row.remove}）`, `Character slot ${row.slot}: ${row.before} → ${row.before - row.remove} (prune ${row.remove})`), card);
+                }
+                if (artifact.content.blueprintTogglePlan) {
+                    const p = artifact.content.blueprintTogglePlan;
+                    node('p', p.operation === 'none' ? t('当前聊天无完成变量，不创建。', 'No completion variable in this chat; none will be created.') :
+                        t(`当前聊天完成变量 ${p.variableId}：${p.before.stored ? String(p.before.value) : '无存储值'} → false`, `Current-chat completion variable ${p.variableId}: ${p.before.stored ? String(p.before.value) : 'no stored value'} → false`), card);
                 }
                 if (!attempted) node('p', artifact.validation?.status === 'stale' ? t('过期，需重新生成', 'Stale; regenerate') : artifact.validation ? t('已校验当时基线；使用前需复核，未应用', 'Validated against saved baseline; recheck before use. Not applied.') : t('未校验，未应用', 'Not validated; not applied'), card);
                 const recheck = button(t('重新校验', 'Revalidate'), card); recheck.disabled = s.busy || s.resetting; recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));

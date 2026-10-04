@@ -15,7 +15,7 @@ test('Generated profile is a portable partial settings patch, not current settin
 test('Generated profile rejects unsafe, unknown and side-effectful fields', () => {
     for (const changes of [
         { apiKey: 'secret' }, { userProviders: [] }, { variables: {} }, { memoryMaxEntries: 10 },
-        { storyBlueprintCompletionVariable: 'done' }, { 'scoreWeights.mention': 2 }, { topN: 0 },
+        { storyBlueprintCompletionVariable: 'done' }, { storyBlueprintEnabled: true }, { 'scoreWeights.mention': 2 }, { topN: 0 }, { lang: 'en' }, { debugLogging: true },
     ]) assert.throws(() => prepareGeneratedProfile({ name: 'Unsafe', changes }));
     assert.throws(() => prepareGeneratedProfile({ name: ' ', changes: { mode: 'formula' } }), /PROFILE_NAME_REQUIRED/);
     assert.throws(() => prepareGeneratedProfile({ name: 'Empty', changes: {} }), /EMPTY_PROFILE/);
