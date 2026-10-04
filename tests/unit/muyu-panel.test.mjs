@@ -30,6 +30,13 @@ import { mountMuyuPanel } from '../../muyu/ui/panel.js';
 import { createPermissionView } from '../../muyu/ui/permission-view.js';
 import { createSkillView } from '../../muyu/ui/skill-view.js';
 import { createSkillPicker } from '../../muyu/ui/skill-picker.js';
+import { createReceiptView } from '../../muyu/ui/receipt-view.js';
+import { actionReceipt } from '../../muyu/actions/receipts.js';
+import { createSkillPort } from '../../muyu/host/skills.js';
+import { createHostBridge } from '../../muyu/host/bridge.js';
+import { createMuyuController } from '../../muyu/application/controller.js';
+import { scriptedModel, text, done, flush } from './helpers/muyu-subject.mjs';
+import { EventEmitter } from 'node:events';
 for (const lang of ['zh', 'en']) test('Skill composer picker uses exact GUI identity, hides disabled entries and preserves selection / ' + lang, async () => {
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), selected = [];
     const picker = createSkillPicker({ doc, parent, lang, act: fn => fn(), controller: { selectSkill: (...args) => selected.push(args), loadSkills() {} } });
@@ -146,6 +153,65 @@ class Element {
     click() { if (!this.disabled) return this.onclick?.(); }
     toggle(open) { this.open = open; this.events.toggle?.(); }
 }
+
+for (const lang of ['zh', 'en']) for (const operation of ['create', 'update', 'delete', 'enable', 'copy', 'feature']) test(`Skill ${operation} receipt renders across idle/busy/read-only without configuration actions / ${lang}`, () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('section');
+    const view = createReceiptView({ doc, parent, controller: {}, act: fn => fn(), lang });
+    const receipt = actionReceipt({ id: 'skill-op', artifactId: 'skill-draft', revision: 1, status: 'saved_unconfirmed', content: { module: 'skill', operation }, result: { persistence: 'unconfirmed' } });
+    const nodes = () => { const result = []; const visit = el => { result.push(el); el.children.forEach(visit); }; visit(parent); return result; };
+    for (const [busy, readOnly] of [[false, false], [true, false], [false, false], [false, true]]) {
+        assert.doesNotThrow(() => view.render({ receipts: [receipt], busy, readOnly, enabled: true, canReadConfig: true, canCheckReceipts: { 'skill-op': true } }));
+        assert.ok(nodes().some(el => el.tag === 'p' && el.textContent?.includes(lang === 'en' ? 'Skill management:' : '技能管理：')));
+        assert.equal(nodes().filter(el => el.tag === 'button').length, 0);
+        assert.equal(nodes().filter(el => el.tag === 'pre').length, 0);
+    }
+});
+
+for (const lang of ['zh', 'en']) test('Legacy and v2 configuration receipts keep exact diffs and guarded actions / ' + lang, async () => {
+    for (const version of [undefined, 2]) {
+        const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('section'), calls = [];
+        const view = createReceiptView({ doc, parent, lang, act: fn => fn(), controller: { explainReceipt: id => calls.push(['explain', id]), checkReceipt: id => calls.push(['check', id]) } });
+        const receipt = { ...(version ? { version } : {}), operationId: 'config-op', artifactId: 'a', revision: 1, at: 1, status: 'applied_unconfirmed', diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], saveError: false, changed: false };
+        const nodes = () => { const result = []; const visit = el => { result.push(el); el.children.forEach(visit); }; visit(parent); return result; };
+        const state = { receipts: [receipt], enabled: true, canReadConfig: true, canCheckReceipts: { 'config-op': true } };
+        view.render(state);
+        assert.ok(nodes().some(el => el.tag === 'pre' && el.textContent.includes('autoMemoryInterval')));
+        const actions = nodes().filter(el => el.tag === 'button'); assert.equal(actions.length, 2);
+        await actions[0].click(); await actions[1].click(); assert.deepEqual(calls, [['explain', 'config-op'], ['check', 'config-op']]);
+        view.render({ ...state, busy: true }); assert.ok(nodes().filter(el => el.tag === 'button').every(el => el.disabled));
+        view.render({ ...state, readOnly: true }); assert.equal(nodes().filter(el => el.tag === 'button').length, 0);
+    }
+});
+
+for (const lang of ['zh', 'en']) test('Real Skill save updates mounted panel and survives remount without resaving / ' + lang, async () => {
+    const settings = {}, events = new EventEmitter(), ctx = { groupId: 'g', chatId: 'A', groups: [{ id: 'g', members: [] }], chat: [], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };
+    let writes = 0;
+    const skills = createSkillPort({ getSettings: () => settings, saveSettings: async () => { writes++; }, loadBuiltins: async () => [] });
+    const host = createHostBridge({ getContext: () => ctx, getSettings: () => settings, skills, extensionKey: 'gd', pageId: 'skill-panel-regression' });
+    const requestJson = JSON.stringify({ operation: 'create', expectedRevision: 0, fields: { name: 'my-skill', description: 'Example procedure', body: 'Read documentation.' } });
+    const model = scriptedModel([[{ type: 'tool_call_complete', call: { toolId: 'muyu.skills.preview', callId: 'skill', version: 1, args: { requestJson, apply: true } } }, done], [text('Prepared'), done]]);
+    const controller = createMuyuController({ host, createModel: () => model });
+    const doc = { createElement: tag => new Element(tag, doc) }, root = doc.createElement('main');
+    const nodes = () => { const result = []; const visit = el => { result.push(el); el.children.forEach(visit); }; visit(root); return result; };
+    try {
+        await controller.configure({ endpoint: 'https://example.invalid/chat/completions', apiKey: 'SYNTHETIC', model: 'fake', thinking: false });
+        controller.setMode('assistant'); controller.setFullAccess(true);
+        mountMuyuPanel(root, controller, { lang, standalone: true });
+        controller.setInput('Create a reusable skill'); controller.send();
+        for (let i = 0; i < 20; i++) await flush();
+        assert.equal(writes, 1); assert.equal(controller.snapshot().receipts.at(-1).version, 31);
+        assert.ok(nodes().some(el => el.tag === 'p' && el.textContent?.includes(lang === 'en' ? 'Skill management:' : '技能管理：')));
+        controller.setInput('Next unsent question');
+        controller.setFullAccess(false); // Trigger a normal post-save panel update.
+        assert.ok(nodes().some(el => el.tag === 'textarea' && el.value === 'Next unsent question'));
+        assert.equal(nodes().some(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Check current settings' : '核对当前配置')), false);
+        assert.equal(typeof root.__gdMuyuDispose, 'function'); root.__gdMuyuDispose();
+        assert.doesNotThrow(() => mountMuyuPanel(root, controller, { lang, standalone: true }));
+        assert.equal(typeof root.__gdMuyuDispose, 'function'); assert.equal(writes, 1);
+        assert.ok(nodes().some(el => el.tag === 'textarea' && el.value === 'Next unsent question'));
+        assert.ok(nodes().some(el => el.tag === 'p' && el.textContent?.includes(lang === 'en' ? 'Skill management:' : '技能管理：')));
+    } finally { root.__gdMuyuDispose?.(); await controller.dispose(); }
+});
 
 function compactSkillsFixture(lang = 'en') {
     const doc = { createElement: tag => new Element(tag, doc) }, settings = doc.createElement('section');

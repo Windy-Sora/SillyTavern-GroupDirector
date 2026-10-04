@@ -17,9 +17,10 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
         node('h4', t('操作回执 · 历史结果', 'Operation receipts · Historical results'));
         if (state.receiptRecordFailed) node('p', t('部分回执未能加入历史；操作不会重试。请复制保留当前结果。', 'Some receipts could not be recorded; operations will not retry. Copy these results for safekeeping.'));
         for (const r of state.receipts) {
+            const configReceipt = r.version === undefined || r.version === 2;
             const card = node('div', ''); card.className = 'gd-muyu-artifact';
             node('p', receiptText(r, lang), card).setAttribute('style', 'white-space: pre-wrap');
-            if (![3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].includes(r.version)) renderConfigDiff({ doc, parent: card, diff: r.diff, lang, technicalOnly: true });
+            if (configReceipt) renderConfigDiff({ doc, parent: card, diff: r.diff, lang, technicalOnly: true });
             if ([4, 9].includes(r.version)) for (const step of r.steps) if (step.kind === 'settings') renderConfigDiff({ doc, parent: card, diff: step.diff, lang, technicalOnly: true });
             if (r.version === 5) {
                 const details = node('details', '', card); node('summary', t('技术详情 · 原始字段', 'Technical details · raw fields'), details);
@@ -36,7 +37,7 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
                 node('small', t('仅是读取时的内存值，不证明持久化，也不改变原回执。', 'In-memory values at read time only; not proof of persistence. Original receipt unchanged.'), actions);
             }
             if (state.readOnly) continue;
-            if (![3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].includes(r.version)) {
+            if (configReceipt) {
                 const b = node('button', t('让暮羽解释结果', 'Ask Muyu to explain'), actions); b.type = 'button'; b.className = 'menu_button';
                 b.disabled = state.busy || state.resetting || !state.enabled || state.context?.omitHistory || !(state.canReadConfig ?? state.permissions?.diagnostics);
                 b.onclick = () => act(() => controller.explainReceipt(r.operationId));
