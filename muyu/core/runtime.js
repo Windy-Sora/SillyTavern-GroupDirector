@@ -7,8 +7,9 @@ import { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES } from './context-limits.js';
 import { modelDiagnosticStage } from './model-diagnostics.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
-export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
+export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, toolHandoffPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
+    if (toolHandoffPort !== null && (typeof toolHandoffPort.isControl !== 'function' || typeof toolHandoffPort.read !== 'function')) throw new TypeError('Invalid tool handoff port');
     if (taskGuidePort !== null && (typeof taskGuidePort.prepare !== 'function' || typeof taskGuidePort.project !== 'function')) throw new TypeError('Invalid task guide port');
     let state = createRunState(identity);
     const budget = { modelCalls: RUN_DEFAULTS.modelCalls, toolCalls: RUN_DEFAULTS.toolCalls, corrections: 2, timeMs: RUN_DEFAULTS.timeMs, ...limits };
@@ -286,6 +287,8 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
                 emit(result.ok ? 'tool.completed' : 'tool.failed', { callId: call.callId, toolId: call.toolId, attemptId, result, changeFields });
                 usageEvent();
                 if (requested && result.ok) { interaction = copyJson(requested); return interactionPort.describe(interaction); }
+                const handoff = toolHandoffPort?.read(call, result);
+                if (handoff != null) return copyModelText(handoff);
                 if (result.error?.code === 'INVALID_ARGUMENT' && ++corrections > budget.corrections) exhausted('corrections');
             } catch (e) {
                 if (e instanceof ExecutionError && e.code === 'BUDGET_EXCEEDED' && !reason) reason = 'tool_calls';
@@ -319,8 +322,8 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             const message = { role: 'assistant', content: response.text, toolCalls: response.tools };
             copyModelMessage(message); messages.push(message);
             if (!response.tools.length) return response.text;
-            if (response.tools.length > 1 && response.tools.some(call => interactionPort?.isControl(call) || call.toolId === 'muyu.tools.select')) {
-                for (const call of response.tools) messages.push({ role: 'tool', callId: call.callId, result: { ok: false, error: { code: 'INVALID_ARGUMENT', message: 'Clarification or tool-group selection must be the only tool call in this response; no tools were executed.', retryable: false }, effectState: 'not_started' } });
+            if (response.tools.length > 1 && response.tools.some(call => interactionPort?.isControl(call) || toolHandoffPort?.isControl(call) || call.toolId === 'muyu.tools.select')) {
+                for (const call of response.tools) messages.push({ role: 'tool', callId: call.callId, result: { ok: false, error: { code: 'INVALID_ARGUMENT', message: 'A control or tool-group selection call must be the only tool call in this response; no tools were executed.', retryable: false }, effectState: 'not_started' } });
                 if (++corrections > budget.corrections) exhausted('corrections');
                 continue;
             }

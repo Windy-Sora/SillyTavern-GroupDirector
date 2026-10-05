@@ -429,7 +429,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 const invalid = s.invalidPlans?.includes(artifact.id);
                 node('small', invalid ? t('任务已停止，本方案不能再用于授权。', 'Task stopped; this plan can no longer grant access.') : reviewed ? t('本次已允许读取上述来源；任务结束后授权失效，未授予写入权限。', 'These sources were allowed for this task; access expires when the task ends, and no write permission was granted.') : declined ? t('已拒绝本方案的资料读取；不会继续执行或改用其他来源。', 'Reads for this plan were declined; it will not continue or use alternate sources.') : t('批准只允许本任务读取列出的来源并继续核对，不批准任何修改；切换聊天或连接后失效。', 'Approval permits only these sources for this task and continues review, not any write. It expires on chat or connection change.'), card);
                 if (!reviewed && !declined && !invalid) {
-                    const approve = button(t('允许读取并继续规划', 'Allow reads and continue planning'), card);
+                    const approve = button(t('批准方案并开始读取', 'Approve plan and start reading'), card);
                     approve.disabled = s.busy || s.resetting || s.readOnly;
                     approve.onclick = () => act(() => controller.approveTaskPlanReads(artifact.id, artifact.revision));
                     const decline = button(t('不允许读取', 'Decline reads'), card);

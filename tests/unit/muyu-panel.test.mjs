@@ -745,9 +745,9 @@ test('Task plan card distinguishes unavailable writes and offers one explicit re
     assert.ok(f.all().some(e => e.textContent?.includes('not any write')));
     await f.find('button', 'Decline reads').click();
     assert.equal(declines, 1); assert.equal(approvals, 0);
-    assert.equal(f.find('button', 'Allow reads and continue planning'), undefined);
+    assert.equal(f.find('button', 'Approve plan and start reading'), undefined);
     f.state.declinedPlans = []; f.emit();
-    await f.find('button', 'Allow reads and continue planning').click();
+    await f.find('button', 'Approve plan and start reading').click();
     assert.equal(approvals, 1); assert.equal(f.find('button', 'Decline reads'), undefined);
     f.root.__gdMuyuDispose();
 });

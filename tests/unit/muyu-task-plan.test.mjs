@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createTaskPlanModule, projectTaskPlan } from '../../muyu/modules/task-plan/index.js';
 import { createSourcePermissions } from '../../muyu/permissions/store.js';
 import { createWorkspace } from '../../muyu/workspace/store.js';
+import { taskPlanReviewPort } from '../../muyu/modules/task-plan/review.js';
 
 const target = { kind: 'chat', userKey: 'page:1', chatKey: 'group:A' };
 const input = { goal: 'Create a coin system for this chat', scope: 'mixed', sources: ['configSettings', 'variables'],
@@ -11,6 +12,16 @@ const input = { goal: 'Create a coin system for this chat', scope: 'mixed', sour
         { kind: 'settings', title: 'Prepare switches', detail: 'Preview only; requires separate apply approval' },
         { kind: 'variables', title: 'Create balance', detail: 'Needs a future variable write port' },
     ], risks: ['An existing variable could be overwritten; no write is authorized'], unknowns: ['Existing balance variable may conflict'] };
+
+test('Plan review only hands off successful plan proposals, not failed or ordinary reads', () => {
+    const plan = { toolId: 'muyu.task.plan' }, read = { toolId: 'muyu.settings.read' };
+    assert.equal(taskPlanReviewPort.isControl(plan), true);
+    assert.equal(taskPlanReviewPort.isControl(read), false);
+    assert.equal(taskPlanReviewPort.read(plan, { ok: false, error: { code: 'INVALID_ARGUMENT' } }), null);
+    assert.equal(taskPlanReviewPort.read(plan, { ok: true, data: {} }), null);
+    assert.equal(taskPlanReviewPort.read(read, { ok: true, data: { candidateId: 'not-a-plan' } }), null);
+    assert.match(taskPlanReviewPort.read(plan, { ok: true, data: { candidateId: 'plan:1' } }), /方案本身不批准修改或代码执行/);
+});
 
 test('Task plan is bounded, read-only and labels unavailable write paths', () => {
     const plan = projectTaskPlan(input, target);

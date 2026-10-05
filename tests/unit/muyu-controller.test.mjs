@@ -14,7 +14,7 @@ test('Task plan approval keeps loaded Skill revision after source Run settles an
     await skills.ready(); await skills.save(skills.preview({ operation: 'create', expectedRevision: 0, enabled: true, package: skillEditorPackage({ name: 'example', description: 'Config review', body: 'FIXED_PLAN_GUIDE', resources: [{ path: 'references/rules.md', text: 'FIXED_PLAN_RESOURCE' }] }) }));
     const f = fixture([
         [tool('muyu.skills.load', { id: 'user:example', revision: '1', path: 'SKILL.md' }), done],
-        [{ ...taskPlan(), call: { ...taskPlan().call, callId: 'plan' } }, done], [text('Plan ready'), done],
+        [{ ...taskPlan(), call: { ...taskPlan().call, callId: 'plan' } }, done],
         [tool('muyu.skills.load', { id: 'user:example', revision: '1', path: 'references/rules.md' }, 'resource'), done],
         [text('Review complete'), done],
     ], { skills });
@@ -1106,7 +1106,7 @@ test('Approving a task plan preserves the search budget of its successful earlie
     let calls = 0;
     const capture = { limits: { maxSearches: 1, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { status: 'empty', provider: 'brave', query: args.query, fetchedAt: '', truncated: false, results: [] }; } };
     const webSearch = { describe: () => ({ ...capture.limits, hasKey: true }), check: async () => {}, capture: () => capture, cancel() {} };
-    const f = fixture([[tool('muyu.web.search', { query: 'first' }, 'search1'), done], [taskPlan(), done], [text('plan'), done],
+    const f = fixture([[tool('muyu.web.search', { query: 'first' }, 'search1'), done], [taskPlan(), done],
         [tool('muyu.web.search', { query: 'second' }, 'search2'), done], [text('finished'), done]], { webSearch });
     await f.enable(); f.controller.setMode('assistant'); await f.controller.setWebSearchEnabled(true);
     f.controller.setInput('Plan a system'); f.controller.send(); await settle();
@@ -1117,8 +1117,52 @@ test('Approving a task plan preserves the search budget of its successful earlie
     assert.match(JSON.stringify(f.model.requests.at(-1)), /budget_exceeded/);
     await f.controller.dispose();
 });
+test('Read analysis waits for plan approval and runs exactly once, not before and after approval', async () => {
+    const planCall = tool('muyu.task.plan', { ...taskPlan().call.args, scope: 'global', sources: ['memoryConfig'],
+        steps: [{ kind: 'read', title: '读取分析', detail: '读取记忆设置并分析' }] }, 'plan');
+    const f = fixture([[planCall, done], [tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read'), done], [text('SINGLE_ANALYSIS'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('分析配置');
+    f.controller.send(); await settle();
+    const first = f.controller.snapshot(), plan = first.artifacts.find(a => a.kind === 'task-plan');
+    assert.ok(plan); assert.equal(f.model.requests.length, 1); assert.equal(f.reads(), 0);
+    assert.equal(first.interaction, null); assert.equal(first.messages.some(m => m.content === 'SINGLE_ANALYSIS'), false);
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    const last = f.controller.snapshot();
+    assert.equal(f.model.requests.length, 3); assert.ok(f.reads() > 0);
+    assert.equal(last.messages.filter(m => m.content === 'SINGLE_ANALYSIS').length, 1);
+    assert.equal(last.approvedPlans.includes(plan.id), true);
+    assert.throws(() => f.controller.approveTaskPlanReads(plan.id, plan.revision), /TASK_PLAN_STALE/);
+    assert.equal(f.model.requests.length, 3); assert.equal(last.configActions.length, 0);
+    await f.controller.dispose();
+});
+
+test('A plan and a data read in the same model response execute neither until corrected', async () => {
+    const f = fixture([[taskPlan(), tool('muyu.settings.read', { fields: ['mode'] }, 'read'), done], [taskPlan(), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('分析配置'); f.controller.send(); await settle();
+    const state = f.controller.snapshot();
+    assert.equal(state.runs[0].status, 'succeeded'); assert.equal(f.reads(), 0);
+    assert.equal(state.interaction, null); assert.equal(state.artifacts.filter(a => a.kind === 'task-plan').length, 1);
+    assert.match(JSON.stringify(f.model.requests[1]), /no tools were executed/);
+    assert.equal(f.model.requests.length, 2);
+    await f.controller.dispose();
+});
+
+test('Full access auto-approves the plan boundary and performs its analysis only once', async () => {
+    const planCall = tool('muyu.task.plan', { ...taskPlan().call.args, scope: 'global', sources: ['memoryConfig'],
+        steps: [{ kind: 'read', title: '读取分析', detail: '读取记忆设置并分析' }] }, 'plan');
+    const f = fixture([[planCall, done], [tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read'), done], [text('AUTO_SINGLE_ANALYSIS'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
+    f.controller.setInput('分析配置'); f.controller.send(); await settle();
+    const state = f.controller.snapshot();
+    assert.equal(state.interaction, null); assert.equal(state.approvedPlans.length, 1);
+    assert.equal(f.model.requests.length, 3);
+    assert.equal(state.messages.filter(m => m.content === 'AUTO_SINGLE_ANALYSIS').length, 1);
+    assert.equal(state.runs.length, 2); assert.equal(state.runs[0].taskId, state.runs[1].taskId);
+    assert.equal(state.configActions.length, 0); await f.controller.dispose();
+});
+
 test('Task plan reviews two read sources once, resumes same task and never grants write authority', async () => {
-    const f = fixture([[taskPlan(), done], [text('只读方案'), done],
+    const f = fixture([[taskPlan(), done],
         [tool('muyu.settings.read', { fields: ['mode'] }), done], [text('仍未修改'), done]]);
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('给本聊天建立金币系统并激活');
     f.controller.send(); await settle();
@@ -1139,7 +1183,7 @@ test('Task plan reviews two read sources once, resumes same task and never grant
     await f.controller.dispose();
 });
 test('Declining a task plan does not resume it or authorize its read sources', async () => {
-    const f = fixture([[taskPlan(), done], [text('只读方案'), done]]);
+    const f = fixture([[taskPlan(), done]]);
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('建立金币系统');
     f.controller.send(); await settle();
     const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
@@ -1155,7 +1199,7 @@ test('Declining a task plan does not resume it or authorize its read sources', a
 test('Stopped plan cannot regrant reads; approved plan produces an unapplied variable draft', async () => {
     const draftArgs = { action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0, min: 0,
         rule: '有明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' };
-    const stopped = fixture([[taskPlan(), done], [text('方案'), done]]);
+    const stopped = fixture([[taskPlan(), done]]);
     await stopped.enable(); stopped.controller.setMode('assistant'); stopped.controller.setInput('金币系统'); stopped.controller.send(); await settle();
     const oldPlan = stopped.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
     stopped.controller.stop();
@@ -1163,7 +1207,7 @@ test('Stopped plan cannot regrant reads; approved plan produces an unapplied var
     assert.throws(() => stopped.controller.approveTaskPlanReads(oldPlan.id, oldPlan.revision), /TASK_PLAN_STALE/);
     await stopped.controller.dispose();
 
-    const f = fixture([[taskPlan(), done], [text('方案'), done], [tool('muyu.variables.preview', draftArgs), done], [text('草稿未应用'), done]]);
+    const f = fixture([[taskPlan(), done], [tool('muyu.variables.preview', draftArgs), done], [text('草稿未应用'), done]]);
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
     const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
     f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
@@ -1180,7 +1224,7 @@ test('One explicit variable approval saves once and records a chat-scoped histor
     let saves = 0;
     const draftArgs = { action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0, min: 0,
         rule: '有明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' };
-    const f = fixture([[taskPlan(), done], [text('方案'), done], [tool('muyu.variables.preview', draftArgs), done], [text('草稿'), done]],
+    const f = fixture([[taskPlan(), done], [tool('muyu.variables.preview', draftArgs), done], [text('草稿'), done]],
         { variableSaveConfirmed: async () => { saves++; } });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
     const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
@@ -1203,7 +1247,7 @@ test('One task-bundle approval executes exact variable and global setting steps 
     const plan = { ...taskPlan().call.args, sources: ['memoryConfig', 'variables'] };
     const bundle = { variables: [{ action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0,
         rule: '仅在明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' }], settingsJson: '{"memoryEnabled":false}' };
-    const f = fixture([[tool('muyu.task.plan', plan), done], [text('方案'), done],
+    const f = fixture([[tool('muyu.task.plan', plan), done],
         [tool('muyu.task.preview', bundle), done], [text('整单草稿'), done]],
     { variableSaveConfirmed: async () => { chatSaves++; }, bundleSaveSettings: async () => { settingsSaves++; return { confirmed: true }; } });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('建立金币系统'); f.controller.send(); await settle();
@@ -1223,7 +1267,7 @@ test('One task-bundle approval executes exact variable and global setting steps 
 test('Plan read scope survives a clarification handoff within the same task only', async () => {
     const draftArgs = { action: 'create', id: 'party_gold', label: '队伍金币', initialValue: 0,
         rule: '有明确收支时更新', autoUpdate: true, injectMode: 'always', updateMode: 'delta' };
-    const f = fixture([[taskPlan(), done], [text('方案'), done], [ask(), done], [tool('muyu.variables.preview', draftArgs), done], [text('仅预览'), done]]);
+    const f = fixture([[taskPlan(), done], [ask(), done], [tool('muyu.variables.preview', draftArgs), done], [text('仅预览'), done]]);
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
     const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
     f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
@@ -1236,15 +1280,17 @@ test('Plan read scope survives a clarification handoff within the same task only
     assert.equal(f.ctx.chatMetadata.gd, undefined);
     await f.controller.dispose();
 });
-test('Plan budget exhaustion cannot publish an incomplete candidate or run an unbudgeted preview', async () => {
+test('A valid plan hands off at the tool budget boundary without an unapproved preview', async () => {
     const f = fixture([[taskPlan(), done], [tool('muyu.variables.preview', { action: 'create', id: 'party_gold' }), done]], {
         runConfig: { read: () => ({ ...RUN_DEFAULTS, modelCalls: 2, toolCalls: 1 }) },
     });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('金币系统'); f.controller.send(); await settle();
     const state = f.controller.snapshot();
-    assert.equal(state.artifacts.length, 0);
-    assert.equal(state.runs[0].status, 'failed');
-    assert.equal(state.runs[0].process.budget.reason, 'tool_calls');
+    assert.equal(state.artifacts.length, 1);
+    assert.equal(state.artifacts[0].kind, 'task-plan');
+    assert.equal(state.runs[0].status, 'succeeded');
+    assert.equal(f.model.requests.length, 1);
+    assert.equal(state.interaction, null);
     assert.equal(f.ctx.chatMetadata.gd, undefined);
     await f.controller.dispose();
 });
@@ -2415,7 +2461,7 @@ test('Full access continues a task plan and executes one bounded bundle without 
     const bundle = { variables: [{ action: 'create', id: 'party_gold', label: 'Party gold', initialValue: 0,
         rule: 'Update on explicit transaction', autoUpdate: true, injectMode: 'always', updateMode: 'delta' }],
     settingsJson: '{"memoryEnabled":false}', apply: true };
-    const f = fixture([[taskPlan(), done], [text('继续'), done], [tool('muyu.task.preview', bundle), done], [text('等待操作回执'), done]],
+    const f = fixture([[taskPlan(), done], [tool('muyu.task.preview', bundle), done], [text('等待操作回执'), done]],
         { variableSaveConfirmed: async () => { chatSaves++; }, bundleSaveSettings: async () => { settingsSaves++; return { confirmed: true }; } });
     await f.enable(); f.controller.setMode('assistant'); f.controller.setFullAccess(true);
     f.controller.setInput('建立金币系统并启用'); f.controller.send(); await settle();
