@@ -1,4 +1,5 @@
 import { createSkillView } from './skill-view.js';
+import { createDisplayPreferencesView } from './display-preferences-view.js';
 import { UI_LABELS } from './navigation-metadata.js';
 import { createSkillPicker } from './skill-picker.js';
 import { renderSkillSave } from './skill-save-view.js';
@@ -65,15 +66,23 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const back = button(t('返回聊天', 'Back to chat'), connection);
     const settingsLayout = createSettingsLayout({ doc, root: connection, lang });
     const connectionForm = createConnectionForm({ doc, parent: settingsLayout.pages.connection, lang });
-    const { endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect, savedKeyStatus, forgetKey } = connectionForm;
+    const { source, hostStatus, hostTest, hostTestStatus, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect, savedKeyStatus, forgetKey } = connectionForm;
+    let hostProbe = null;
+    source.addEventListener('change', () => { hostProbe?.abort(); hostTestStatus.textContent = ''; });
     const initialConnection = controller.snapshot().connection;
     const savedConnection = controller.snapshot().savedConnection;
-    rememberKey.checked = initialConnection ? initialConnection.remembered !== false : true;
-    autoConnect.checked = initialConnection ? initialConnection.autoConnect === true : savedConnection ? savedConnection.autoConnect === true : true;
+    if (savedConnection && initialConnection?.source === 'st') {
+        endpoint.value = savedConnection.endpoint; model.value = savedConnection.model; profile.value = savedConnection.profile || 'deepseek';
+        thinking.checked = savedConnection.thinking; effort.value = savedConnection.reasoningEffort || 'high';
+    }
+    source.value = initialConnection?.source || (initialConnection || savedConnection ? 'independent' : controller.snapshot().hostConnection?.available ? 'st' : 'independent');
+    connectionForm.refreshOptions();
+    rememberKey.checked = initialConnection?.source === 'st' ? !!savedConnection : initialConnection ? initialConnection.remembered !== false : true;
+    autoConnect.checked = initialConnection?.source === 'st' ? savedConnection?.autoConnect === true : initialConnection ? initialConnection.autoConnect === true : savedConnection ? savedConnection.autoConnect === true : true;
     rememberKey.onchange = () => { if (!rememberKey.checked) autoConnect.checked = false; };
     autoConnect.onchange = () => { if (autoConnect.checked) rememberKey.checked = true; };
     const connect = button(t(...UI_LABELS.enableConnection), connectionForm.actions), disable = button(t('禁用连接', 'Disable connection'), connectionForm.actions);
-    const connectionFeedback = createFormFeedback({ doc, parent: connectionForm.actions, fields: [endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect], buttons: [connect, disable, forgetKey], lang,
+    const connectionFeedback = createFormFeedback({ doc, parent: connectionForm.actions, fields: [source, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect], buttons: [connect, disable, forgetKey, hostTest], lang,
         dirtyText: t('表单已修改，尚未启用这些修改。', 'Draft changed; these changes are not active.'), busyText: t('正在启用连接…', 'Enabling connection…'), savedText: t('连接已启用。', 'Connection enabled.'),
         errorText: error => error?.message === 'CREDENTIAL_SAVE_FAILED' ? t('密钥设置未能确认保存，输入已保留。', 'Credential settings could not be saved. Input retained.') : t('连接未能启用，输入已保留，请检查配置。', 'Connection could not be enabled. Input retained; check the configuration.') });
     const validateConnectionDraft = kind => validateConnectionFields(connectionForm, controller.snapshot().savedConnection, (field, code) => {
@@ -114,11 +123,11 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const budgetFeedback = createFormFeedback({ doc, parent: budgetActions, fields: budgetFields.map(f => f.input), buttons: [saveBudget, resetBudget], lang, savedText: t('设置已更新，下次任务生效。', 'Settings updated; applies to the next task.') });
     node('small', unified ? t('暮羽需要资料时会说明来源、用途与发送目的地，请按需批准。读取授权不批准修改；不会读取其他聊天或整个角色库。', 'Muyu requests sources when needed and shows the purpose and destination. Read access does not approve changes or access other chats or the whole character library.') : t('扩展权限独立开启并在当前聊天内复用，不读取其他聊天或整个角色库。角色卡内的提示词和导演原因仅作资料，不代表实际执行。', 'Extended access is opt-in and reused only in this chat, not other chats or the whole character library. Card prompts and director reasons are data, not proof of execution.'), settingsLayout.pages.data);
     budgetSettings.open = true;
-    if (standalone) button(t('重置窗口大小', 'Reset window size'), settingsLayout.pages.connection).onclick = resetLayout;
+    if (standalone) button(t('重置窗口大小', 'Reset window size'), settingsLayout.pages.behavior).onclick = resetLayout;
     const workspace = node('div', '', body); workspace.className = 'gd-muyu-workspace';
     const sidebarRoot = node('div', '', workspace); sidebarRoot.className = 'gd-muyu-sidebar-slot';
     const chat = node('div', '', workspace); chat.className = 'gd-muyu-chat';
-    const historyView = createHistoryView({ doc, settings: settingsLayout.pages.data, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen });
+    const historyView = createHistoryView({ doc, settings: settingsLayout.pages.storage, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen });
     const setupBar = node('div', '', chat); setupBar.className = 'gd-muyu-connection-entry';
     const setupLabel = node('strong', t('AI 接口', 'AI connection'), setupBar);
     const setup = button(t('配置连接', 'Configure connection'), setupBar);
@@ -142,8 +151,9 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const usageDetails = node('details', '', toolContent); node('summary', t('本轮开销与限制', 'Run usage and limits'), usageDetails); const usageText = node('p', '', usageDetails);
     const contextView = createContextView({ doc, settings: settingsLayout.pages.limits, parent: toolContent, controller, act, lang });
     const instructionView = createInstructionView({ doc, settings: settingsLayout.pages.behavior, controller, act, lang });
+    const displayView = createDisplayPreferencesView({ doc, settings: settingsLayout.pages.behavior, controller, act, lang });
     const skillView = controller.snapshot().skills?.available ? createSkillView({ doc, settings: settingsLayout.pages.skills, controller, act, lang }) : { render() {} };
-    const agentMemoryView = createAgentMemoryView({ doc, settings: settingsLayout.pages.data, controller, act, lang });
+    const agentMemoryView = createAgentMemoryView({ doc, settings: settingsLayout.pages.storage, controller, act, lang });
     const inputBox = node('div', '', composer); inputBox.className = 'gd-muyu-input-box';
     const skillPicker = controller.snapshot().skills?.available ? createSkillPicker({ doc, parent: inputBox, controller, act, lang }) : { render() {} };
     const inputLabel = node('label', t('给暮羽的消息', 'Message to Muyu'), inputBox), input = node('textarea', '', inputLabel); input.className = 'text_pole'; input.rows = 3; input.maxLength = MAX_MESSAGE_BYTES;
@@ -154,7 +164,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     inputLabel.className = 'gd-muyu-input-label'; input.setAttribute('aria-label', t('给暮羽的消息', 'Message to Muyu'));
     input.placeholder = t('向暮羽提问，或描述你想排查的问题…', 'Ask Muyu a question, or describe what needs investigating…');
     const inputToolbar = node('div', '', inputBox); inputToolbar.className = 'gd-muyu-input-toolbar';
-    const webSearchView = createWebSearchView({ doc, settings: settingsLayout.pages.connection, toolbar: inputToolbar, composer, controller, act, openSettings: target => showSettings(true, 'connection', target || endpoint), lang });
+    const webSearchView = createWebSearchView({ doc, settings: settingsLayout.pages.skills, toolbar: inputToolbar, composer, controller, act, openSettings: target => target ? showSettings(true, 'skills', target) : showSettings(true, 'connection', endpoint), lang });
     const modeLabel = node('label', t('任务', 'Task'), unified ? legacyRoot : inputToolbar), mode = node('select', '', modeLabel); mode.className = 'text_pole'; modeLabel.className = 'gd-muyu-mode';
     for (const [value, task] of Object.entries(taskCatalog)) { const option = node('option', t(...task.label), mode); option.value = value; }
     const authorization = node('section', '', unified ? legacyRoot : composer); authorization.className = 'gd-muyu-authorization'; authorization.hidden = true;
@@ -203,6 +213,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     permissionSummary.onclick = () => showSettings(true, 'data', permissionView.settingsTarget);
     gear.setAttribute('aria-expanded', 'false');
     const notices = {
+        HOST_CONNECTION_CHANGED: t('酒馆连接或密钥已变化，旧任务和授权已清除。请在模型连接中重新启用；未发送消息已保留。', 'ST connection or credentials changed. Old tasks and grants were cleared. Re-enable under Connection; unsent text was retained.'),
+        HOST_CONNECTION_UNAVAILABLE: t('酒馆聊天补全连接未配置或版本接口不可用，请配置酒馆或选择独立接口。', 'ST Chat Completion connection is unavailable. Configure ST or use a separate connection.'),
+        HOST_CONNECTION_UNSUPPORTED: t('此酒馆连接或自定义请求参数尚未适配，请使用独立接口。', 'This ST connection or custom request parameters are unsupported. Use a separate connection.'),
+        HOST_MODEL_REQUEST_FAILED: t('酒馆后端请求失败，请检查酒馆连接、密钥与模型；未自动重试或切换接口。', 'ST backend request failed. Check the ST connection, credentials and model; no automatic retry or source switch occurred.'),
         HISTORY_SYNC_FAILED: t('任务已继续，但会话记录同步失败。请保留当前页面并检查日志或导出记录；不会因此撤销已批准的资料权限。', 'Task continued, but conversation record sync failed. Keep this page open and check logs or export the conversation; approved read permissions were not rolled back.'),
         CONTEXT_LIMIT: t('输入超过手动预算或请求体安全上限；未发送超限请求。可整理历史、缩短输入或调整预算。', 'Input exceeds the manual budget or request-size safety limit; the oversized request was not sent. Summarize history, shorten input or adjust the budget.'),
         CONTEXT_INCOMPLETE: t('无法完整携带摘要之后的历史，已停止以避免遗漏你的修正。请整理历史、增加预算，或明确选择不携带历史。', 'Stopped because the full history after the summary cannot fit. Summarize history, increase the budget, or explicitly omit history.'),
@@ -225,6 +239,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     };
     function showError(error) {
         const code = error?.message;
+        if (notices[code]) { errors.textContent = notices[code]; return; }
         const webErrors = {
             WEB_KEY_REQUIRED: t('请配置独立的 Brave Search API 密钥；模型密钥不能用于搜索。', 'Configure a separate Brave Search API key; your model key cannot be used for search.'),
             WEB_BACKEND_MISSING: t('暮羽搜索服务未加载。请安装或更新服务端插件，开启 enableServerPlugins 并重启酒馆。', 'Muyu search service is not loaded. Install/update the server plugin, enable enableServerPlugins and restart ST.'),
@@ -257,7 +272,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         webSearchView.render(s);
         contextView.render(s);
         receiptView.render(s);
-        instructionView.render(s);
+        instructionView.render(s); displayView.render(s);
         agentMemoryView.render(s); skillView.render(s); skillPicker.render(s);
         interactionView.render(s);
         permissionView.render(s);
@@ -276,7 +291,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         const view = s.viewToken;
         const previousConnection = lastConnection;
         if (view !== lastView) { resetAuthorization(); lastView = view; }
-        if (s.connection && JSON.stringify(s.connection) !== lastConnection) { endpoint.value = s.connection.endpoint; model.value = s.connection.model; profile.value = s.connection.profile || 'deepseek'; thinking.checked = s.connection.thinking; effort.value = s.connection.reasoningEffort || 'high'; connectionForm.refreshOptions(); rememberKey.checked = s.connection.remembered !== false; autoConnect.checked = s.connection.autoConnect === true; lastConnection = JSON.stringify(s.connection); }
+        if (s.connection && JSON.stringify(s.connection) !== lastConnection) { source.value = s.connection.source || 'independent'; if (source.value !== 'st') { endpoint.value = s.connection.endpoint; model.value = s.connection.model; profile.value = s.connection.profile || 'deepseek'; thinking.checked = s.connection.thinking; effort.value = s.connection.reasoningEffort || 'high'; rememberKey.checked = s.connection.remembered !== false; autoConnect.checked = s.connection.autoConnect === true; } connectionForm.refreshOptions(); lastConnection = JSON.stringify(s.connection); }
+        hostStatus.textContent = s.hostConnection?.available ? t('酒馆当前连接：', 'Current ST connection: ') + s.hostConnection.provider + ' · ' + s.hostConnection.model + ' · ' + s.hostConnection.endpoint : t('当前酒馆连接未配置、版本接口不可用或尚未支持。请配置酒馆的聊天补全连接，或使用独立接口。', 'ST connection is unavailable or unsupported. Configure a supported Chat Completion connection in ST or use a separate connection.');
         activeConnection.textContent = s.connection ? t('当前请求目标：', 'Active request destination: ') + s.connection.model + ' · ' + s.connection.endpoint : '';
         connectionForm.activeStatus.textContent = s.enabled && s.connection ? t('当前使用：', 'Currently using: ') + s.connection.model + ' · ' + s.connection.endpoint : t('当前未启用连接。', 'No active connection.');
         const task = taskCatalog[s.mode], granted = s.permissions?.[s.mode === 'chat' ? 'chat' : 'diagnostics'] === true;
@@ -351,7 +367,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         }
         for (const run of s.runs) {
             const anchor = processAnchors.get(run.id); if (!anchor) continue;
-            const detail = processView.update(run, s.artifacts.some(a => a.sourceRunId === run.id || a.content?.producedByRunId === run.id), s.mode !== 'chat');
+            const detail = processView.update(run, s.artifacts.some(a => a.sourceRunId === run.id || a.content?.producedByRunId === run.id), s.mode !== 'chat', s.displayConfig?.processDetail || 'compact');
             if (detail && anchor.child !== detail) { anchor.root.append(detail); anchor.child = detail; }
         }
         cards.replaceChildren();
@@ -569,10 +585,17 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     forgetKey.onclick = () => act(async () => { await controller.forgetCredential(); rememberKey.checked = false; autoConnect.checked = false; key.value = ''; });
     cancelAuth.onclick = () => { resetAuthorization(); input.focus?.(); };
     stop.onclick = () => act(() => controller.stop());
-    connect.onclick = () => act(() => connectionFeedback.run(async () => { const apiKey = key.value; connectionTools.setLocked(true); try { await controller.configure({ endpoint: endpoint.value.trim(), apiKey, model: model.value.trim(), profile: profile.value, thinking: profile.value === 'deepseek' && thinking.checked, reasoningEffort: effort.value, supportsTools: true, rememberKey: rememberKey.checked, autoConnect: autoConnect.checked && rememberKey.checked }); key.value = ''; if (!disposed) showSettings(false); } finally { connectionTools.setLocked(false); } }, () => validateConnectionDraft('test')));
-    disable.onclick = () => act(async () => { await controller.disable(); autoConnect.checked = false; lastConnection = null; });
+    connect.onclick = () => act(() => connectionFeedback.run(async () => { hostProbe?.abort(); const apiKey = key.value; connectionTools.setLocked(true); try { await controller.configure(source.value === 'st' ? { source: 'st' } : { endpoint: endpoint.value.trim(), apiKey, model: model.value.trim(), profile: profile.value, thinking: profile.value === 'deepseek' && thinking.checked, reasoningEffort: effort.value, supportsTools: true, rememberKey: rememberKey.checked, autoConnect: autoConnect.checked && rememberKey.checked }); key.value = ''; if (!disposed) showSettings(false); } finally { connectionTools.setLocked(false); } }, () => validateConnectionDraft('test')));
+    hostTest.onclick = () => act(async () => {
+        hostProbe?.abort(); const probe = hostProbe = new AbortController(); hostTest.disabled = true;
+        hostTestStatus.textContent = t('正在测试酒馆连接…', 'Testing ST connection…');
+        try { await controller.probeConnection({ source: 'st' }, { signal: probe.signal }); if (!disposed && !probe.signal.aborted) hostTestStatus.textContent = t('连接测试成功；工具调用兼容性尚未验证。', 'Connection test passed; tool-call compatibility is not yet verified.'); }
+        catch (error) { if (!disposed && !probe.signal.aborted) { hostTestStatus.textContent = t('测试未成功，请检查酒馆连接及模型支持情况。', 'Test failed. Check the ST connection and model support.'); throw error; } }
+        finally { if (hostProbe === probe) { hostProbe = null; hostTest.disabled = false; } }
+    });
+    disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

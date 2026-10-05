@@ -17,5 +17,5 @@ export const BUILTIN_SKILL_MANIFEST = Object.freeze([
     Object.freeze({ name: 'automation-workflow', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'muyu-troubleshooting', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'skill-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
-    Object.freeze({ name: 'muyu-interface-guide', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'muyu-interface-guide', revision: 3, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
 ]);

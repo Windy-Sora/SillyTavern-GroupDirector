@@ -59,7 +59,7 @@ for (const lang of ['zh', 'en']) test('Skill GUI lives in floating settings, ret
     assert.ok(body.disabled); assert.equal(all().some(el => el.tag === 'script'), false);
     assert.equal(all().find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Save Skill' : '保存当前技能')).disabled, true);
     assert.equal(all().some(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Delete' : '删除')), false);
-    const edit = all().find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'View / edit' : '查看／编辑'));
+    const edit = all().find(el => el.className === 'gd-muyu-skill-select');
     await edit.click(); assert.equal(calls.length, 0);
     await all().find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Confirm' : '确认')).click();
     assert.deepEqual(calls, [['builtin:example', '1:0']]);
@@ -226,9 +226,48 @@ function compactSkillsFixture(lang = 'en') {
 }
 
 for (const lang of ['zh', 'en']) {
+    test('Skill detail navigation preserves drafts, tabs and library filters / ' + lang, async () => {
+        const f = compactSkillsFixture(lang);
+        const catalog = f.all().find(el => el.className === 'gd-muyu-skill-catalog');
+        const editor = f.all().find(el => el.className === 'gd-muyu-skill-editor');
+        const search = f.all().find(el => el.type === 'search');
+        search.value = 'example'; search.oninput();
+        await f.all().find(el => el.className === 'gd-muyu-skill-select').click();
+        assert.equal(catalog.hidden, true); assert.equal(editor.hidden, false);
+        const body = f.all().find(el => el.tag === 'textarea' && el.value === 'Long instructions');
+        body.value = 'Retained draft'; body.oninput();
+        const tabs = f.all().filter(el => el.getAttribute('role') === 'tab');
+        await tabs[1].click(); assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+        assert.equal(tabs[0].tabIndex, -1); assert.equal(tabs[1].tabIndex, 0);
+        let prevented = false;
+        tabs[1].onkeydown({ key: 'ArrowLeft', preventDefault() { prevented = true; } });
+        assert.equal(prevented, true); assert.equal(f.doc.activeElement, tabs[0]);
+        assert.equal(body.value, 'Retained draft');
+        await f.find('button', lang === 'en' ? '← Back to Skills' : '← 返回技能列表').click();
+        assert.equal(catalog.hidden, false); assert.equal(editor.hidden, true); assert.equal(search.value, 'example');
+        const calls = f.calls.length;
+        await f.find('button', lang === 'en' ? 'Resume unsaved draft' : '继续未保存编辑').click();
+        assert.equal(editor.hidden, false); assert.equal(body.value, 'Retained draft'); assert.equal(f.calls.length, calls);
+        assert.ok(f.all().includes(body));
+    });
+    test('Builtin Skill details use safe read-only text and import is a separate page / ' + lang, async () => {
+        const f = compactSkillsFixture(lang);
+        f.state.skills.draft = { ...f.state.skills.draft, source: 'builtin', body: '<script>text only</script>' }; f.view.render(f.state);
+        const readonly = f.all().find(el => el.className === 'gd-muyu-skill-readonly');
+        assert.equal(readonly.hidden, false); assert.equal(readonly.textContent, '<script>text only</script>');
+        assert.ok(!f.all().some(el => el.tag === 'script'));
+        const save = f.find('button', lang === 'en' ? 'Save Skill' : '保存当前技能');
+        assert.equal(save.parent.hidden, true); assert.equal(save.disabled, true);
+        assert.equal(f.find('button', lang === 'en' ? 'Delete current Skill' : '删除当前技能').hidden, true);
+        await f.find('button', lang === 'en' ? 'Import Skill' : '导入技能').click();
+        assert.equal(f.all().find(el => el.className === 'gd-muyu-skill-catalog').hidden, true);
+        assert.equal(f.all().find(el => el.className === 'gd-muyu-skill-editor').hidden, true);
+        assert.equal(f.doc.activeElement.tag, 'textarea');
+    });
     test('Compact Skill library folds long content and filters without replacing draft / ' + lang, () => {
         const f = compactSkillsFixture(lang);
-        assert.ok(f.all().filter(el => el.tag === 'details').every(el => !el.open));
+        assert.equal(f.all().find(el => el.getAttribute('data-source') === 'builtin').open, false);
+        assert.equal(f.all().find(el => el.getAttribute('data-source') === 'user').open, true);
         const row = f.all().find(el => el.getAttribute('data-skill-id') === 'user:example'); row.open = true;
         const body = f.all().find(el => el.tag === 'textarea' && el.value === 'Long instructions');
         body.value = 'Unsaved body'; body.oninput();
@@ -241,6 +280,10 @@ for (const lang of ['zh', 'en']) {
         const search = f.all().find(el => el.type === 'search'); search.value = 'missing'; search.oninput();
         assert.ok(f.find('p', lang === 'en' ? 'No Skills match these filters.' : '没有符合筛选条件的技能。'));
         assert.equal(f.state.skills.draft.body, 'Unsaved body');
+        source.value = ''; search.value = 'e'; search.oninput();
+        assert.equal(f.all().find(el => el.getAttribute('data-source') === 'builtin').open, true);
+        search.value = ''; search.oninput();
+        assert.equal(f.all().find(el => el.getAttribute('data-source') === 'builtin').open, false);
     });
     test('Skill reference forms retain focus and reject malformed raw JSON without discarding it / ' + lang, async () => {
         const f = compactSkillsFixture(lang);
@@ -258,7 +301,7 @@ for (const lang of ['zh', 'en']) {
         raw.value = '[]'; raw.oninput(); assert.equal(f.find('button', lang === 'en' ? 'Save Skill' : '保存当前技能').disabled, false);
     });
     test('Skill clean selection is direct; unsaved selection and reload require confirmation / ' + lang, async () => {
-        const f = compactSkillsFixture(lang), edit = f.find('button', lang === 'en' ? 'View / edit' : '查看／编辑');
+        const f = compactSkillsFixture(lang), edit = f.all().find(el => el.className === 'gd-muyu-skill-select');
         await edit.click(); assert.deepEqual(f.calls, [['user:example', 1]]);
         f.state.skills.dirty = true; f.view.render(f.state);
         await f.find('button', lang === 'en' ? 'Reload saved version' : '重载已保存版本').click();
@@ -438,6 +481,24 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
     const mount = () => mountMuyuPanel(root, controller, { lang, standalone, ...options });
     mount(); return { root, state, controller, listeners, sent, configs, emit, find, all, mount, stops: () => stops };
 }
+
+for (const lang of ['zh', 'en']) test('ST source hides independent setup and activates without copying a key / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.hostConnection = { available: true, provider: 'custom', model: 'ST model', endpoint: 'https://host.test/v1' }; f.emit();
+    const source = f.all().find(e => e.tag === 'select' && e.parent.textContent === (lang === 'en' ? 'Connection source' : '连接来源'));
+    const key = f.all().find(e => e.type === 'password'); key.value = 'UNSENT_PRIVATE_KEY';
+    source.value = 'st'; source.events.change?.();
+    const profile = f.all().find(e => e.tag === 'select' && e.parent.textContent === (lang === 'en' ? 'API protocol' : '接口协议'));
+    assert.equal(profile.parent.parent.hidden, true);
+    assert.ok(f.all().some(e => /ST model/.test(e.textContent)));
+    await f.find('button', lang === 'en' ? 'Enable connection' : '启用此连接').click();
+    assert.deepEqual(f.configs, [{ source: 'st' }]); assert.equal(key.value, ''); assert.equal(f.sent.length, 0);
+    let probes = 0; f.controller.probeConnection = async config => { assert.deepEqual(config, { source: 'st' }); probes++; };
+    await f.find('button', lang === 'en' ? 'Test ST connection' : '测试酒馆连接').click();
+    assert.equal(probes, 1); assert.equal(f.configs.length, 1);
+    assert.ok(f.all().some(e => /工具调用兼容性尚未验证|tool-call compatibility is not yet verified/.test(e.textContent)));
+    f.root.__gdMuyuDispose();
+});
 
 test('Full-access switch confirms once and keeps a warning visible outside settings', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' });
@@ -941,10 +1002,10 @@ for (const lang of ['zh', 'en']) test(`Settings scroll positions survive switchi
     const f = fixture(lang, true, { initialMode: 'assistant' }), en = lang === 'en';
     const pages = f.all().filter(e => e.className === 'gd-muyu-settings-page');
     await f.find('button', '⚙').click(); pages[0].scrollTop = 120;
-    await f.find('button', en ? 'Budgets' : '运行预算').click(); assert.equal(pages[3].scrollTop, 0);
+    await f.find('button', en ? 'Context & budgets' : '上下文与预算').click(); assert.equal(pages[3].scrollTop, 0);
     pages[3].scrollTop = 330;
     await f.find('button', en ? 'Connection' : '模型连接').click(); assert.equal(pages[0].scrollTop, 120);
-    await f.find('button', en ? 'Budgets' : '运行预算').click(); assert.equal(pages[3].scrollTop, 330);
+    await f.find('button', en ? 'Context & budgets' : '上下文与预算').click(); assert.equal(pages[3].scrollTop, 330);
     f.emit(); assert.equal(pages[3].scrollTop, 330);
     await f.find('button', en ? 'Back to chat' : '返回聊天').click();
     pages[3].scrollTop = 0; // Simulate a hidden layout dropping its native scroll offset.
@@ -980,13 +1041,14 @@ for (const lang of ['zh', 'en']) test(`History settings report actual storage, f
 for (const lang of ['zh', 'en']) test(`Settings categories preserve editors and route shortcuts without execution (${lang})`, async () => {
     const f = fixture(lang, true), en = lang === 'en';
     const pages = f.all().filter(e => e.className === 'gd-muyu-settings-page');
-    const [connection, data, behavior, limits, skills] = pages;
-    assert.equal(pages.length, 5); assert.equal(connection.hidden, false); assert.equal(skills.hidden, true);
+    const [connection, data, behavior, limits, storage, skills] = pages;
+    assert.equal(pages.length, 6); assert.equal(connection.hidden, false); assert.equal(skills.hidden, true);
     assert.ok(pages.slice(1).every(e => e.hidden));
     const endpoint = f.all(connection).find(e => e.type === 'url');
     const budget = f.all(limits).find(e => e.type === 'number');
     assert.ok(endpoint); assert.ok(budget);
-    assert.ok(f.all(data).some(e => e.textContent === (en ? 'Conversation history' : '对话历史')));
+    assert.ok(f.all(storage).some(e => e.textContent === (en ? 'Conversation history' : '对话历史')));
+    assert.ok(!f.all(data).some(e => e.textContent === (en ? 'Conversation history' : '对话历史')));
     assert.ok(f.all(data).some(e => e.textContent === (en ? 'Context and permissions' : '上下文与权限')));
     assert.ok(f.all(behavior).some(e => e.tag === 'textarea'));
     endpoint.value = 'https://draft.invalid'; budget.value = '7';
@@ -997,9 +1059,9 @@ for (const lang of ['zh', 'en']) test(`Settings categories preserve editors and 
     assert.ok(f.all(tools).some(e => e.className === 'gd-muyu-context'));
     await f.all().find(e => e.className?.includes('gd-muyu-permission-summary')).click();
     assert.equal(data.hidden, false); assert.equal(connection.hidden, true);
-    await f.find('button', en ? 'Budgets' : '运行预算').click();
+    await f.find('button', en ? 'Context & budgets' : '上下文与预算').click();
     assert.equal(limits.hidden, false); assert.equal(data.hidden, true);
-    assert.equal(f.find('button', en ? 'Budgets' : '运行预算').getAttribute('aria-current'), 'page');
+    assert.equal(f.find('button', en ? 'Context & budgets' : '上下文与预算').getAttribute('aria-current'), 'page');
     await f.find('button', en ? 'Back to chat' : '返回聊天').click();
     await f.find('button', '⚙').click();
     assert.equal(limits.hidden, false); // Keep the last settings category.
@@ -1015,6 +1077,22 @@ for (const lang of ['zh', 'en']) test(`Settings categories preserve editors and 
     f.state.enabled = false; f.emit(); assert.equal(setup.parent.hidden, false);
     assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
     f.root.__gdMuyuDispose(); assert.equal(f.listeners.size, 0);
+});
+for (const lang of ['zh', 'en']) test('Display settings retain failed drafts and take effect only after saving / ' + lang, async () => {
+    const f = fixture(lang, true), en = lang === 'en';
+    f.state.displayConfig = { processDetail: 'compact' };
+    let fail = true, calls = 0;
+    f.controller.saveDisplayConfig = async value => { calls++; if (fail) throw Error('DISPLAY_CONFIG_SAVE_FAILED'); f.state.displayConfig = value; f.emit(); };
+    f.emit();
+    const select = f.all().find(el => el.tag === 'select' && el.parent.textContent === (en ? 'Execution detail' : '执行过程显示'));
+    select.value = 'verbose'; select.events.change(); f.emit(); assert.equal(select.value, 'verbose');
+    await f.find('button', en ? 'Save display settings' : '保存显示设置').click();
+    assert.equal(f.state.displayConfig.processDetail, 'compact'); assert.equal(select.value, 'verbose');
+    assert.ok(f.all().some(el => el.getAttribute('data-state') === 'error'));
+    fail = false; await f.find('button', en ? 'Save display settings' : '保存显示设置').click();
+    assert.equal(f.state.displayConfig.processDetail, 'verbose'); assert.equal(calls, 2); assert.equal(f.sent.length, 0);
+    select.value = 'standard'; select.events.change(); await f.find('button', en ? 'Discard display changes' : '放弃显示修改').click();
+    assert.equal(select.value, 'verbose'); f.root.__gdMuyuDispose();
 });
 test('Behavior editor keeps drafts through remount, rejects over-limit saves and requires saving restored defaults', async () => {
     const f = fixture('en', true); const defaults = { enabled: false, text: '' };

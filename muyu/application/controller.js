@@ -1,4 +1,5 @@
 import { createSkillActions } from '../actions/skill-save.js';
+import { DISPLAY_DEFAULTS, validateDisplayConfig } from '../preferences/contract.js';
 import { createSkillWorkbench } from '../skills/workbench.js';
 import { createSelectionActions } from '../actions/selection-edit.js';
 import { createLedgerEditActions } from '../actions/ledger-edit.js';
@@ -53,10 +54,11 @@ import { tracePermission, permissionTraceError } from '../core/permission-debug.
 
 /** Lifetime is the extension instance, not a DOM panel. Grants belong to a connection/chat. */
 export function createMuyuController({ host, createModel = createChatCompletionsModel }) {
-    let app, builtins, model, connection = null, running, appUnsubscribe, disposed = false, resetting = false;
+    let app, builtins, model, connection = null, running, appUnsubscribe, disposed = false, resetting = false, hostConnectionCurrent = null;
     let mode = 'assistant', error = null, pinnedTarget = null, fullAccess = false;
     let webSearchEnabled = false, webEpoch = 0, savingWebSearch = false;
     let runConfig = host.runConfig?.read() || { ...RUN_DEFAULTS }, savingRunConfig = false;
+    let displayConfig = host.displayConfig?.read() || { ...DISPLAY_DEFAULTS }, savingDisplayConfig = false;
     let contextConfig = validateContextConfig(host.contextConfig?.read() || { ...CONTEXT_DEFAULTS }), savingContextConfig = false, compacting = null;
     const omittedViews = new Set();
     const historyGrants = new Map();
@@ -82,7 +84,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     let historyFilters = { range: 'all', archive: 'active', task: '', query: '' };
     const scrollPositions = new Map();
     const emit = () => { for (const fn of [...listeners]) { try { fn(); } catch { /* Detached views cannot control tasks. */ } } };
-    const live = () => { if (disposed) throw new Error('CONTROLLER_DISPOSED'); };
+    const live = () => { if (disposed) throw new Error('CONTROLLER_DISPOSED'); if (hostConnectionCurrent && !resetting) { try { hostConnectionCurrent(); } catch { invalidateHostConnection(); throw Error('HOST_CONNECTION_CHANGED'); } } };
     const noteWorkbench = createMemoryWorkbench({ port: host.agentMemory, getTarget: () => host.currentTarget() || host.globalTarget, changed: emit });
     const skillWorkbench = createSkillWorkbench({ port: host.skills, changed: emit });
     const skillSelections = new Map(), skillRecords = new Map();
@@ -310,7 +312,9 @@ export function createMuyuController({ host, createModel = createChatCompletions
             interaction: isReadOnly || switchedChat ? null : interaction, taskUsage, recovery,
             enabled: !!model, resetting, mode, fullAccess, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
             permissions: permissions.snapshot(targetFor()), sourceGrants: permissions.sourceGrants(targetFor()), canReadConfig: configAllowed(targetFor()), canCheckReceipts: Object.fromEntries(receiptsFor(selectedId()).map(r => [r.operationId, receiptAllowed(r, host.globalTarget)])), savedConnection: host.credentials?.describe() || null,
+            hostConnection: host.modelConnection?.describe() || null,
             runConfig: { ...runConfig }, savingRunConfig,
+            displayConfig: { ...displayConfig }, savingDisplayConfig,
             contextConfig: { ...contextConfig }, savingContextConfig, autoCompaction: compactionBreaker.status(id, record?.scope),
             instructionSettings: { saved: { ...instructionConfig }, draft: { ...instructionDraft }, saving: savingInstructions, dirty: JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft) },
             agentMemory: noteWorkbench.snapshot(), skills: skillWorkbench.snapshot(),
@@ -539,6 +543,15 @@ export function createMuyuController({ host, createModel = createChatCompletions
     }
     function clear() { webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); actions.clear(); selectionActions.clear(); ledgerEditActions.clear(); blueprintNodeEditActions.clear(); npcEditActions.clear(); profileEditActions.clear(); memoryEditActions.clear(); variableActions.clear(); bundleActions.clear(); profileActions.clear(); providerActions.clear(); scriptActions.clear(); customAgentActions.clear(); customPromptActions.clear(); skillActions.clear(); profileLibraryActions.clear(); npcLibraryActions.clear(); blueprintLibraryActions.clear(); profileLibraryChatActions.clear(); npcLibraryChatActions.clear(); blueprintLibraryChatActions.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
+    const unsubscribeConnection = host.modelConnection?.subscribe(() => {
+        if (!hostConnectionCurrent || resetting || disposed) return;
+        try { hostConnectionCurrent(); } catch { invalidateHostConnection(); }
+    }) || (() => {});
+    function invalidateHostConnection() {
+        if (resetting || disposed) return;
+        resetting = true; permissions.clear(); fullAccess = false; emit();
+        void stopAndDrain().then(() => { const draft = inputs.get(viewKey()) || ''; clear(); hostConnectionCurrent = null; if (draft) inputs.set(viewKey(), draft); error = 'HOST_CONNECTION_CHANGED'; }).catch(() => { error = 'HOST_CONNECTION_CHANGED'; }).finally(() => { resetting = false; emit(); });
+    }
     const api = {
         selectSkill(id = '', revision = null) {
             live(); if (resetting || snapshot().busy || snapshot().readOnly) throw Error('NOT_READY');
@@ -961,6 +974,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
             try { await host.runConfig?.save(next); live(); if (jsonKey(runConfig) !== jsonKey(next)) compactionBreaker.clear(); runConfig = next; }
             finally { savingRunConfig = false; emit(); }
         },
+        async saveDisplayConfig(value) {
+            live(); if (savingDisplayConfig || resetting || !host.displayConfig?.save) throw Error('NOT_READY');
+            const next = validateDisplayConfig(value); savingDisplayConfig = true; emit();
+            try { await host.displayConfig.save(next); live(); displayConfig = next; }
+            finally { savingDisplayConfig = false; emit(); }
+        },
         allowHistory() {
             live(); const s = snapshot(), record = library.get(selectedId()), target = targetFor();
             if (!model || resetting || s.busy || s.readOnly || s.history.loading || s.interaction?.status === 'pending' || !record || mode !== 'assistant') throw Error('NOT_READY');
@@ -987,17 +1006,32 @@ export function createMuyuController({ host, createModel = createChatCompletions
         async forgetCredential() { live(); if (resetting) throw Error('NOT_READY'); resetting = true; emit(); try { await host.credentials?.save(null); } finally { resetting = false; emit(); } },
         async configure(config) {
             live(); if (resetting) throw new Error('RESETTING');
+            if (config.source === 'st') {
+                const bound = host.modelConnection?.bind(); if (!bound) throw Error('HOST_CONNECTION_UNAVAILABLE');
+                resetting = true; emit();
+                try { await stopAndDrain(); live(); await host.credentials?.saveSourcePreference?.('st', true); bound.current(); const draft = inputs.get(viewKey()) || ''; clear(); model = bound.model; connection = bound.connection; hostConnectionCurrent = bound.current; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
+                finally { resetting = false; emit(); }
+                return;
+            }
             const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
             const next = createModel({ connection: resolved }); resetting = true; emit();
-            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null); live(); const draft = inputs.get(viewKey()) || ''; clear(); model = next; connection = { endpoint: config.endpoint, model: config.model, profile: config.profile || 'chat-completions', thinking: config.thinking ?? config.profile === 'deepseek', reasoningEffort: config.reasoningEffort || 'high', remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
+            try { await stopAndDrain(); live(); if (config.rememberKey || host.credentials?.describe()) await host.credentials?.save(config.rememberKey ? { ...resolved, profile: config.profile || 'chat-completions', autoConnect: config.autoConnect === true } : null, { source: 'independent', autoConnect: config.rememberKey === true && config.autoConnect === true }); else await host.credentials?.saveSourcePreference?.('independent', false); live(); const draft = inputs.get(viewKey()) || ''; clear(); hostConnectionCurrent = null; model = next; connection = { source: 'independent', endpoint: config.endpoint, model: config.model, profile: config.profile || 'chat-completions', thinking: config.thinking ?? config.profile === 'deepseek', reasoningEffort: config.reasoningEffort || 'high', remembered: config.rememberKey === true, autoConnect: config.rememberKey === true && config.autoConnect === true }; assemble(); if (draft) inputs.set(viewKey(), draft); error = null; }
             finally { resetting = false; emit(); }
         },
         async probeConnection(config, options = {}) {
             live(); if (resetting) throw Error('NOT_READY');
+            if (config.source === 'st') {
+                if (options.kind === 'models') throw Error('HOST_CONNECTION_UNSUPPORTED');
+                const bound = host.modelConnection?.bind(); if (!bound) throw Error('HOST_CONNECTION_UNAVAILABLE');
+                const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 15000);
+                const cancel = () => abort.abort(); options.signal?.addEventListener('abort', cancel, { once: true }); if (options.signal?.aborted) cancel();
+                try { for await (const event of bound.model.run({ messages: [{ role: 'user', content: 'Reply OK.' }], tools: [], maxTokens: 256 }, { signal: abort.signal, context: {} })) { /* Explicit fixed-message probe only. */ } return true; }
+                finally { clearTimeout(timer); options.signal?.removeEventListener('abort', cancel); }
+            }
             const resolved = { ...config, apiKey: host.credentials?.resolve(config) || config.apiKey };
             return probeConnection(resolved, options);
         },
-        async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); await host.credentials?.setAutoConnect?.(false); clear(); inputs.clear(); } finally { resetting = false; emit(); } },
+        async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); if (connection?.source === 'st') await host.credentials?.saveSourcePreference?.('st', false); else await host.credentials?.setAutoConnect?.(false); clear(); hostConnectionCurrent = null; inputs.clear(); } finally { resetting = false; emit(); } },
         send({ consent, fields, artifactId, interactionId } = {}) { return send({ consent, fields, artifactId, interactionId }); },
         stop() { live(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; checking?.abort.abort(); actions.invalidate(); selectionActions.invalidate(); ledgerEditActions.invalidate(); blueprintNodeEditActions.invalidate(); npcEditActions.invalidate(); profileEditActions.invalidate(); memoryEditActions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); providerActions.invalidate(); scriptActions.invalidate(); customAgentActions.invalidate(); customPromptActions.invalidate(); skillActions.invalidate(); profileLibraryActions.invalidate(); npcLibraryActions.invalidate(); blueprintLibraryActions.invalidate(); profileLibraryChatActions.invalidate(); npcLibraryChatActions.invalidate(); blueprintLibraryChatActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) { builtins.forgetSkillTask(t.id); permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); } for (const r of state.runs) app.cancel(r.id); } emit(); },
         revalidate(id, revision) { live(); if (!app || resetting || snapshot().busy) throw new Error('NOT_READY');
@@ -1005,9 +1039,10 @@ export function createMuyuController({ host, createModel = createChatCompletions
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }
             catch { app.validateArtifact(id, revision, { status: 'stale', message: '重新生成预览 / Generate a fresh preview' }); emit(); throw new Error('STALE_DRAFT'); }
         },
-        async dispose() { if (disposed) return; disposed = true; unsubscribeHost(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); await library.close(); },
+        async dispose() { if (disposed) return; disposed = true; unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); await library.close(); },
     };
     function send({ consent, fields = [], artifactId = null, planArtifactId = null, interactionId = null, permissionDecision = null, explanation = null } = {}) {
+            if (hostConnectionCurrent) { try { hostConnectionCurrent(); } catch { invalidateHostConnection(); throw Error('HOST_CONNECTION_CHANGED'); } }
             const skillSelectionKey = viewKey(), chosenSkill = skillSelections.get(skillSelectionKey) || null;
             live(); if (!app || resetting || snapshot().busy || snapshot().history.loading) throw new Error('NOT_READY');
             if (readOnly(library.get(selectedId()))) throw Error('HISTORY_READ_ONLY');
@@ -1110,8 +1145,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
             }
     }
     try {
+        const preference = host.credentials?.sourcePreference?.();
         const saved = host.credentials?.restoreAutoConnection?.();
-        if (saved) {
+        if (preference?.source === 'st' && preference.autoConnect && host.modelConnection?.describe().available) {
+            const bound = host.modelConnection.bind(); model = bound.model; connection = bound.connection; hostConnectionCurrent = bound.current; assemble();
+        } else if (saved && preference?.source !== 'st') {
             model = createModel({ connection: saved });
             connection = { endpoint: saved.endpoint, model: saved.model, profile: saved.profile || 'deepseek', thinking: saved.thinking !== false, reasoningEffort: saved.reasoningEffort || 'high', remembered: true, autoConnect: true };
             assemble();

@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS = {
     muyuInstructionConfig: { enabled: false, text: '' },
     muyuContextConfig: { ...CONTEXT_DEFAULTS },
     muyuRunConfig: { ...RUN_DEFAULTS },
+    muyuDisplayConfig: { processDetail: 'compact' },
     muyuHistoryEnabled: true,
     muyuHistoryAccountStorage: false,
     muyuHistoryData: null,

@@ -1,4 +1,5 @@
 import { processTools } from '../application/process-store.js';
+import { PROCESS_DETAILS } from '../preferences/contract.js';
 import { formatBudget } from './budget-view.js';
 import { MODEL_STAGE_LABELS, modelDiagnosticStage } from '../core/model-diagnostics.js';
 
@@ -14,6 +15,10 @@ const labels = {
     cancelled: ['任务已取消', 'Run cancelled'], interrupted: ['任务中断', 'Run interrupted'],
 };
 const errors = {
+    HOST_CONNECTION_CHANGED: ['酒馆连接已变化，旧任务与授权失效，请重新启用', 'ST connection changed; old tasks and grants expired. Re-enable the connection'],
+    HOST_CONNECTION_UNAVAILABLE: ['酒馆聊天补全连接或版本接口不可用', 'ST Chat Completion connection or host API unavailable'],
+    HOST_CONNECTION_UNSUPPORTED: ['酒馆连接尚未适配，请使用独立接口', 'Unsupported ST connection; use a separate connection'],
+    HOST_MODEL_REQUEST_FAILED: ['酒馆后端请求失败，请检查酒馆连接与模型', 'ST backend request failed; check the ST connection and model'],
     SKILL_STALE: ['所选技能版本已变化，请重新选择后发送', 'Selected Skill changed; select it again and send'],
     SKILL_DISABLED: ['所选技能已停用或不允许手动调用', 'Selected Skill is disabled or disallows manual invocation'],
     SKILL_UNAVAILABLE: ['技能暂不可读取，未加载该说明', 'Skill unavailable; document was not loaded'],
@@ -37,6 +42,7 @@ const errors = {
     MODEL_RATE_LIMIT: ['服务限流', 'Service rate limit'], MODEL_SERVICE_ERROR: ['模型服务失败', 'Model service failure'],
 };
 const local = (pair, lang) => pair[lang === 'en' ? 1 : 0];
+const readWarning = row => row.read && (row.read.truncated || !['ok', 'empty'].includes(row.read.status));
 export function processLabel(process, lang = 'zh') {
     if (!process) return '';
     const text = local(labels[process.phase] || ['处理中', 'Processing'], lang);
@@ -48,8 +54,9 @@ export function createProcessView({ doc, lang = 'zh' }) {
     const nodes = new Map();
     const node = (tag, text, parent) => { const el = doc.createElement(tag); el.textContent = text; if (parent) parent.append(el); return el; };
     return {
-        update(run, artifactPresent, expectsArtifact = true) {
+        update(run, artifactPresent, expectsArtifact = true, detail = 'verbose') {
             const p = run.process; if (!p) return null;
+            if (!PROCESS_DETAILS.includes(detail)) detail = 'compact';
             let view = nodes.get(run.id);
             if (!view) {
                 const root = node('details', ''); root.className = 'gd-muyu-process';
@@ -57,27 +64,33 @@ export function createProcessView({ doc, lang = 'zh' }) {
                 nodes.set(run.id, view);
             }
             view.summary.textContent = local(['执行过程', 'Execution process'], lang) + ' · ' + processLabel(p, lang);
-            const signature = JSON.stringify(p.rows);
+            if (p.error) view.summary.textContent += ' · ' + local(errors[p.error] || ['任务发生错误', 'Run error'], lang);
+            else if (p.toolFailures) view.summary.textContent += local([' · 含失败或拒绝记录', ' · Includes failures or rejections'], lang);
+            else if (p.rows.some(readWarning)) view.summary.textContent += local([' · 资料读取异常或不完整', ' · Read error or incomplete data'], lang);
+            const signature = JSON.stringify([p.rows, detail]);
             if (signature !== view.signature) {
                 const scrollTop = view.list.scrollTop;
                 view.signature = signature; view.list.replaceChildren();
-                for (const row of p.rows) {
+                const rows = detail === 'compact' ? p.rows.filter((row, index) => row.error || readWarning(row) || row.type.endsWith('.failed') || index === p.rows.length - 1)
+                    : detail === 'standard' ? p.rows.filter(row => !['tool.requested', 'tool.started', 'model.started'].includes(row.type)) : p.rows;
+                for (const row of rows) {
                     const tool = row.tool ? local(processTools[row.tool] || ['未知工具', 'Unknown tool'], lang) + ' · ' : '';
                     const error = row.error ? ' · ' + row.error + ' · ' + local(errors[row.error] || ['安全错误（无原始详情）', 'Safe error (no raw details)'], lang) : '';
                     const stage = modelDiagnosticStage(row.diagnosticStage);
                     const diagnostic = stage ? ' · ' + local(['失败阶段：', 'Failure stage: '], lang) + local(MODEL_STAGE_LABELS[stage], lang) : '';
-                    if (row.read) node('li', `${row.read.source} · ${row.read.status} · ${row.read.characters}` + local([' 字符', ' characters'], lang) + (row.read.truncated ? local([' · 内容未完整返回', ' · Partial content'], lang) : ''), view.list);
-                    node('li', tool + local(labels[row.type] || ['处理中', 'Processing'], lang) + ` #${row.attemptId}` + (row.durationMs === null ? '' : ` · ${row.durationMs} ms`) + error + diagnostic, view.list);
+                    if (row.read && (detail === 'verbose' || readWarning(row))) node('li', `${row.read.source} · ${row.read.status} · ${row.read.characters}` + local([' 字符', ' characters'], lang) + (row.read.truncated ? local([' · 内容未完整返回', ' · Partial content'], lang) : ''), view.list);
+                    const technical = ['detailed', 'verbose'].includes(detail) ? ` #${row.attemptId}` + (row.durationMs === null ? '' : ` · ${row.durationMs} ms`) + diagnostic : '';
+                    node('li', tool + local(labels[row.type] || ['处理中', 'Processing'], lang) + technical + error, view.list);
                 }
                 view.list.scrollTop = scrollTop;
             }
             const notes = [];
-            if (run.skills?.length) notes.push(local(['本任务技能（完整读取）：', 'Task Skills (read completely): '], lang) + run.skills.map(row => `${row.displayName} · ${row.revision} · ${row.paths.join(', ')} · ${row.bytes} B`).join('；'));
+            if (run.skills?.length) notes.push(local(['本任务技能（完整读取）：', 'Task Skills (read completely): '], lang) + run.skills.map(row => detail === 'verbose' ? `${row.displayName} · ${row.revision} · ${row.paths.join(', ')} · ${row.bytes} B` : row.displayName).join('；'));
             if (p.toolFailures) notes.push(local(['包含失败或被拒绝的工具调用', 'Includes failed/rejected tool calls'], lang));
             if (p.dropped) notes.push(local(['较早过程记录已截断', 'Earlier process records were truncated'], lang));
             if (p.terminal === 'succeeded' && expectsArtifact && !artifactPresent) notes.push(local(['回答已结束；尚无可信报告或草稿', 'Answer ended; no verified report or draft available'], lang));
             if (p.error) notes.push(p.error + ' · ' + local(errors[p.error] || ['任务结束时发生错误', 'Run ended with an error'], lang));
-            view.note.textContent = notes.join(' · ') + (p.budget ? '\n' + formatBudget(p.budget, lang) : '');
+            view.note.textContent = notes.join(' · ') + (p.budget && detail !== 'compact' ? '\n' + (detail === 'standard' ? formatBudget(p.budget, lang).split('\n').slice(0, 2).join('\n') : formatBudget(p.budget, lang)) : '');
             return view.root;
         },
         retain(ids) { for (const [id, view] of nodes) if (!ids.has(id)) { view.root.remove(); nodes.delete(id); } },

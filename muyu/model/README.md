@@ -1,5 +1,15 @@
 # 模型适配层：非流式 Chat Completions
 
+## 复用酒馆当前连接（2026-10-05）
+
+`host/model-connection.js` 通过 `getContext().ChatCompletionService.sendRequest(payload, false, signal)` 调用官方服务，酒馆后端使用自己的服务商密钥；不导出、不复制服务端密钥。独立 HTTP 适配器保留，两种路径共用 `createChatCompletionsAdapter` 的工具名映射、消息对校验、原始响应解码、预算检查和取消合同。没有注册酒馆全局工具，没有调用普通聊天生成或附加角色／世界书／聊天正文。
+
+首版支持 `openai/custom/openrouter/deepseek` 的 Chat Completions 返回形态；模型是否真正支持工具仍需服务端验证。DeepSeek 原生后端在本地版本未转发新版 thinking 参数，因此此路径不开启新版思考，reasoner 模型暂拒绝；独立 DeepSeek 路径仍支持思考回传。其他来源、文本补全、自定义 include/exclude 请求体暂拒绝，不静默降级。OpenRouter 固定模型并关闭模型／服务商 fallback；保留显式 provider 偏好。自定义 headers 和反代密码只留在私有路由内，不进入公开快照／历史／诊断；拒绝带用户信息、查询串和 fragment 的目标 URL。
+
+首次无暮羽连接记录时优先自动启用可用的酒馆适配器，不发送消息、不恢复权限。已有独立记录不迁移。选择来源独立存于 `agentConfigs.muyu-connection-source`，切回酒馆不删除旧独立密钥，禁用持久化 opt-out。来源／模型／URL／反代认证／自定义 headers／OpenRouter 路由变化或酒馆密钥事件使旧连接失效，停止并等待任务清理、撤销授权和全权限，保留未发送输入；重新启用后才继续。每次模型请求和用户操作也检查私有连接快照，补事件遗漏边界。
+
+请求大小／估算 Token 检查包含最终酒馆负载。酒馆官方服务自行读取 JSON 后，本地检查 256 KiB 响应上限；这不是独立 HTTP 传输的逐块接收上限，不能声称提前限制了酒馆服务解析 JSON 的内存。宿主错误只映射固定错误码，不暴露原始报错、不自动重试或切换服务。连接测试是显式固定短消息、15 秒取消，非完整工具兼容性测试。没有新增服务端插件依赖；旧宿主缺少服务时显示不可用，独立路径不受影响。上线前需实际酒馆连接验收，离线测试不证明真实服务兼容。
+
 2026-10-05：普通任务的安全失败阶段已接适配器→Runtime→process-store→执行过程。`run`可接独立`onDiagnostic`，覆盖构造回调且不跨任务共享；仅保留固定stage/status，公开失败行再投影diagnosticStage。阶段包括请求准备、传输及响应解析、协议校验、思考回传状态、事件交付；自定义模型运行事件校验失败标为runtime。不是服务端日志或根因证明，不记录原始API、密钥、错误cause、正文或隐藏思考，不自动重试。迟到回调、取消后回调及未知阶段不更新当前失败行。摘要子请求暂未接这条过程展示，不能声称覆盖所有压缩故障。
 
 2026-10-02 接口页：GUI 可显式选择现有 `deepseek` / `chat-completions` 协议，DeepSeek 思考强度可选 low/high/max。测试连接、获取模型不自动启用；协议及思考选项随可选的记住密钥持久化，旧保存记录默认 DeepSeek/high。通用协议不发送 DeepSeek 专属思考参数；没有新增 Responses/Anthropic 适配器、多连接管理或服务端密钥库。离线专项通过，真实浏览器 CORS/服务兼容性仍需实际测试。

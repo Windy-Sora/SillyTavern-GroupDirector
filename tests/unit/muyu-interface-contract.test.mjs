@@ -19,7 +19,9 @@ test('Public GUI document is bounded, discoverable and uses the UI labels withou
     const doc = JSON.parse(result.documents[0].text);
     assert.deepEqual(doc.buttons, UI_LABELS);
     assert.deepEqual(doc.pages.map(row => row.label.zh), SETTINGS_PAGES.map(row => row[1]));
-    assert.equal(doc.connection.independentFromST, true);
+    assert.deepEqual(doc.connection.sources, ['使用酒馆当前连接（推荐）', '使用暮羽独立接口']);
+    assert.equal(doc.connection.defaultForNewUsers, 'st');
+    assert.equal(doc.connection.stDoesNotInheritRoleplayContext, true);
     assert.equal(doc.connection.autoEnableOptional, true);
     assert.equal(doc.connection.noAutomaticPathAppend, true);
     assert.match(doc.connection.deepseekEndpointExample, /\/chat\/completions$/);

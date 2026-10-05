@@ -144,10 +144,15 @@ function decode(data, byName, connection) {
 export function createChatCompletionsModel({ connection, fetchImpl, transportLimits, onUsage = () => {}, onDiagnostic = () => {} }) {
     const config = validateConnection(connection);
     const post = createHttpTransport({ fetchImpl, ...transportLimits });
+    return createChatCompletionsAdapter({ config, post, onUsage, onDiagnostic });
+}
+
+/** Trusted transport seam: host authentication never enters the runtime DTOs. */
+export function createChatCompletionsAdapter({ config, post, mapPayload = value => value, onUsage = () => {}, onDiagnostic = () => {} }) {
     const histories = new WeakMap();
     const toolMappings = new WeakMap();
     return Object.freeze({
-        inspect(request, context) { return measurePayload(prepare(request, config, histories.get(context) || new Map(), toolMappings.get(context) || new Map()).payload); },
+        inspect(request, context) { return measurePayload(mapPayload(prepare(request, config, histories.get(context) || new Map(), toolMappings.get(context) || new Map()).payload)); },
         releaseContext(context) { histories.delete(context); toolMappings.delete(context); },
         capabilities: Object.freeze({ tools: config.supportsTools, streaming: false, requestAbort: true, usage: 'optional', reasoning: config.thinking }),
         async *run(request, { signal, context, onUsage: reportUsage = () => {}, onDiagnostic: reportDiagnostic = onDiagnostic }) {
@@ -158,11 +163,12 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
                 if (!privateHistory) { privateHistory = new Map(); if (context) histories.set(context, privateHistory); }
                 const { payload, byName, effectiveConnection, knownTools } = prepare(request, config, privateHistory, toolMappings.get(context) || new Map());
                 if (effectiveConnection.thinking && (!context || typeof context !== 'object')) throw modelError('MODEL_HISTORY_UNAVAILABLE');
-                const measured = measurePayload(payload);
+                const transportPayload = mapPayload(payload);
+                const measured = measurePayload(transportPayload);
                 if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > MAX_MANUAL_INPUT_TOKENS)) fail();
                 if (measured.requestBytes > MAX_REQUEST_BYTES || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
                 stage = 'transport';
-                const data = await post(config, payload, signal);
+                const data = await post(config, transportPayload, signal);
                 stage = 'decode';
                 const { events, usage, reasoning, signature } = decode(data, byName, effectiveConnection);
                 assertActive(signal);

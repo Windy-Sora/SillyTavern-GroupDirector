@@ -1,3 +1,12 @@
+test('Display preferences save independently without starting a model run or granting access', async () => {
+    let saved = null;
+    const f = fixture([], { displayConfig: { read: () => ({ processDetail: 'compact' }), save: async value => { saved = value; } } });
+    await f.controller.saveDisplayConfig({ processDetail: 'detailed' });
+    assert.deepEqual(saved, { processDetail: 'detailed' }); assert.equal(f.controller.snapshot().displayConfig.processDetail, 'detailed');
+    assert.equal(f.controller.snapshot().fullAccess, false); assert.equal(f.model.requests.length, 0);
+    await assert.rejects(f.controller.saveDisplayConfig({ processDetail: 'invalid' }), /DISPLAY_CONFIG_INVALID/);
+    await f.controller.dispose();
+});
 test('Task plan approval keeps loaded Skill revision after source Run settles and Skill is deleted', async () => {
     const { createSkillPort } = await import('../../muyu/host/skills.js');
     const { skillEditorPackage } = await import('../../muyu/skills/editor.js');
@@ -1823,6 +1832,7 @@ test('batch controller stop drains native first call and never starts the second
 function fixture(steps = [[text('answer'), done]], extraHost = {}) {
     const events = new EventEmitter(), settings = { memoryEnabled: true, autoMemoryEnabled: true, autoMemoryInterval: 10, autoMemorySpeakers: false };
     const ctx = { groupId: 'g', chatId: 'A', groups: [{ id: 'g', members: ['private-avatar'] }], chat: [{ mes: 'PRIVATE_BODY' }], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };
+    Object.assign(ctx, extraHost.modelContext || {});
     let reads = 0;
     let host;
     const variableDraftPort = createVariableDraftPort({ getTarget: () => host?.currentTarget(), getMetadata: () => ctx.chatMetadata, extensionKey: 'gd' });
@@ -2732,9 +2742,9 @@ test('Revoke while model is pending cancels the run and waits for drain before a
 test('Saved credentials restore only on explicit configure, stay out of snapshots and do not restore grants', async () => {
     const settings = {}; let saves = 0;
     const credentials = createCredentialStore({ getSettings: () => settings, saveSettings: () => saves++ });
-    const f = fixture(undefined, { credentials }); await f.enable(); assert.equal(saves, 0);
+    const f = fixture(undefined, { credentials }); await f.enable(); assert.equal(saves, 1);
     await f.controller.configure({ endpoint: 'https://saved.test/chat/completions', apiKey: 'SYNTHETIC_KEY', model: 'm', rememberKey: true });
-    assert.equal(saves, 1); f.controller.grantPermission('diagnostics'); await f.controller.dispose();
+    assert.equal(saves, 2); f.controller.grantPermission('diagnostics'); await f.controller.dispose();
     const g = fixture(undefined, { credentials }); assert.equal(g.controller.snapshot().enabled, false);
     assert.equal(g.controller.snapshot().permissions.diagnostics, false); assert.doesNotMatch(JSON.stringify(g.controller.snapshot()), /SYNTHETIC_KEY/);
     await g.controller.configure({ endpoint: 'https://saved.test/chat/completions', apiKey: '', model: 'm', rememberKey: true });
@@ -2810,6 +2820,34 @@ test('Host identity includes owner; bridge subscribes once and does not read mes
     f.ctx.chatId = ''; assert.equal(f.host.currentTarget(), null);
     assert.equal(f.reads(), 0); assert.equal(f.events.listenerCount('chat'), 1);
     return f.controller.dispose().then(() => assert.equal(f.events.listenerCount('chat'), 0));
+});
+
+test('ST connection defaults to ready without a key or model call; changes clear grants and retain composer', async () => {
+    let calls = 0;
+    const settings = {}, credentials = createCredentialStore({ getSettings: () => settings, saveSettings: async () => {} });
+    const modelContext = { mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom', custom_url: 'https://host.test/v1', model: 'host-model' },
+        getChatCompletionModel: s => s.model, ChatCompletionService: { sendRequest: async () => { calls++; return { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Hello' } }] }; } }, eventTypes: { CHAT_CHANGED: 'chat', CHATCOMPLETION_MODEL_CHANGED: 'model' } };
+    const f = fixture(undefined, { credentials, modelContext });
+    assert.equal(f.controller.snapshot().enabled, true); assert.equal(f.controller.snapshot().connection.source, 'st'); assert.equal(calls, 0);
+    assert.equal(f.controller.snapshot().permissions.diagnostics, false); assert.equal(f.controller.snapshot().fullAccess, false);
+    f.controller.setInput('unsent draft'); f.controller.grantPermission('diagnostics');
+    f.ctx.chatCompletionSettings.model = 'new-model'; f.events.emit('model'); await settle();
+    assert.equal(f.controller.snapshot().enabled, false); assert.equal(f.controller.snapshot().permissions.diagnostics, false);
+    assert.equal(f.controller.snapshot().input, 'unsent draft'); assert.equal(f.controller.snapshot().error, 'HOST_CONNECTION_CHANGED');
+    await f.controller.configure({ source: 'st' }); assert.equal(f.controller.snapshot().connection.model, 'new-model');
+    await f.controller.disable(); await f.controller.dispose();
+    const g = fixture(undefined, { credentials, modelContext }); assert.equal(g.controller.snapshot().enabled, false); await g.controller.dispose();
+});
+
+test('Stored independent connection stays selected when ST is available, and host setup keeps its key', async () => {
+    const settings = {}, credentials = createCredentialStore({ getSettings: () => settings, saveSettings: async () => {} });
+    await credentials.save({ endpoint: 'https://saved.test/chat/completions', model: 'saved-model', apiKey: 'PRIVATE_SAVED_KEY', autoConnect: true });
+    const f = fixture(undefined, { credentials, modelContext: { mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'openai', model: 'host-model' }, getChatCompletionModel: s => s.model, ChatCompletionService: { sendRequest: async () => ({}) } } });
+    assert.equal(f.controller.snapshot().connection.model, 'saved-model');
+    await f.controller.configure({ source: 'st' });
+    assert.equal(settings.agentConfigs['muyu-assistant'].apiKey, 'PRIVATE_SAVED_KEY');
+    assert.doesNotMatch(JSON.stringify(f.controller.snapshot()), /PRIVATE_SAVED_KEY/);
+    await f.controller.dispose();
 });
 
 test('Disabled/default controller and missing consent cannot invoke model or read settings', async () => {

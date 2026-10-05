@@ -19,6 +19,7 @@ const INTENTIONALLY_UNCOVERED_KEYS = new Set([
     'muyuInstructionConfig', // Personal assistant instructions, excluded from story profiles.
     'muyuContextConfig', // Private assistant context policy, not a story profile.
     'muyuRunConfig', // Local assistant execution policy, not a shared story profile.
+    'muyuDisplayConfig', 'muyuDisplayConfigVersion', // Local presentation, not a story profile.
     'muyuHistoryEnabled', // Local history privacy choice, never imported with story settings.
     'muyuHistoryAccountStorage',
     'muyuHistoryData', // Private conversations must never be shared through a story profile.

@@ -13,7 +13,7 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
     const label = node('label', t('补充指令', 'Additional instructions'), section), text = node('textarea', '', label); text.className = 'text_pole'; text.rows = 5;
     text.placeholder = t('例如：先给结论；通常用三条以内说明；不重复无关历史。', 'Example: lead with the conclusion; usually use at most three points; avoid unrelated history.');
     node('small', t('最多4000字符、16000 UTF-8字节；不静默截断。内容明文保存在插件设置，启用后外发给当前模型，不要填写密钥或敏感信息。草稿仅在本页保留，刷新页面会丢失。', 'Maximum 4000 characters and 16000 UTF-8 bytes; no silent truncation. Stored unencrypted in extension settings and sent to the active model when enabled. Do not enter credentials or sensitive data. Unsaved drafts survive view changes, not page reloads.'), section);
-    const status = node('p', '', section); status.setAttribute('role', 'status');
+    const status = node('p', '', section); status.className = 'gd-muyu-form-status'; status.setAttribute('role', 'status');
     const actions = node('div', '', section); actions.className = 'gd-muyu-settings-actions';
     const save = button(t('保存行为偏好', 'Save behavior preferences')), discard = button(t('放弃修改', 'Discard changes')), reset = button(t('恢复默认（需保存）', 'Restore defaults (save required)'));
     let saveFailed = false;
@@ -32,6 +32,7 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
         enabled.disabled = text.disabled = !!state.saving || !!s.resetting;
         text.setAttribute('aria-invalid', String(!valid));
         if (saveFailed) status.textContent = t('保存未完成，草稿已保留，请重试。', 'Save did not complete. Draft retained; retry.');
+        status.setAttribute('data-state', saveFailed || !valid ? 'error' : state.saving ? 'saving' : state.dirty ? 'dirty' : 'ready');
         discard.disabled = !state.dirty || state.saving; reset.disabled = state.saving;
     } };
 }

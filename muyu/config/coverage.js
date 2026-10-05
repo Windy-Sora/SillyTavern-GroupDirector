@@ -4,7 +4,7 @@ import { configFields, fieldDefinition } from './registry.js';
 // Explicit inventory, not a whitelist generated from defaults. New default keys
 // must receive an owner and a deliberate support classification in tests.
 const groups = {
-    muyu: 'muyuFloatingBallVisible muyuInstructionConfig muyuContextConfig muyuRunConfig muyuHistoryEnabled muyuHistoryAccountStorage muyuHistoryData muyuAgentMemoryEnabled muyuAgentMemoryData muyuWebSearchConfig',
+    muyu: 'muyuFloatingBallVisible muyuInstructionConfig muyuContextConfig muyuRunConfig muyuDisplayConfig muyuHistoryEnabled muyuHistoryAccountStorage muyuHistoryData muyuAgentMemoryEnabled muyuAgentMemoryData muyuWebSearchConfig',
     director: 'mode topN llmContextDepth llmPrompt llmMaxSpeakers llmRespectOrder llmCharDescMode llmCharDescLength llmScriptEnabled llmScriptPrompt llmScriptWrapper llmJsonSchema llmJsonSchemaHint llmHistoryEnabled llmScriptContinuity llmScriptContinuityMode llmScriptContinuityCount llmScriptContinuityWrapper llmScriptContinuityHistoryWrapper llmWorldInfoEnabled llmWorldInfoWrapper templateMaxPasses templateRecursive templateDebugPlaceholders providerTimeoutMs forceSpeakMode forceSpeakPrompt llmScriptPosition',
     formula: 'scoreWeights recentMessageCount consecutivePenalty triggerEnabled triggerScore initiativeEnabled initiativeBaseScore',
     summary: 'knowledgeText summaryEnabled summaryReusePrevious summaryPrompt autoSummaryEnabled autoSummaryInterval',
@@ -31,7 +31,7 @@ export function configurationCoverage() {
         const value = DEFAULT_SETTINGS[key];
         return { key, owner, type: Array.isArray(value) ? 'array' : typeof value, scope: 'global',
             ...(key === 'profileLibraryAutoLoad' ? { partial: true, pendingFields: ['matchNameOnly'], selectionWriter: 'muyu/host/selection-editor.js' } : {}),
-            status: ['worldBookSelection', 'scriptExecutors', 'customAgents', 'customPrompts', 'profileLibraries', 'npcLibraries', 'storyBlueprintLibraries'].includes(key) ? 'special-editor-supported' : ['storyBlueprintCompletionVariableGuard', 'muyuWebSearchConfig', 'muyuFloatingBallVisible'].includes(key) ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
+            status: ['worldBookSelection', 'scriptExecutors', 'customAgents', 'customPrompts', 'profileLibraries', 'npcLibraries', 'storyBlueprintLibraries'].includes(key) ? 'special-editor-supported' : ['storyBlueprintCompletionVariableGuard', 'muyuWebSearchConfig', 'muyuFloatingBallVisible', 'muyuDisplayConfig'].includes(key) ? 'internal' : deferred.has(key) ? 'deferred' : fields.length ? 'supported' : special.has(key) ? 'special-editor-pending' : 'pending', fields,
             secret: key === 'agentConfigs', executable: key === 'scriptExecutors',
             writer: key === 'worldBookSelection' ? 'muyu/host/selection-editor.js' : key === 'storyBlueprintLibraries' ? 'muyu/host/blueprint-libraries.js' : key === 'npcLibraries' ? 'muyu/host/npc-libraries.js' : key === 'profileLibraries' ? 'muyu/host/profile-libraries.js' : key === 'customPrompts' ? 'muyu/host/custom-prompts.js' : key === 'customAgents' ? 'muyu/host/custom-agents.js' : key === 'scriptExecutors' ? 'muyu/host/script-executors.js' : fields.length ? 'muyu/host/config-write.js' : null,
             contract: fields.map(fieldDefinition),
