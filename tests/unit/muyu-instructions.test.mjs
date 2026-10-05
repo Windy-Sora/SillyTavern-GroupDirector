@@ -9,6 +9,12 @@ import { MUYU_PERSONA } from '../../muyu/instructions/persona.js';
 import { identity, registry, toolId, scriptedModel, request, call, text, done, createClock } from './helpers/muyu-subject.mjs';
 import { createProfileSystem } from '../../systems/profile-system.js';
 
+test('Long-term memory instructions use the current settings navigation', () => {
+    const base = composeInstructions('assistant').base;
+    assert.match(base, /配置→存储与记忆→暮羽长期记忆/);
+    assert.doesNotMatch(base, /配置→资料与历史→暮羽长期记忆/);
+});
+
 test('Assistant discovers unloaded capabilities and separates generated format from factual attribution', () => {
     const base = composeInstructions('assistant').base;
     assert.match(base, /能力未加载不等于不支持/);
