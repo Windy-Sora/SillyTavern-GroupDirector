@@ -1254,6 +1254,7 @@
 .gd-muyu-settings-page .menu_button { white-space: normal; max-width: 100%; }
 .gd-muyu-settings-grid { display: grid; grid-template-columns: 1fr; gap: 0 16px; }
 .gd-muyu-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.gd-muyu-diagnostics-records { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; font-size: 12px; }
 .gd-muyu-form-status { flex: 1 1 100%; margin: 6px 0 0; overflow-wrap: anywhere; }
 .gd-muyu-form-status[data-state="dirty"], .gd-muyu-form-status[data-state="saving"] { opacity: 1; font-weight: 600; border-inline-start: 2px solid var(--SmartThemeQuoteColor, #88b8dd); padding-inline-start: 8px; }
 .gd-muyu-form-status[data-state="error"], .gd-muyu-settings-page .gd-muyu-field-error { color: var(--SmartThemeQuoteColor, #e6a273); opacity: 1; }

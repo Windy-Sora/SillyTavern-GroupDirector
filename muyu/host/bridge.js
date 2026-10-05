@@ -1,6 +1,6 @@
 import { createHostModelConnection } from './model-connection.js';
 /** Page-local identity only; no names or raw identity strings enter model requests. */
-export function createHostBridge({ getContext, getSettings, extensionKey, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort, getGuards = () => ({}), pageId = globalThis.crypto.randomUUID() }) {
+export function createHostBridge({ getContext, getSettings, extensionKey, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort, getGuards = () => ({}), pageId = globalThis.crypto.randomUUID() }) {
     const userKey = 'page:' + pageId;
     const globalTarget = Object.freeze({ kind: 'global', userKey });
     function currentTarget() {
@@ -16,8 +16,9 @@ export function createHostBridge({ getContext, getSettings, extensionKey, provid
         return { kind: 'chat', userKey, chatKey: JSON.stringify([...owner, chatId]) };
     }
     return Object.freeze({
-        currentTarget, globalTarget, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort,
-        modelConnection: createHostModelConnection({ getContext }),
+        currentTarget, globalTarget, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort,
+        stDiagnostics,
+        modelConnection: createHostModelConnection({ getContext, stDiagnostics }),
         configTarget: () => currentTarget() || globalTarget,
         getSettings,
         memoryPorts: Object.freeze({ extensionKey, getTarget: currentTarget, getSettings,

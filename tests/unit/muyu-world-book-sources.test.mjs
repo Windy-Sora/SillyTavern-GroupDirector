@@ -6,6 +6,21 @@ import { createPermissions } from '../../muyu/application/permissions.js';
 import { assistantToolAccess } from '../../muyu/application/capabilities.js';
 import { validateJson } from '../../muyu/core/json-contract.js';
 
+test('World-book metadata continuation uses root and book revisions and rejects changed directory', async () => {
+    const f=fixture();f.module.bindRun('r',50000);f.state.names=Array.from({length:160},(_,i)=>'Book'+i);
+    f.books.Book0={entries:Object.fromEntries(Array.from({length:160},(_,i)=>[i,{uid:i,comment:'Entry'+i,content:'body'}]))};
+    const root=await f.read('stWorldBookEntries');
+    const rest=await f.read('stWorldBookEntries','books:80',root.revision);assert.match(rest.text,/book\[159\]/);
+    const book=await f.read('stWorldBookEntries','book:0',root.revision);
+    let entries=await f.read('stWorldBookEntries','entries:0:80',book.revision),all=entries.text;
+    while(entries.nextOffset>=0){entries=await f.module.handlers['muyu.provider.read']({...entries.readHint.nextRead},{runId:'r',target:f.target});all+=entries.text;}
+    assert.match(all,/entry\[0:159\]/);
+    const entry=await f.read('stWorldBookEntries','entry:0:159',book.revision);assert.match(entry.text,/body/);
+    f.books.Book0.entries[159].content='changed';
+    const stale=await f.read('stWorldBookEntries','entries:0:80',book.revision);assert.equal(stale.status,'STALE_SOURCE');
+    f.module.dispose();
+});
+
 function fixture(loadOverride) {
     const target = { kind: 'chat', userKey: 'u', chatKey: 'a' };
     let current = target, loads = 0;

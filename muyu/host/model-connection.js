@@ -27,7 +27,7 @@ function mapHostPayload(payload, route) {
 }
 
 /** Official ST service; only connection fields are inherited, never RP prompts/global tools. */
-export function createHostModelConnection({ getContext }) {
+export function createHostModelConnection({ getContext, stDiagnostics }) {
     let credentialEpoch = 0;
     function capture() {
         const ctx = getContext(), settings = ctx.chatCompletionSettings;
@@ -58,12 +58,13 @@ export function createHostModelConnection({ getContext }) {
             mapPayload(payload) { current(); return mapHostPayload(payload, saved.route); },
             async post(_config, payload, signal) {
                 assertActive(signal); current();
+                const diagnosticTarget = stDiagnostics?.captureTarget();
                 try {
                     const data = await saved.ctx.ChatCompletionService.sendRequest(payload, false, signal);
                     assertActive(signal); current();
                     if (new TextEncoder().encode(JSON.stringify(data)).length > 262144) throw modelError('MODEL_RESPONSE_TOO_LARGE');
                     return data;
-                } catch (error) { assertActive(signal); if (error instanceof ExecutionError) throw error; throw modelError('HOST_MODEL_REQUEST_FAILED'); }
+                } catch (error) { stDiagnostics?.recordHostFailure(error, signal, diagnosticTarget); assertActive(signal); if (error instanceof ExecutionError) throw error; throw modelError('HOST_MODEL_REQUEST_FAILED'); }
             },
         });
         return { model, connection: saved.description, current };

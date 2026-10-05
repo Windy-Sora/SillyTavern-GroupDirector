@@ -2,6 +2,9 @@ import { copyJson } from '../core/json-contract.js';
 
 // Grouping changes model-visible definitions, NEVER permission or executable capabilities.
 const groups = Object.freeze({
+    'muyu.st_preset.': ['st-preset-editor', '聊天补全预设管理 / Chat-completion preset management'],
+    'muyu.character_card.': ['character-card', '酒馆角色卡 / ST character cards'],
+    'muyu.worldbook_editor.': ['worldbook-editor', '世界书条目编辑 / World-book entry editing'],
     'muyu.skills.': ['skills', 'Skill管理 / Skill management'],
     'muyu.prompts.': ['prompts', '自定义Prompt / Custom Prompts'],
     'muyu.agents.': ['agents', '自定义Agent / Custom Agents'],

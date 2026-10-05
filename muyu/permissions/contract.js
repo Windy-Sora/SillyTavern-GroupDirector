@@ -23,6 +23,8 @@ export function parseExecutionSource(value) {
     return match ? { providerId: match[1], providerRevision: match[2] } : null;
 }
 export const requestableSources = Object.freeze([...providerCatalog,
+    { id: 'stCharacterCardState', title: '酒馆角色卡正文与保存资料 / ST saved character-card details', scope: 'global', permission: 'extended' },
+    { id: 'stCharacterCardReferences', title: '角色卡删除保护：已加载群组、标签、绑定与当前使用引用计数 / Loaded character-card reference counts for deletion safeguards', scope: 'global', permission: 'extended' },
     { id: 'npcLibraryChat', title: '当前聊天 NPC 正文、角色卡关联及有效提示词 / Current chat NPCs, character-card links and effective Prompt', scope: 'chat', permission: 'extended' },
     { id: 'profileLibraryChat', title: '当前群聊角色档案、成员及有效档案模板 / Current group profiles, members and effective profile templates', scope: 'chat', permission: 'extended' },
     { id: 'blueprintStructureState', title: '当前聊天完整蓝图树、各进度轨道与完成变量状态 / Chat Blueprint tree, progress scopes and completion-variable state', scope: 'chat', permission: 'extended' },

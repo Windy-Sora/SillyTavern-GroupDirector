@@ -54,13 +54,14 @@ test('Revised guides retain live-test boundaries and publish new content revisio
         'variable-workbench': [/revision/, /合并规则/, /不是.*事务/],
         'character-npc-workbench': [/船夫/, /事实核对/],
         'resource-library-workflow': [/exportData.template/, /template.*null/],
-        'muyu-troubleshooting': [/全权限.*资料读取/, /历史.*独立现象/],
+        'muyu-troubleshooting': [/全权限.*资料读取/, /历史.*独立现象/, /stDiagnostics/, /生成结束不证明成功/, /清空只删本地缓存/, /不能追溯旧请求/, /停止正文读取/, /retainedChars/],
+        'prompt-template-workbench': [/stPromptText/, /构建快照不是最终发送/, /当时注册项/, /不主动生成/, /不能追溯旧请求/, /停止正文读取/, /缺席原因未知/, /offset:0/, /retainedChars/],
         'skill-workbench': [/muyu.tools.list/, /select/, /显式传新版 load.*SKILL_STALE/, /下一新任务/],
     };
     for (const [name, checks] of Object.entries(patterns)) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'resource-library-workflow' ? 4 : 2);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name==='muyu-troubleshooting' ? 5 : ['resource-library-workflow','character-npc-workbench','prompt-template-workbench'].includes(name) ? 4 : 2);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
-        assert.match(pack.package.files[0].text, name === 'resource-library-workflow' ? /version: "1.3"/ : /version: "1.1"/);
+        assert.match(pack.package.files[0].text, name==='muyu-troubleshooting' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench','prompt-template-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
         for (const pattern of checks) assert.match(pack.package.files[1].text, pattern);
     }
 });

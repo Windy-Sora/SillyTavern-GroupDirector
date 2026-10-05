@@ -9,6 +9,15 @@ function settingsSources(fields) {
 // One application contract for tool effects, required grants and history dependencies.
 // Tool definitions own wire schemas; handlers own business validation.
 const capabilities = Object.freeze({
+    ...Object.fromEntries(['muyu.worldbook_editor.list','muyu.worldbook_editor.read'].map(id=>[id,{effect:'read',sources:()=>['source:stWorldBookEntries']}])),
+    'muyu.st_preset.list': {effect:'read',sources:()=>['source:stPresets']},
+    'muyu.st_preset.read': {effect:'read',sources:()=>['source:stPresetContent']},
+    'muyu.st_preset.preview': {effect:'read',sources:()=>['source:stPresetContent']},
+    'muyu.character_card.list': {effect:'read',sources:()=>['source:stCharacters']},
+    'muyu.character_card.read': {effect:'read',sources:()=>['source:stCharacterCardState']},
+    'muyu.character_card.preview': {effect:'read',sources:args=>args.operation==='delete'?['source:stCharacterCardState','source:stCharacterCardReferences']:['source:stCharacterCardState']},
+    'muyu.worldbook_editor.bindings':{effect:'read',sources:()=>['source:stWorldBooks']},
+    'muyu.worldbook_editor.preview':{effect:'read',sources:args=>['set_global_binding','set_chat_binding'].includes(args.operation)?['source:stWorldBooks']:args.operation==='delete_book'?['source:stWorldBookEntries','source:stWorldBooks']:['source:stWorldBookEntries']},
     ...Object.fromEntries(['muyu.selection.read','muyu.selection.preview'].map(id=>[id,{effect:'read',sources:()=>['source:selectionState']}])),
     ...Object.fromEntries(['muyu.ledger_editor.list','muyu.ledger_editor.read','muyu.ledger_editor.preview'].map(id=>[id,{effect:'read',sources:()=>['source:ledgerEditState']}])),
     ...Object.fromEntries(['muyu.blueprint_node_editor.initialize_read','muyu.blueprint_node_editor.initialize_preview','muyu.blueprint_node_editor.structure_read','muyu.blueprint_node_editor.structure_preview'].map(id=>[id,{effect:'read',sources:()=>['source:blueprintStructureState']}])),

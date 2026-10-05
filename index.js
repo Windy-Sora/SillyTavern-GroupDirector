@@ -1,10 +1,11 @@
 import { eventSource, event_types } from '../../../events.js';
 import { extension_settings, extensionNames, extensionTypes, getContext } from '../../../extensions.js';
-import { saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
+import { is_send_press, saveSettings as saveSettingsHost, saveSettingsDebounced, chat_metadata, saveChatConditional, getCurrentChatId, getRequestHeaders, characters, chat, setCharacterId, setCharacterName, setExtensionPrompt, extension_prompt_types, substituteParams } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 import { inject_ids } from '../../../constants.js';
-import { groups, selected_group } from '../../../group-chats.js';
-import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, selected_world_info, world_info } from '../../../world-info.js';
+import { getChatCompletionPreset } from '../../../openai.js';
+import { groups, selected_group, is_group_generating } from '../../../group-chats.js';
+import { checkWorldInfo, world_info_include_names, world_names, loadWorldInfo, createWorldInfoEntry, deleteWorldInfo, onWorldInfoChange, selected_world_info, world_info } from '../../../world-info.js';
 import { power_user } from '../../../power-user.js';
 import { user_avatar } from '../../../personas.js';
 import { EXT_KEY, MODE_OFF, MODE_FORMULA, MODE_LLM, DEFAULT_SETTINGS } from './settings.js';
@@ -2719,7 +2720,7 @@ customAgentSystem.refreshProviders();
 // ─── Init ─────────────────────────────────────────────────────────────
 eventSource.on(event_types.APP_READY, async () => {
     const deps = {
-        muyuProviderBindings, getMuyuProviders: getProviders, saveMuyuCredentials: saveSettingsConfirmed,
+        muyuProviderBindings, getMuyuProviders: getProviders, saveMuyuCredentials: saveSettingsConfirmed, getRequestHeaders,
         getMuyuSelectedPersona: () => user_avatar,
         getMuyuExtensionDirectory: () => ({ names: extensionNames, types: extensionTypes,
             disabled: Array.isArray(extension_settings.disabledExtensions) ? extension_settings.disabledExtensions : null }),
@@ -2733,6 +2734,37 @@ eventSource.on(event_types.APP_READY, async () => {
             return { names: world_names, global: selected_world_info, chat: getChatMetadata()?.world_info,
                 characterPrimary: selectedCharacter?.data?.extensions?.world, characterAdditional: additional,
                 persona: power_user?.persona_description_lorebook };
+        },
+        deleteWorldInfo,
+        setMuyuGlobalWorldBooks: names => {
+            const select=$('#world_info');if(!select.length || names.some(name=>!world_names.includes(name)))throw Error('WRITE_UNAVAILABLE');
+            select.val(names.map(name=>String(world_names.indexOf(name))));
+            onWorldInfoChange('__notSlashCommand__','');
+            select.trigger('change.select2');
+        },
+        getMuyuLivePreset: () => getChatCompletionPreset(),
+        getMuyuPresetBusy: () => is_send_press || is_group_generating || manualGenInProgress || isGroupChat,
+        getMuyuCharacterReferences: avatar => {
+            const context=getContext(),groups=context.groups,tags=context.tagMap,notes=extension_settings.note?.chara,lore=world_info?.charLore;
+            if(!Array.isArray(groups)||!tags||typeof tags!=='object'||Array.isArray(tags)||notes!==undefined&&!Array.isArray(notes)||lore!==undefined&&!Array.isArray(lore)||groups.some(g=>!Array.isArray(g.members)||g.members.some(m=>typeof m!=='string')||g.disabled_members!==undefined&&!Array.isArray(g.disabled_members)))return null;
+            const file=avatar.replace(/\.png$/,'');
+            const known=Number(context.characters?.[context.characterId]?.avatar===avatar)
+                + groups.filter(g=>g.members.includes(avatar)||g.disabled_members?.includes(avatar)).length
+                + Number(Object.hasOwn(tags,avatar))
+                + (notes||[]).filter(n=>n?.name===file).length + (lore||[]).filter(n=>n?.name===file).length
+                + (getChatMetadata()?.[EXT_KEY]?.npcs||[]).filter(n=>n?.importedAvatar===avatar).length;
+            return {known,unloadedReferences:'unknown'};
+        },
+        getMuyuWorldBookReferences: name => {
+            if(!Array.isArray(characters) || !Array.isArray(selected_world_info) || world_info?.charLore && !Array.isArray(world_info.charLore))return null;
+            const personas=power_user?.persona_descriptions || {};
+            if(typeof personas!=='object' || Array.isArray(personas))return null;
+            const known=selected_world_info.filter(n=>n===name).length + Number(getChatMetadata()?.world_info===name)
+                + characters.filter(c=>c?.data?.extensions?.world===name).length
+                + (world_info?.charLore||[]).filter(row=>row?.extraBooks?.includes(name)).length
+                + Object.values(personas).filter(p=>p?.lorebook===name).length
+                + Number(power_user?.persona_description_lorebook===name) + Number($('#character_world').val()===name);
+            return {known,unloadedChatReferences:'unknown'};
         },
         getMuyuAccount: async () => {
             const account = await import('../../../user.js');
@@ -2753,7 +2785,7 @@ eventSource.on(event_types.APP_READY, async () => {
         getDefaultProfileGeneratorPrompt, getDefaultProfileSchema, getDefaultProfileRenderTemplate,
         refreshProfileManagementUI, checkProfileStartupStatus, buildProfileLoaderPanel,
         detectCharacterChanges, validateAndWarnProfilePlaceholders,
-        toastr, world_names, loadWorldInfo, renderPrompt, worldBookScanner,
+        toastr, world_names, loadWorldInfo, createWorldInfoEntry, renderPrompt, worldBookScanner,
         getDirectorHistory, updateEntry, clearEntry,
         isRoundActive: () => isGroupChat,
         onLatestEntryEdited: () => { llmPickedSet = null; },

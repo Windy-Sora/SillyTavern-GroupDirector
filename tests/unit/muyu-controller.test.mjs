@@ -1,4 +1,22 @@
 test('Display preferences save independently without starting a model run or granting access', async () => {
+for(const operation of ['copy','save_current','update','select'])for(const access of ['normal','deny','full','preview'])test('ST preset controller / '+operation+' / '+access+' separates read and exact write approval',async()=>{
+    const {createStPresetEditor}=await import('../../muyu/host/st-preset-editor.js');let f,writes=0,selected='PRIVATE_NAME';
+    const names=['PRIVATE_NAME'],saved={PRIVATE_NAME:{temperature:1,prompts:[{identifier:'main',content:'PRIVATE_PROMPT',role:'system'}],prompt_order:[],proxy_password:'PRIVATE_SECRET'}};let live=structuredClone(saved.PRIVATE_NAME);
+    const manager={getAllPresets:()=>names,getSelectedPresetName:()=>selected,getCompletionPresetByName:name=>saved[name]};
+    const stPresetEditor=createStPresetEditor({getTarget:()=>f.host.globalTarget,getContext:()=>({mainApi:'openai',chatCompletionSettings:{bind_preset_to_connection:false},getPresetManager:()=>manager}),getLive:()=>live,isEditing:()=>false,
+        save:async(name,value)=>{writes++;saved[name]=value;if(!names.includes(name))names.push(name);},select:async name=>{writes++;selected=name;live=structuredClone(saved[name]);}});
+    const args={operation,selector:operation==='save_current'?'current':'preset:0',revision:'pending',changesJson:operation==='update'?'{"parameters":{"temperature":1.5}}':'{}',...(['copy','save_current'].includes(operation)?{name:'New preset'}:{}),...(operation==='select'?{replaceCurrent:true}:{}),...(access==='full'?{apply:true}:{})};
+    f=fixture([[tool('muyu.st_preset.preview',args),done],[text('Prepared'),done]],{stPresetEditor});await f.enable();f.controller.setMode('assistant');
+    if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+    args.revision=stPresetEditor.read(f.host.globalTarget,args.selector,stPresetEditor.list(f.host.globalTarget).revision,0).revision;
+    f.controller.setInput('Preview or apply this preset');f.controller.send();await settle();
+    if(['normal','deny'].includes(access)){const request=f.controller.snapshot().interaction;assert.equal(request.source,'stPresetContent');assert.equal(writes,0);f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();}
+    const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='st-preset-draft');
+    if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(writes,0);const action=f.controller.prepareStPresetApply(artifact.id,artifact.revision);await f.controller.approveStPresetApply(action.id);assert.throws(()=>f.controller.approveStPresetApply(action.id),/STALE/);}
+    assert.equal(writes,['deny','preview'].includes(access)?0:1);
+    if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:stPresetContent'));assert.doesNotMatch(JSON.stringify(artifact),/PRIVATE_SECRET/);assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NAME|PRIVATE_PROMPT|PRIVATE_SECRET|New preset/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,34);}
+    await f.controller.dispose();
+});
     let saved = null;
     const f = fixture([], { displayConfig: { read: () => ({ processDetail: 'compact' }), save: async value => { saved = value; } } });
     await f.controller.saveDisplayConfig({ processDetail: 'detailed' });
@@ -1873,6 +1891,62 @@ test('batch controller stop drains native first call and never starts the second
     f.controller.setInput('Generate and save'); f.controller.send(); await settle(); assert.deepEqual(calls, ['profile']);
     f.controller.stop(); await settle(); assert.equal(profile.isGenerating(), true); assert.deepEqual(saved, []);
     finish(); await settle(); assert.equal(profile.isGenerating(), false); assert.deepEqual(calls, ['profile']); assert.deepEqual(saved, []); assert.deepEqual(f.ctx.chatMetadata, {}); await f.controller.dispose();
+});
+
+for(const operation of ['update','create_entry','delete_entry','create_book','copy_book'])for(const access of ['normal','deny','full','preview'])test('World-book editor controller / '+operation+' / '+access+' preserves approval and shared-resource boundaries',async()=>{
+    const { createWorldBookEditorPort } = await import('../../muyu/host/worldbook-editor.js');
+    let f, saves=0, names=['PRIVATE_BOOK'], data={entries:{1:{uid:1,comment:'PRIVATE_NAME',content:'PRIVATE_BODY',key:['gold'],disable:false}}};
+    const worldBookEditor=createWorldBookEditorPort({getTarget:()=>f.host.globalTarget,getState:()=>({names}),load:async()=>structuredClone(data),save:async(name,next)=>{saves++;data=next;if(!names.includes(name))names.push(name);},refresh:async()=>{},createEntry:(_name,book)=>{const entry={uid:0,content:'',key:[],disable:false};book.entries[0]=entry;return entry;}});
+    const args={operation,selector:operation==='create_book'?'':['copy_book','create_entry'].includes(operation)?'book:0':'entry:0:0',revision:'pending',changesJson:['update','create_entry'].includes(operation)?'{"content":"NEW_BODY"}':'{}',...(['copy_book','create_book'].includes(operation)?{name:'NewBook'}:{}),...(access==='full'?{apply:true}:{})};
+    const step=tool('muyu.worldbook_editor.preview',args);
+    f=fixture([[step,done],[text('Prepared'),done]],{worldBookEditor,providerPort:{available:()=>true}});
+    await f.enable();f.controller.setMode('assistant');if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+    const dir=worldBookEditor.list(f.host.globalTarget),row=await worldBookEditor.read(f.host.globalTarget,'book:0',dir.revision,0);
+    args.revision=operation==='create_book'?dir.revision:row.revision;
+    f.controller.setInput('Preview this world-book change');f.controller.send();await settle();
+    if(['normal','deny'].includes(access)){const request=f.controller.snapshot().interaction;assert.equal(request.source,'stWorldBookEntries');assert.equal(saves,0);f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();}
+    const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='worldbook-edit-draft');
+    if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(saves,0);const action=f.controller.prepareWorldBookEditApply(artifact.id,artifact.revision);await f.controller.approveWorldBookEditApply(action.id);assert.throws(()=>f.controller.approveWorldBookEditApply(action.id),/STALE/);}
+    assert.equal(saves,['deny','preview'].includes(access)?0:1);
+    if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:stWorldBookEntries'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_BOOK|PRIVATE_NAME|PRIVATE_BODY|NEW_BODY/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,32);}
+    await f.controller.dispose();
+});
+for(const operation of ['set_global_binding','set_chat_binding','delete_book'])for(const access of ['normal','deny','full','preview'])test('ST world-book controls / '+operation+' / '+access+' requires exact scope and approval',async()=>{
+ const {createWorldBookControls}=await import('../../muyu/host/worldbook-controls.js');const {createWorldBookEditorPort}=await import('../../muyu/host/worldbook-editor.js');
+ let f,writes=0;const state={names:['Atlas'],global:[],chat:''},data={entries:{1:{uid:1,content:'PRIVATE_BODY'}}};
+ const controls=createWorldBookControls({getTarget:()=>f.host.globalTarget,getChatTarget:()=>f.host.currentTarget(),getState:()=>state,getReferences:()=>({known:0}),load:async()=>structuredClone(data),refresh:async()=>{},setGlobal:async names=>{writes++;state.global=names;},setChat:async name=>{writes++;state.chat=name;},remove:async()=>{writes++;state.names=[];return true;}});
+ const editor=createWorldBookEditorPort({getTarget:()=>f.host.globalTarget,getState:()=>state,load:async()=>structuredClone(data),controls});
+ const args={operation,selector:operation==='delete_book'?'book:0':'',revision:'pending',changesJson:operation==='set_global_binding'?'{"names":["Atlas"]}':operation==='set_chat_binding'?'{"name":"Atlas"}':'{}',...(access==='full'?{apply:true}:{})};
+ f=fixture([[tool('muyu.worldbook_editor.preview',args),done],[text('Prepared'),done]],{worldBookEditor:editor,providerPort:{available:()=>true}});await f.enable();f.controller.setMode('assistant');
+ if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+ if(operation==='delete_book'){const root=editor.list(f.host.globalTarget);args.revision=(await editor.read(f.host.globalTarget,'book:0',root.revision,0)).revision;}else args.revision=editor.bindingRead(f.host.globalTarget).revision;
+ f.controller.setInput('Preview requested operation');f.controller.send();await settle();
+ if(['normal','deny'].includes(access)){for(let i=0;i<3&&f.controller.snapshot().interaction?.status==='pending';i++){const request=f.controller.snapshot().interaction;assert.ok(['stWorldBooks','stWorldBookEntries'].includes(request.source));assert.equal(writes,0);f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();}}
+ const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='worldbook-edit-draft');
+ if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(writes,0);const pending=f.controller.prepareWorldBookEditApply(artifact.id,artifact.revision);await f.controller.approveWorldBookEditApply(pending.id);}
+ assert.equal(writes,['normal','full'].includes(access)?1:0);
+ if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:stWorldBooks'));assert.doesNotMatch(JSON.stringify(history.receipts),/Atlas|PRIVATE_BODY/);}
+ await f.controller.dispose();
+});
+for(const operation of ['update','copy','create','rename','delete'])for(const access of ['normal','deny','full','preview'])test('Character-card controller / '+operation+' / '+access+' isolates saved body and exact writes',async()=>{
+    const {createCharacterCardPort}=await import('../../muyu/host/character-cards.js');let f,writes=0,copies=0;
+    const rows=[{name:'PRIVATE_NAME',avatar:'Alice.png'}],cards={'Alice.png':{name:'PRIVATE_NAME',description:'PRIVATE_BODY',data:{description:'PRIVATE_BODY',extensions:{unknown:'PRIVATE_EXTENSION'}}}};
+    const characterCards=createCharacterCardPort({getTarget:()=>f.host.globalTarget,getDirectory:()=>rows,isEditing:()=>false,getReferences:()=>({known:0}),
+        load:async avatar=>({...structuredClone(cards[avatar]),avatar,json_data:JSON.stringify(cards[avatar])}),
+        save:async(avatar,changes)=>{writes++;Object.assign(cards[avatar],changes);Object.assign(cards[avatar].data,changes);},
+        duplicate:async avatar=>{copies++;cards['Alice_1.png']=structuredClone(cards[avatar]);return 'Alice_1.png';},
+        create:async values=>{writes++;cards['new.png']={...values,data:{...values}};return 'new.png';},remove:async avatar=>{writes++;delete cards[avatar];},exists:async avatar=>Object.hasOwn(cards,avatar)});
+    const args={operation,selector:operation==='create'?'':'card:0',revision:'pending',changesJson:['copy','delete'].includes(operation)?'{}':operation==='rename'?'{"name":"New Name"}':operation==='create'?'{"name":"New","description":"NEW_BODY"}':'{"description":"NEW_BODY"}',...(access==='full'?{apply:true}:{})};
+    f=fixture([[tool('muyu.character_card.preview',args),done],[text('Prepared'),done]],{characterCards});await f.enable();f.controller.setMode('assistant');
+    if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+    args.revision=operation==='create'?characterCards.list(f.host.globalTarget).revision:(await characterCards.read(f.host.globalTarget,'card:0',characterCards.list(f.host.globalTarget).revision,0)).revision;
+    f.controller.setInput('Preview or apply this saved card');f.controller.send();await settle();
+    if(['normal','deny'].includes(access)){let request=f.controller.snapshot().interaction;assert.equal(request.source,'stCharacterCardState');assert.equal(writes+copies,0);f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();if(operation==='delete'&&access==='normal'){request=f.controller.snapshot().interaction;assert.equal(request.source,'stCharacterCardReferences');f.controller.answerPermission(request.id,'task');await settle();}}
+    const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='character-card-draft');
+    if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(writes+copies,0);const action=f.controller.prepareCharacterCardApply(artifact.id,artifact.revision);await f.controller.approveCharacterCardApply(action.id);assert.throws(()=>f.controller.approveCharacterCardApply(action.id),/STALE/);}
+    assert.equal(writes+copies,['deny','preview'].includes(access)?0:1);
+    if(access==='deny')assert.equal(artifact,undefined);else{assert.ok(artifact);const history=JSON.parse(f.controller.exportHistory());assert.ok(history.required.includes('source:stCharacterCardState'));assert.doesNotMatch(JSON.stringify(history.receipts),/PRIVATE_NAME|Alice.png|PRIVATE_BODY|NEW_BODY|PRIVATE_EXTENSION/);if(access!=='preview')assert.equal(history.receipts.at(-1).version,33);}
+    await f.controller.dispose();
 });
 
 function fixture(steps = [[text('answer'), done]], extraHost = {}) {

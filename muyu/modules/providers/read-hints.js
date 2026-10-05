@@ -8,13 +8,13 @@ export const readHintSchema = { type: 'object', properties: {
     nextRead: { type: 'object', properties: { id: str(64), selector: str(32), revision: str(40), offset: { type: 'integer', minimum: 0, maximum: 131072 } }, required: ['id', 'selector', 'revision', 'offset'], additionalProperties: false },
 }, required: ['kind', 'selectorFormat', 'exampleSelector', 'recovery'], additionalProperties: false };
 
-const directories = new Set(['chatHistory', 'directorHistory', 'characters', 'charMemory', 'character_profiles', 'variables', 'variableDiagnostics', 'storyBlueprint', 'stWorldBookEntries', 'stPresets']);
-const examples = { chatHistory: 'range:0:20', directorHistory: 'range:0:10', characters: 'character:0', charMemory: 'character:0', character_profiles: 'character:0', variables: 'item:0', variableDiagnostics: 'item:0', storyBlueprint: 'node:0', stWorldBookEntries: 'book:0', stPresets: 'mode:0' };
+const directories = new Set(['chatHistory', 'directorHistory', 'characters', 'charMemory', 'character_profiles', 'variables', 'variableDiagnostics', 'storyBlueprint', 'stWorldBookEntries', 'stPresets', 'stPresetContent', 'stPromptOverview', 'stPromptText', 'stDiagnostics']);
+const examples = { chatHistory: 'range:0:20', directorHistory: 'range:0:10', characters: 'character:0', charMemory: 'character:0', character_profiles: 'character:0', variables: 'item:0', variableDiagnostics: 'item:0', storyBlueprint: 'node:0', stWorldBookEntries: 'book:0', stPresets: 'mode:0', stPresetContent: 'current', stPromptOverview: '', stPromptText: 'message:0', stDiagnostics: 'range:0:20' };
 
 /** Protocol hints only: never expose private directory evidence or authorize a read. */
 export function readHint(source, args, response, fresh = null) {
     const ok = ['ok', 'empty'].includes(response.status);
-    const directory = source.format === 'text' && directories.has(source.id) && (!args.selector || source.id === 'stWorldBookEntries' && /^book:\d+$/.test(args.selector) || source.id === 'stPresets' && /^mode:\d+$/.test(args.selector));
+    const directory = source.format === 'text' && directories.has(source.id) && (!args.selector || source.id === 'stWorldBookEntries' && /^(?:books:\d+|book:\d+|entries:\d+:\d+)$/.test(args.selector) || source.id === 'stPresets' && /^mode:\d+$/.test(args.selector) || source.id === 'stPresetContent' && /^(current|saved:\d+)$/.test(args.selector));
     const hint = { kind: !ok ? 'unavailable' : source.format === 'structured' ? 'structured' : directory ? 'directory' : 'content',
         selectorFormat: source.selector, exampleSelector: examples[source.id] || '',
         recovery: response.status === 'INVALID_SELECTOR' || response.status === 'INVALID_READ_ARGUMENTS' ? 'correct_selector' : response.status === 'STALE_SOURCE' || response.status === 'INVALID_CONTINUATION' ? 'read_directory' : ok ? 'none' : 'stop' };
@@ -24,6 +24,15 @@ export function readHint(source, args, response, fresh = null) {
     if (response.status === 'STALE_SOURCE') hint.error = { field: 'revision', expected: 'Source or directory changed: reread its directory, then use the newly returned revision or continuation.', retryable: true };
     if (response.status === 'BUDGET_EXCEEDED') hint.error = { field: 'budget', expected: 'Stop reading this run: the next page cannot fit the remaining byte budget. Report the unread gap; do not guess or request later offsets.', retryable: false };
     const next = (selector, revision, offset = 0) => ({ id: source.id, selector, revision, offset });
+    // Only inspect the fixed first-party directory projection, never body text.
+    if (ok && directory && response.nextOffset === -1 && ['stPromptOverview', 'stPromptText'].includes(source.id)) {
+        let metadata; try { metadata = JSON.parse(fresh?.text || ''); } catch { /* no inferred availability */ }
+        if (metadata?.available === false) {
+            hint.recovery = 'stop'; hint.exampleSelector = '';
+            hint.error = { field: 'source', expected: 'No captured prompt exists. Stop body reads; do not guess selectors or substitute other sources. Enabling capture only observes future builds, not old requests. Do not trigger generation.', retryable: false };
+            return hint;
+        }
+    }
     if (response.status === 'STALE_SOURCE') hint.nextRead = next('', '');
     else if (ok && response.nextOffset >= 0) hint.nextRead = next(args.selector, response.revision, response.nextOffset);
     else if (ok && directory && ['chatHistory', 'directorHistory'].includes(source.id)) {

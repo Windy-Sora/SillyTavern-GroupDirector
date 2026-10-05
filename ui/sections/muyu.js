@@ -2,12 +2,20 @@ import { createSkillPort } from '../../muyu/host/skills.js';
 import { UI_LABELS } from '../../muyu/ui/navigation-metadata.js';
 import { createSelectionEditorPort } from '../../muyu/host/selection-editor.js';
 import { createLedgerEditorPort } from '../../muyu/host/ledger-editor.js';
+import { createStPresetEditor } from '../../muyu/host/st-preset-editor.js';
+import { createNativePresetApi } from '../../muyu/host/native-preset-api.js';
+import { createCharacterCardPort } from '../../muyu/host/character-cards.js';
+import { createNativeCharacterApi } from '../../muyu/host/native-character-api.js';
+import { createWorldBookEditorPort } from '../../muyu/host/worldbook-editor.js';
+import { createWorldBookControls } from '../../muyu/host/worldbook-controls.js';
 import { createBlueprintNodeEditorPort } from '../../muyu/host/blueprint-node-editor.js';
 import { createNpcEditorPort } from '../../muyu/host/npc-editor.js';
 import { createProfileEditorPort } from '../../muyu/host/profile-editor.js';
 import { createMemoryEditorPort } from '../../muyu/host/memory-editor.js';
 import { registerSection } from './registry.js';
 import { createHostBridge } from '../../muyu/host/bridge.js';
+import { createStPromptSnapshots } from '../../muyu/host/st-prompt-snapshots.js';
+import { createStDiagnostics } from '../../muyu/host/st-diagnostics.js';
 import { createProfileWriter } from '../../muyu/host/profile-write.js';
 import { createConfigWriter } from '../../muyu/host/config-write.js';
 import { createMemoryLimitPort } from '../../muyu/host/memory-limit.js';
@@ -59,7 +67,11 @@ registerSection('muyu', ctx => {
     const owner = ctx.muyuOwner;
     owner.currentContext = ctx;
     if (!owner.controller) {
+        let host;
+        const stPromptSnapshots = createStPromptSnapshots({getContext:ctx.getContext,getTarget:()=>host?.currentTarget(),getSettings:()=>ctx.settings,saveSettings:ctx.saveMuyuCredentials});
+        const stDiagnostics = createStDiagnostics({ getContext: ctx.getContext, getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const providerPort = createProviderPort({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, bindings: ctx.muyuProviderBindings, getProviders: ctx.getMuyuProviders,
+            stDiagnostics, stPromptSnapshots,
             worldBooks: { getState: ctx.getMuyuWorldBookState, load: ctx.loadWorldInfo },
             stDirectories: { getSelectedPersona: ctx.getMuyuSelectedPersona, getExtensions: ctx.getMuyuExtensionDirectory } });
         const credentials = createCredentialStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
@@ -69,7 +81,6 @@ registerSection('muyu', ctx => {
         const instructionConfig = createInstructionConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const history = createHistoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
         const webSearch = createWebSearchPort({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
-        let host;
         const agentMemory = createAgentMemoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, getTarget: () => host?.currentTarget() });
         const memoryLimitPort = createMemoryLimitPort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY, memorySystem: ctx.memorySystem,
             changed: () => { const live = owner.currentContext || ctx; live.refreshMemoryList?.(); window.__gdRefreshDashboard?.(); } });
@@ -82,6 +93,35 @@ registerSection('muyu', ctx => {
         const selectionEditor = createSelectionEditorPort({getTarget:()=>host?.globalTarget,getSettings:()=>ctx.settings,getWorldNames:()=>(owner.currentContext||ctx).world_names,
             worldBookScanner:ctx.worldBookScanner,profileLibrarySystem:ctx.profileLibrarySystem,saveSettings:ctx.saveMuyuCredentials,
             isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;}});
+        const presetApi = createNativePresetApi({getContext:ctx.getContext,getHeaders:ctx.getRequestHeaders,fetch:globalThis.fetch?.bind(globalThis),getSelect:()=>document.getElementById('settings_preset_openai')});
+        const stPresetEditor = createStPresetEditor({getTarget:()=>host?.globalTarget,getContext:ctx.getContext,getLive:ctx.getMuyuLivePreset,save:presetApi.save,select:presetApi.select,
+            isBusy:()=>typeof ctx.getMuyuPresetBusy!=='function'||ctx.getMuyuPresetBusy(),
+            isEditing:()=>!globalThis.$||globalThis.$('#completion_prompt_manager_popup').is(':visible')});
+        const characterApi = createNativeCharacterApi({fetch:globalThis.fetch?.bind(globalThis),getHeaders:ctx.getRequestHeaders});
+        const characterIsEditing = avatar => { const context=ctx.getContext(); return context.characters?.[context.characterId]?.avatar===avatar && globalThis.$?.('#form_create').attr('actiontype')==='editcharacter'; };
+        const characterCards = createCharacterCardPort({getTarget:()=>host?.globalTarget,getDirectory:()=>ctx.getContext().characters,
+            load:characterApi.load,save:characterApi.save,duplicate:characterApi.duplicate,create:characterApi.create,remove:characterApi.remove,exists:characterApi.exists,getReferences:ctx.getMuyuCharacterReferences,isEditing:characterIsEditing,
+            isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;},
+            syncCache:(avatar,observed,created)=>{const context=ctx.getContext(),rows=context.characters;if(!Array.isArray(rows)||characterIsEditing(avatar))return;
+                if(created){if(!rows.some(c=>c.avatar===avatar))rows.push(observed);return;}
+                const current=rows.find(c=>c.avatar===avatar);if(!current)return;
+                // Do not reload the selected editor, change chat paths or overwrite unrelated runtime state.
+                const fields=['description','personality','scenario','first_mes','mes_example','system_prompt','post_history_instructions','creator_notes'];
+                for(const field of fields){const value=observed.data?.[field]??observed[field];if(typeof value==='string'){current[field]=value;if(current.data&&typeof current.data==='object')current.data[field]=value;}}
+                current.name=observed.name;if(current.data&&typeof current.data==='object')current.data.name=observed.data?.name??observed.name;
+                if(typeof observed.json_data==='string')current.json_data=observed.json_data;
+            }});
+        const worldBookEditor = createWorldBookEditorPort({ getTarget: () => host?.globalTarget, getState: ctx.getMuyuWorldBookState, load: ctx.loadWorldInfo,
+            controls:createWorldBookControls({getTarget:()=>host?.globalTarget,getChatTarget:()=>host?.currentTarget(),getState:ctx.getMuyuWorldBookState,
+                getReferences:ctx.getMuyuWorldBookReferences,load:ctx.loadWorldInfo,
+                refresh:()=>ctx.getContext().updateWorldInfoList(),remove:ctx.deleteWorldInfo,
+                setGlobal:ctx.setMuyuGlobalWorldBooks,
+                setChat:async(name,target)=>{if(JSON.stringify(host?.currentTarget())!==JSON.stringify(target))throw Error('TARGET_UNAVAILABLE');const metadata=ctx.getChatMetadata();if(name)metadata.world_info=name;else delete metadata.world_info;return ctx.getContext().saveMetadata();},
+                isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;}}),
+            createEntry: ctx.createWorldInfoEntry,
+            refresh: () => { const refresh = ctx.getContext()?.updateWorldInfoList; if (typeof refresh !== 'function') throw Error('WRITE_UNAVAILABLE'); return refresh(); },
+            save: (name, data, immediate) => { const save = ctx.getContext()?.saveWorldInfo; if (typeof save !== 'function') throw Error('WRITE_UNAVAILABLE'); return save(name, data, immediate); },
+            isBusy: () => { const guards = ctx.getMuyuGuards?.() || {}; return !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending; } });
         const ledgerEditor = createLedgerEditorPort({getTarget:()=>host?.currentTarget(),getMetadata:ctx.getChatMetadata,extensionKey:ctx.EXT_KEY,saveChatConfirmed:ctx.saveLedgerChatConfirmed,
             isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;},
             changed:index=>{const live=owner.currentContext||ctx;const history=live.getDirectorHistory?.()||[];
@@ -263,7 +303,7 @@ registerSection('muyu', ctx => {
                 return !!ctx.npcSystem?.isGenerating?.() || !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending;
             },
         }) : null;
-        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
+        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
         owner.controller = createMuyuController({ host });
         owner.floatingRegistry = createFloatingRegistry();
         owner.floatingRegistry.register({

@@ -15,13 +15,13 @@
 | 多模块配置方案（configuration-orchestration） | 跨模块读取、精确整单及分阶段执行 | 3 |
 | 聊天资料与历史分析（chat-context-analysis） | 正文、剧情／人物、账本、暮羽原文回读 | 1 |
 | 聊天变量与状态系统（variable-workbench） | 通用类型、定义／存储值、作用域迁移 | 2 |
-| 角色档案与NPC维护（character-npc-workbench） | 人工编辑、新建、单目标及整单业务生成 | 2 |
+| 角色档案、NPC与酒馆角色卡维护（character-npc-workbench） | 档案／NPC编辑与生成，角色卡正文、创建／复制／显示名／文本与保留聊天的受限删除 | 4 |
 | 资源库与配置档复用（resource-library-workflow） | 三种资源库、存包／应用、加载策略、配置档 | 4 |
-| Prompt与模板设计（prompt-template-workbench） | 功能Prompt、自定义条目、数据与输出示例 | 1 |
+| Prompt与模板设计（prompt-template-workbench） | 功能Prompt、自定义条目、预设管理；提示词构建与注册注入快照证据 | 3 |
 | 脚本与自定义Agent开发（script-agent-workbench） | 定义管理、合成检查、实际执行与费用 | 2 |
-| 世界书与酒馆资料核对（worldbook-workflow） | 绑定／正文／GD选择、ST目录只读 | 1 |
+| 世界书与酒馆资料核对（worldbook-workflow） | 正文／GD选择、ST预设只读、世界书及条目管理、全局／聊天绑定 | 5 |
 | 自动化与发言后策略（automation-workflow） | 总结／点评／PostSpeech、触发与开销 | 1 |
-| 暮羽连接与上下文排障（muyu-troubleshooting） | 连接、预算、历史／摘要、授权／存储排障 | 2 |
+| 暮羽连接与上下文排障（muyu-troubleshooting） | 连接、预算、历史／摘要、授权／存储、本页诊断与提示词构建快照排查 | 4 |
 | 技能编写与管理（skill-workbench） | 文档设计、用户CRUD、复制／启停／包格式 | 2 |
 | 暮羽界面与按钮指南（muyu-interface-guide） | 连接、显隐、历史导出、长期记忆及技能入口 | 2 |
 

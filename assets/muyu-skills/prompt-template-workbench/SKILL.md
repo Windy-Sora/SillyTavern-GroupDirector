@@ -2,10 +2,14 @@
 name: prompt-template-workbench
 display-name: Prompt与模板设计
 description: 用户希望修改功能Prompt、创建自定义Prompt数据源、调整输出示例或模板引用时使用；区别提示词、Schema和可执行Provider。
-version: "1.0"
+version: "1.3"
 ---
 
 # Prompt 与模板设计
+
+需要核对“实际构建了什么”时，可使用用户已开启的提示词构建快照；概况和正文独立授权，不能把注册注入项或构建事件说成最终网络发送证明。
+
+酒馆聊天补全预设是独立对象，不等于 GD 功能 Prompt。涉及预设复制、另存、修改或激活时，读取工作流中的专门合同；保存不激活，激活会替换当前运行配置并丢失未保存修改。
 
 先完整读取 references/workflow.md。先确定模板在哪个功能使用和想改变什么行为。直接承接已有对象，不把所有 Prompt 混成一个入口。
 

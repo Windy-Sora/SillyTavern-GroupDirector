@@ -1,4 +1,42 @@
 import test from 'node:test';
+for(const operation of ['copy','save_current','update','select'])for(const lang of ['zh','en'])test('ST preset review '+operation+' / '+lang+' folds full diff and requires exact approval',async()=>{
+    const f=fixture(lang,true,{initialMode:'assistant'});let prepared=0,approved=0;
+    f.state.artifacts=[{id:'draft',kind:'st-preset-draft',revision:1,sourceRunId:'r',content:{module:'st-preset-editor',operation,name:'<script>Preset</script>',before:{temperature:1},after:{temperature:1.5},warnings:['Saved resource and live settings are distinct']}}];
+    f.state.canApplyStPreset=true;f.state.stPresetActions=[];
+    f.controller.prepareStPresetApply=(id,revision)=>{assert.equal(id,'draft');assert.equal(revision,1);prepared++;};
+    f.controller.approveStPresetApply=id=>{assert.equal(id,'op');approved++;};
+    f.emit();assert.equal(f.find('script'),undefined);const summary=f.find('summary',lang==='en'?'Review complete approved changes':'查看完整批准差异');assert.ok(summary);assert.ok(!summary.parent.open);
+    await f.find('button',lang==='en'?'Review preset operation':'查看并执行预设操作').click();assert.equal(prepared,1);assert.equal(approved,0);
+    f.state.stPresetActions=[{id:'op',artifactId:'draft',revision:1,status:'pending'}];f.emit();
+    const labels={copy:['复制保存预设（不激活）','Copy saved preset (do not activate)'],save_current:['另存当前运行配置（不激活）','Save live settings as new preset (do not activate)'],update:['修改保存预设（不激活）','Edit saved preset (do not activate)'],select:['激活预设并替换当前参数与提示词','Activate preset, replacing live parameters and Prompts']};
+    await f.find('button',labels[operation][lang==='en'?1:0]).click();assert.equal(approved,1);assert.equal(f.sent.length,0);f.root.__gdMuyuDispose();
+});
+for(const operation of ['update','copy','create','rename','delete'])for(const lang of ['zh','en'])test('ST character-card review keeps full diff collapsed and requires one exact approval / '+operation+' / '+lang,async()=>{
+    const f=fixture(lang,true,{initialMode:'assistant'});let approved=0,prepared=0;
+    f.state.artifacts=[{id:'draft',kind:'character-card-draft',revision:1,sourceRunId:'r',content:{module:'character-card',operation,name:'<script>Card</script>',selector:'card:0',before:{description:'old'},after:{description:'new'},warnings:['Shared card affects all chats']}}];
+    f.state.canApplyCharacterCard=true;f.state.characterCardActions=[];
+    f.controller.prepareCharacterCardApply=(id,revision)=>{assert.equal(id,'draft');assert.equal(revision,1);prepared++;};
+    f.controller.approveCharacterCardApply=id=>{assert.equal(id,'op');approved++;};
+    f.emit();assert.equal(f.find('script'),undefined);const summary=f.find('summary',lang==='en'?'Complete approved changes':'完整批准差异');assert.ok(!summary.parent.open);
+    await f.find('button',lang==='en'?'Review character-card operation':'查看并执行角色卡操作').click();assert.equal(prepared,1);assert.equal(approved,0);
+    f.state.characterCardActions=[{id:'op',artifactId:'draft',revision:1,status:'pending'}];f.emit();
+    const labels={copy:['复制这张角色卡','Copy this character card'],create:['创建这张角色卡','Create this character card'],rename:['应用显示名修改','Apply display name change'],delete:['永久删除这张角色卡','Permanently delete this character card'],update:['应用这份文本修改','Apply these text changes']};
+    await f.find('button',labels[operation][lang==='en'?1:0]).click();assert.equal(approved,1);assert.equal(f.sent.length,0);f.root.__gdMuyuDispose();
+});
+for(const operation of ['update','create_entry','delete_entry','create_book','copy_book','set_global_binding','set_chat_binding','delete_book'])for(const lang of ['zh','en'])test('World-book entry card keeps diff collapsed and requires exact approval / '+operation+' / '+lang,async()=>{
+ const f=fixture(lang,true,{initialMode:'assistant'});let prepared=0,approved=0;
+ const bookOperation=['create_book','copy_book','delete_book'].includes(operation),binding=['set_global_binding','set_chat_binding'].includes(operation),deleting=operation==='delete_book';
+ f.state.artifacts=[{id:'draft',kind:'worldbook-edit-draft',revision:1,sourceRunId:'r',content:{module:'worldbook-editor',operation,name:'<script>Book</script>',selector:'entry:0:0',before:{content:'old'},after:operation==='delete_entry'?null:{content:'new'},warnings:['Shared resource: all chats']}}];
+ f.state.canApplyWorldBookEdit=true;f.state.worldBookEditActions=[];
+ f.controller.prepareWorldBookEditApply=(id,revision)=>{assert.equal(id,'draft');assert.equal(revision,1);prepared++;};
+ f.controller.approveWorldBookEditApply=id=>{assert.equal(id,'op');approved++;};
+ f.emit();assert.equal(f.find('script'),undefined);
+ const summary=f.find('summary',binding?(lang==='en'?'Complete binding changes':'完整绑定差异'):bookOperation?(lang==='en'?'Complete world-book contents':'完整世界书内容'):(lang==='en'?'Complete entry changes':'完整条目差异'));assert.ok(summary);assert.ok(!summary.parent.open);
+ await f.find('button',deleting?(lang==='en'?'Review and delete world book':'查看并删除整本世界书'):binding?(lang==='en'?'Review and change world-book binding':'查看并修改世界书绑定'):bookOperation?(lang==='en'?'Review and create world book':'查看并创建世界书'):(lang==='en'?'Review and apply world-book entry':'查看并应用世界书条目')).click();assert.equal(prepared,1);assert.equal(approved,0);
+ f.state.worldBookEditActions=[{id:'op',artifactId:'draft',revision:1,status:'pending'}];f.emit();
+ const label=deleting?(lang==='en'?'Permanently delete this world book':'永久删除这本世界书'):binding?(lang==='en'?'Apply this binding change':'应用这份绑定修改'):bookOperation?(lang==='en'?'Create this world book':'创建这份世界书'):operation==='delete_entry'?(lang==='en'?'Delete this complete entry':'删除这份完整条目'):(lang==='en'?'Apply these entry changes':'应用这份条目修改');
+ await f.find('button',label).click();assert.equal(approved,1);assert.equal(f.sent.length,0);f.root.__gdMuyuDispose();
+});
 for(const lang of ['zh','en'])for(const operation of ['create','delete','move'])test('Blueprint structure card '+operation+' / '+lang+' shows progress and exact approval',async()=>{
  const f=fixture(lang,true,{initialMode:'assistant'});let approved=0;
  const content={module:'blueprint-node-editor',operation,name:'Tree',selector:'blueprint-tree',affected:['a'],before:{progressTracks:{leaf:{doneSignals:[{nodeId:'a'}]}}},after:{progressTracks:{leaf:{doneSignals:[]}}},completion:{before:{exists:true,value:true},after:{exists:true,value:false}},warnings:['Full diff required']};

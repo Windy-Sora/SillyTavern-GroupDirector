@@ -96,12 +96,14 @@ function entrySearch(selector, entries) {
 
 export function readWorldBookEntries(selector, getState, load) {
     const state = snapshot(getState);
-    if (!selector) {
-        const names = state.names.slice(0, 80);
-        return { text: [`books=${state.names.length}; shown=${names.length}`, ...names.map((name, index) => `book[${index}] ${JSON.stringify(name)}`)].join('\n'),
-            limited: names.length < state.names.length, identity: state.names };
+    if (!selector || /^books:(0|[1-9]\d{0,3})$/.test(selector)) {
+        const start = selector ? Number(selector.slice(6)) : 0;
+        if (start > 0 && start >= state.names.length) throw Error('INVALID_SELECTOR');
+        const names = state.names.slice(start, start + 80), next = start + names.length < state.names.length ? start + names.length : -1;
+        return { text: [`books=${state.names.length}; shown=${names.length}; nextBooks=${next < 0 ? 'none' : 'books:' + next}`, ...names.map((name, index) => `book[${start + index}] ${JSON.stringify(name)}`)].join('\n'),
+            limited: next >= 0, identity: state.names };
     }
-    const match = /^(?:book:(0|[1-9]\d{0,3})|(?:search|entry):(0|[1-9]\d{0,3}):.+)$/.exec(selector);
+    const match = /^(?:book:(0|[1-9]\d{0,3})|(?:search|entry|entries):(0|[1-9]\d{0,3}):.+)$/.exec(selector);
     if (!match || selector.length > 32) throw Error('INVALID_SELECTOR');
     const bookIndex = validIndex(match[1] ?? match[2]);
     if (bookIndex < 0 || bookIndex >= state.names.length || typeof load !== 'function') throw Error('INVALID_SELECTOR');
@@ -111,11 +113,14 @@ export function readWorldBookEntries(selector, getState, load) {
         if (snapshot(getState).names[bookIndex] !== name) throw Error('STALE_SOURCE');
         const entries = bookEntries(data);
         const identity = entries.map(entry => [entry.uid, entry.comment, entry.keys, entry.secondary, entry.content, entry.disabled, entry.constant]);
-        if (selector.startsWith('book:')) {
-            const shown = entries.slice(0, 80);
-            return { text: [`book[${bookIndex}] ${JSON.stringify(name)}; entries=${entries.length}; shown=${shown.length}`, ...shown.map(entry =>
+        if (selector.startsWith('book:') || selector.startsWith('entries:')) {
+            const page = /^entries:(?:0|[1-9]\d{0,3}):(0|[1-9]\d{0,3})$/.exec(selector);
+            if (selector.startsWith('entries:') && !page) throw Error('INVALID_SELECTOR');
+            const start = page ? Number(page[1]) : 0; if (start > 0 && start >= entries.length) throw Error('INVALID_SELECTOR');
+            const shown = entries.slice(start, start + 80), next = start + shown.length < entries.length ? start + shown.length : -1;
+            return { text: [`book[${bookIndex}] ${JSON.stringify(name)}; entries=${entries.length}; shown=${shown.length}; nextEntries=${next < 0 ? 'none' : `entries:${bookIndex}:${next}`}`, ...shown.map(entry =>
                 `entry[${bookIndex}:${entry.index}] ${JSON.stringify(short(entry.comment))} keys=${entry.keys.length}/${entry.secondary.length} disabled=${entry.disabled} constant=${entry.constant}`)].join('\n'),
-                limited: shown.length < entries.length || shown.some(entry => entry.comment.length > 120), identity };
+                limited: next >= 0 || shown.some(entry => entry.comment.length > 120), identity };
         }
         if (selector.startsWith('search:')) return { ...entrySearch(selector, entries), identity };
         const detail = /^entry:(?:0|[1-9]\d{0,3}):(0|[1-9]\d{0,3})$/.exec(selector);
