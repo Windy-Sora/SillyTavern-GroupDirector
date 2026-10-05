@@ -14,6 +14,34 @@ function fixture(source = 'custom') {
         eventSource: events, eventTypes: { SETTINGS_UPDATED: 'settings', SECRET_ROTATED: 'secret', MAIN_API_CHANGED: 'api' } };
     return { ctx, calls, events, port: createHostModelConnection({ getContext: () => ctx }) };
 }
+
+test('ST reasoning models receive the frontend token contract without losing Muyu tools', async () => {
+    for (const [source, model] of [['openai', 'o3'], ['openai', 'o4-mini'], ['openai', 'gpt-5'], ['openai', 'gpt-5.4'], ['openrouter', 'openai/o3'], ['openrouter', 'openai/gpt-5']]) {
+        const f = fixture(source); f.ctx.chatCompletionSettings.custom_model = model;
+        const bound = f.port.bind();
+        await collect(bound.model, { ...request(), maxTokens: 8192 });
+        const payload = f.calls[0][0];
+        assert.equal(payload.max_completion_tokens, 8192, model);
+        assert.equal(Object.hasOwn(payload, 'max_tokens'), false, model);
+        assert.equal(payload.tools.length, 1); assert.equal(payload.messages[0].content, 'question');
+        assert.ok(bound.model.inspect(request()).requestBytes > 0);
+    }
+    for (const [source, model] of [['openai', 'gpt-4o'], ['custom', 'o3'], ['deepseek', 'deepseek-chat']]) {
+        const f = fixture(source); f.ctx.chatCompletionSettings.custom_model = model;
+        await collect(f.port.bind().model, { ...request(), maxTokens: 8192 });
+        assert.equal(f.calls[0][0].max_tokens, 8192);
+        assert.equal(Object.hasOwn(f.calls[0][0], 'max_completion_tokens'), false);
+    }
+});
+
+test('ST models whose frontend removes tools are rejected before requesting', () => {
+    for (const [source, model] of [['openai', 'o1-mini'], ['openrouter', 'openai/o1'], ['openai', 'gpt-5-chat-latest'], ['openrouter', 'openai/gpt-5-chat-latest']]) {
+        const f = fixture(source); f.ctx.chatCompletionSettings.custom_model = model;
+        assert.equal(f.port.describe().available, false);
+        assert.throws(() => f.port.bind(), /HOST_CONNECTION_UNSUPPORTED/);
+        assert.equal(f.calls.length, 0);
+    }
+});
 test('ST adapter delegates authentication, sends only Muyu messages/tools, and resumes tool pairs', async () => {
     const f = fixture(), context = {}, bound = f.port.bind(), r = request();
     f.ctx.ChatCompletionService.sendRequest = async (...args) => { f.calls.push(args); return response('', [{ id: 'c1', type: 'function', function: { name: 'muyu_tool_0', arguments: '{}' } }]); };

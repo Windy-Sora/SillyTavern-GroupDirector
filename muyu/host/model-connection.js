@@ -6,6 +6,26 @@ import { RUN_DEFAULTS } from '../core/budget.js';
 const SOURCES = new Set(['openai', 'custom', 'openrouter', 'deepseek']);
 const URLS = { openai: 'https://api.openai.com', openrouter: 'https://openrouter.ai/api', deepseek: 'https://api.deepseek.com' };
 
+// sendRequest does not perform ST's frontend model-specific token conversion.
+function mapHostPayload(payload, route) {
+    const result = { ...payload, ...route, stream: false, n: 1, use_sysprompt: true };
+    const openAI = route.chat_completion_source === 'openai' || route.chat_completion_source === 'openrouter';
+    const reasoning = openAI && /^(?:openai\/)?(?:o1|o3|o4)/.test(route.model);
+    const gpt5 = openAI && /gpt-5/.test(route.model);
+    if (reasoning || gpt5) {
+        result.max_completion_tokens = result.max_tokens;
+        delete result.max_tokens;
+        delete result.logprobs;
+        delete result.top_logprobs;
+        for (const key of ['frequency_penalty', 'presence_penalty', 'logit_bias', 'stop']) delete result[key];
+        if (reasoning || !/gpt-5\.(1|2|3|4)/.test(route.model)) {
+            delete result.temperature;
+            delete result.top_p;
+        }
+    }
+    return result;
+}
+
 /** Official ST service; only connection fields are inherited, never RP prompts/global tools. */
 export function createHostModelConnection({ getContext }) {
     let credentialEpoch = 0;
@@ -14,6 +34,8 @@ export function createHostModelConnection({ getContext }) {
         if (ctx.mainApi !== 'openai' || !settings || typeof ctx.ChatCompletionService?.sendRequest !== 'function' || typeof ctx.getChatCompletionModel !== 'function') throw modelError('HOST_CONNECTION_UNAVAILABLE');
         const source = settings.chat_completion_source, model = ctx.getChatCompletionModel(settings);
         if (!SOURCES.has(source) || typeof model !== 'string' || !model.trim() || model.length > 128) throw modelError('HOST_CONNECTION_UNSUPPORTED');
+        // ST removes tools for these models; never silently downgrade the agent protocol.
+        if (['openai', 'openrouter'].includes(source) && (/^(?:openai\/)?o1/.test(model) || /gpt-5-chat-latest/.test(model))) throw modelError('HOST_CONNECTION_UNSUPPORTED');
         // This ST backend does not forward the new DeepSeek thinking toggle.
         if (source === 'deepseek' && /reasoner/i.test(model)) throw modelError('HOST_CONNECTION_UNSUPPORTED');
         if (source === 'custom' && (settings.custom_include_body?.trim() || settings.custom_exclude_body?.trim())) throw modelError('HOST_CONNECTION_UNSUPPORTED');
@@ -33,7 +55,7 @@ export function createHostModelConnection({ getContext }) {
         const current = () => { if (capture().identity !== saved.identity) throw modelError('HOST_CONNECTION_CHANGED'); };
         const config = { ...saved.description, supportsTools: true, maxTokens: RUN_DEFAULTS.maxTokens };
         const model = createChatCompletionsAdapter({ config,
-            mapPayload(payload) { current(); return { ...payload, ...saved.route, stream: false, n: 1, use_sysprompt: true }; },
+            mapPayload(payload) { current(); return mapHostPayload(payload, saved.route); },
             async post(_config, payload, signal) {
                 assertActive(signal); current();
                 try {
