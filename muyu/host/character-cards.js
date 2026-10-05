@@ -2,6 +2,7 @@ import { copyJson, jsonKey } from '../core/json-contract.js';
 export const CHARACTER_TEXT_FIELDS=Object.freeze({description:'角色描述',personality:'性格',scenario:'场景',first_mes:'首条消息',mes_example:'示例对话',system_prompt:'系统提示词',post_history_instructions:'历史后指令',creator_notes:'创作者备注'});
 const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
 const avatarOk=v=>typeof v==='string'&&v.length<=200&&v.endsWith('.png')&&!/[\\/<>:"|?*\x00-\x1f]/.test(v)&&v!=='.png'&&v!== '..png';
+const unsupportedUpdateFields=persisted=>persisted.spec===undefined?['creator_notes','system_prompt','post_history_instructions']:[];
 export function createCharacterCardPort({getTarget,getDirectory,load,save,duplicate,create,remove,exists,getReferences,syncCache,isBusy=()=>false,isEditing=()=>true}) {
     const versions=new Map(),plans=new Map(),deleted=new Map();let directory=null,epoch=0,applying=false;
     function state(target){const actual=getTarget(),rows=getDirectory();if(!actual||actual.userKey!==target?.userKey||!['global','chat'].includes(target.kind))throw Error('TARGET_UNAVAILABLE');if(applying||isBusy())throw Error('CHARACTER_BUSY');
@@ -27,11 +28,12 @@ export function createCharacterCardPort({getTarget,getDirectory,load,save,duplic
             const data=object(c.raw.data)?c.raw.data:c.raw,metadata={};for(const field of ['creator','character_version','tags','alternate_greetings'])if(Object.hasOwn(data,field)){
                 const value=data[field];if(['tags','alternate_greetings'].includes(field)?!Array.isArray(value)||value.length>256||value.some(v=>typeof v!=='string'||v.length>12000):typeof value!=='string'||value.length>12000)throw Error('UNSUPPORTED_CHARACTER');metadata[field]=value;
             }
-            const result={name:c.raw.name,fields:fields(c.raw),metadata,worldBook:typeof data.extensions?.world==='string'?data.extensions.world:null,untrusted:true,scope:'shared-character-card',projection:'text fields and whitelisted metadata; no arbitrary extensions, json_data, chats or editor drafts',persistence:'server-observation-not-save-confirmation'};
+            const result={name:c.raw.name,fields:fields(c.raw),unsupportedUpdateFields:unsupportedUpdateFields(c.persisted),metadata,worldBook:typeof data.extensions?.world==='string'?data.extensions.world:null,untrusted:true,scope:'shared-character-card',projection:'text fields and whitelisted metadata; no arbitrary extensions, json_data, chats or editor drafts',persistence:'server-observation-not-save-confirmation'};
             return page(JSON.stringify(result),c.revision,offset);},
         async preview(target,args){if(!['update','copy','create','rename','delete'].includes(args.operation))throw Error('INVALID_CHARACTER_CARD');const creating=args.operation==='create',s=state(target);
             const c=creating?{s,identity:null,raw:{name:args.changes?.name},revision:directoryRevision(s)}:await capture(target,args.selector);if(c.revision!==args.revision||creating&&args.selector!=='')throw Error('STALE_CHARACTER_CARD');if(!creating&&isEditing(c.identity.avatar))throw Error('CHARACTER_EDITOR_OPEN');
             const changes=copyJson(args.changes);if(!object(changes)||['copy','delete'].includes(args.operation)&&Object.keys(changes).length||args.operation==='update'&&(!Object.keys(changes).length||Object.entries(changes).some(([k,v])=>!Object.hasOwn(CHARACTER_TEXT_FIELDS,k)||typeof v!=='string'||v.length>12000)))throw Error('INVALID_CHARACTER_CARD');
+            if(args.operation==='update'&&unsupportedUpdateFields(c.persisted).some(k=>Object.hasOwn(changes,k)))throw Error('UNSUPPORTED_CHARACTER');
             if(['create','rename'].includes(args.operation)&&(!nameOk(changes.name)||s.rows.some(r=>normalized(r.name)===normalized(changes.name)&&r.avatar!==c.identity?.avatar)))throw Error('INVALID_CHARACTER_NAME');
             if(args.operation==='rename'&&Object.keys(changes).some(k=>k!=='name')||creating&&Object.entries(changes).some(([k,v])=>k!=='name'&&(!Object.hasOwn(CHARACTER_TEXT_FIELDS,k)||typeof v!=='string'||v.length>12000)))throw Error('INVALID_CHARACTER_CARD');
             if(args.operation==='delete')references(c.identity.avatar);

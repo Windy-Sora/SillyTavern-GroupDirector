@@ -6,7 +6,7 @@
 
 - list：stCharacters，仅名称、card:N 与目录版本；read/preview：stCharacterCardState，独立角色卡正文来源。读取许可不授予写入。
 - read：保存卡的八项文本与 creator、character_version、tags、alternate_greetings、主世界书名称投影；不是任意扩展／raw json_data，不是编辑草稿或最终注入证据。每页6000字符、总投影131072字符，累计计入资料预算。
-- update：description、personality、scenario、first_mes、mes_example、system_prompt、post_history_instructions、creator_notes，每项最多12000字符，仅编辑已存在字段。指定字段同时映射到V1顶层与V2 data。未指定字段、未知元数据、头像、显示名和聊天路径不提交。
+- update：description、personality、scenario、first_mes、mes_example、system_prompt、post_history_instructions、creator_notes，每项最多12000字符，仅编辑已存在字段。指定字段同时提交顶层与data。按原始保存JSON而非酒馆转换后的读取视图判定格式：无spec的旧V1卡不支持修改创作者备注、系统提示词、历史后指令；read的unsupportedUpdateFields列明限制，包含任一受限字段的整份预览拒绝，不写入、不暗中迁移整卡。其他五项文本及显示名仍可修改。未指定字段、未知元数据、头像、显示名和聊天路径不提交。
 - copy：完整保存PNG（必须有json_data），保留未知字段与原显示名，宿主分配新文件名；不复制聊天、标签映射或外部附加世界书绑定，不切换聊天或选中角色。
 - create：空selector与目录revision，name最多80字符及可选八项文本。默认头像、空绑定，不上传文件；file_name为muyu-UUID，避免名字派生路径及覆盖已知卡。拒绝已加载目录标准化同名，不保证跨窗口显示名唯一。不选择角色、不切换聊天。
 - rename：仅顶层name和data.name的显示名修改，保留文件名／聊天目录／关联和旧消息。不是原生rename端点的迁移，不传其副作用给用户。

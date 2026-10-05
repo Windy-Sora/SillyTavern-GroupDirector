@@ -7,7 +7,7 @@ import { actionReceipt, receiptText, receiptContext, validateReceipt } from '../
 
 function fixture() {
     let target={kind:'global',userKey:'page:test'}, editing=false,busy=false,writes=0,copies=0,onSave=null,onCopy=null,onLoad=null,known=0,creates=0,removes=0,onCreate=null,onRemove=null;
-    const rows=[{name:'Alice',avatar:'Alice.png'}],saved={name:'Alice',description:'OLD',personality:'calm',scenario:'tavern',first_mes:'hello',mes_example:'example',system_prompt:'',post_history_instructions:'',creator_notes:'note',data:{name:'Alice',...Object.fromEntries(Object.keys(CHARACTER_TEXT_FIELDS).map(k=>[k,k==='description'?'OLD':''])),extensions:{world:'Atlas',unknown:'PRIVATE_EXTENSION'}}};
+    const rows=[{name:'Alice',avatar:'Alice.png'}],saved={spec:'chara_card_v2',spec_version:'2.0',name:'Alice',description:'OLD',personality:'calm',scenario:'tavern',first_mes:'hello',mes_example:'example',system_prompt:'',post_history_instructions:'',creator_notes:'note',data:{name:'Alice',...Object.fromEntries(Object.keys(CHARACTER_TEXT_FIELDS).map(k=>[k,k==='description'?'OLD':''])),extensions:{world:'Atlas',unknown:'PRIVATE_EXTENSION'}}};
     const cards={'Alice.png':saved},cache=[];
     const load=async avatar=>{if(onLoad)await onLoad(avatar);const card=cards[avatar];return {...structuredClone(card),avatar,json_data:JSON.stringify(card),date_last_chat:Date.now()};};
     const port=createCharacterCardPort({getTarget:()=>target,getDirectory:()=>rows,load,isEditing:()=>editing,isBusy:()=>busy,getReferences:()=>known===null?null:{known},
@@ -144,4 +144,33 @@ test('Character receipt has no names, paths or text and supports restored explan
     const r=actionReceipt({id:'op',artifactId:'a',revision:1,status:'applied_unconfirmed',content:{module:'character-card',selector:'card:0',operation:'copy',name:'PRIVATE'},result:{resourceSave:'unconfirmed'}});
     assert.equal(r.version,33);assert.doesNotMatch(JSON.stringify(r),/PRIVATE/);assert.match(receiptText(r,'zh'),/共享酒馆角色卡/);assert.match(receiptContext([r]),/Historical|历史|historical/);
     assert.throws(()=>validateReceipt({...r,selector:'../x.png'}),/INVALID/);
+});
+
+test('Legacy V1 saved format refuses three non-persisting fields despite a converted V2 read view',async()=>{
+    const target={kind:'global',userKey:'page:legacy'},original={name:'Legacy',description:'OLD',personality:'calm',scenario:'tavern',first_mes:'hello',mes_example:'example',creatorcomment:'old notes',private:'preserve'};
+    let saved=structuredClone(original),writes=0;
+    const api=createNativeCharacterApi({getHeaders:()=>({}),fetch:async(path,options)=>{
+        if(path.endsWith('/merge-attributes')){writes++;const {avatar,...changes}=JSON.parse(options.body);saved={...saved,...changes,data:{...saved.data,...changes.data}};return {ok:true};}
+        // ST exposes a V2 view but retains the original saved V1 JSON in json_data.
+        const data={...saved,creator_notes:saved.creatorcomment,system_prompt:'',post_history_instructions:''};
+        return {ok:true,text:async()=>JSON.stringify({...saved,spec:'chara_card_v2',data,avatar:'Legacy.png',json_data:JSON.stringify(saved)})};
+    }});
+    const port=createCharacterCardPort({getTarget:()=>target,getDirectory:()=>[{name:'Legacy',avatar:'Legacy.png'}],load:api.load,save:api.save,isEditing:()=>false});
+    const read=async()=>port.read(target,'card:0',port.list(target).revision),r=await read(),projection=JSON.parse(r.text);
+    assert.deepEqual(projection.unsupportedUpdateFields,['creator_notes','system_prompt','post_history_instructions']);assert.equal(projection.fields.creator_notes.value,'old notes');
+    for(const field of projection.unsupportedUpdateFields)for(const changes of [{[field]:'NEW'},{description:'NEW',[field]:'NEW'}]){
+        await assert.rejects(()=>port.preview(target,{operation:'update',selector:'card:0',revision:r.revision,changes}),/UNSUPPORTED_CHARACTER/);
+    }
+    assert.equal(writes,0);assert.deepEqual(saved,original);
+    for(const field of ['description','personality','scenario','first_mes','mes_example']){
+        const current=await read(),draft=await port.preview(target,{operation:'update',selector:'card:0',revision:current.revision,changes:{[field]:'NEW'}});
+        assert.equal((await port.apply(draft)).status,'applied_unconfirmed');assert.equal(saved[field],'NEW');
+    }
+    assert.equal(writes,5);assert.equal(saved.spec,undefined);assert.equal(saved.private,'preserve');assert.equal(saved.creatorcomment,'old notes');
+});
+test('V2 cards permit all eight text fields and format changes invalidate approved drafts',async()=>{
+    const f=fixture();assert.deepEqual(JSON.parse((await f.read()).text).unsupportedUpdateFields,[]);
+    for(const field of Object.keys(CHARACTER_TEXT_FIELDS)){const c=await f.draft({[field]:'NEW'});assert.equal((await f.port.apply(c)).status,'applied_unconfirmed');assert.equal(f.cards['Alice.png'].data[field],'NEW');}
+    const c=await f.draft({system_prompt:'NEXT'});delete f.cards['Alice.png'].spec;
+    await assert.rejects(()=>f.port.apply(c),/STALE/);assert.equal(f.writes(),8);
 });
