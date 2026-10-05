@@ -2747,10 +2747,12 @@ eventSource.on(event_types.APP_READY, async () => {
         getMuyuCharacterReferences: avatar => {
             const context=getContext(),groups=context.groups,tags=context.tagMap,notes=extension_settings.note?.chara,lore=world_info?.charLore;
             if(!Array.isArray(groups)||!tags||typeof tags!=='object'||Array.isArray(tags)||notes!==undefined&&!Array.isArray(notes)||lore!==undefined&&!Array.isArray(lore)||groups.some(g=>!Array.isArray(g.members)||g.members.some(m=>typeof m!=='string')||g.disabled_members!==undefined&&!Array.isArray(g.disabled_members)))return null;
+            const assignedTags=Object.hasOwn(tags,avatar)?tags[avatar]:[];
+            if(!Array.isArray(assignedTags)||assignedTags.some(id=>typeof id!=='string'||!id.length))return null;
             const file=avatar.replace(/\.png$/,'');
             const known=Number(context.characters?.[context.characterId]?.avatar===avatar)
                 + groups.filter(g=>g.members.includes(avatar)||g.disabled_members?.includes(avatar)).length
-                + Number(Object.hasOwn(tags,avatar))
+                + Number(assignedTags.length>0)
                 + (notes||[]).filter(n=>n?.name===file).length + (lore||[]).filter(n=>n?.name===file).length
                 + (getChatMetadata()?.[EXT_KEY]?.npcs||[]).filter(n=>n?.importedAvatar===avatar).length;
             return {known,unloadedReferences:'unknown'};
