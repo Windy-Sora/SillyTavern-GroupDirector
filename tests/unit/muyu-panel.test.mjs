@@ -482,6 +482,28 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
     mount(); return { root, state, controller, listeners, sent, configs, emit, find, all, mount, stops: () => stops };
 }
 
+for (const failed of [false, true]) test('ST probe cancelled by connection save unlocks after success or failure / ' + failed, async () => {
+    const f = fixture('en', true, { initialMode: 'assistant' });
+    const source = f.all().find(e => e.tag === 'select' && e.parent.textContent === 'Connection source');
+    source.value = 'st'; source.events.change?.();
+    f.controller.probeConnection = (_, { signal }) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(Error('aborted')), { once: true }));
+    let finish;
+    f.controller.configure = () => new Promise((resolve, reject) => {
+        f.state.resetting = true; f.emit();
+        finish = () => { f.state.resetting = false; f.state.enabled = !failed; f.emit(); if (failed) reject(Error('save failed')); else resolve(); };
+    });
+    const button = f.find('button', 'Test ST connection');
+    const testing = button.click(); assert.equal(button.disabled, true);
+    const enabling = f.find('button', 'Enable connection').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(button.disabled, true, 'saving still locks probing');
+    finish(); await enabling; await testing; f.emit();
+    assert.equal(button.disabled, false, 'transient probe lock must not survive saving');
+    let probes = 0; f.controller.probeConnection = async () => { probes++; };
+    await button.click(); assert.equal(probes, 1); assert.equal(button.disabled, false);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test('ST source hides independent setup and activates without copying a key / ' + lang, async () => {
     const f = fixture(lang, true, { initialMode: 'assistant' });
     f.state.hostConnection = { available: true, provider: 'custom', model: 'ST model', endpoint: 'https://host.test/v1' }; f.emit();

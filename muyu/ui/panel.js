@@ -82,7 +82,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     rememberKey.onchange = () => { if (!rememberKey.checked) autoConnect.checked = false; };
     autoConnect.onchange = () => { if (autoConnect.checked) rememberKey.checked = true; };
     const connect = button(t(...UI_LABELS.enableConnection), connectionForm.actions), disable = button(t('禁用连接', 'Disable connection'), connectionForm.actions);
-    const connectionFeedback = createFormFeedback({ doc, parent: connectionForm.actions, fields: [source, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect], buttons: [connect, disable, forgetKey, hostTest], lang,
+    const connectionFeedback = createFormFeedback({ doc, parent: connectionForm.actions, fields: [source, endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect], buttons: [connect, disable, forgetKey], lang,
         dirtyText: t('表单已修改，尚未启用这些修改。', 'Draft changed; these changes are not active.'), busyText: t('正在启用连接…', 'Enabling connection…'), savedText: t('连接已启用。', 'Connection enabled.'),
         errorText: error => error?.message === 'CREDENTIAL_SAVE_FAILED' ? t('密钥设置未能确认保存，输入已保留。', 'Credential settings could not be saved. Input retained.') : t('连接未能启用，输入已保留，请检查配置。', 'Connection could not be enabled. Input retained; check the configuration.') });
     const validateConnectionDraft = kind => validateConnectionFields(connectionForm, controller.snapshot().savedConnection, (field, code) => {
@@ -339,6 +339,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         connectionForm.refreshOptions();
         if (previousConnection !== lastConnection) connectionFeedback.rebase();
         connectionFeedback.update(s.resetting);
+        // Probe state is transient: do not cache it as the form's original disabled state.
+        hostTest.disabled = !!hostProbe || !!s.resetting || connectionFeedback.busy;
         connectionTools.setLocked(s.resetting || connectionFeedback.busy);
         const nearBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 60;
         const nextHistory = JSON.stringify([s.viewToken, s.messages]);
@@ -591,7 +593,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         hostTestStatus.textContent = t('正在测试酒馆连接…', 'Testing ST connection…');
         try { await controller.probeConnection({ source: 'st' }, { signal: probe.signal }); if (!disposed && !probe.signal.aborted) hostTestStatus.textContent = t('连接测试成功；工具调用兼容性尚未验证。', 'Connection test passed; tool-call compatibility is not yet verified.'); }
         catch (error) { if (!disposed && !probe.signal.aborted) { hostTestStatus.textContent = t('测试未成功，请检查酒馆连接及模型支持情况。', 'Test failed. Check the ST connection and model support.'); throw error; } }
-        finally { if (hostProbe === probe) { hostProbe = null; hostTest.disabled = false; } }
+        finally { if (hostProbe === probe) { hostProbe = null; hostTest.disabled = !!controller.snapshot().resetting || connectionFeedback.busy; } }
     });
     disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
