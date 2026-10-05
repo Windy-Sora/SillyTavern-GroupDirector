@@ -1,0 +1,133 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { loadBuiltinSkills } from '../../muyu/skills/builtin-loader.js';
+import { createSkillPort } from '../../muyu/host/skills.js';
+import { createSkillTaskRuntime } from '../../muyu/skills/task-runtime.js';
+import { identity } from './helpers/muyu-subject.mjs';
+import { BUILTIN_SKILL_MANIFEST } from '../../muyu/skills/builtin-manifest.js';
+
+const newNames = ['director-diagnosis', 'memory-maintenance', 'blueprint-workflow', 'configuration-orchestration'];
+const remainingNames = ['chat-context-analysis', 'variable-workbench', 'character-npc-workbench', 'resource-library-workflow', 'prompt-template-workbench', 'script-agent-workbench', 'worldbook-workflow', 'automation-workflow', 'muyu-troubleshooting', 'skill-workbench'];
+const readBuiltins = () => loadBuiltinSkills({ readText: path => readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8') });
+
+test('Third-round guides distinguish explicit independent goals and operation stages from approval count', async () => {
+    const packs = await readBuiltins();
+    for (const [name, revision, version, patterns] of [
+        ['configuration-orchestration', 3, '1.2', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
+        ['script-agent-workbench', 2, '1.1', [/阶段不等于固定审批次数/, /同一候选/, /trial／save/]],
+        ['resource-library-workflow', 4, '1.3', [/不是保留当前聊天旧蓝图/, /不保证这个目标/, /定向编辑方案/]],
+    ]) {
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);
+        const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
+        assert.ok(pack.package.files[0].text.includes(`version: "${version}"`));
+        for (const pattern of patterns) assert.match(pack.package.files[1].text, pattern);
+    }
+});
+const required = {
+    'director-diagnosis': [/lastChatLength/, /不是当前聊天长度/, /不是候选池大小/, /不证明那次生成成功/],
+    'memory-maintenance': [/NO_NEW_MEMORIES/, /两个保存域/, /trial 会调用/, /不是容量上限/],
+    'blueprint-workflow': [/连续完成前缀/, /已有空树不是未建立/, /不是深度合并/, /不自动启用蓝图/],
+    'configuration-orchestration': [/最多 6 个/, /最多 3 个/, /不是事务/, /partial 或 outcome_unknown/, /只读动作都标为 read/],
+    'chat-context-analysis': [/目录不是正文/, /不是 ST 聊天/, /不自动生成编辑草稿/, /拒/],
+    'variable-workbench': [/不是插件全局设置/, /resetValues/, /delta／append/, /保护/],
+    'character-npc-workbench': [/不会更新已导出 ST 卡/, /最多八步/, /trial 不是沙箱/, /不覆写任何已有状态/],
+    'resource-library-workflow': [/整树替换/, /save=true/, /scoreWeights/, /全跳过/],
+    'prompt-template-workbench': [/不是访问隔离/, /不是标准 JSON Schema/, /全部置为 disabled/, /不自动截断/],
+    'script-agent-workbench': [/trial 不是沙箱/, /不是确认发送／扣费/, /不证明业务正确/, /未知结果不另造票据/],
+    'worldbook-workflow': [/整个资源库的独立正文来源授权/, /不提供最终注入证明/, /runtimeActive 未知/, /整列表替换/],
+    'automation-workflow': [/不跳过或异步化/, /不是轮数/, /Capability 写入未开放/, /不是可执行动作数量/],
+    'muyu-troubleshooting': [/CONTEXT_LIMIT/, /不请求密钥原文/, /长期 note 和角色记忆是不同层/, /没有读取 CMD/],
+    'skill-workbench': [/content:policy/, /本任务固定|同任务固定快照/, /内置原件不能 update／delete/, /当前无专用 Skill export/],
+};
+
+async function catalogAll(port) {
+    const rows = []; let offset = 0;
+    do { const page = await port.catalog(offset); rows.push(...page.entries); offset = page.nextOffset; } while (offset !== -1);
+    return rows;
+}
+
+test('Revised guides retain live-test boundaries and publish new content revisions', async () => {
+    const packs = await readBuiltins();
+    const patterns = {
+        'director-diagnosis': [/不得据此说/, /筛选失效的证明/],
+        'variable-workbench': [/revision/, /合并规则/, /不是.*事务/],
+        'character-npc-workbench': [/船夫/, /事实核对/],
+        'resource-library-workflow': [/exportData.template/, /template.*null/],
+        'muyu-troubleshooting': [/全权限.*资料读取/, /历史.*独立现象/],
+        'skill-workbench': [/muyu.tools.list/, /select/, /显式传新版 load.*SKILL_STALE/, /下一新任务/],
+    };
+    for (const [name, checks] of Object.entries(patterns)) {
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'resource-library-workflow' ? 4 : 2);
+        const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
+        assert.match(pack.package.files[0].text, name === 'resource-library-workflow' ? /version: "1.3"/ : /version: "1.1"/);
+        for (const pattern of checks) assert.match(pack.package.files[1].text, pattern);
+    }
+});
+
+for (const name of [...newNames, ...remainingNames]) {
+    test(`Shipped ${name} loads complete independent instructions without granting permission or saving`, async () => {
+        let saves = 0;
+        const settings = {}, port = createSkillPort({ getSettings: () => settings, saveSettings: async () => { saves++; }, loadBuiltins: readBuiltins });
+        await port.ready(); const initialSaves = saves;
+        const task = createSkillTaskRuntime({ port, charge: () => true }); task.bindRun(identity); await task.prepare(identity.id);
+        const row = (await catalogAll(port)).find(row => row.id === `builtin:${name}`);
+        const query = { id: row.id, revision: String(row.revision), path: 'SKILL.md' };
+        const main = await task.load(identity.id, query);
+        assert.equal(main.complete, true); assert.equal(main.permissionGranted, false);
+        const reference = await task.load(identity.id, { ...query, path: 'references/workflow.md' });
+        assert.equal(reference.complete, true); assert.equal(reference.permissionGranted, false);
+        const packageRows = await readBuiltins(), pack = packageRows.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
+        for (const file of pack.package.files) {
+            assert.ok(task.project(identity.id).some(message => JSON.parse(message.content.split('\n')[1]).text === file.text));
+        }
+        assert.deepEqual(task.usage(identity.id)[0].paths, ['SKILL.md', 'references/workflow.md']);
+        assert.equal(saves, initialSaves);
+        const body = pack.package.files[1].text;
+        for (const pattern of required[name]) assert.match(body, pattern);
+        assert.match(body, /2026-10-05/);
+    });
+}
+
+test('Eighteen builtin skills remain discoverable through bounded catalog pages without projecting bodies', async () => {
+    const settings = {};
+    const port = createSkillPort({ getSettings: () => settings, saveSettings: async () => {}, loadBuiltins: readBuiltins });
+    await port.ready();
+    let offset = 0; const rows = [];
+    do {
+        const page = await port.catalog(offset);
+        assert.ok(page.entries.length <= 16);
+        assert.ok(new TextEncoder().encode(JSON.stringify(page)).length <= 8192);
+        assert.ok(page.nextOffset === -1 || page.nextOffset > offset);
+        assert.doesNotMatch(JSON.stringify(page), /# 技能开发和管理合同/);
+        rows.push(...page.entries); offset = page.nextOffset;
+    } while (offset !== -1);
+    assert.equal(rows.length, 18); assert.equal(new Set(rows.map(row => row.id)).size, 18);
+    assert.equal(rows.at(-1).id, 'builtin:muyu-interface-guide');
+});
+
+test('Remaining plugin skill evaluation questions cover all ten workflows with explicit boundary cases', async () => {
+    const cases = JSON.parse(await readFile(new URL('../fixtures/muyu-skills/remaining-evaluation.json', import.meta.url), 'utf8'));
+    assert.equal(cases.length, 40); assert.equal(new Set(cases.map(row => row.id)).size, 40);
+    for (const name of remainingNames) {
+        const rows = cases.filter(row => row.skill === name);
+        assert.equal(rows.length, 4); assert.ok(rows.some(row => row.kind === 'boundary'));
+    }
+    for (const row of cases) {
+        assert.ok(row.question.length > 8); assert.ok(row.expected.length); assert.ok(row.forbidden.length);
+    }
+});
+
+test('Plugin skill evaluation questions cover each skill and retain explicit expected and forbidden behavior', async () => {
+    const cases = JSON.parse(await readFile(new URL('../fixtures/muyu-skills/evaluation.json', import.meta.url), 'utf8'));
+    assert.equal(cases.length, 24); assert.equal(new Set(cases.map(row => row.id)).size, 24);
+    for (const name of newNames) {
+        const rows = cases.filter(row => row.skill === name);
+        assert.equal(rows.length, 6);
+        assert.ok(rows.some(row => row.kind === 'ambiguous'));
+        assert.ok(rows.some(row => row.kind === 'boundary'));
+    }
+    for (const row of cases) {
+        assert.ok(row.question.length > 8); assert.ok(row.expected.length); assert.ok(row.forbidden.length);
+    }
+});

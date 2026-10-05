@@ -1,5 +1,6 @@
 import { processTools } from '../application/process-store.js';
 import { formatBudget } from './budget-view.js';
+import { MODEL_STAGE_LABELS, modelDiagnosticStage } from '../core/model-diagnostics.js';
 
 const labels = {
     yielded: ['已交接，等待用户处理', 'Handed off for user input'],
@@ -63,8 +64,10 @@ export function createProcessView({ doc, lang = 'zh' }) {
                 for (const row of p.rows) {
                     const tool = row.tool ? local(processTools[row.tool] || ['未知工具', 'Unknown tool'], lang) + ' · ' : '';
                     const error = row.error ? ' · ' + row.error + ' · ' + local(errors[row.error] || ['安全错误（无原始详情）', 'Safe error (no raw details)'], lang) : '';
+                    const stage = modelDiagnosticStage(row.diagnosticStage);
+                    const diagnostic = stage ? ' · ' + local(['失败阶段：', 'Failure stage: '], lang) + local(MODEL_STAGE_LABELS[stage], lang) : '';
                     if (row.read) node('li', `${row.read.source} · ${row.read.status} · ${row.read.characters}` + local([' 字符', ' characters'], lang) + (row.read.truncated ? local([' · 内容未完整返回', ' · Partial content'], lang) : ''), view.list);
-                    node('li', tool + local(labels[row.type] || ['处理中', 'Processing'], lang) + ` #${row.attemptId}` + (row.durationMs === null ? '' : ` · ${row.durationMs} ms`) + error, view.list);
+                    node('li', tool + local(labels[row.type] || ['处理中', 'Processing'], lang) + ` #${row.attemptId}` + (row.durationMs === null ? '' : ` · ${row.durationMs} ms`) + error + diagnostic, view.list);
                 }
                 view.list.scrollTop = scrollTop;
             }

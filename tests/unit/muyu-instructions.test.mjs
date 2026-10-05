@@ -7,6 +7,29 @@ import { startMuyuRun } from '../../muyu/composition.js';
 import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { MUYU_PERSONA } from '../../muyu/instructions/persona.js';
 import { identity, registry, toolId, scriptedModel, request, call, text, done, createClock } from './helpers/muyu-subject.mjs';
+import { createProfileSystem } from '../../systems/profile-system.js';
+
+test('Assistant discovers unloaded capabilities and separates generated format from factual attribution', () => {
+    const base = composeInstructions('assistant').base;
+    assert.match(base, /能力未加载不等于不支持/);
+    assert.match(base, /muyu.tools.list先查目录并用select加载/);
+    assert.match(base, /人数上限不等于实际选人或未筛选/);
+    assert.match(base, /生成产物格式通过不证明内容正确/);
+    assert.match(base, /环境需求不等于角色身份/);
+    assert.doesNotMatch(composeReceiptInstructions().base, /muyu.tools.list/);
+});
+
+test('Default profile generation requires sourced roles and allows sparse tags instead of inventing a quota', () => {
+    const system = createProfileSystem({ settings: {} });
+    const prompt = system.getDefaultProfileGeneratorPrompt();
+    assert.match(prompt, /up to 6 evidence-based/);
+    assert.match(prompt, /fewer \(or none\)/);
+    assert.match(prompt, /Leave unsupported details unknown/);
+    assert.match(prompt, /environmental needs/);
+    assert.match(prompt, /does not establish that the speaker has that profession/);
+    assert.doesNotMatch(prompt, /array of 3-6/);
+    assert.ok(JSON.parse(system.getDefaultProfileSchema()).required.includes('tags'));
+});
 
 test('Unified assistant distinguishes chat bodies from static knowledge and describes reusable source grants', () => {
     const task = composeInstructions('assistant').task;

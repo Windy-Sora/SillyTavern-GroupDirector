@@ -2,7 +2,7 @@
 name: config-review
 display-name: 整体配置检查
 description: 用户希望整体检查 Group Director 配置、分析模块之间的配合关系时使用；仅检查，不自行修改。
-version: "1.1"
+version: "1.2"
 ---
 
 # 整体配置检查

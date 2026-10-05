@@ -155,7 +155,9 @@ Extract the following in JSON format ONLY (no prose, no code fences):
 Important:
 - Output ONLY valid JSON, no extra text.
 - summary must be under 200 characters.
-- tags must be an array of 3-6 single words or short phrases.
+- tags must be an array of up to 6 evidence-based single words or short phrases; use fewer (or none) when evidence is sparse.
+- Ground roles, traits, motives and relationships in the supplied information. Leave unsupported details unknown instead of filling gaps.
+- Keep the target character distinct from other speakers and environmental needs. Mentioning that a profession is needed does not establish that the speaker has that profession.
 - motivation must be under 300 characters.
 - relationships must be under 200 characters.`;
 }

@@ -14,6 +14,20 @@ const tc = (id = 'c1', args = '{"n":1}') => ({ id, type: 'function', function: {
 const request = () => ({ messages: [{ role: 'user', content: 'question' }], tools: registry().list() });
 const json = data => new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
 
+test('Protocol diagnostics report only closed phase tags, never payloads or causes, and do not retry', async () => {
+    const logs = []; let requests = 0;
+    const model = createChatCompletionsModel({ connection, onDiagnostic: value => logs.push(value), fetchImpl: async () => {
+        requests++; return json({ choices: [{ finish_reason: 'tool_calls', message: { role: 'assistant', content: 'PRIVATE_RESPONSE', reasoning_content: 'PRIVATE_THINKING', tool_calls: [] } }] });
+    } });
+    await assert.rejects(collect(model), /UNSUPPORTED_CAPABILITY|MODEL_PROTOCOL_ERROR/);
+    assert.deepEqual(logs, [{ stage: 'decode', status: 'failed' }]); assert.equal(requests, 1);
+    await assert.rejects(collect(model, { ...request(), tools: null }), /MODEL_PROTOCOL_ERROR/);
+    assert.deepEqual(logs[1], { stage: 'prepare', status: 'failed' }); assert.equal(requests, 1);
+    assert.doesNotMatch(JSON.stringify(logs), /PRIVATE|test-only|endpoint|cause|choices/);
+    const throwing = createChatCompletionsModel({ connection, onDiagnostic: () => { throw Error('OBSERVER_SECRET'); }, fetchImpl: async () => { throw Error('TRANSPORT_SECRET'); } });
+    await assert.rejects(collect(throwing), /MODEL_NETWORK_ERROR/);
+});
+
 test('Dynamic Skill guides preserve private thinking indices and stay inside measured request budget', async () => {
     const s = subject([response('', [tc()], { reasoning_content: 'PRIVATE_THINKING' }), response('Complete', [], { reasoning_content: 'Final' })], { connection: { ...connection, profile: 'deepseek', thinking: true } });
     const context = {}, first = request(), events = await collect(s.model, first, context);

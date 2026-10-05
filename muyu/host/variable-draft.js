@@ -1,5 +1,6 @@
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { normalizeDefinition, slugifyId } from '../../systems/variable-system.js';
+import { BUNDLE_VARIABLE_SCOPE } from '../config/bundle-policy.js';
 
 const forbidden = new Set(['__proto__', 'constructor', 'prototype']);
 const editable = ['label', 'rule', 'autoUpdate', 'injectMode', 'updateMode', 'min', 'max', 'showInDashboard'];
@@ -32,7 +33,7 @@ export function createVariableDraftPort({ getTarget, getMetadata, extensionKey }
         if (slugifyId(id) !== id || forbidden.has(id) || !/^[a-z0-9_]{1,64}$/.test(id)) throw Error('INVALID_VARIABLE_ID');
         const baseline = inspect(target, id);
         if (input.action === 'create' ? baseline.occupied : !baseline.definition) throw Error(input.action === 'create' ? 'VARIABLE_ID_COLLISION' : 'VARIABLE_NOT_FOUND');
-        if (input.action === 'update' && (baseline.definition.scope !== 'global' || baseline.definition.type !== 'number')) throw Error('UNSUPPORTED_VARIABLE_DEFINITION');
+        if (input.action === 'update' && (baseline.definition.scope !== BUNDLE_VARIABLE_SCOPE || baseline.definition.type !== 'number')) throw Error('UNSUPPORTED_VARIABLE_DEFINITION');
         const patch = Object.fromEntries(editable.filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]]));
         if (input.action === 'create') {
             if (typeof input.label !== 'string' || !input.label.trim() || typeof input.rule !== 'string' || !input.rule.trim() ||
@@ -41,7 +42,7 @@ export function createVariableDraftPort({ getTarget, getMetadata, extensionKey }
         } else if (Object.hasOwn(input, 'initialValue') || !Object.keys(patch).length) throw Error('INVALID_VARIABLE_CHANGE');
         const before = input.action === 'create' ? null : normalizeDefinition(baseline.definition);
         const definition = input.action === 'create' ? {
-            id, label: input.label.trim(), labelZh: '', scope: 'global', type: 'number', defaultValue: input.initialValue,
+            id, label: input.label.trim(), labelZh: '', scope: BUNDLE_VARIABLE_SCOPE, type: 'number', defaultValue: input.initialValue,
             rule: input.rule.trim(), ruleZh: '', autoUpdate: input.autoUpdate, injectMode: input.injectMode,
             updateMode: input.updateMode, min: input.min ?? null, max: input.max ?? null,
             enumValues: [], showInDashboard: input.showInDashboard !== false, locked: false, dashboardOrder: 100,

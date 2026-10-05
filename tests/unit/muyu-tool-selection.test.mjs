@@ -13,6 +13,13 @@ function registry() {
     r.seal(); return r;
 }
 const call = (id, toolId, args = {}) => request({ callId: id, toolId, version: 1, args });
+test('Tool directory advertises discovery before denying unloaded Skill management without conferring permission', () => {
+    const definition = createToolboxModule().registry.list().find(tool => tool.id === 'muyu.tools.list');
+    assert.match(definition.description, /unselected, not unsupported/);
+    assert.match(definition.description, /BEFORE denying a capability/);
+    assert.match(definition.description, /NOT the whole management API/);
+    assert.match(definition.description, /not permission/);
+});
 test('Tool selection makes every optional group reachable without truncating or granting permission', () => {
     const r = registry(), selector = createToolSelection(r.list(), r.list().map(d => d.id));
     assert.equal(selector.enabled, true); assert.equal(selector.select().length, 2);

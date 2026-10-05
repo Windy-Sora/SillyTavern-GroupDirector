@@ -1,4 +1,5 @@
 import { HISTORY_LIMITS } from '../sessions/contract.js';
+import { UI_LABELS } from './navigation-metadata.js';
 
 /** Explicit inline confirmations; no business operation is inferred from model text. */
 export function createHistoryActions({ doc, importRoot, exportRoot, parent, controller, act, t }) {
@@ -27,8 +28,8 @@ export function createHistoryActions({ doc, importRoot, exportRoot, parent, cont
         try { const a = doc.createElement('a'); a.href = url; a.download = format === 'markdown' ? 'muyu-conversation.md' : 'muyu-conversation.json'; a.click(); }
         finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
     }
-    const exportJSON = button(t('导出当前对话 JSON', 'Export current conversation JSON'), exportRoot);
-    const exportMD = button(t('导出当前对话 Markdown', 'Export current conversation Markdown'), exportRoot);
+    const exportJSON = button(t(...UI_LABELS.exportJSON), exportRoot);
+    const exportMD = button(t(...UI_LABELS.exportMarkdown), exportRoot);
     exportJSON.onclick = () => act(() => download('json')); exportMD.onclick = () => act(() => download('markdown'));
     const importer = node('details', '', importRoot); node('summary', t('导入只读备份', 'Import read-only backup'), importer);
     node('p', t('最多 2 MiB 的单会话 JSON。保留原始归属说明，生成新记录；不会覆盖已有对话、恢复授权或调用模型。', 'One conversation JSON, up to 2 MiB. Preserves original scope as a new record; never overwrites, restores grants or calls a model.'), importer);

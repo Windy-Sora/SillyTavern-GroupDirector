@@ -2,7 +2,7 @@
 name: provider-workbench
 display-name: 用户 Provider 开发与测试
 description: 用户要创建、修改、删除或合成测试用户 Provider 数据源和占位符时使用；核对资产身份、完整源码和精确版本，区分预览、测试、导入与真实 render。只读取聊天或询问 Provider 概念无需此流程。
-version: "1.0"
+version: "1.1"
 ---
 
 # 用户 Provider 开发与测试

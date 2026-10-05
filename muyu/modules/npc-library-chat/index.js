@@ -1,6 +1,7 @@
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createDraftRuns } from '../draft-runs.js';
+import { prepareLibraryPreview } from '../library-preview-result.js';
 const str = maxLength => ({ type: 'string', maxLength });
 export function createNpcLibraryChatModule({ port, charge }) {
     const registry = createToolRegistry(), runs = createDraftRuns(port);
@@ -19,7 +20,9 @@ export function createNpcLibraryChatModule({ port, charge }) {
         const run=runs.get(ctx.runId);
         if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
         runs.discardCandidate(ctx.runId);
-        const content=operation==='capture'?port.capture(args,ctx.target):port.prepareApply(args,ctx.target);
+        const prepared=prepareLibraryPreview(()=>operation==='capture'?port.capture(args,ctx.target):port.prepareApply(args,ctx.target));
+        if(prepared.response)return prepared.response;
+        const content=prepared.content;
         const candidateId='library-chat:'+crypto.randomUUID();run.candidate={candidateId,content};
         return {candidateId,text:JSON.stringify({state:'draft_only',operation,name:content.name,count:content.count,skipped:content.skipped,importsGlobalTemplate:!!content.template,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
     }

@@ -1,6 +1,21 @@
 // Metadata only. Content lives in independently maintained Markdown resources.
 export const BUILTIN_SKILL_MANIFEST = Object.freeze([
-    Object.freeze({ name: 'config-review', revision: 2, files: Object.freeze(['SKILL.md', 'references/checklist.md']) }),
+    Object.freeze({ name: 'config-review', revision: 3, files: Object.freeze(['SKILL.md', 'references/checklist.md']) }),
     Object.freeze({ name: 'currency-system', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
-    Object.freeze({ name: 'provider-workbench', revision: 1, files: Object.freeze(['SKILL.md', 'references/contracts.md']) }),
+    Object.freeze({ name: 'provider-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/contracts.md']) }),
+    Object.freeze({ name: 'director-diagnosis', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'memory-maintenance', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'blueprint-workflow', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'configuration-orchestration', revision: 3, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'chat-context-analysis', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'variable-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'character-npc-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'resource-library-workflow', revision: 4, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'prompt-template-workbench', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'script-agent-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'worldbook-workflow', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'automation-workflow', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'muyu-troubleshooting', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'skill-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
+    Object.freeze({ name: 'muyu-interface-guide', revision: 1, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
 ]);

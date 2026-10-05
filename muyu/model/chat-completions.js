@@ -141,7 +141,7 @@ function decode(data, byName, connection) {
 }
 
 /** Caller owns run timeout; credentials remain private to this adapter, never snapshots. */
-export function createChatCompletionsModel({ connection, fetchImpl, transportLimits, onUsage = () => {} }) {
+export function createChatCompletionsModel({ connection, fetchImpl, transportLimits, onUsage = () => {}, onDiagnostic = () => {} }) {
     const config = validateConnection(connection);
     const post = createHttpTransport({ fetchImpl, ...transportLimits });
     const histories = new WeakMap();
@@ -150,8 +150,9 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
         inspect(request, context) { return measurePayload(prepare(request, config, histories.get(context) || new Map(), toolMappings.get(context) || new Map()).payload); },
         releaseContext(context) { histories.delete(context); toolMappings.delete(context); },
         capabilities: Object.freeze({ tools: config.supportsTools, streaming: false, requestAbort: true, usage: 'optional', reasoning: config.thinking }),
-        async *run(request, { signal, context, onUsage: reportUsage = () => {} }) {
+        async *run(request, { signal, context, onUsage: reportUsage = () => {}, onDiagnostic: reportDiagnostic = onDiagnostic }) {
             assertActive(signal);
+            let stage = 'prepare';
             try {
                 let privateHistory = context && histories.get(context);
                 if (!privateHistory) { privateHistory = new Map(); if (context) histories.set(context, privateHistory); }
@@ -160,8 +161,12 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
                 const measured = measurePayload(payload);
                 if (request.inputTokenLimit !== undefined && (!Number.isSafeInteger(request.inputTokenLimit) || request.inputTokenLimit < 4096 || request.inputTokenLimit > MAX_MANUAL_INPUT_TOKENS)) fail();
                 if (measured.requestBytes > MAX_REQUEST_BYTES || request.inputTokenLimit && measured.estimatedTokens > request.inputTokenLimit) throw modelError('CONTEXT_LIMIT');
-                const { events, usage, reasoning, signature } = decode(await post(config, payload, signal), byName, effectiveConnection);
+                stage = 'transport';
+                const data = await post(config, payload, signal);
+                stage = 'decode';
+                const { events, usage, reasoning, signature } = decode(data, byName, effectiveConnection);
                 assertActive(signal);
+                stage = 'history';
                 if (context && typeof context === 'object') toolMappings.set(context, knownTools);
                 if (effectiveConnection.thinking) {
                     const size = [...privateHistory.values()].reduce((sum, value) => sum + new TextEncoder().encode(value.reasoning).length, 0);
@@ -170,9 +175,12 @@ export function createChatCompletionsModel({ connection, fetchImpl, transportLim
                 }
                 try { onUsage(usage === null ? null : { ...usage }); } catch { /* Diagnostics cannot control execution. */ }
                 try { reportUsage(usage === null ? null : { ...usage }); } catch { /* Isolated per-run usage reporting. */ }
+                stage = 'emit';
                 for (const event of events) { assertActive(signal); yield event; }
                 yield { type: 'done' };
             } catch (error) {
+                // Only locally chosen phase tags, never API payloads, errors, or reasoning.
+                try { reportDiagnostic(Object.freeze({ stage, status: 'failed' })); } catch { /* Cannot change execution. */ }
                 assertActive(signal);
                 if (error instanceof ExecutionError) throw error;
                 throw modelError('MODEL_PROTOCOL_ERROR');

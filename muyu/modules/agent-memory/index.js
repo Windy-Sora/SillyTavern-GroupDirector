@@ -10,6 +10,10 @@ const output = obj({ status: { type: 'string', enum: ['ok', 'saved', 'removed', 
 const result = (status, fields = {}) => ({ status, id: '', revision: 0, text: '', nextOffset: -1, remainingBytes: 0, items: [], ...fields });
 output.properties.coverage = obj({ query: str(120), kind: { type: 'string', enum: ['query_matches', 'visible_inventory'] }, matchedCount: int(0, 256), offset: int(0, 256), complete: { type: 'boolean' }, scope: { type: 'string', enum: ['account-and-current-chat'] } });
 output.properties.writeReceipt = obj({ scope: { type: 'string', enum: ['chat', 'account'] }, recallMode: { type: 'string', enum: ['on_demand'] }, automaticContextInjection: { type: 'boolean', enum: [false] }, creationStatus: { type: 'string', enum: ['not_reported'] }, semanticDuplicateCheck: { type: 'string', enum: ['not_performed'] } });
+output.properties.recovery = obj({ retryRecommended: { type: 'boolean', enum: [false] }, notice: str(800) });
+const recovery = status => result(status, { recovery: { retryRecommended: false, notice: status === 'save_unknown'
+    ? 'A save was attempted, but persistence is unconfirmed. Lead with that uncertainty, not saved/remembered. Do not retry; inspect in the long-term memory editor.'
+    : 'No write started: current user intent, exact quote, named existing note and scope requirements were not satisfied. Semantic similarity does not authorize an update. Do not create a duplicate or rewrite intent to bypass rejection; ask the user to explicitly name the note for update or use the editor.' } });
 const meta = note => ({ id: note.id, revision: note.revision, title: note.title, scope: note.scope, length: note.content.length });
 const rememberIntent = /^\s*(?:(?:请|帮我|麻烦|暮羽[，,:：\s]*|please\s+)\s*)?(?:(?:全局|在所有聊天|跨聊天|账户内|globally\s+|for all chats\s+)\s*)?(?:记住|记下|remember\b|更新.*(?:偏好|约定)|update.*(?:note|preference))/i;
 const forgetIntent = /^\s*(?:(?:请|帮我|麻烦|暮羽[，,:：\s]*|please\s+)\s*)?(?:忘掉|忘记|删除|forget\b|delete\b|remove\b)/i;
@@ -58,24 +62,24 @@ export function createAgentMemoryModule({ port, budget = () => 6000, used = null
             if (!enabled(ctx)) return result('disabled');
             const question = runs.get(ctx.runId).question;
             if (!quote.trim() || !question.includes(quote) || !rememberIntent.test(question) ||
-                scope === 'account' && (!accountIntent.test(question) || scopeConflict.test(question)) || !!id !== (revision !== null)) return result('invalid_intent');
+                scope === 'account' && (!accountIntent.test(question) || scopeConflict.test(question)) || !!id !== (revision !== null)) return recovery('invalid_intent');
             const previous = id ? await port.get(id, ctx.target) : null;
             if (id && (!previous || previous.revision !== revision)) return result('stale');
-            if (id && (!question.includes(previous.title) && !question.includes(id) || previous.scope !== scope)) return result('invalid_intent');
+            if (id && (!question.includes(previous.title) && !question.includes(id) || previous.scope !== scope)) return recovery('invalid_intent');
             if (!enabled(ctx)) return result('disabled');
             try {
                 const note = await port.save({ title: previous?.title || quote.slice(0, 80), content: quote, scope }, { target: ctx.target, id, revision, origin: 'user-quote', signal: ctx.signal });
                 return result('saved', { id: note.id, revision: note.revision, writeReceipt: { scope: note.scope, recallMode: 'on_demand', automaticContextInjection: false, creationStatus: 'not_reported', semanticDuplicateCheck: 'not_performed' } });
-            } catch (e) { return result(e.message === 'NOTE_CONFLICT' ? 'stale' : e.message === 'NOTE_SAVE_UNKNOWN' ? 'save_unknown' : 'unavailable'); }
+            } catch (e) { return e.message === 'NOTE_SAVE_UNKNOWN' ? recovery('save_unknown') : result(e.message === 'NOTE_CONFLICT' ? 'stale' : 'unavailable'); }
         },
         'muyu.notes.forget': async ({ id, revision }, ctx) => {
             if (!enabled(ctx)) return result('disabled');
             const note = await port.get(id, ctx.target), question = runs.get(ctx.runId).question;
             if (!note || note.revision !== revision) return result('stale');
-            if (!forgetIntent.test(question) || !question.includes(note.title) && !question.includes(id)) return result('invalid_intent');
+            if (!forgetIntent.test(question) || !question.includes(note.title) && !question.includes(id)) return recovery('invalid_intent');
             if (!enabled(ctx)) return result('disabled');
             try { await port.remove(id, revision, ctx.target, ctx.signal, true); return result('removed', { id, revision }); }
-            catch (e) { return result(e.message === 'NOTE_CONFLICT' ? 'stale' : e.message === 'NOTE_SAVE_UNKNOWN' ? 'save_unknown' : 'unavailable'); }
+            catch (e) { return e.message === 'NOTE_SAVE_UNKNOWN' ? recovery('save_unknown') : result(e.message === 'NOTE_CONFLICT' ? 'stale' : 'unavailable'); }
         },
     };
     for (const id of ['muyu.notes.remember', 'muyu.notes.forget']) {

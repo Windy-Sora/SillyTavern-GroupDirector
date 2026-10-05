@@ -3,6 +3,7 @@ export { toolLabels as processTools } from '../modules/catalog.js';
 import { toolLabels as processTools } from '../modules/catalog.js';
 import { providerCatalog } from '../modules/providers/catalog.js';
 import { projectBudget } from '../core/budget.js';
+import { modelDiagnosticStage } from '../core/model-diagnostics.js';
 import { MAX_MANUAL_INPUT_TOKENS, MAX_CONTEXT_MESSAGES, projectContext, projectCoverage } from '../context/policy.js';
 const codes = new Set(['PERMISSION_DENIED', 'INVALID_ARGUMENT', 'CALL_ID_CONFLICT', 'UNSUPPORTED_CAPABILITY', 'TARGET_UNAVAILABLE', 'UPSTREAM_PENDING', 'OUTPUT_INVALID', 'TIMEOUT', 'TOOL_FAILED', 'CANCELLED', 'BUDGET_EXCEEDED', 'MODEL_NETWORK_ERROR', 'MODEL_AUTH_ERROR', 'MODEL_RATE_LIMIT', 'MODEL_SERVICE_ERROR', 'MODEL_HTTP_ERROR', 'MODEL_PROTOCOL_ERROR', 'MODEL_HISTORY_UNAVAILABLE', 'MODEL_OUTPUT_TRUNCATED', 'MODEL_FAILED', 'START_FAILED', 'SUMMARY_TOO_LARGE', 'SUMMARY_NOT_SMALLER']);
 const safeCode = value => codes.has(value) ? value : value ? 'UNKNOWN_ERROR' : null;
@@ -58,6 +59,8 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
             if (r.start === null && at !== null) r.start = at;
             const tool = type.startsWith('tool.') ? (Object.hasOwn(processTools, p.toolId) ? p.toolId : 'unknown') : null;
             const row = { type, attemptId: p.attemptId, tool, elapsedMs: at === null || r.start === null ? null : elapsed(at, r.start), durationMs: null, error: type === 'tool.failed' ? safeCode(p.result?.error?.code) : type === 'model.failed' ? safeCode(p.error) : null };
+            const stage = type === 'model.failed' ? modelDiagnosticStage(p.diagnosticStage) : null;
+            if (stage) row.diagnosticStage = stage;
             if (type === 'tool.completed' && tool === 'muyu.provider.read') {
                 const d = p.result?.data;
                 if (d && providerCatalog.some(p => p.id === d.source)) {

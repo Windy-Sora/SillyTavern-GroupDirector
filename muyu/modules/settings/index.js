@@ -5,6 +5,7 @@ import { configFields, configDomains, configChangesSchema, dependencyFields, fie
 import { configurationCoverage, dynamicSettings } from '../../config/coverage.js';
 import { configPresentation } from '../../config/presentation.js';
 import { settingDisplayValues } from '../../config/read-presentation.js';
+import { BUNDLE_LIMITS, BUNDLE_VARIABLE_SCOPE } from '../../config/bundle-policy.js';
 
 const string = { type: 'string', maxLength: 24000 };
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -87,6 +88,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
     register('muyu.settings.catalog', '列出当前可编辑配置领域和字段，以及尚未接入或暂缓的配置键；deferred 表示暮羽暂不支持修改，不能靠额外授权解锁。目录不读取配置值。', object({}), () => ({ candidateId: '', text: JSON.stringify({ version: 2,
         supported: configDomains.map(domain => ({ domain, fields: configFields.filter(id => fieldDefinition(id).domain === domain) })),
         labels: Object.fromEntries(configFields.map(id => [id, configPresentation(id).label])),
+        bundle: { tool: 'muyu.task.preview', sections: ['variables', 'settings', 'scripts'], order: ['variables', 'settings', 'scripts'], limits: BUNDLE_LIMITS, variableScope: BUNDLE_VARIABLE_SCOPE, variableMeaning: 'One shared current-chat numeric value; no character selector. Per-character variables require variable_editor.', target: 'current-chat-required', atomic: false, eligibility: 'Query field contract bundle.supported; do not split by domain name.' },
         partial: configurationCoverage().filter(row => row.partial).map(({ key, pendingFields }) => ({ key, pendingFields })),
         pending: configurationCoverage().filter(row => !['supported', 'internal', 'special-editor-supported'].includes(row.status)).map(({ key, owner, status }) => ({ key, owner, status })), specialEditors: configurationCoverage().filter(row => row.status === 'special-editor-supported').map(({ key, writer }) => ({ key, writer })), dynamicPending: Object.keys(dynamicSettings),
     }) }));

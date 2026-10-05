@@ -48,7 +48,7 @@ test('Director rejects wrong target, settings races and publication after change
     assert.throws(g.read, /STALE_EVIDENCE/); g.module.dispose();
 });
 test('Context catalog covers implemented static documents, resolves exact IDs and reports omissions', () => {
-    const m = createContextModule(), list = m.handlers['muyu.context.list'](); assert.equal(list.length, 6);
+    const m = createContextModule(), list = m.handlers['muyu.context.list'](); assert.equal(list.length, 7);
     assert.ok(list.every(d => !Object.hasOwn(d, 'text')));
     const out = m.handlers['muyu.context.read']({ ids: ['director.scoring', 'memory.automation', '../../private'] });
     assert.equal(out.complete, false); assert.equal(out.documents.length, 2); assert.deepEqual(out.missing, ['../../private']);

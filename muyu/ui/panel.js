@@ -1,4 +1,5 @@
 import { createSkillView } from './skill-view.js';
+import { UI_LABELS } from './navigation-metadata.js';
 import { createSkillPicker } from './skill-picker.js';
 import { renderSkillSave } from './skill-save-view.js';
 import { renderSelectionEditor } from './selection-editor-view.js';
@@ -71,7 +72,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     autoConnect.checked = initialConnection ? initialConnection.autoConnect === true : savedConnection ? savedConnection.autoConnect === true : true;
     rememberKey.onchange = () => { if (!rememberKey.checked) autoConnect.checked = false; };
     autoConnect.onchange = () => { if (autoConnect.checked) rememberKey.checked = true; };
-    const connect = button(t('启用此连接', 'Enable connection'), connectionForm.actions), disable = button(t('禁用连接', 'Disable connection'), connectionForm.actions);
+    const connect = button(t(...UI_LABELS.enableConnection), connectionForm.actions), disable = button(t('禁用连接', 'Disable connection'), connectionForm.actions);
     const connectionFeedback = createFormFeedback({ doc, parent: connectionForm.actions, fields: [endpoint, model, key, profile, thinking, effort, rememberKey, autoConnect], buttons: [connect, disable, forgetKey], lang,
         dirtyText: t('表单已修改，尚未启用这些修改。', 'Draft changed; these changes are not active.'), busyText: t('正在启用连接…', 'Enabling connection…'), savedText: t('连接已启用。', 'Connection enabled.'),
         errorText: error => error?.message === 'CREDENTIAL_SAVE_FAILED' ? t('密钥设置未能确认保存，输入已保留。', 'Credential settings could not be saved. Input retained.') : t('连接未能启用，输入已保留，请检查配置。', 'Connection could not be enabled. Input retained; check the configuration.') });

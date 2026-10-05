@@ -4,6 +4,7 @@ import { assertActive, bounded, createDrainTracker, ExecutionError, systemClock 
 import { projectBudget, RUN_RANGES, RUN_DEFAULTS } from './budget.js';
 import { copyModelMessage, copyModelText } from './model-message.js';
 import { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES } from './context-limits.js';
+import { modelDiagnosticStage } from './model-diagnostics.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
 export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
@@ -185,10 +186,15 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             } finally { try { model.releaseContext?.(context); } catch { /* cleanup only */ } }
         }
     }
+    let failureStage = null;
     async function step(childSignal) {
+        const attemptId = calls; let collecting = true;
         let reported = false;
         const request = checkContext(requestFor(), modelContext, firstRequest); firstRequest = false;
-        const stream = model.run(request, { signal: childSignal, context: modelContext, onUsage: value => {
+        const stream = model.run(request, { signal: childSignal, context: modelContext, onDiagnostic: value => {
+            if (!collecting || finished || childSignal.aborted || calls !== attemptId || value?.status !== 'failed') return;
+            failureStage = modelDiagnosticStage(value.stage);
+        }, onUsage: value => {
             if (reported || finished || childSignal.aborted) return; reported = true;
             reportUsage(value);
         } });
@@ -217,7 +223,11 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             if (!done || (!text.trim() && !tools.length)) throw new ExecutionError('MODEL_PROTOCOL_ERROR');
             if (finalizing && tools.length) throw new ExecutionError('BUDGET_EXCEEDED');
             return { text, tools };
+        } catch (error) {
+            if (!failureStage && error instanceof ExecutionError && error.code === 'MODEL_PROTOCOL_ERROR') failureStage = 'runtime';
+            throw error;
         } finally {
+            collecting = false;
             // return() may itself wait forever behind a non-cooperative next(); do not await it.
             try { drain.track(Promise.resolve(iterator.return?.())).catch(() => {}); } catch { /* Best effort. */ }
         }
@@ -298,9 +308,10 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             calls++; usageEvent();
             let response;
             emit('model.started', { attemptId: calls });
+            failureStage = null;
             try { response = await bounded(step, { signal, timeoutMs: budget.timeMs, clock, track: drain.track }); }
             catch (e) {
-                emit('model.failed', { attemptId: calls, error: signal.aborted ? (signal.reason === 'TIMEOUT' ? 'TIMEOUT' : 'CANCELLED') : e instanceof ExecutionError ? e.code : 'MODEL_FAILED' });
+                emit('model.failed', { attemptId: calls, ...(failureStage ? { diagnosticStage: failureStage } : {}), error: signal.aborted ? (signal.reason === 'TIMEOUT' ? 'TIMEOUT' : 'CANCELLED') : e instanceof ExecutionError ? e.code : 'MODEL_FAILED' });
                 if (e instanceof ExecutionError) throw e; throw new ExecutionError('MODEL_FAILED');
             }
             assertActive(signal);

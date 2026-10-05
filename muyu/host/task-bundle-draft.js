@@ -1,17 +1,15 @@
 import { copyJson, jsonKey, validateJson } from '../core/json-contract.js';
 import { configChangesSchema, dependencyFields, previewSettings, readSettingsFields } from '../config/registry.js';
 import { variablePreviewSchema } from '../modules/variables/index.js';
-import { settingsSwitchFields } from '../config/settings-switch-rules.js';
-
-const excludedSettings = new Set(['memoryMaxEntries', 'storyBlueprintCompletionVariable', 'storyBlueprintEnabled', ...settingsSwitchFields]);
+import { bundleFieldPolicy, BUNDLE_LIMITS } from '../config/bundle-policy.js';
 export const scriptBundleRequestSchema = { type: 'object', properties: {
     operation: { type: 'string', enum: ['create', 'update', 'delete'] }, id: { type: 'string', maxLength: 100 }, revision: { type: 'string', maxLength: 80 },
     changesJson: { type: 'string', maxLength: 32000 },
 }, required: ['operation', 'changesJson'], additionalProperties: false };
 export const taskBundleSchema = { type: 'object', properties: {
     settings: configChangesSchema,
-    scripts: { type: 'array', items: scriptBundleRequestSchema, maxItems: 3 },
-    variables: { type: 'array', items: variablePreviewSchema, maxItems: 6 },
+    scripts: { type: 'array', items: scriptBundleRequestSchema, maxItems: BUNDLE_LIMITS.scripts },
+    variables: { type: 'array', items: variablePreviewSchema, maxItems: BUNDLE_LIMITS.numericVariables },
 }, additionalProperties: false };
 
 /** A complete, bounded proposal. Tokens and baselines stay in this trusted page lifetime. */
@@ -19,7 +17,7 @@ export function createTaskBundleDraftPort({ getTarget, getSettings, variableDraf
     const drafts = new Map();
     function settingsPart(changes) {
         if (!Object.keys(changes).length) return null;
-        if (Object.keys(changes).some(key => excludedSettings.has(key))) throw Error('BUNDLE_SETTING_REQUIRES_SEPARATE_DRAFT');
+        if (Object.keys(changes).some(key => !bundleFieldPolicy(key).supported)) throw Error('BUNDLE_SETTING_REQUIRES_SEPARATE_DRAFT');
         const fields = dependencyFields(Object.keys(changes)), settings = getSettings();
         const baseline = readSettingsFields(settings, fields);
         if (settings !== getSettings() || jsonKey(baseline) !== jsonKey(readSettingsFields(settings, fields))) throw Error('STALE_BASELINE');
@@ -46,7 +44,7 @@ export function createTaskBundleDraftPort({ getTarget, getSettings, variableDraf
                 for (const request of requests) variables.push(variableDraftPort.prepare(target, request));
                 const content = copyJson({ module: 'task-bundle', version: scripts.length ? 2 : 1, target, settings, variables, ...(scripts.length ? { scripts } : {}),
                     token: 'bundle:' + crypto.randomUUID() });
-                if (new TextEncoder().encode(JSON.stringify(content)).length > 18000) throw Error('BUNDLE_TOO_LARGE');
+                if (new TextEncoder().encode(JSON.stringify(content)).length > BUNDLE_LIMITS.draftBytes) throw Error('BUNDLE_TOO_LARGE');
                 if (drafts.size >= 64) forget(drafts.values().next().value);
                 drafts.set(content.token, content);
                 return copyJson(content);

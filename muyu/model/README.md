@@ -1,5 +1,7 @@
 # 模型适配层：非流式 Chat Completions
 
+2026-10-05：普通任务的安全失败阶段已接适配器→Runtime→process-store→执行过程。`run`可接独立`onDiagnostic`，覆盖构造回调且不跨任务共享；仅保留固定stage/status，公开失败行再投影diagnosticStage。阶段包括请求准备、传输及响应解析、协议校验、思考回传状态、事件交付；自定义模型运行事件校验失败标为runtime。不是服务端日志或根因证明，不记录原始API、密钥、错误cause、正文或隐藏思考，不自动重试。迟到回调、取消后回调及未知阶段不更新当前失败行。摘要子请求暂未接这条过程展示，不能声称覆盖所有压缩故障。
+
 2026-10-02 接口页：GUI 可显式选择现有 `deepseek` / `chat-completions` 协议，DeepSeek 思考强度可选 low/high/max。测试连接、获取模型不自动启用；协议及思考选项随可选的记住密钥持久化，旧保存记录默认 DeepSeek/high。通用协议不发送 DeepSeek 专属思考参数；没有新增 Responses/Anthropic 适配器、多连接管理或服务端密钥库。离线专项通过，真实浏览器 CORS/服务兼容性仍需实际测试。
 
 2026-09-24。已完成离线协议与Runtime组合测试；未连接真实服务、未验证浏览器CORS、未挂载GUI。旧utils/custom-api.js保持不变。没有新增依赖、自动重试或模型回退。

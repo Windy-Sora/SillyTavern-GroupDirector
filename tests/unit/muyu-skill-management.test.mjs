@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createSkillStore } from '../../muyu/host/skill-store.js';
 import { createSkillManagement } from '../../muyu/skills/management.js';
 import { loadBuiltinSkills } from '../../muyu/skills/builtin-loader.js';
+import { BUILTIN_SKILL_MANIFEST } from '../../muyu/skills/builtin-manifest.js';
 import { validateSkillData } from '../../muyu/skills/contract.js';
 
 const pack = (name = 'example') => ({ format: 'muyu-skill-package', version: 1, files: [{ path: 'SKILL.md', text: `---\nname: ${name}\ndescription: Example procedure.\n---\nRead contracts.` }, { path: 'references/rules.md', text: 'Do not grant permissions.' }] });
@@ -96,18 +97,18 @@ test('Failed migration/save retains original v1 settings; unknown outcome does n
 test('Builtin resources load exclusively shipped static paths and preserve complete text', async () => {
     const paths = [];
     const builtins = await loadBuiltinSkills({ readText: async path => { paths.push(path); return readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8'); } });
-    assert.deepEqual(paths, ['config-review/SKILL.md', 'config-review/references/checklist.md', 'currency-system/SKILL.md', 'currency-system/references/workflow.md', 'provider-workbench/SKILL.md', 'provider-workbench/references/contracts.md']);
-    assert.equal(builtins.length, 3); assert.match(builtins[0].package.files[0].text, /整体配置检查/);
+    assert.deepEqual(paths, BUILTIN_SKILL_MANIFEST.flatMap(row => row.files.map(path => `${row.name}/${path}`)));
+    assert.equal(builtins.length, 18); assert.match(builtins[0].package.files[0].text, /整体配置检查/);
     const f = fixture();
     const service = createSkillManagement({ store: f.store, builtins });
     assert.equal((await service.list()).entries[0].id, 'builtin:config-review');
 });
 
-test('All shipped pilots load complete main and referenced instructions with distinct stable identities', async () => {
+test('All shipped skills load complete main and referenced instructions with distinct stable identities', async () => {
     const builtins = await loadBuiltinSkills({ readText: path => readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8') });
     const f = fixture(), service = createSkillManagement({ store: f.store, builtins });
     const rows = (await service.list()).entries;
-    assert.deepEqual(rows.map(row => row.id), ['builtin:config-review', 'builtin:currency-system', 'builtin:provider-workbench']);
+    assert.deepEqual(rows.map(row => row.id), ['builtin:config-review', 'builtin:currency-system', 'builtin:provider-workbench', 'builtin:director-diagnosis', 'builtin:memory-maintenance', 'builtin:blueprint-workflow', 'builtin:configuration-orchestration', 'builtin:chat-context-analysis', 'builtin:variable-workbench', 'builtin:character-npc-workbench', 'builtin:resource-library-workflow', 'builtin:prompt-template-workbench', 'builtin:script-agent-workbench', 'builtin:worldbook-workflow', 'builtin:automation-workflow', 'builtin:muyu-troubleshooting', 'builtin:skill-workbench', 'builtin:muyu-interface-guide']);
     for (const row of rows) {
         const snapshot = await service.registry.snapshot({ id: row.id, revision: row.revision, invocation: 'model' });
         const main = snapshot.package.files.find(file => file.path === 'SKILL.md').text;
@@ -141,7 +142,7 @@ test('Default builtin reader uses bounded static fetch, no redirects, and comple
         } }));
     };
     const result = await loadBuiltinSkills();
-    assert.equal(result.length, 3); assert.ok(paths.every(path => path.includes('/assets/muyu-skills/')));
+    assert.equal(result.length, 18); assert.ok(paths.every(path => path.includes('/assets/muyu-skills/')));
     assert.match(result[0].package.files[0].text, /整体配置检查/);
 });
 

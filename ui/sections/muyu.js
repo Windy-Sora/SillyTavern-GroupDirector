@@ -1,4 +1,5 @@
 import { createSkillPort } from '../../muyu/host/skills.js';
+import { UI_LABELS } from '../../muyu/ui/navigation-metadata.js';
 import { createSelectionEditorPort } from '../../muyu/host/selection-editor.js';
 import { createLedgerEditorPort } from '../../muyu/host/ledger-editor.js';
 import { createBlueprintNodeEditorPort } from '../../muyu/host/blueprint-node-editor.js';
@@ -313,7 +314,7 @@ registerSection('muyu', ctx => {
         const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.id = 'gd-muyu-floating-ball-visible';
         toggle.checked = ctx.settings.muyuFloatingBallVisible !== false;
         owner.floating.setBallVisible(toggle.checked);
-        const text = document.createElement('span'); text.textContent = en ? 'Show Muyu floating ball' : '显示暮羽悬浮球';
+        const text = document.createElement('span'); text.textContent = UI_LABELS.showBall[en ? 1 : 0];
         label.htmlFor = toggle.id; label.append(toggle, text);
         const hint = document.createElement('small');
         const hintText = en ? 'Hide only the launcher; ongoing tasks are not stopped. Enable here to show it again.' : '仅隐藏入口，不停止正在执行的任务；可在这里重新开启。';

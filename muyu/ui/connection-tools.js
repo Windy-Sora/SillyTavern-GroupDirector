@@ -1,9 +1,10 @@
+import { UI_LABELS } from './navigation-metadata.js';
 /** Explicit connection diagnostics; draft edits/unmount invalidate late replies. */
 export function createConnectionTools({ doc, parent, endpoint, model, key, profile, thinking, effort, controller, lang, validate = () => true, onDraftChange = () => {} }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, owner = parent) => { const el = doc.createElement(tag); el.textContent = text; owner.append(el); return el; };
     const row = node('div', ''); row.className = 'gd-muyu-connection-tools';
-    const test = node('button', t('测试连接', 'Test connection'), row), list = node('button', t('获取模型', 'Fetch models'), row);
+    const test = node('button', t(...UI_LABELS.testConnection), row), list = node('button', t(...UI_LABELS.fetchModels), row);
     for (const b of [test, list]) { b.type = 'button'; b.className = 'menu_button'; }
     const label = node('label', t('模型菜单（也可手动填写上方模型）', 'Model menu (manual entry above is also supported)')); label.className = 'gd-muyu-connection-field';
     const select = node('select', '', label); select.className = 'text_pole';
