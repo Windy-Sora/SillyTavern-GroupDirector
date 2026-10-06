@@ -1233,6 +1233,44 @@ test('Reply language editor is independent, bilingual, customisable and survives
     }
 });
 
+test('Custom reply language mode survives preset prefixes while typing and explicit selection resets it', async () => {
+    for (const lang of ['en', 'zh']) for (const name of ['English (US)', 'French Canadian']) {
+        const f = fixture(lang, true), t = (zh, en) => lang === 'en' ? en : zh;
+        const defaults = { enabled: false, text: '', replyLanguage: { enabled: true, language: 'English' } };
+        f.state.instructionSettings = { saved: structuredClone(defaults), draft: structuredClone(defaults), dirty: false, saving: false };
+        f.controller.setInstructionDraft = value => { f.state.instructionSettings.draft = structuredClone(value); f.state.instructionSettings.dirty = true; f.emit(); };
+        f.controller.saveInstructions = () => { const s = f.state.instructionSettings; s.saved = structuredClone(s.draft); s.dirty = false; f.emit(); };
+        f.controller.discardInstructionDraft = () => { const s = f.state.instructionSettings; s.draft = structuredClone(s.saved); s.dirty = false; f.emit(); };
+        f.controller.resetInstructionDraft = () => f.controller.setInstructionDraft({ enabled: false, text: '' });
+        const select = () => f.all().find(e => e.tag === 'select' && e.parent.textContent === t('语种', 'Language'));
+        const custom = () => f.all().find(e => e.tag === 'input' && e.parent.textContent === t('自定义语种名称', 'Custom language name'));
+        f.emit(); select().value = '__custom__'; await select().onchange();
+        assert.equal(select().value, '__custom__'); assert.equal(custom().parent.hidden, false);
+        custom().value = ''; await custom().oninput();
+        for (const ch of name) {
+            custom().value += ch; await custom().oninput();
+            assert.equal(select().value, '__custom__', `Keep custom mode while typing ${custom().value}`);
+            assert.equal(custom().parent.hidden, false);
+            f.emit(); assert.equal(custom().parent.hidden, false);
+            if (['English', 'French'].includes(custom().value)) {
+                select().value = custom().value; await select().onchange();
+                assert.equal(custom().parent.hidden, true);
+                select().value = '__custom__'; await select().onchange();
+                assert.equal(select().value, '__custom__'); assert.equal(custom().parent.hidden, false);
+            }
+        }
+        await f.find('button', t('保存行为偏好', 'Save behavior preferences')).click();
+        assert.equal(f.state.instructionSettings.saved.replyLanguage.language, name);
+        select().value = 'French'; await select().onchange(); assert.equal(custom().parent.hidden, true);
+        select().value = '__custom__'; await select().onchange(); assert.equal(custom().parent.hidden, false);
+        await f.find('button', t('放弃修改', 'Discard changes')).click();
+        assert.equal(custom().value, name); assert.equal(custom().parent.hidden, false);
+        await f.find('button', t('恢复默认（需保存）', 'Restore defaults (save required)')).click();
+        assert.notEqual(select().value, '__custom__'); assert.equal(custom().parent.hidden, true);
+        assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+    }
+});
+
 test('Context UI preserves settings drafts, requires summary confirmation and resets it on view change', async () => {
     const f = fixture('en', true); f.state.enabled = true; f.state.history = managedHistory();
     f.state.context = { turns: 2, omitted: 4, summary: '<img>literal</img>', summaryUsed: true };

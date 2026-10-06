@@ -27,20 +27,23 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
     const status = node('p', '', section); status.className = 'gd-muyu-form-status'; status.setAttribute('role', 'status');
     const actions = node('div', '', section); actions.className = 'gd-muyu-settings-actions';
     const save = button(t('保存行为偏好', 'Save behavior preferences')), discard = button(t('放弃修改', 'Discard changes')), reset = button(t('恢复默认（需保存）', 'Restore defaults (save required)'));
-    let saveFailed = false;
+    let saveFailed = false, customMode = null;
     const edit = () => act(() => { saveFailed = false; controller.setInstructionDraft({ enabled: enabled.checked, text: text.value,
         replyLanguage: { enabled: languageEnabled.checked, language: language.value === '__custom__' ? customLanguage.value : language.value } }); });
     enabled.onchange = edit; text.oninput = edit;
-    languageEnabled.onchange = edit; language.onchange = edit; customLanguage.oninput = edit;
+    languageEnabled.onchange = edit;
+    language.onchange = () => { customMode = language.value === '__custom__'; return edit(); };
+    customLanguage.oninput = edit;
     save.onclick = () => act(async () => { saveFailed = false; try { await controller.saveInstructions(); } catch { saveFailed = true; } });
-    discard.onclick = () => act(() => { saveFailed = false; controller.discardInstructionDraft(); });
-    reset.onclick = () => act(() => { saveFailed = false; controller.resetInstructionDraft(); });
+    discard.onclick = () => act(() => { saveFailed = false; customMode = null; controller.discardInstructionDraft(); });
+    reset.onclick = () => act(() => { saveFailed = false; customMode = null; controller.resetInstructionDraft(); });
     return { render(s) {
         const state = s.instructionSettings || { draft: INSTRUCTION_DEFAULTS, saved: INSTRUCTION_DEFAULTS, dirty: false, saving: false }, draft = state.draft;
         if (text.value !== draft.text) text.value = draft.text; enabled.checked = draft.enabled;
         const reply = draft.replyLanguage || { ...REPLY_LANGUAGE_DEFAULTS, language: lang === 'en' ? 'English' : 'Simplified Chinese' };
         languageEnabled.checked = reply.enabled;
-        const preset = REPLY_LANGUAGES.some(([value]) => value === reply.language);
+        if (customMode === null) customMode = !REPLY_LANGUAGES.some(([value]) => value === reply.language);
+        const preset = !customMode;
         language.value = preset ? reply.language : '__custom__'; customLabel.hidden = preset;
         if (!preset && customLanguage.value !== reply.language) customLanguage.value = reply.language;
         let valid = true; try { validateInstructionConfig(draft); } catch { valid = false; }
