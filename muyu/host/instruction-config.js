@@ -7,7 +7,7 @@ export function createInstructionConfigStore({ getSettings, saveSettings }) {
             settings.muyuInstructionConfig = next;
             try { await saveSettings(); }
             catch { if (settings.muyuInstructionConfig === next) { if (previous === undefined) delete settings.muyuInstructionConfig; else settings.muyuInstructionConfig = previous; } throw Error('INSTRUCTION_CONFIG_SAVE_FAILED'); }
-            return { ...next };
+            return validateInstructionConfig(next);
         },
     };
 }

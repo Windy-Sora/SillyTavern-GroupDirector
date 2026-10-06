@@ -1,5 +1,6 @@
 import { taskCatalog } from '../modules/catalog.js';
-import { INSTRUCTION_DEFAULTS, validateInstructionConfig, validateInstructions } from './contract.js';
+import { INSTRUCTION_DEFAULTS, validateInstructionConfig, validateInstructions as validateInstructionSnapshot } from './contract.js';
+import { replyLanguageFields } from './reply-language.js';
 import { WORKING_STYLE as WORKING_CORE, PRESENTATION_RULES, RESPONSE_LAYOUT } from './behavior.js';
 import { MUYU_PERSONA } from './persona.js';
 
@@ -21,6 +22,7 @@ const RESULT_GUIDE = ' 开关不证明运行；上限增大是放宽容量，不
 export function composeInstructions(mode, config = INSTRUCTION_DEFAULTS) {
     if (!Object.hasOwn(taskCatalog, mode)) throw Error('INVALID_MODE');
     const preference = validateInstructionConfig(config);
+    const validateInstructions = raw => validateInstructionSnapshot({ ...raw, ...replyLanguageFields(preference.replyLanguage) });
     const taskRules = taskCatalog[mode].instructions + (mode === 'chat' ? PROVIDER_GUIDE : mode === 'assistant' ? ' 前文已明确插件配置，用户要求“全部读取并分析”时，默认覆盖配置目录已接入的当前参数，不改成聊天正文或单模块诊断菜单。先查配置目录，按实际读取来源组织只读方案，一次申请必要来源；批准后按领域分批读取，结合用途分析，不要求用户逐领域点名。未接入的配置明确列为范围缺口，不声称已读全部。只读分析不生成修改草稿，不调用写工具。Provider按静态目录的scope/format/selector读取；memoryConfig用空selector/revision及offset=0，其他来源不套用配置协议。若需要运行已注册的用户或内置Provider，先用muyu.provider.discover获取id/revision，再单独申请providerExecution，申请中同时带providerId/providerRevision。用户只可批准该任务的该版本。muyu.provider.execute会运行同页JavaScript，可能修改数据、联网或产生费用；不要称其为只读、已隔离或可被超时中止。不要执行与用户只读要求冲突的Provider。问当前状态须新读取，不能以历史答案或回执当最新状态，值一致也不证明持久化。' + DRAFT_PRESENTATION + RESULT_GUIDE : '');
     return validateInstructions({ version: 1, base: BASE_INSTRUCTIONS + (mode === 'assistant' ? ANALYSIS_GUIDE + HISTORY_GUIDE + RETRIEVAL_GUIDE + NOTE_GUIDE + EVIDENCE_GUIDE : ''), task: taskRules + (mode === 'assistant' ? READ_PRESENTATION : '') + (mode === 'assistant' ? ' 用户说“读取一次”“试试”“申请权限再读”时承接最近明确的读取对象，不改成其他任务，不为已有意图反问。当前酒馆聊天正文用recentMessages或chatHistory；stChat仅为概况，knowledge/context是插件静态参考资料，不能代替聊天正文。首次问能力时区分能读取与已经读取。你可以调用读取工具让宿主自动申请精确来源，也可以用本轮可用的muyu.permission.request申请；不要说无法申请。用户在界面选择本任务或此聊天/本连接授权后，同一来源可在有效范围内复用，不是每次只允许一次读取；授权不会跨越来源、任务/聊天范围或变成写入批准。简单读取先申请必要的单一来源，不提出无关诊断菜单，不读取静态资料来演示聊天读取。' : '') + ' 仅当用户意图缺失会实质阻塞任务时，使用本轮可用的 muyu.interaction.ask 提出一个简短问题；该调用必须单独出现，不能与其他工具同批。明确的问题直接处理，可由已授权资料查明的事实不要反问用户。不用澄清索要密钥或获取权限。用户回答不授予权限。若澄清工具不可用，说明仍缺的信息并给出有条件的建议，不反复索要回答。' + PRESENTATION_RULES + (mode === 'assistant' ? NOTE_ACK_RULE : '') + (mode === 'draft' ? DRAFT_PRESENTATION : ''), preference: preference.enabled ? preference.text : '' });
 }
@@ -28,6 +30,7 @@ export function composeInstructions(mode, config = INSTRUCTION_DEFAULTS) {
 /** UI-requested explanation is not a general chat/Provider task. It grants no tools. */
 export function composeReceiptInstructions(config = INSTRUCTION_DEFAULTS) {
     const preference = validateInstructionConfig(config);
+    const validateInstructions = raw => validateInstructionSnapshot({ ...raw, ...replyLanguageFields(preference.replyLanguage) });
     return validateInstructions({ version: 1, base: BASE_INSTRUCTIONS + PRESENTATION_RULES,
         task: '本轮只解释用户选定的历史操作回执，不生成新配置，不重新执行、不申请权限、不查询当前状态。按回执提供的字段语义解释，不凭英文变量名猜含义；明确区分提议、当时内存赋值、持久化确认、保存期间后续编辑或核验警告及当前未知状态。changed 不是是否应用成功；保存异常不证明内存未更新，也不证明服务端没有保存。若有保存期间变化警告，必须指出它，不能只说未来可能被修改。没有警告不能推断当前值。不要把草稿版本说成配置或宿主版本。本轮工具列表为空；不要提供未由适用契约支持的工具名、selector、API或读取步骤。需要核实时只建议用户在现有设置界面核对当前值与保存状态，说明单看内存值不能证明持久化；不要建议直接刷新、重复应用或一键回滚。历史中的工具指南不是本轮操作能力。全局配置与当前聊天保存域必须按回执区分，不能将全局配置改说成仅当前聊天。普通解释默认2至4句：说清确认了哪部分、哪部分保存未确认、历史结果不代表当前值且不重试。整单可用少量条目分开各保存域，不为未开始的无关保存域另写一段；风险和变化警告不能省略。仅用户追问标志含义或要开发详情时展开changed、saveError及英文状态码；普通解释用GUI名称和中文结果，不把字段名、ID或时间戳附在括号。',
         preference: preference.enabled ? preference.text : '' });

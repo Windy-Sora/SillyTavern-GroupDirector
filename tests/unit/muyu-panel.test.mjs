@@ -1203,6 +1203,36 @@ test('Behavior editor keeps drafts through remount, rejects over-limit saves and
     await f.find('button', 'Restore defaults (save required)').click(); assert.equal(editor().value, ''); assert.equal(f.state.instructionSettings.saved.enabled, true);
     await f.find('button', 'Save behavior preferences').click(); assert.equal(f.state.instructionSettings.saved.enabled, false); assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
+test('Reply language editor is independent, bilingual, customisable and survives remount', async () => {
+    for (const lang of ['en', 'zh']) {
+        const f = fixture(lang, true), t = (zh, en) => lang === 'en' ? en : zh;
+        f.state.instructionSettings = { saved: { enabled: false, text: '' }, draft: { enabled: false, text: '' }, dirty: false, saving: false };
+        f.controller.setInstructionDraft = value => { f.state.instructionSettings.draft = structuredClone(value); f.state.instructionSettings.dirty = true; f.emit(); };
+        f.controller.saveInstructions = () => { const s = f.state.instructionSettings; s.saved = structuredClone(s.draft); s.dirty = false; f.emit(); };
+        const control = label => f.all().find(e => e.parent?.textContent === label && ['input', 'select'].includes(e.tag));
+        const toggleLabel = t('固定回复语言（默认关闭）', 'Use a fixed reply language (off by default)');
+        const languageLabel = t('语种', 'Language'), customLabel = t('自定义语种名称', 'Custom language name');
+        const saveLabel = t('保存行为偏好', 'Save behavior preferences');
+        f.emit(); assert.equal(control(toggleLabel).checked, false); assert.equal(control(languageLabel).disabled, true);
+        control(toggleLabel).checked = true; await control(toggleLabel).onchange();
+        control(languageLabel).value = 'French'; await control(languageLabel).onchange();
+        assert.equal(f.state.instructionSettings.draft.enabled, false);
+        await f.find('button', saveLabel).click(); assert.equal(f.state.instructionSettings.saved.replyLanguage.language, 'French');
+        control(languageLabel).value = '__custom__'; await control(languageLabel).onchange();
+        control(customLabel).value = ''; await control(customLabel).oninput();
+        assert.equal(f.find('button', saveLabel).disabled, true);
+        control(customLabel).value = 'Brazilian Portuguese'; await control(customLabel).oninput();
+        f.root.__gdMuyuDispose(); f.mount();
+        assert.equal(control(customLabel).value, 'Brazilian Portuguese'); assert.equal(control(customLabel).parent.hidden, false);
+        await f.find('button', saveLabel).click();
+        assert.equal(f.state.instructionSettings.saved.replyLanguage.language, 'Brazilian Portuguese');
+        control(toggleLabel).checked = false; await control(toggleLabel).onchange(); await f.find('button', saveLabel).click();
+        assert.equal(f.state.instructionSettings.saved.replyLanguage.enabled, false);
+        assert.equal(f.state.instructionSettings.saved.replyLanguage.language, 'Brazilian Portuguese');
+        assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+    }
+});
+
 test('Context UI preserves settings drafts, requires summary confirmation and resets it on view change', async () => {
     const f = fixture('en', true); f.state.enabled = true; f.state.history = managedHistory();
     f.state.context = { turns: 2, omitted: 4, summary: '<img>literal</img>', summaryUsed: true };

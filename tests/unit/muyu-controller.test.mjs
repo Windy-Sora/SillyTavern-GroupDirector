@@ -2655,6 +2655,43 @@ test('Full access continues a task plan and executes one bounded bundle without 
     await f.controller.dispose();
 });
 
+test('Fixed reply language stays pinned across permission and clarification continuations', async () => {
+    for (const permission of [true, false]) for (const initiallyEnabled of [true, false]) {
+        const preference = language => ({ enabled: false, text: '', replyLanguage: { enabled: true, language } });
+        const initial = { ...preference('French'), replyLanguage: { enabled: initiallyEnabled, language: 'French' } };
+        const f = fixture([[permission ? readSource() : ask(), done], [text('Finished'), done], [text('Next'), done]], {
+            instructionConfig: { read: () => initial, save: async () => {} },
+            providerPort: { read: () => ({ text: 'Protected source', limited: false }) },
+        });
+        await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Original goal'); f.controller.send(); await settle();
+        const interaction = f.controller.snapshot().interaction;
+        assert.equal(interaction.status, 'pending');
+        const exposed = f.controller.snapshot(); exposed.instructionSettings.saved.replyLanguage.language = 'English';
+        assert.equal(f.controller.snapshot().instructionSettings.saved.replyLanguage.language, 'French');
+        f.controller.setInstructionDraft(preference('Korean')); await f.controller.saveInstructions();
+        if (permission) f.controller.answerPermission(interaction.id, 'chat');
+        else { f.controller.setInteractionDraft(interaction.id, 'Frequency'); f.controller.answerInteraction(interaction.id); }
+        await settle();
+        assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+        assert.deepEqual(f.model.requests.map(request => request.instructions.responseLanguage), f.model.requests.map(() => initiallyEnabled ? 'French' : undefined), `permission=${permission}, enabled=${initiallyEnabled}`);
+        f.controller.setInput('Next question'); f.controller.send(); await settle();
+        assert.equal(f.model.requests.at(-1).instructions.responseLanguage, 'Korean');
+        await f.controller.dispose();
+    }
+});
+
+test('Plan approval keeps its originating fixed language after a preference save', async () => {
+    const preference = language => ({ enabled: false, text: '', replyLanguage: { enabled: true, language } });
+    const f = fixture([[taskPlan(), done], [text('Read-only analysis'), done]], { instructionConfig: { read: () => preference('French'), save: async () => {} } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Plan first'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    assert.ok(plan);
+    f.controller.setInstructionDraft(preference('Korean')); await f.controller.saveInstructions();
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    assert.equal(f.model.requests.at(-1).instructions.responseLanguage, 'French');
+    await f.controller.dispose();
+});
+
 test('Instruction edits are draft-only, pinned at send time and not duplicated into task/user/history data', async () => {
     const gate = deferred(), saved = [];
     const f = fixture([() => gate.promise, [text('next'), done]], { instructionConfig: { read: () => ({ enabled: false, text: '' }), save: async value => saved.push(value) } });

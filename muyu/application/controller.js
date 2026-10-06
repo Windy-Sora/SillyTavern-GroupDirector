@@ -2,7 +2,7 @@ import { createBuiltinActions } from '../actions/builtins.js';
 import { DISPLAY_DEFAULTS, validateDisplayConfig } from '../preferences/contract.js';
 import { createSkillWorkbench } from '../skills/workbench.js';
 import { copyModelText } from '../core/model-message.js';
-import { jsonKey } from '../core/json-contract.js';
+import { jsonKey, copyJson } from '../core/json-contract.js';
 import { createApplication } from './service.js';
 import { recoverableQuestion } from './recovery.js';
 import { sourcePermission } from '../modules/providers/catalog.js';
@@ -50,13 +50,14 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const missingHistorySources = (record, target, taskId = null) => contextConfig.historyAuthorization === 'auto' ? [] : (record?.required || []).filter(source =>
         !permissions.allows(source, target, taskId) && !historyGrants.get(historyGrantKey(record, target))?.has(source));
     const compactResults = new Map();
-    let instructionConfig = host.instructionConfig?.read() || { ...INSTRUCTION_DEFAULTS }, instructionDraft = { ...instructionConfig }, savingInstructions = false;
+    let instructionConfig = host.instructionConfig?.read() || { ...INSTRUCTION_DEFAULTS }, instructionDraft = copyJson(instructionConfig), savingInstructions = false;
     const permissions = createPermissions({ fullAccess: () => fullAccess });
     const requiredPermission = () => mode === 'chat' ? 'chat' : 'diagnostics';
     const category = definition => definition.dataClasses.includes('public-knowledge') ? 'public' : definition.dataClasses.includes('chat-content') ? 'chat' : 'diagnostics';
     const listeners = new Set(), sessions = new Map(), inputs = new Map(), intentions = new Map(), notices = new Map();
     const runtimeSessions = new Map();
     const continuations = new Map();
+    const planLanguages = new Map();
     const taskStates = createTaskStateStore({ canCarry: (query, target, taskId) => {
         if (!model || resetting || !builtins) return false;
         const definition = builtins.registry.get(query.toolId);
@@ -318,7 +319,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             diagnostics: host.stDiagnostics?.snapshot(),
             promptCapture: host.stPromptSnapshots?.snapshot(),
             contextConfig: { ...contextConfig }, savingContextConfig, autoCompaction: compactionBreaker.status(id, record?.scope),
-            instructionSettings: { saved: { ...instructionConfig }, draft: { ...instructionDraft }, saving: savingInstructions, dirty: JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft) },
+            instructionSettings: { saved: copyJson(instructionConfig), draft: copyJson(instructionDraft), saving: savingInstructions, dirty: JSON.stringify(instructionConfig) !== JSON.stringify(instructionDraft) },
             agentMemory: noteWorkbench.snapshot(), skills: skillWorkbench.snapshot(),
             selectedSkill: skillSelections.get(viewKey()) || null,
             context: { turns: plan.turns, omitted: plan.omitted + choice.historyStart, summaryUsed: plan.summaryUsed, estimatedTokens: plan.estimatedTokens, coverage: { ...plan.coverage, state: choice.omitHistory ? 'omitted' : plan.coverage.state, total: (record?.messages || []).length, excluded: choice.historyStart }, omitHistory: omittedViews.has(viewKey()), permissionOmitted: choice.autoHistoryOmitted, summary: record?.contextSummary?.text || '', summaryStale: !!record?.contextSummary && !usableSummary(record.contextSummary, record.messages), compacting: !!compacting && compacting.id === id, progress: compactState?.progress || null, usage: compactState?.usage || null },
@@ -504,12 +505,16 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
                 tracePermission('controller.settled', { target: run?.target, taskId: run?.taskId, runId: event.runId, decision: run?.status });
                 try {
                     if (run?.status === 'failed' && intent?.failure) notices.set(run.sessionId, intent.failure);
-                    if (run?.status === 'yielded' && intent) continuations.set(run.taskId, { userQuestion: intent.userQuestion, readDecisions: [...intent.readDecisions], mode: intent.mode, fields: [...intent.fields], artifact: intent.artifact, runConfig: { ...intent.runConfig }, historyStart: intent.historyStart, autoHistoryOmitted: intent.autoHistoryOmitted, sourceRunId: event.runId, candidates: [...intent.candidates], autoApplyCandidates: [...intent.autoApplyCandidates], completedTools: [...intent.completedTools], failedTool: intent.failedTool, recoverablePreviewFailure: intent.recoverablePreviewFailure, webSearch: intent.webSearch, webAllowed: intent.webAllowed });
+                    if (run?.status === 'yielded' && intent) continuations.set(run.taskId, { instructions: intent.instructions, userQuestion: intent.userQuestion, readDecisions: [...intent.readDecisions], mode: intent.mode, fields: [...intent.fields], artifact: intent.artifact, runConfig: { ...intent.runConfig }, historyStart: intent.historyStart, autoHistoryOmitted: intent.autoHistoryOmitted, sourceRunId: event.runId, candidates: [...intent.candidates], autoApplyCandidates: [...intent.autoApplyCandidates], completedTools: [...intent.completedTools], failedTool: intent.failedTool, recoverablePreviewFailure: intent.recoverablePreviewFailure, webSearch: intent.webSearch, webAllowed: intent.webAllowed });
                     else if (run) { releaseContinuation(run.taskId); permissions.forgetTask(run.target, run.taskId); }
                     if (run?.status === 'succeeded' && intent && !intent.explanation) {
                         const publication = builtins.tasks[intent.mode].publish(app, event.runId, intent);
                         const notice = typeof publication === 'string' ? publication : publication?.notice;
                         const published = publication?.published;
+                        for (const artifact of published?.values() || []) if (artifact.kind === 'task-plan') {
+                            planLanguages.set(artifact.id, { enabled: !!intent.instructions.responseLanguage, language: intent.instructions.responseLanguage || 'English' });
+                            if (planLanguages.size > 1024) planLanguages.delete(planLanguages.keys().next().value);
+                        }
                         if (notice) notices.set(run.sessionId, notice);
                         const skillPlan = intent.candidates.get('muyu.task.plan');
                         const skillPlanArtifact = skillPlan && published?.get(skillPlan.candidateId);
@@ -538,6 +543,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         }).unsubscribe;
     }
     async function stopAndDrain() {
+        planLanguages.clear();
         autoActions.length = 0; autoPlans.length = 0;
         if (checking) { checking.abort.abort(); await checking.promise; }
         actionAssembly.invalidate(); await actionAssembly.drain();
@@ -932,7 +938,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         },
         cancelInteraction(id) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); const request = snapshot().interaction; app.cancelInteraction(id); taskStates.invalidateWait(request.taskId); releaseContinuation(request.taskId); permissions.forgetTask(request.target, request.taskId); emit(); },
         setInstructionDraft(value) { live(); instructionDraft = validateInstructionDraft(value); emit(); },
-        discardInstructionDraft() { live(); instructionDraft = { ...instructionConfig }; emit(); },
+        discardInstructionDraft() { live(); instructionDraft = copyJson(instructionConfig); emit(); },
         resetInstructionDraft() { live(); instructionDraft = { ...INSTRUCTION_DEFAULTS }; emit(); },
         async saveInstructions() {
             live(); if (savingInstructions || resetting) throw Error('NOT_READY');
@@ -1142,7 +1148,10 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             const artifact = existingArtifact;
             if (artifact && (!['draft', 'assistant'].includes(mode) || artifact.sessionId !== sessionId || artifact.kind !== (planArtifactId ? 'task-plan' : 'config-draft'))) throw new Error('INVALID_ARTIFACT');
             // Task policy has one owner: the composed instruction channel, not a duplicate user constraint.
-            const baseInstructions = explanation ? composeReceiptInstructions(instructionConfig) : composeInstructions(mode, instructionConfig);
+            // Resumed tasks keep their language snapshot even if preferences were saved while waiting.
+            const priorLanguage = continuation ? { enabled: !!continuation.instructions?.responseLanguage, language: continuation.instructions?.responseLanguage || 'English' } : planLanguages.get(planArtifactId);
+            const taskInstructionConfig = priorLanguage ? { ...instructionConfig, replyLanguage: priorLanguage } : instructionConfig;
+            const baseInstructions = explanation ? composeReceiptInstructions(taskInstructionConfig) : composeInstructions(mode, taskInstructionConfig);
             const instructions = fullAccess && mode === 'assistant' && !explanation ? { ...baseInstructions, task: baseInstructions.task + '\n本连接已由用户在界面开启全权限模式：资料读取和已注册 Provider 执行无需再申请授权，不要调用授权工具。若用户明确要求直接修改，使用相应 preview 工具并在同一次调用中设 apply=true；宿主将在本轮成功结束后校验并执行，真实结果以操作回执为准，不要提前声称已保存。若用户要求只预览、不要应用或只读，绝不设置 apply=true。不要为了省事扩张字段、目标、工具或预算；高风险 Provider 仍需确认其与用户意图相符。' } : baseInstructions;
             if (continuation?.artifact && artifact.revision !== continuation.artifact.revision) throw Error('STALE_DRAFT');
             const contextPlan = planContext(record.messages.slice(historyStart), omitHistory ? null : record.contextSummary, contextConfig, false);
