@@ -29,6 +29,6 @@ export function createWebSearchModule() {
             runs.set(identity.id, { capture: intent.webSearch, allowed: intent.webAllowed || (() => false), budget: tasks.get(id) });
         },
         transferRun(from, identity) { const previous = runs.get(from); if (previous) { runs.delete(from); runs.set(identity.id, previous); } },
-        forgetRun(id) { runs.delete(id); }, forgetTask(id) { tasks.delete(id); }, dispose() { runs.clear(); tasks.clear(); },
+        retainArtifacts() {}, forgetRun(id) { runs.delete(id); }, forgetTask(id) { tasks.delete(id); }, dispose() { runs.clear(); tasks.clear(); },
     };
 }

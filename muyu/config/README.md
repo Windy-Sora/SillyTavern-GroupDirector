@@ -42,6 +42,16 @@
 
 ## 用户可读展示
 
+2026-10-06 推断边界：`read-evidence.js` 只计算单次读取的 requestedCount／returnedCount／missingFields，null、false、空串是返回值，不视为缺失；数量不证明值类型合法、执行成功或持久化。标注coverage=this-read-only、runtime=not-observed、persistence=unknown。整任务覆盖应合并成功读取的原字段ID，不数合同查询、目录条目或尝试调用。catalog补代码计算的fieldCount/domainCount，仅是目录规模，不是已读数量。
+
+自动提取间隔的字段合同及readCaution由memory-rules所有者维护，settings.read按本次请求附上，不自动扩读开关或运行状态。间隔是新增消息阈值，不能从单值读推出“每N条必触发”。账本开关不证明决策产生、历史写入或落盘；导演世界书注入不控制worldBooks/worldBookImportance等独立Provider，开启也不证明激活或注入。空串按各字段合同解释：提取/压缩Prompt回退内置、Schema保留宽松解析、渲染模板保留旧版格式，不统一称默认。所有修改仅用于读取表达/合同，原值、schema、依赖、权限和写入不变。
+
+2026-10-06 范围承接：目录只负责发现，不要求后续全量读取。局部问题选择目标及必要依赖；判断当前生效的选人人数须读取判断模式，不能从人数值猜模式。只读取人数且本响应没有模式值时，工具补充 applicability 证据缺口说明；不自动增读模式，不改变返回的 fields/values 或读取授权。单独问一个开关或间隔仍可只读那一项；模型不可把有条件机制解释成已启用或已执行。
+
+2026-10-06 表达合同补充：设置目录明确区分 supported／pending／专用 writer／动态来源；目录不是 GUI 清单，出现键或 writer 不证明可读写、有界面入口或已授权。设置读取新增本次内存观察的时效说明；最多8个字段时提供复用原 GUI 名称与单位的 `answerView`，只含开关、数值及已映射枚举，不重复 Prompt 正文。大批读取返回 null，继续使用完整原值和已有 labels/displayValues，不截掉原证据。
+
+预览工具给模型的响应增加草稿解释：before 是当时捕获的比较基线，after 是提案，不证明当前值、执行或持久化。解释只加入工具响应，不写入私有草稿、批准内容或保存结构；全权限 apply 仍需运行成功及宿主新鲜度校验，以操作回执为准。不得从展示说明反向创建执行权限。
+
 `presentation.js` 显式映射已登记字段到现有 UI 的中英文名称、功能区、单位和枚举文案，通过 `ui/i18n.js` 的纯文本 `uiLabel()` 复用字典，不读取 DOM。目录与读取结果提供 `labels`，字段合同提供 `presentation`；暮羽默认使用界面名称说明配置，只有代码、JSON或排错需求才附原字段 ID。名称不是生效机制或缺省行为的证据，仍需查原合同。
 
 配置草稿、整单内的配置差异、配置档和操作回执共用展示层；技术详情保留原始字段和完整值。长文本只在摘要中截断并标明，完整差异可展开检查。空文本、缺失与 null 分别显示，不泛化为空文本沿用默认。聊天变量差异不套用插件字段映射。执行、批准、校验及持久化结构仍使用原 ID / 原值，不接受显示名称作为写入别名。
@@ -144,3 +154,8 @@ Prompt 不截断保存。草稿内容限 24000 UTF-8 字节，另受公共 DTO 3
 ## 角色档案库第一轮（2026-10-03）
 
 profileLibraries已接专用资源编辑器；通过独立profileLibraryAssets授权与muyu.libraries.list/read/export/preview管理保存的包。支持单包创建／导入／修改／删除和有界JSON导出；不读取当前聊天打包，不立即应用档案或全局模板。删除固定目标会按预览清除选择并关闭自动加载；队列内重核包版本与加载关联，v14回执只含操作元数据。未来自动加载仍可能使用保存的库内容。完整合同见[档案库模块](../modules/profile-libraries/README.md)；当前聊天应用、批量及NPC/蓝图库另轮实现。
+### 按领域发现（B轮第二切片）
+
+`muyu.settings.catalog({domain})`仅返回指定领域的字段与GUI标签，附`nextCalls.read/contract`的完整参数。`fieldCount/domainCount`只计本页目录，`totalFieldCount/totalDomainCount`计整个已接入目录；都不是已读值数。其他领域及未接入键在这个投影中省略，不代表不存在。空参数`{}`仍保留原完整目录。
+
+调用建议不读取值、不授权、不要求随后读全领域。已知具体字段时直接按`fields`查询所需合同，跨领域省略`domain`；全领域探索才用返回的领域合同参数。业务Schema、原值、权限及预览审批不变，无缓存。

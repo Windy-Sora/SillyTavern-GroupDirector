@@ -1,5 +1,6 @@
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createArtifactLeases } from '../artifact-leases.js';
 
 const string = maxLength => ({ type: 'string', maxLength });
 export const variablePreviewSchema = { type: 'object', properties: {
@@ -13,6 +14,7 @@ export const variablePreviewSchema = { type: 'object', properties: {
 /** Model data only; the host owns baselines, diff and future write authority. */
 export function createVariableDraftModule({ port }) {
     const registry = createToolRegistry(), runs = new Map(); let disposed = false;
+    const published = createArtifactLeases(content => port.forget(content));
     registry.register({ id: 'muyu.variables.preview', version: 1,
         description: 'Preview creating or editing one current-chat numeric variable. Use muyu.variable_editor tools for other types, scope changes, stored values and deletion when available. For create, provide label, initialValue, rule, autoUpdate, injectMode and updateMode explicitly. Update only listed definition fields, never the stored value. In full-access mode ONLY, set apply=true when the user explicitly asks to change it now; the host validates and saves after the run. For preview-only or read-only requests, omit apply. Without full access, separate UI approval is required.',
         inputSchema: variablePreviewSchema, outputSchema: { type: 'object', properties: { candidateId: string(100), text: string(12000), applyRequested: { type: 'boolean' } }, required: ['candidateId', 'text'], additionalProperties: false },
@@ -23,6 +25,7 @@ export function createVariableDraftModule({ port }) {
         const run = runs.get(ctx.runId);
         if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
         const { apply, ...request } = validateJson(variablePreviewSchema, args);
+        if (run.candidate) port.forget(run.candidate.content);
         run.candidate = null;
         const content = port.prepare(ctx.target, request), candidateId = 'variable:' + crypto.randomUUID();
         run.candidate = { candidateId, content };
@@ -36,7 +39,7 @@ export function createVariableDraftModule({ port }) {
             if (!r?.candidate || r.candidate.candidateId !== candidateId || run?.status !== 'succeeded' || run.taskId !== r.taskId || jsonKey(run.target) !== jsonKey(r.target)) throw Error('INVALID_CANDIDATE_SOURCE');
             port.assertFresh(r.candidate.content);
             const artifact = app.createArtifact({ taskId: r.taskId, sourceRunId: id, kind: 'variable-draft', content: r.candidate.content });
-            runs.delete(id); return artifact;
+            published.track(artifact); runs.delete(id); return artifact;
         },
         validateSaved(app, id, revision) {
             const artifact = app.getArtifact(id), run = app.snapshot().runs.find(item => item.id === artifact.sourceRunId);
@@ -45,6 +48,7 @@ export function createVariableDraftModule({ port }) {
             return app.validateArtifact(id, revision, { structural: 'passed', baseline: 'matched-at-validation', intent: 'review-only', writes: 'separate-approval-required' });
         },
         forgetRun(id) { if (runs.get(id)?.candidate) port.forget(runs.get(id).candidate.content); runs.delete(id); },
-        dispose() { disposed = true; runs.clear(); port.clear(); },
+        retainArtifacts: values => published.retain(values),
+        dispose() { if (disposed) return; disposed = true; for (const run of runs.values()) if (run.candidate) port.forget(run.candidate.content); runs.clear(); published.clear(); },
     };
 }

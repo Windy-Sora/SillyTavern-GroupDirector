@@ -1,5 +1,7 @@
 # Muyu 长上下文处理方案
 
+> 历史设计基线：部分跨轮整理／原文回读后来已实现，运行中压缩等方案仍未实施；下方“未实施”及参数是当时快照，不代表整份内容仍未开发。当前合同见[muyu/context/README.md](muyu/context/README.md)，当前工作顺序见[优化工作单](MUYU-AGENT-OPTIMIZATION.md)。保留此文用于后续设计核对，不作为当前使用说明。
+
 状态：设计提案，未实施。日期：2026-09-29。Muyu 基线：`1898cae`。
 
 本方案依据用户提供的 `E:/Claude code/silly-director-plugs/codex-main` 本地源码，以及 Muyu 当前生产实现。Codex 目录没有 `.git`，无法确认提交号；文末记录核心文件 SHA-256。下文严格区分“源码已有行为”和“建议 Muyu 实现的行为”，不把本地快照当作所有 Codex 版本的产品承诺。

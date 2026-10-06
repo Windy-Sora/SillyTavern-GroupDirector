@@ -21,6 +21,6 @@ export function createSelectionEditorModule({port,charge}) {
  transferRun(from,identity){const run=runs.get(from);if(!run)return;if(runs.has(identity.id)||run.taskId!==identity.taskId||jsonKey(run.target)!==jsonKey(identity.target))throw Error('INVALID_RUN_TRANSFER');runs.take(from);runs.set(identity.id,run);},
  publishDraft(app,id,candidateId){const run=runs.get(id),state=app.snapshot().runs.find(r=>r.id===id);if(!run?.candidate||run.candidate.candidateId!==candidateId||state?.status!=='succeeded'||state.taskId!==run.taskId||jsonKey(state.target)!==jsonKey(run.target))throw Error('INVALID_CANDIDATE_SOURCE');port.assertFresh(run.candidate.content);const artifact=app.createArtifact({taskId:run.taskId,sourceRunId:id,kind:'selection-draft',content:run.candidate.content});runs.publish(id,artifact);return artifact;},
  validateSaved(app,id,revision){const artifact=app.getArtifact(id),state=app.snapshot().runs.find(r=>r.id===artifact.sourceRunId);if(artifact.kind!=='selection-draft'||artifact.revision!==revision||state?.status!=='succeeded'||state.taskId!==artifact.taskId)throw Error('INVALID_SELECTION_DRAFT');port.assertFresh(artifact.content);return app.validateArtifact(id,revision,{structural:'passed',baseline:'matched-at-validation',intent:'requires_user_review',writes:'global-selection-policy'});},
- retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
+ retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();},
  };
 }

@@ -1,6 +1,8 @@
+import { createArtifactLeases } from './artifact-leases.js';
+
 /** Private tickets move from a run candidate to its published artifact. */
 export function createDraftRuns(port) {
-    const published = new Map();
+    const published = createArtifactLeases(content => port?.release?.(content));
     return new class extends Map {
         discardCandidate(id) {
             const run = this.get(id);
@@ -9,16 +11,10 @@ export function createDraftRuns(port) {
         }
         delete(id) { this.discardCandidate(id); return super.delete(id); }
         take(id) { const run = this.get(id); super.delete(id); return run; }
-        publish(id, artifact) { this.take(id); published.set(artifact.id, artifact.content); }
-        retainArtifacts(artifacts) {
-            const live = new Map(artifacts.map(a => [a.id, a.content?.ticket]));
-            for (const [id, content] of published) if (live.get(id) !== content.ticket) {
-                port?.release?.(content); published.delete(id);
-            }
-        }
+        publish(id, artifact) { published.track(artifact); this.take(id); }
+        retainArtifacts(artifacts) { published.retain(artifacts); }
         clear() {
             for (const id of this.keys()) this.discardCandidate(id);
-            for (const content of published.values()) port?.release?.(content);
             published.clear(); super.clear();
         }
     }();

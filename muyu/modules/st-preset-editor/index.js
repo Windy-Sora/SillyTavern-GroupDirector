@@ -44,6 +44,6 @@ export function createStPresetModule({port,charge}) {
             if(artifact.kind!=='st-preset-draft'||artifact.revision!==revision||state?.status!=='succeeded'||state.taskId!==artifact.taskId)throw Error('INVALID_ST_PRESET_DRAFT');
             port.assertFresh(artifact.content);return app.validateArtifact(id,revision,{structural:'passed',baseline:'cached-evidence-only-rechecked-before-save',intent:'requires_user_review',writes:'one-chat-completion-preset-operation'});
         },
-        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
+        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();},
     };
 }

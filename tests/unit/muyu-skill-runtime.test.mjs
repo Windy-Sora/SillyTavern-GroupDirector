@@ -16,6 +16,19 @@ async function fixture({ body = 'Use the actual contracts.', manual = false, ena
     return { settings, port, task, charged: () => charged };
 }
 const query = { id: 'user:example', revision: '1', path: 'SKILL.md' };
+test('Skill guidance discovery routes saved inventory to management without changing catalog data or granting access', async () => {
+    const f = await fixture(); f.task.bindRun(identity); await f.task.prepare(identity.id);
+    const projected = f.task.project(identity.id)[0].content;
+    assert.match(projected, /not all saved packages/);
+    assert.match(projected, /muyu\.skills\.list/);
+    assert.match(projected, /muyu\.tools\.list then select the listed group/);
+    assert.match(projected, /returned nextOffset/);
+    assert.deepEqual(JSON.parse(projected.split('\n')[1]), await f.port.catalog());
+    const definition = createSkillRuntimeModule({ port: f.port }).registry.get('muyu.skills.discover');
+    assert.match(definition.description, /NOT all saved Skills/);
+    assert.match(definition.description, /no host data or write permissions granted/);
+    f.task.dispose();
+});
 test('Plan approval retains fixed Skill snapshot, charges the new segment, and respects target', async () => {
     const f = await fixture(); f.task.bindRun(identity); await f.task.prepare(identity.id); await f.task.load(identity.id, query);
     assert.equal(f.task.parkRun(identity.id, { id: 'plan', kind: 'task-plan', taskId: identity.taskId }), true);

@@ -1120,6 +1120,114 @@ const taskPlan = () => tool('muyu.task.plan', { goal: '建立当前聊天金币�
         { kind: 'variables', title: '创建金币余额', detail: '当前尚无变量写入工具' },
         { kind: 'settings', title: '预览激活设置', detail: '另需配置草稿与单次批准' },
     ], unknowns: ['是否已有同名变量'] });
+
+const taskFooting = request => {
+    const guide = request.taskGuides?.find(m => m.content.startsWith('Host task observation'));
+    return guide && JSON.parse(guide.content.split('\n')[1]);
+};
+
+test('Read association uses host evidence IDs and live plan ownership without writing or completing steps', async () => {
+    const f = fixture([[tool('muyu.task.plan', { ...taskPlan().call.args, scope: 'global', sources: ['memoryConfig'] }), done],
+        [tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read-evidence'), done],
+        request => {
+            const footing = taskFooting(request), plan = footing.taskState.plan;
+            const evidence = footing.readEvidence.evidence.find(row => row.observation.outcome === 'settings-read');
+            assert.ok(evidence);
+            return [tool('muyu.task.bind_read', { planArtifactId: plan.artifactId, planRevision: plan.artifactRevision,
+                evidenceId: evidence.id, stepIds: [plan.steps.find(row => row.kind === 'read').id] }, 'bind-read'), done];
+        }, request => {
+            assert.ok(request.messages.some(row => row.result?.ok && row.result.data?.bound));
+            const footing = taskFooting(request);
+            assert.ok(footing.readEvidence.evidence.some(row => row.binding?.intentVerification === 'not-assessed'));
+            assert.ok(footing.taskState.plan.steps.every(row => row.status === 'not-assessed'));
+            return [text('Read association only'), done];
+        }]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('规划只读检查'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(row => row.kind === 'task-plan');
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.equal(f.controller.snapshot().configActions.length, 0);
+    assert.doesNotMatch(f.controller.exportHistory(), /read-evidence:|Host task observation/);
+    await f.controller.dispose();
+});
+
+test('Explicit step binding tool verifies live plan and candidate; publication still needs exact UI approval', async () => {
+    let writer, saves = 0, args;
+    const f = fixture([[tool('muyu.task.plan', { ...taskPlan().call.args, scope: 'global', sources: ['memoryConfig'] }), done],
+        [tool('muyu.config.preview', { changes: { autoMemoryInterval: 15 } }, 'preview'), done],
+        request => {
+            const plan = taskFooting(request).taskState.plan;
+            const result = request.messages.filter(m => m.role === 'tool').map(m => m.result).find(r => r.data?.candidateId);
+            args = { planArtifactId: plan.artifactId, planRevision: plan.artifactRevision, stepIds: [plan.steps.find(s => s.kind === 'settings').id], candidateId: result.data.candidateId };
+            return [tool('muyu.task.bind_step', args, 'bind'), done];
+        }, [text('Only associated; not applied'), done]], { configWriter: { apply: value => writer.apply(value) } });
+    writer = createConfigWriter({ getSettings: () => f.settings, saveSettings: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('规划修改间隔'); f.controller.send(); await settle();
+    const plan = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan');
+    f.controller.approveTaskPlanReads(plan.id, plan.revision); await settle();
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    const results = f.model.requests.at(-1).messages.filter(m => m.role === 'tool').map(m => m.result);
+    assert.ok(results.some(r => r.ok && r.data?.bound === true));
+    assert.equal(saves, 0); assert.equal(f.settings.autoMemoryInterval, 10);
+    const draft = f.controller.snapshot().artifacts.find(a => a.kind === 'config-draft'); assert.ok(draft);
+    const action = f.controller.prepareConfigApply(draft.id, draft.revision); await f.controller.approveConfigApply(action.id);
+    assert.equal(saves, 1); assert.equal(f.settings.autoMemoryInterval, 15);
+    assert.equal(f.controller.snapshot().receipts.at(-1).artifactId, draft.id);
+    assert.doesNotMatch(f.controller.exportHistory(), /stepReference|intentVerification|Host task observation/);
+    await f.controller.dispose();
+});
+
+test('Task observation survives plan approval with stable proposed steps, but no implicit goal completion', async () => {
+    const f = fixture([[tool('muyu.settings.contract', { fields: ['autoMemoryInterval'] }, 'contract'), done],
+        [tool('muyu.task.plan', { ...taskPlan().call.args, scope: 'global', sources: ['memoryConfig'] }, 'plan'), done],
+        [tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read'), done], [text('Read only'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('先规划只读检查'); f.controller.send(); await settle();
+    const artifact = f.controller.snapshot().artifacts.find(a => a.kind === 'task-plan'); assert.ok(artifact);
+    f.controller.approveTaskPlanReads(artifact.id, artifact.revision); await settle();
+    const first = taskFooting(f.model.requests[2]), last = taskFooting(f.model.requests[3]);
+    assert.deepEqual(first.queriedContractFields, ['autoMemoryInterval']);
+    assert.equal(first.taskState.plan.readScopeReview, 'approved-read-only');
+    assert.deepEqual(first.taskState.plan.steps, last.taskState.plan.steps);
+    assert.deepEqual(last.observedSettingFields, ['autoMemoryInterval']);
+    assert.equal(last.goalCompletion, 'not-assessed'); assert.equal(last.taskState.segmentCount, 2);
+    assert.equal(f.controller.snapshot().configActions.length, 0);
+    assert.doesNotMatch(f.controller.exportHistory(), /Host task observation|queriedContractFields|displayIndex/);
+    await f.controller.dispose();
+});
+
+test('Task observation survives automatic authorization then explicit clarification without rereading the field', async () => {
+    const f = fixture([[tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read'), done],
+        [tool('muyu.interaction.ask', { question: '怎么表达？', options: ['简洁', '详细'] }, 'question'), done], [text('Done'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('读取后问我表达方式'); f.controller.send(); await settle();
+    const permission = f.controller.snapshot().interaction; assert.equal(permission.kind, 'permission');
+    f.controller.answerPermission(permission.id, 'task'); await settle();
+    const question = f.controller.snapshot().interaction; assert.equal(question.kind, 'clarification');
+    const readValue = f.settings.autoMemoryInterval;
+    f.settings.autoMemoryInterval = readValue + 5; // Independent host edit while waiting.
+    f.controller.setInteractionDraft(question.id, '简洁'); f.controller.answerInteraction(question.id); await settle();
+    const state = taskFooting(f.model.requests.at(-1));
+    assert.deepEqual(state.observedSettingFields, ['autoMemoryInterval']);
+    assert.equal(state.taskState.segmentCount, 3); assert.equal(state.taskState.goalCompletion, 'not-assessed');
+    assert.equal(state.priorReadReferences.fields[0].field, 'autoMemoryInterval');
+    assert.equal(state.priorReadReferences.fields[0].value, readValue);
+    assert.equal(f.settings.autoMemoryInterval, readValue + 5);
+    assert.doesNotMatch(f.controller.exportHistory(), /priorReadReferences|capturedAt/);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    await f.controller.dispose();
+});
+
+test('Revoking a read source while clarification waits clears task result transport and invalidates continuation', async () => {
+    const f = fixture([[tool('muyu.settings.read', { fields: ['autoMemoryInterval'] }, 'read'), done],
+        [tool('muyu.interaction.ask', { question: '怎么表达？', options: ['简洁', '详细'] }, 'question'), done], [text('New task'), done]]);
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('先读后问'); f.controller.send(); await settle();
+    f.controller.answerPermission(f.controller.snapshot().interaction.id, 'task'); await settle();
+    const question = f.controller.snapshot().interaction;
+    await f.controller.revokePermission('source:memoryConfig');
+    assert.throws(() => f.controller.answerInteraction(question.id), /INTERACTION_STALE|NOT_READY/);
+    f.controller.setInput('新任务，不读取'); f.controller.send(); await settle();
+    assert.deepEqual(taskFooting(f.model.requests.at(-1)).priorReadReferences.fields, []);
+    await f.controller.dispose();
+});
 test('Approving a task plan preserves the search budget of its successful earlier segment', async () => {
     let calls = 0;
     const capture = { limits: { maxSearches: 1, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { status: 'empty', provider: 'brave', query: args.query, fetchedAt: '', truncated: false, results: [] }; } };

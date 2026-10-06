@@ -44,6 +44,6 @@ export function createCharacterCardModule({port,charge}) {
             if(artifact.kind!=='character-card-draft'||artifact.revision!==revision||state?.status!=='succeeded'||state.taskId!==artifact.taskId)throw Error('INVALID_CHARACTER_CARD_DRAFT');
             port.assertFresh(artifact.content);return app.validateArtifact(id,revision,{structural:'passed',baseline:'cached-evidence-only-rechecked-before-save',intent:'requires_user_review',writes:'one-shared-character-card-operation'});
         },
-        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
+        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();},
     };
 }

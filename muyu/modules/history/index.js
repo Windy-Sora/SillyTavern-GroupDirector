@@ -89,5 +89,5 @@ export function createHistoryModule({ access = () => null, budget = () => RUN_DE
             return { status: 'BUDGET_EXCEEDED', remainingBytes: remaining(ctx), index, role: message.role, start, end: start, total: message.content.length, text: '', nextOffset: start };
         },
     }, transferRun(from, identity) { const used = usage.get(from); if (used !== undefined) { usage.set(identity.id, used); usage.delete(from); } },
-    forgetRun(id) { usage.delete(id); }, dispose() { usage.clear(); } };
+    retainArtifacts() {}, forgetRun(id) { usage.delete(id); }, dispose() { usage.clear(); } };
 }

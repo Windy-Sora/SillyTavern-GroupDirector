@@ -42,6 +42,6 @@ export function createBlueprintLibraryChatModule({ port, charge }) {
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'chat-blueprint-and-existing-completion-signal' });
         },
         retainArtifacts: artifacts => runs.retainArtifacts(artifacts),
-        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); port?.clearPlans(); },
+        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
     };
 }

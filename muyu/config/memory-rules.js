@@ -1,6 +1,14 @@
 // Memory settings affect later extraction/compression; changing them alone
 // does not start generation, compression, or deletion.
+import { memoryFieldSchemas } from '../modules/config-draft/contracts.js';
+
 export const memoryRuleDefinitions = {
+    autoMemoryInterval: {
+        domain: 'memory', schema: memoryFieldSchemas.autoMemoryInterval, dependencies: ['memoryEnabled', 'autoMemoryEnabled'],
+        source: 'ui/sections/memory.js',
+        description: '自动提取的新增消息条数调度阈值，不是对话轮数或时间。总开关、自动提取开关及运行触发条件满足后才可能执行，不证明发生或成功。1..200是本工具范围，不是运行时强制上限；缺失保持未知，不补默认或开关。',
+        readCaution: '仅读取间隔值时只报告GUI名称与N条新消息；不能改述为“每N条就触发”。本次未证明开关启用、调度触发或提取成功；不要为单值问题扩读其他设置。',
+    },
     memoryPrompt: {
         domain: 'memory', schema: { type: 'string', maxLength: 4000 }, dependencies: ['memoryEnabled'], idle: true,
         source: 'ui/sections/memory.js',

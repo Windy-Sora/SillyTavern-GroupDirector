@@ -1,3 +1,4 @@
+import { receiptProtocol, receiptProtocolDescriptors, actionReceiptProtocol } from './receipt-protocol.js';
 import { validateJson } from '../core/json-contract.js';
 import { memoryFields } from '../modules/config-draft/contracts.js';
 import { configFields, fieldDefinition } from '../config/registry.js';
@@ -120,17 +121,22 @@ const scriptStepInfo = object({ name: text(80), scriptId: text(100), operation: 
 const schemaV9 = { ...schemaV4, properties: { ...schemaV4.properties, version: { type: 'integer', enum: [9] },
     steps: { type: 'array', maxItems: 10, items: { ...bundleStepSchema, properties: { ...bundleStepSchema.properties,
         kind: { type: 'string', enum: ['variable', 'settings', 'script'] }, script: scriptStepInfo } } } } };
+const receiptSchemas = new Map([[undefined, schema], [2, schemaV2], [3, schemaV3], [4, schemaV4], [5, schemaV5], [6, schemaV6], [7, schemaV7], [8, schemaV8], [9, schemaV9], [10, schemaV10], [11, schemaV11], [12, schemaV12], [13, schemaV13], [14, schemaV14], [15, schemaV15], [16, schemaV16], [17, schemaV17], [18, schemaV18], [19, schemaV19], [20, schemaV20], [21, schemaV21], [22, schemaV22], [23, schemaV23], [24, schemaV24], [25, schemaV25], [26, schemaV26], [27, schemaV27], [28, schemaV28], [29, schemaV29], [30, schemaV30], [31, schemaV31], [32, schemaV32], [33, schemaV33], [34, schemaV34]]);
+for (const version of receiptSchemas.keys()) if (!receiptProtocol(version)) throw Error('UNKNOWN_RECEIPT_VERSION');
+for (const { version } of receiptProtocolDescriptors()) if (!receiptSchemas.has(version)) throw Error('MISSING_RECEIPT_SCHEMA');
 export function receiptSources(value) {
-    if (value.version === 34 || value.version === 33 || value.version === 32) return [];
-    if ([6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31].includes(value.version)) return [];
-    if (value.version === 5) return [];
-    if ([4, 9].includes(value.version)) return [...new Set(value.steps.flatMap(step => step.kind === 'variable' ? ['source:variables'] : step.kind === 'script' ? [] :
+    const protocol = receiptProtocol(value?.version);
+    if (!protocol) throw Error('UNKNOWN_RECEIPT_VERSION');
+    if (protocol.sources === 'none') return [];
+    if (protocol.sources === 'bundle') return [...new Set(value.steps.flatMap(step => step.kind === 'variable' ? ['source:variables'] : step.kind === 'script' ? [] :
         step.diff.map(row => fieldDefinition(row.field).domain === 'memory' ? 'source:memoryConfig' : 'source:configSettings')))];
-    if (value.version === 3) return ['source:variables'];
+    if (protocol.sources === 'variables') return ['source:variables'];
+    if (protocol.sources !== 'config') throw Error('INVALID_RECEIPT_SOURCES');
     return [...new Set([...value.diff.map(d => value.version === 2 ? fieldDefinition(d.field).domain === 'memory' ? 'source:memoryConfig' : 'source:configSettings' : 'source:memoryConfig'), ...(value.memoryPrune ? ['source:memoryDiagnostics'] : []), ...(value.completionVariable || value.blueprintToggle ? ['source:variables'] : [])])];
 }
 export function validateReceipt(value) {
-    const result = validateJson(value?.version === 34 ? schemaV34 : value?.version === 33 ? schemaV33 : value?.version === 32 ? schemaV32 : value?.version === 31 ? schemaV31 : value?.version === 30 ? schemaV30 : value?.version === 29 ? schemaV29 : value?.version === 28 ? schemaV28 : value?.version === 27 ? schemaV27 : value?.version === 26 ? schemaV26 : value?.version === 25 ? schemaV25 : value?.version === 24 ? schemaV24 : value?.version === 23 ? schemaV23 : value?.version === 22 ? schemaV22 : value?.version === 21 ? schemaV21 : value?.version === 20 ? schemaV20 : value?.version === 19 ? schemaV19 : value?.version === 18 ? schemaV18 : value?.version === 17 ? schemaV17 : value?.version === 16 ? schemaV16 : value?.version === 15 ? schemaV15 : value?.version === 14 ? schemaV14 : value?.version === 13 ? schemaV13 : value?.version === 12 ? schemaV12 : value?.version === 11 ? schemaV11 : value?.version === 10 ? schemaV10 : value?.version === 9 ? schemaV9 : value?.version === 8 ? schemaV8 : value?.version === 7 ? schemaV7 : value?.version === 6 ? schemaV6 : value?.version === 5 ? schemaV5 : value?.version === 4 ? schemaV4 : value?.version === 3 ? schemaV3 : value?.version === 2 ? schemaV2 : schema, value);
+    if (!receiptProtocol(value?.version)) throw Error('UNKNOWN_RECEIPT_VERSION');
+    const result = validateJson(receiptSchemas.get(value?.version), value);
     if (result.version === 34 && (result.operation==='save_current' ? result.selector!=='current' : !/^preset:(0|[1-9]\d{0,2})$/.test(result.selector))) throw Error('INVALID_RECEIPT');
     if (result.version === 33 && (result.operation==='create' ? result.selector!=='' : !/^card:(0|[1-9]\d{0,3})$/.test(result.selector))) throw Error('INVALID_RECEIPT');
     if ([11, 13].includes(result.version) && !result.items.length) throw Error('INVALID_RECEIPT');
@@ -143,85 +149,86 @@ export function validateReceipt(value) {
     return result;
 }
 export function actionReceipt(action) {
-    if(action.content?.module==='st-preset-editor')return validateReceipt({version:34,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,resourceSave:action.result?.resourceSave||'not_started'});
-    if(action.content?.module==='character-card')return validateReceipt({version:33,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,resourceSave:action.result?.resourceSave||'not_started'});
-    if(action.content?.module==='worldbook-editor')return validateReceipt({version:32,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,resourceSave:action.result?.resourceSave||'not_started'});
-    if (action.content?.module === 'skill') return validateReceipt({ version: 31, operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation, persistence: action.result?.persistence || (action.status === 'outcome_unknown' ? 'unknown' : 'not_started') });
-    if(['profile-editor','npc-editor'].includes(action.content?.module)&&action.content.operation==='create')return validateReceipt({version:30,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,kind:action.content.module==='profile-editor'?'profile':'npc',operation:'create',chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='selection-editor')return validateReceipt({version:26,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,kind:action.content.kind,settingsSave:action.result?.settingsSave||'not_started'});
-    if(action.content?.module==='ledger-editor')return validateReceipt({version:25,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='blueprint-node-editor'&&action.content.operation==='initialize')return validateReceipt({version:29,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:'initialize',completionReset:!!action.content.completion.before.exists,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='blueprint-node-editor'&&action.content.operation)return validateReceipt({version:27,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,completionReset:!!action.content.completion.before.exists,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='blueprint-node-editor')return validateReceipt({version:24,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='npc-editor')return validateReceipt({version:23,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,selector:action.content.selector,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='profile-editor')return validateReceipt({version:22,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,character:action.content.character,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='memory-editor'&&action.content.operation==='create')return validateReceipt({version:28,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:'create',character:action.content.character,index:action.content.index,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='memory-editor')return validateReceipt({version:21,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,character:action.content.character,index:action.content.index,chatSave:action.result?.chatSave||'not_started'});
-    if(action.content?.module==='variable-editor')return validateReceipt({version:20,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,variableId:action.content.id,label:action.content.name,character:action.content.character,chatSave:action.result?.chatSave||'not_started'});
-    if (action.content?.module === 'blueprint-library-chat') return validateReceipt({ version: 19, operationId: action.id, artifactId: action.artifactId,
+    const protocol = actionReceiptProtocol(action.content);
+    if (protocol.version === 34) return validateReceipt({ version: 34,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,resourceSave:action.result?.resourceSave||'not_started'});
+    if (protocol.version === 33) return validateReceipt({ version: 33,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,resourceSave:action.result?.resourceSave||'not_started'});
+    if (protocol.version === 32) return validateReceipt({ version: 32,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,resourceSave:action.result?.resourceSave||'not_started'});
+    if (protocol.version === 31) return validateReceipt({ version: 31, operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation, persistence: action.result?.persistence || (action.status === 'outcome_unknown' ? 'unknown' : 'not_started') });
+    if (protocol.version === 30) return validateReceipt({ version: 30,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,kind:action.content.module==='profile-editor'?'profile':'npc',operation:'create',chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 26) return validateReceipt({ version: 26,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,kind:action.content.kind,settingsSave:action.result?.settingsSave||'not_started'});
+    if (protocol.version === 25) return validateReceipt({ version: 25,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,operation:action.content.operation,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 29) return validateReceipt({ version: 29,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:'initialize',completionReset:!!action.content.completion.before.exists,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 27) return validateReceipt({ version: 27,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,completionReset:!!action.content.completion.before.exists,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 24) return validateReceipt({ version: 24,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,selector:action.content.selector,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 23) return validateReceipt({ version: 23,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,selector:action.content.selector,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 22) return validateReceipt({ version: 22,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,character:action.content.character,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 28) return validateReceipt({ version: 28,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:'create',character:action.content.character,index:action.content.index,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 21) return validateReceipt({ version: 21,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,character:action.content.character,index:action.content.index,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 20) return validateReceipt({ version: 20,operationId:action.id,artifactId:action.artifactId,revision:action.revision,at:Date.now(),status:action.status,operation:action.content.operation,variableId:action.content.id,label:action.content.name,character:action.content.character,chatSave:action.result?.chatSave||'not_started'});
+    if (protocol.version === 19) return validateReceipt({ version: 19, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.name, libraryId: action.result?.id || action.content.libraryId || '', count: action.content.count,
         chatSave: action.result?.chatSave || 'not_started', settingsSave: action.result?.settingsSave || 'not_started' });
-    if (action.content?.module === 'npc-library-chat') return validateReceipt({ version: 17, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 17) return validateReceipt({ version: 17, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.name, libraryId: action.result?.id || action.content.libraryId || '', count: action.content.count,
         chatSave: action.result?.chatSave || 'not_started', settingsSave: action.result?.settingsSave || 'not_started' });
-    if (action.content?.module === 'profile-library-chat') return validateReceipt({ version: 15, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 15) return validateReceipt({ version: 15, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.name, libraryId: action.result?.id || action.content.libraryId || '', count: action.content.count,
         chatSave: action.result?.chatSave || 'not_started', settingsSave: action.result?.settingsSave || 'not_started' });
-    if (action.content?.module === 'blueprint-library') return validateReceipt({ version: 18, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 18) return validateReceipt({ version: 18, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.next?.name || action.content.previous?.name, libraryId: action.result?.id || action.content.id,
         persistence: action.result?.persistence || 'not_started' });
 
-    if (action.content?.module === 'npc-library') return validateReceipt({ version: 16, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 16) return validateReceipt({ version: 16, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.next?.name || action.content.previous?.name, libraryId: action.result?.id || action.content.id,
         persistence: action.result?.persistence || 'not_started' });
 
-    if (action.content?.module === 'profile-library') return validateReceipt({ version: 14, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 14) return validateReceipt({ version: 14, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.next?.name || action.content.previous?.name, libraryId: action.result?.id || action.content.id,
         persistence: action.result?.persistence || 'not_started' });
 
-    if (action.content?.module === 'custom-prompt' && action.content.operation === 'batch') return validateReceipt({ version: 13,
+    if (protocol.version === 13) return validateReceipt({ version: 13,
         operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status, origin: action.content.origin,
         items: action.content.entries.map((row, index) => ({ operation: row.operation, name: row.next?.name || row.previous?.name,
             promptId: action.result?.ids?.[index] || row.id })),
         skipped: action.content.skipped, persistence: action.result?.persistence || 'not_started' });
 
-    if (action.content?.module === 'custom-prompt') return validateReceipt({ version: 12, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 12) return validateReceipt({ version: 12, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.next?.name || action.content.previous?.name, promptId: action.result?.id || action.content.id,
         persistence: action.result?.persistence || 'not_started' });
-    if (action.content?.module === 'custom-agent' && action.content.operation === 'batch') return validateReceipt({ version: 11,
+    if (protocol.version === 11) return validateReceipt({ version: 11,
         operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status, origin: action.content.origin,
         items: action.content.entries.map((row, index) => ({ operation: row.operation, name: row.next?.name || row.previous?.name,
             providerName: row.next?.providerName || row.previous?.providerName, agentId: action.result?.ids?.[index] || row.id })),
         skipped: action.content.skipped, persistence: action.result?.persistence || 'not_started' });
-    if (action.content?.module === 'custom-agent') return validateReceipt({ version: 10, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 10) return validateReceipt({ version: 10, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.next?.name || action.content.previous?.name, providerName: action.content.next?.providerName || action.content.previous?.providerName,
         agentId: action.result?.id || action.content.id, enabled: action.result?.enabled === true, autoEnabled: action.result?.autoEnabled === true,
         persistence: action.result?.persistence || 'not_started' });
-    if (action.content?.module === 'script-executor') return validateReceipt({ version: 8, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 8) return validateReceipt({ version: 8, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, operation: action.content.operation,
         name: action.content.next?.name || action.content.previous?.name, scriptId: action.result?.id || action.content.id,
         enabled: action.result?.enabled === true, persistence: action.result?.persistence || 'not_started' });
-    if (action.content?.module === 'provider-asset') return validateReceipt({ version: action.content.operation ? 7 : 6, ...(action.content.operation ? { operation: action.content.operation } : {}), operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 6 || protocol.version === 7) return validateReceipt({ version: protocol.version, ...(action.content.operation ? { operation: action.content.operation } : {}), operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, name: action.content.name, ids: action.content.ids,
         registered: action.result?.registered === true, persistence: action.result?.persistence || 'not_started' });
-    if (action.content?.module === 'generated-profile') return validateReceipt({ version: 5, operationId: action.id, artifactId: action.artifactId,
+    if (protocol.version === 5) return validateReceipt({ version: 5, operationId: action.id, artifactId: action.artifactId,
         revision: action.revision, at: Date.now(), status: action.status, profileName: action.content.name,
         profileId: action.result?.profileId || '', fields: action.content.fields,
         persistence: action.result?.persistence || 'not_started' });
-    if (action.content?.module === 'task-bundle') {
+    if (protocol.version === 4 || protocol.version === 9) {
         const planned = [...action.content.variables.map(row => ({ kind: 'variable', id: row.preview.id,
             diff: row.preview.diff.map(d => ({ field: d.field, before: receiptValue(d.before, 24000), after: receiptValue(d.after, 24000) })) })),
         ...(action.content.settings ? [{ kind: 'settings', id: 'global-settings', diff: action.content.settings.preview.diff }] : []),
         ...(action.content.scripts || []).map(row => ({ kind: 'script', id: row.id || row.next.name, diff: [], script: { name: row.next?.name || row.previous?.name, scriptId: row.id, operation: row.operation, persistence: 'not_started' } }))];
-        return validateReceipt({ version: action.content.scripts?.length ? 9 : 4, operationId: action.id, artifactId: action.artifactId, revision: action.revision,
+        return validateReceipt({ version: protocol.version, operationId: action.id, artifactId: action.artifactId, revision: action.revision,
             at: Date.now(), status: action.status, steps: planned.map((step, index) => {
                 const result = action.result?.steps?.[index];
                 return { ...step, ...(step.script ? { script: { ...step.script, scriptId: result?.result?.id || step.script.scriptId, persistence: result?.result?.persistence || 'not_started' } } : {}), status: result?.status || 'not_started', chatSave: result?.result?.chatSave || 'not_started',
@@ -229,11 +236,12 @@ export function actionReceipt(action) {
                     saveError: result?.result?.saveError === true, changed: result?.result?.changed === true };
             }) });
     }
-    if (action.content?.module === 'variable-draft') return validateReceipt({ version: 3, operationId: action.id, artifactId: action.artifactId, variableId: action.content.preview.id,
+    if (protocol.version === 3) return validateReceipt({ version: 3, operationId: action.id, artifactId: action.artifactId, variableId: action.content.preview.id,
         revision: action.revision, at: Date.now(), status: action.status,
         diff: action.content.preview.diff.map(d => ({ field: d.field, before: receiptValue(d.before, 1000), after: receiptValue(d.after, 1000) })),
         saveError: action.result?.saveError === true, changed: action.result?.changed === true, chatSave: action.result?.chatSave || 'not_started' });
-    return validateReceipt({ ...(action.content.preview.contractVersion === 2 ? { version: 2 } : {}), operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status,
+    if (!protocol.config) throw Error('MISSING_RECEIPT_PRODUCER');
+    return validateReceipt({ ...(protocol.version === 2 ? { version: 2 } : {}), operationId: action.id, artifactId: action.artifactId, revision: action.revision, at: Date.now(), status: action.status,
         diff: action.content.preview.diff, saveError: action.result?.saveError === true, changed: action.result?.changed === true,
         ...(action.content.memoryPrunePlan ? { memoryPrune: { chatKey: action.content.memoryPrunePlan.target.chatKey, settingsSave: action.result?.settingsSave || 'not_started', status: action.result?.memoryPrune?.status || 'not_started', planned: action.content.memoryPrunePlan.total, removed: action.result?.memoryPrune?.removed || 0 } } : {}),
         ...(action.content.blueprintTogglePlan ? { blueprintToggle: { chatKey: action.content.blueprintTogglePlan.target.chatKey,
@@ -242,6 +250,7 @@ export function actionReceipt(action) {
             chatSave: action.result?.completionVariable?.chatSave || 'not_started', settingsSave: action.result?.completionVariable?.settingsSave || 'not_started' } } : {}) });
 }
 export function receiptText(r, lang = 'zh') {
+    if (!receiptProtocol(r?.version)) throw Error('UNKNOWN_RECEIPT_VERSION');
     if (r.version === 31) return new Date(r.at).toISOString() + ' · ' + r.status + '\n' + (lang === 'en' ? 'Skill management: ' : '技能管理：') + r.operation + ' · ' + r.persistence + '\n' + (lang === 'en' ? 'Historical result, not current Skill state or permission. Saving does not execute a Skill; unconfirmed/unknown persistence must not be auto retried.' : '历史结果，不代表当前技能状态或授权。保存不执行技能；未确认／未知保存不要自动重试。');
     if(r.version===30)return new Date(r.at).toISOString()+' · '+r.status+'\n'+(lang==='en'?'Manual chat data creation: ':'手工新建聊天数据：')+(r.kind==='profile'?(lang==='en'?'Character profile':'角色档案'):'NPC')+' · '+r.chatSave+'\n'+(lang==='en'?'No extra generation, card import, enabling or overwrite. Historical result, not current state or permission; unknown saving must not be retried automatically.':'未额外生成、导入角色卡、开启功能或覆盖。历史结果，不代表当前状态或授权；未知保存不要自动重试。');
     if (r.version === 29) return new Date(r.at).toISOString() + ' · ' + r.status + '\n' + (lang === 'en' ? 'First blank Blueprint · Chat save: ' : '首次新建空白蓝图 · 聊天保存：') + r.chatSave + '\n' + (lang === 'en' ? 'Existing completion signal reset: ' : '重置已有完成标记：') + r.completionReset + '\n' + (lang === 'en' ? 'Blank data, no extra generation or enabling. Historical result, not current state or authorization; unknown saving must not be retried automatically.' : '仅空白数据，未额外生成或开启功能。历史结果，不代表当前状态或授权；未知保存不要自动重试。');
@@ -281,6 +290,7 @@ export function receiptText(r, lang = 'zh') {
         (en ? 'Current-chat variable proposal: ' : '当前聊天变量提议：') + r.diff.map(d => `${d.field}: ${d.before} → ${d.after}`).join('; ') +
         (en ? `\nChat save: ${r.chatSave}; save error: ${r.saveError}; post-save changed: ${r.changed}.` : `\n聊天保存：${r.chatSave}；保存异常：${r.saveError}；保存后变化：${r.changed}。`) +
         (en ? '\nHistorical result; not current state or authorization.' : '\n历史结果，不代表当前状态或授权。');
+    if (!receiptProtocol(r.version).config) throw Error('MISSING_RECEIPT_FORMATTER');
     const statuses = {
         cancelled: ['已取消，未执行', 'Cancelled; not executed'], expired: ['已失效，未执行', 'Expired; not executed'], not_executed: ['未执行', 'Not executed'],
         applied_confirmed: ['当时已应用，保存已确认', 'Applied then; save confirmed'], applied_unconfirmed: ['当时已更新内存，持久化保存未确认', 'Memory updated then; persistence unconfirmed'], saved_confirmed: ['当时已保存', 'Saved then'], saved_unconfirmed: ['当时已加入列表，持久化未确认', 'Added then; persistence unconfirmed'], partial: ['部分完成，逐项核对', 'Partially completed; check each step'], outcome_unknown: ['执行结果不确定', 'Execution outcome unknown'],
@@ -301,7 +311,8 @@ export function receiptContext(receipts) {
         const { chatKey, ...publicPrune } = r.memoryPrune || {};
         const { chatKey: toggleChatKey, ...publicToggle } = r.blueprintToggle || {};
         const { chatKey: variableChatKey, ...publicVariable } = r.completionVariable || {};
-        return [5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34].includes(r.version) ? r : [4, 9].includes(r.version) ? { ...r, steps: r.steps.map(step => ({ ...step, omittedDiffs: Math.max(0, step.diff.length - 12),
+        const protocol = receiptProtocol(r.version);
+        return protocol.projection === 'identity' ? r : protocol.projection === 'steps' ? { ...r, steps: r.steps.map(step => ({ ...step, omittedDiffs: Math.max(0, step.diff.length - 12),
             diff: step.diff.slice(0, 12).map(d => ({ ...d, before: clipBundle(d.before), after: clipBundle(d.after) })) })) } :
             { ...r, ...(r.blueprintToggle ? { blueprintToggle: publicToggle } : {}), ...(r.memoryPrune ? { memoryPrune: publicPrune } : {}), ...(r.completionVariable ? { completionVariable: publicVariable } : {}), diff: r.diff.map(d => ({ ...d, before: clip(d.before), after: clip(d.after) })) };
     });

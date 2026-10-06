@@ -83,7 +83,7 @@ test('unbound run, changed target and stale ticket cannot execute', async () => 
 test('lifecycle transfers only the same bound task and clears tickets and result cache', async () => {
     const f=fixture(); f.module.transferRun('missing',{id:'next',taskId:'other',target}); assert.throws(()=>f.module.transferRun('r',{id:'next',taskId:'other',target}),/RUN_NOT_BOUND/);
     f.module.transferRun('r',{...f.identity,id:'next'}); await f.module.handlers['muyu.generation_batch.execute'](f.execute,{...f.ctx,runId:'next'});
-    f.module.forgetTask('t'); f.module.forgetRun('next'); f.module.dispose(); assert.deepEqual(f.calls.forgotten,['t']); assert.equal(f.calls.clear,1);
+    f.module.forgetTask('t'); f.module.forgetRun('next'); f.module.dispose(); assert.deepEqual(f.calls.forgotten,['t']); assert.equal(f.calls.clear,0);
 });
 test('read and single-ticket approvals never grant an entire generation batch', () => {
     const f=fixture(),p=createPermissions(); for(const source of ['source:memoryGenerationTargets','source:npcGenerationState'])p.grantSource(source,target);

@@ -45,6 +45,8 @@ export function createProfileLibraryModule({ port, charge }) {
             port.assertDraft(artifact.content);
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'global-profile-library-only' });
         },
+        // Library definition drafts do not lease private host tickets.
+        retainArtifacts() {},
         forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
     };
 }

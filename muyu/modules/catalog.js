@@ -119,6 +119,8 @@ export const toolLabels = Object.freeze({
     'muyu.provider.update_preview': ['预览用户 Provider 替换', 'Preview user Provider replacement'],
     'muyu.provider.remove_preview': ['预览用户 Provider 删除', 'Preview user Provider deletion'],
     'muyu.task.plan': ['规划跨模块任务', 'Plan multi-module task'],
+    'muyu.task.bind_step': ['关联方案步骤与草稿', 'Associate plan steps with draft'],
+    'muyu.task.bind_read': ['关联读取证据与步骤', 'Associate read evidence with steps'],
     'muyu.task.preview': ['预览整单修改', 'Preview operation bundle'],
     'muyu.variables.preview': ['预览当前聊天变量', 'Preview chat variable'],
     'muyu.settings.catalog': ['查询可编辑配置目录', 'List editable settings'],

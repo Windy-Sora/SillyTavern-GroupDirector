@@ -6,13 +6,45 @@ import { createToolboxModule } from '../../muyu/modules/toolbox.js';
 import { startMuyuRun } from '../../muyu/composition.js';
 import { identity, request, text, done, scriptedModel } from './helpers/muyu-subject.mjs';
 
-function registry() {
+function registry(extraIds = []) {
     const r = createToolRegistry();
     for (const d of createToolboxModule().registry.list()) r.register(d);
     for (const group of ['skills', 'prompts', 'agents']) for (let i = 0; i < 25; i++) r.register({ id: `muyu.${group}.tool_${i}`, version: 1, description: 'Synthetic optional tool', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, outputSchema: { type: 'integer' }, scope: 'global', effect: 'read', dataClasses: ['synthetic'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
+    for (const id of extraIds) r.register({ id, version: 1, description: 'Synthetic draft or read tool', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, outputSchema: { type: 'integer' }, scope: 'global', effect: 'read', dataClasses: ['synthetic'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     r.seal(); return r;
 }
 const call = (id, toolId, args = {}) => request({ callId: id, toolId, version: 1, args });
+const draftIds = ['muyu.settings.preview', 'muyu.task.preview', 'muyu.profile.preview'];
+test('Large catalogs defer draft schemas but keep configuration discovery/read/contract visible and allowlists exact', () => {
+    const readIds = ['muyu.settings.catalog', 'muyu.settings.read', 'muyu.settings.contract', 'muyu.config.preview', 'muyu.variables.preview'];
+    const r = registry([...draftIds, ...readIds]);
+    const selector = createToolSelection(r.list(), r.list().map(d => d.id));
+    assert.ok(readIds.every(id => selector.select().some(d => d.id === id)));
+    assert.ok(draftIds.every(id => !selector.select().some(d => d.id === id)));
+    assert.deepEqual(selector.list().groups.find(g => g.id === 'config-drafts').tools, draftIds);
+    assert.ok(draftIds.every(id => selector.select(['config-drafts']).some(d => d.id === id)));
+    const limited = createToolSelection(r.list(), r.list().map(d => d.id).filter(id => id !== 'muyu.task.preview'));
+    assert.ok(!limited.select(['config-drafts']).some(d => d.id === 'muyu.task.preview'));
+    const small = createToolSelection(r.list(), ['muyu.tools.list', 'muyu.tools.select', ...draftIds]);
+    assert.equal(small.enabled, false); assert.equal(small.select().length, 5);
+});
+test('Loading the draft group does not approve a draft operation or bypass runtime policy', async () => {
+    const r = registry(draftIds); let executions = 0;
+    const model = scriptedModel([
+        [call('directory', 'muyu.tools.list'), done],
+        [call('select', 'muyu.tools.select', { groups: ['config-drafts'] }), done],
+        [call('preview', 'muyu.settings.preview'), done],
+        [text('Permission denied, no draft created.'), done],
+    ]);
+    const handle = startMuyuRun({ identity, input: 'Preview only', registry: r, allowedTools: r.list().map(d => d.id), model,
+        handlers: { 'muyu.settings.preview': () => { executions++; return 1; } }, policy: p => !draftIds.includes(p.definition.id) });
+    assert.equal((await handle.completion).state.status, 'succeeded'); assert.equal(executions, 0);
+    assert.ok(!model.requests[0].tools.some(d => d.id === 'muyu.settings.preview'));
+    assert.ok(model.requests[2].tools.some(d => d.id === 'muyu.settings.preview'));
+    assert.equal(model.requests[3].messages.find(m => m.role === 'tool' && m.callId === 'preview').result.error.code, 'PERMISSION_DENIED');
+    const selected = model.requests[2].messages.find(m => m.role === 'tool' && m.callId === 'select').result.data;
+    assert.equal(JSON.parse(selected.text).permissionGranted, false);
+});
 test('Tool directory advertises discovery before denying unloaded Skill management without conferring permission', () => {
     const definition = createToolboxModule().registry.list().find(tool => tool.id === 'muyu.tools.list');
     assert.match(definition.description, /unselected, not unsupported/);

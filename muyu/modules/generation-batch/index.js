@@ -1,10 +1,12 @@
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createExecutionTasks } from '../execution-tasks.js';
 
 export const GENERATION_BATCH_RESULT_BYTES = 24000;
 /** One exact ordered proposal, never a generic write or child-ticket permission. */
 export function createGenerationBatchModule({ port, charge }) {
     const registry = createToolRegistry(), runs = new Map(), executions = new Map();
+    const taskExecutions = createExecutionTasks(port);
     const string = maxLength => ({ type: 'string', maxLength });
     const step = { type: 'object', properties: { kind: { type: 'string', enum: ['memory', 'profile', 'npc'] }, mode: { type: 'string', enum: ['trial', 'save'] }, revision: string(80), character: string(80), count: { type: 'integer', minimum: 1, maximum: 200 } }, required: ['kind', 'mode', 'revision'], additionalProperties: false };
     step.oneOf = ['memory', 'profile', 'npc'].map(kind => ({ type: 'object', properties: {
@@ -25,7 +27,7 @@ export function createGenerationBatchModule({ port, charge }) {
     return { registry, handlers: {
         'muyu.generation_batch.prepare': (args, ctx) => {
             const r = bound(ctx); let descriptor;
-            try { descriptor = port.prepareExecution(args, { target: ctx.target, taskId: r.taskId }); }
+            try { descriptor = taskExecutions.prepare(args, { target: ctx.target, taskId: r.taskId }); }
             catch (error) {
                 if (!['INVALID_GENERATION_BATCH', 'DUPLICATE_GENERATION_BATCH_STEP'].includes(error?.message)) throw error;
                 descriptor = { status: 'not_started', code: error.message, completed: 0, steps: [], correction: 'No generation or save started. Correct this pure preparation: memory/profile require character and forbid count; NPC allows count and forbids character. Use 1–8 unique targets, at most one NPC step. Do not retry an execution with unknown effects.' };
@@ -36,6 +38,7 @@ export function createGenerationBatchModule({ port, charge }) {
         },
         'muyu.generation_batch.execute': async (args, ctx) => {
             const r = bound(ctx), key = jsonKey([r.taskId, ctx.target, args.executionId]), previous = executions.get(key);
+            taskExecutions.track(r.taskId);
             if (previous) return copyJson(await previous);
             const descriptor = port.describeExecution(args.executionId, ctx.target);
             if (!descriptor) return refused('STALE_GENERATION_BATCH');
@@ -48,6 +51,7 @@ export function createGenerationBatchModule({ port, charge }) {
         },
     }, bindRun(identity) { runs.set(identity.id, { taskId: identity.taskId, target: identity.target }); },
     transferRun(from, identity) { const r = runs.get(from); if (!r) return; if (r.taskId !== identity.taskId || jsonKey(r.target) !== jsonKey(identity.target)) throw Error('RUN_NOT_BOUND'); runs.delete(from); runs.set(identity.id, r); },
-    forgetTask(taskId) { for (const key of executions.keys()) if (JSON.parse(key)[0] === taskId) executions.delete(key); port?.forgetExecutions?.(taskId); },
-    forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); executions.clear(); port?.clearExecutions?.(); } };
+    retainArtifacts() {},
+    forgetTask(taskId) { for (const key of executions.keys()) if (JSON.parse(key)[0] === taskId) executions.delete(key); taskExecutions.forget(taskId); },
+    forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); executions.clear(); taskExecutions.clear(); } };
 }

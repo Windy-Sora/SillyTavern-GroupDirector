@@ -11,10 +11,29 @@ const newNames = ['director-diagnosis', 'memory-maintenance', 'blueprint-workflo
 const remainingNames = ['chat-context-analysis', 'variable-workbench', 'character-npc-workbench', 'resource-library-workflow', 'prompt-template-workbench', 'script-agent-workbench', 'worldbook-workflow', 'automation-workflow', 'muyu-troubleshooting', 'skill-workbench'];
 const readBuiltins = () => loadBuiltinSkills({ readText: path => readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8') });
 
+test('Complex-task guides associate host evidence without forcing simple previews or granting completion', async () => {
+    const packs = await readBuiltins();
+    for (const name of ['configuration-orchestration', 'config-review']) {
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, 4);
+        const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
+        const main = pack.package.files[0].text, content = pack.package.files.map(row => row.text).join('\n');
+        assert.match(main, /version: "1.3"/);
+        assert.match(content, /muyu.task.bind_read/);
+        assert.match(content, /不增加权限|不增加读取或写入授权/);
+        assert.doesNotMatch(main, /必要时括注字段名/);
+        if (name === 'configuration-orchestration') {
+            assert.match(content, /简单单项预览不强制规划/);
+            assert.match(content, /bundleSteps/);
+            assert.match(content, /不按序号、kind或标题猜身份/);
+            assert.match(content, /不证明用户意图、步骤完成/);
+        }
+    }
+});
+
 test('Third-round guides distinguish explicit independent goals and operation stages from approval count', async () => {
     const packs = await readBuiltins();
     for (const [name, revision, version, patterns] of [
-        ['configuration-orchestration', 3, '1.2', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
+        ['configuration-orchestration', 4, '1.3', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
         ['script-agent-workbench', 2, '1.1', [/阶段不等于固定审批次数/, /同一候选/, /trial／save/]],
         ['resource-library-workflow', 4, '1.3', [/不是保留当前聊天旧蓝图/, /不保证这个目标/, /定向编辑方案/]],
     ]) {

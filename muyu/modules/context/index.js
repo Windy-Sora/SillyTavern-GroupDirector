@@ -26,5 +26,5 @@ export function createContextModule() {
             }
             result.complete = !result.missing.length; return result;
         },
-    }, dispose() {}, forgetRun() {} };
+    }, transferRun() {}, retainArtifacts() {}, dispose() {}, forgetRun() {} };
 }

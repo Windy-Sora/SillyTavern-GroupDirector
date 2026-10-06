@@ -65,6 +65,8 @@ export function createProviderAssetModule({ port, charge }) {
             assertDraft(artifact.content);
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'provider-import-with-code-execution' });
         },
+        // Provider drafts are plain DTOs; no private host ticket is leased to artifacts.
+        retainArtifacts() {},
         forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
     };
 }

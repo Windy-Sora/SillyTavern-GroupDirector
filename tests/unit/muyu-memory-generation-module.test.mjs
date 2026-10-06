@@ -48,7 +48,8 @@ test('lifecycle transfer only moves a bound same-task target; inactive module is
     const f = fixture(); f.module.transferRun('not-bound', { id: 'new', taskId: 'another', target });
     assert.throws(() => f.module.transferRun('r', { id: 'new', taskId: 'wrong', target }), /RUN_NOT_BOUND/);
     f.module.transferRun('r', { ...f.identity, id: 'next' }); f.module.forgetRun('next');
-    f.module.forgetTask('t'); f.module.dispose(); assert.deepEqual(f.calls.forgotten, ['t']); assert.equal(f.calls.clear, 1);
+    // Binding alone allocated no execution resources; do not clear a shared port.
+    f.module.forgetTask('t'); f.module.dispose(); assert.deepEqual(f.calls.forgotten, []); assert.equal(f.calls.clear, 0);
 });
 test('read/diagnostic/broad chat grants never approve paid memory generation', () => {
     const f = fixture(), p = createPermissions(), d = f.module.registry.list().find(d => d.id.endsWith('.execute'));

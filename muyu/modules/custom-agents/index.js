@@ -1,9 +1,11 @@
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createExecutionTasks } from '../execution-tasks.js';
 import { AGENT_EXECUTION_GUIDANCE, agentExecutionEvidence } from '../../agents/execution-evidence.js';
 const str = maxLength => ({ type: 'string', maxLength });
 export function createCustomAgentModule({ port, charge }) {
     const registry = createToolRegistry(), runs = new Map();
+    const taskExecutions = createExecutionTasks(port);
     const outputSchema = { type: 'object', properties: { candidateId: str(100), text: str(24000), applyRequested: { type: 'boolean' } }, required: ['candidateId', 'text'], additionalProperties: false };
     const inputs = {
         prepare_execution: { properties: { id: str(100), revision: str(80), mode: { type: 'string', enum: ['trial', 'save'] } }, required: ['id', 'revision', 'mode'] },
@@ -47,10 +49,11 @@ export function createCustomAgentModule({ port, charge }) {
     return { registry, handlers: {
         'muyu.agents.prepare_execution': (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
-            return encoded(port.prepareExecution(args, { target: ctx.target, taskId: run.taskId }), ctx);
+            return encoded(taskExecutions.prepare(args, { target: ctx.target, taskId: run.taskId }), ctx);
         },
         'muyu.agents.execute': async (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
+            taskExecutions.track(run.taskId);
             if (charge && !charge(ctx.runId, 16000)) return { candidateId: '', text: JSON.stringify(agentExecutionEvidence({ status: 'not_started', code: 'RESULT_BUDGET_EXCEEDED' })) };
             return { candidateId: '', text: JSON.stringify(await port.execute(args.executionId, { target: ctx.target, taskId: run.taskId, signal: ctx.signal })) };
         },
@@ -80,7 +83,8 @@ export function createCustomAgentModule({ port, charge }) {
             port.assertDraft(artifact.content);
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'agent-definition-and-future-model-calls' });
         },
-        forgetTask(id) { port?.forgetExecutions?.(id); },
-        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); port?.clearExecutions?.(); },
+        retainArtifacts() {}, // Definition drafts are plain DTOs, not execution tickets.
+        forgetTask(id) { taskExecutions.forget(id); },
+        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); taskExecutions.clear(); },
     };
 }

@@ -102,6 +102,6 @@ export function createAgentMemoryModule({ port, budget = () => 6000, used = null
     return { registry, handlers,
         bindRun(identity, intent) { runs.set(identity.id, { question: intent.userQuestion || '', used: 0, writes: new Map() }); },
         transferRun(from, identity) { const previous = runs.get(from); if (previous) { runs.delete(from); runs.set(identity.id, previous); } },
-        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
+        retainArtifacts() {}, forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
     };
 }

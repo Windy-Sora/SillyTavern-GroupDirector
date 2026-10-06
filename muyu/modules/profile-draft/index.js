@@ -47,6 +47,6 @@ export function createProfileDraftModule() {
             if (jsonKey(checked) !== jsonKey(artifact.content)) throw Error('INVALID_PROFILE_DRAFT');
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'passed', intent: 'requires_user_review', writes: 'profile-save-only' });
         },
-        forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); },
+        retainArtifacts() {}, forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); },
     };
 }

@@ -7,5 +7,5 @@ export function createToolboxModule() {
         outputSchema: { type: 'object', properties: { text: { type: 'string', maxLength: 24000 } }, required: ['text'], additionalProperties: false },
         scope: 'global', effect: 'read', dataClasses: ['public-knowledge'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     registry.seal();
-    return { registry, handlers: { 'muyu.tools.list': () => { throw Error('TOOLBOX_NOT_BOUND'); }, 'muyu.tools.select': () => { throw Error('TOOLBOX_NOT_BOUND'); } }, forgetRun() {}, dispose() {} };
+    return { registry, handlers: { 'muyu.tools.list': () => { throw Error('TOOLBOX_NOT_BOUND'); }, 'muyu.tools.select': () => { throw Error('TOOLBOX_NOT_BOUND'); } }, transferRun() {}, retainArtifacts() {}, forgetRun() {}, dispose() {} };
 }

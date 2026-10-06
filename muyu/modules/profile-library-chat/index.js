@@ -45,6 +45,6 @@ export function createProfileLibraryChatModule({ port, charge }) {
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'chat-profiles-and-optional-global-templates' });
         },
         retainArtifacts: artifacts => runs.retainArtifacts(artifacts),
-        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); port?.clearPlans(); },
+        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
     };
 }

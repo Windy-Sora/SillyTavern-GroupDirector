@@ -20,6 +20,16 @@
 
 ## 3. 精确整单适合哪些内容
 
+### 已发布方案的证据关联
+
+实际跨来源核对或同时落地变量与配置等不同操作时，先单独调用 task.plan，列最少的read与写入提案步骤；等宿主批准读取范围再继续。纯文字设计和简单单项预览不强制规划，不能为了关联多读资料。
+
+Host task observation的taskState.plan提供artifactId、artifactRevision及steps.id。成功读取后，从readEvidence.evidence选对应本次来源／字段的实际读值证据，用可用的muyu.task.bind_read关联到对应read步骤。目录、合同、空／失败／单页结果不等于实际读值或读齐；不为每次合同查询增加关联调用。同一证据确实覆盖多个read步骤时可合并stepIds。
+
+生成支持的配置／变量／整单候选后，用可用的muyu.task.bind_step传实际candidateId及匹配写入步骤ID。task.preview返回steps时，同时用bundleSteps:[{bundleStepId,stepId}]映射确实对应的子步骤。所有ID原样取宿主，不按序号、kind或标题猜身份；无法明确对应的项保持未关联。
+
+只关联本任务当前批准方案版本；候选更新使用新ID。工具缺失、拒绝或预算不足时说明关联未建立，不虚构成功、循环重试或绕过审批。关联不证明用户意图、步骤完成、保存成功或新授权；执行仍看回执。普通答复不展示这些内部ID。
+
 `muyu.task.preview` 支持普通全局 settingsJson、最多 6 个不同数值变量、最多 3 个明确请求的脚本定义。需要当前聊天目标，即使其中包含全局参数；没有聊天且只改普通全局参数，用单独配置预览。
 
 划分前查询 `muyu.settings.contract` 的具体字段，按返回的 `bundle.supported` 判断，不按“记忆领域”一律拆单。自动提取开关 autoMemoryEnabled、间隔 autoMemoryInterval、总开关 memoryEnabled 和仅发言角色 autoMemorySpeakers 可进入普通 settings 整单；单角色容量 memoryMaxEntries 不可。可合并不意味着自动补开依赖或省略新基线核验。脚本定义也是这份整单的一部分，自定义Agent定义则不是；业务生成整单与配置整单是不同合同。

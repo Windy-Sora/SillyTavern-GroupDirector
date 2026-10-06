@@ -1503,6 +1503,29 @@ test('Extended story context has its own opt-in control and scope summary', asyn
     f.state.hasChat = false; f.emit(); assert.equal(extended.disabled, true);
 });
 
+for (const lang of ['zh', 'en']) test('Unknown artifact cards stay inert and do not disrupt other cards / ' + lang, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.artifacts = [
+        { id: 'unknown', kind: 'future-draft', revision: 1, content: {} },
+        { id: 'report', kind: 'report', revision: 1, content: { findings: [{ kind: 'fact', text: 'Known evidence' }] } },
+    ];
+    assert.doesNotThrow(() => f.emit());
+    const content = f.all().map(e => e.textContent).join('\n');
+    assert.match(content, lang === 'en' ? /Unsupported artifact/ : /暂不支持的产物/);
+    assert.match(content, /Known evidence/);
+    assert.equal(f.find('button', lang === 'en' ? 'Revalidate' : '重新校验'), undefined);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+for (const lang of ['zh', 'en']) test('Unknown receipt version displays a safe notice without configuration shortcuts / ' + lang, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.receipts = [{ version: 999, operationId: 'unknown' }];
+    assert.doesNotThrow(() => f.emit());
+    assert.match(f.all().map(e => e.textContent).join('\n'), lang === 'en' ? /receipt version is not supported/ : /暂不支持显示此版本的回执/);
+    assert.equal(f.find('button', lang === 'en' ? 'Ask Muyu to explain' : '让暮羽解释结果'), undefined);
+    assert.equal(f.find('button', lang === 'en' ? 'Check current settings' : '核对当前配置'), undefined);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
 test('Execution budget controls save units and preserve edits across progress renders', async () => {
     const f = fixture('zh', true);
     const modelCalls = f.all().find(e => e.type === 'number' && e.parent.textContent === '模型调用次数');

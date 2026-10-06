@@ -53,6 +53,6 @@ export function createProfileEditorModule({port,charge}) {
             if(artifact.kind!=='profile-edit-draft'||artifact.revision!==revision||state?.status!=='succeeded'||state.taskId!==artifact.taskId)throw Error('INVALID_PROFILE_DRAFT');
             port.assertFresh(artifact.content);return app.validateArtifact(id,revision,{structural:'passed',baseline:'matched-at-validation',intent:'requires_user_review',writes:'one-chat-profile-entry'});
         },
-        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
+        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();},
     };
 }

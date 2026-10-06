@@ -62,3 +62,13 @@ export function settingDisplayValues(values) {
     return Object.fromEntries(Object.entries(values).filter(([id, value]) => typeof value === 'boolean' || typeof value === 'number' || Object.hasOwn(configPresentation(id)?.valueLabels || {}, String(value)))
         .map(([id, value]) => [id, bilingual(configValue(id, value, 'zh'), configValue(id, value, 'en'))]));
 }
+
+/** A small answer aid, not another source of truth. Never repeat free-text Prompt bodies. */
+export function settingAnswerView(values) {
+    if (Object.keys(values).length > 8) return null;
+    const display = settingDisplayValues(values);
+    return Object.entries(display).map(([id, value]) => {
+        const label = configPresentation(id)?.label;
+        return label ? bilingual(`${label.zh}：${value.zh}`, `${label.en}: ${value.en}`) : null;
+    }).filter(Boolean);
+}

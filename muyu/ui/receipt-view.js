@@ -1,6 +1,7 @@
 import { receiptText } from '../actions/receipts.js';
 import { configLabel, configValue } from '../config/presentation.js';
 import { renderConfigDiff } from './config-diff-view.js';
+import { receiptPresentation } from './receipt-presentation.js';
 
 /** Plain application facts, distinct from user/assistant messages. */
 export function createReceiptView({ doc, parent, controller, act, lang }) {
@@ -17,14 +18,17 @@ export function createReceiptView({ doc, parent, controller, act, lang }) {
         node('h4', t('操作回执 · 历史结果', 'Operation receipts · Historical results'));
         if (state.receiptRecordFailed) node('p', t('部分回执未能加入历史；操作不会重试。请复制保留当前结果。', 'Some receipts could not be recorded; operations will not retry. Copy these results for safekeeping.'));
         for (const r of state.receipts) {
-            const configReceipt = r.version === undefined || r.version === 2;
+            const presentation = receiptPresentation(r), configReceipt = presentation.config;
             const card = node('div', ''); card.className = 'gd-muyu-artifact';
+            if (!presentation.supported) {
+                node('p', t('暂不支持显示此版本的回执；不会提供操作入口。', 'This receipt version is not supported here; no action is offered.'), card);
+                continue;
+            }
             node('p', receiptText(r, lang), card).setAttribute('style', 'white-space: pre-wrap');
-            if (configReceipt) renderConfigDiff({ doc, parent: card, diff: r.diff, lang, technicalOnly: true });
-            if ([4, 9].includes(r.version)) for (const step of r.steps) if (step.kind === 'settings') renderConfigDiff({ doc, parent: card, diff: step.diff, lang, technicalOnly: true });
-            if (r.version === 5) {
+            for (const diff of presentation.diffs) renderConfigDiff({ doc, parent: card, diff, lang, technicalOnly: true });
+            if (presentation.fields) {
                 const details = node('details', '', card); node('summary', t('技术详情 · 原始字段', 'Technical details · raw fields'), details);
-                node('p', r.fields.join(', '), details);
+                node('p', presentation.fields.join(', '), details);
             }
             const status = state.receiptExplanations?.[r.operationId];
             const actions = node('div', '', card); actions.className = 'gd-muyu-receipt-actions';

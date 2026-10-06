@@ -1,33 +1,10 @@
-import { createSkillActions } from '../actions/skill-save.js';
+import { createBuiltinActions } from '../actions/builtins.js';
 import { DISPLAY_DEFAULTS, validateDisplayConfig } from '../preferences/contract.js';
 import { createSkillWorkbench } from '../skills/workbench.js';
-import { createSelectionActions } from '../actions/selection-edit.js';
-import { createLedgerEditActions } from '../actions/ledger-edit.js';
-import { createStPresetActions } from '../actions/st-preset.js';
-import { createCharacterCardActions } from '../actions/character-card.js';
-import { createWorldBookEditActions } from '../actions/worldbook-edit.js';
-import { createBlueprintNodeEditActions } from '../actions/blueprint-node-edit.js';
-import { createNpcEditActions } from '../actions/npc-edit.js';
-import { createProfileEditActions } from '../actions/profile-edit.js';
-import { createMemoryEditActions } from '../actions/memory-edit.js';
 import { copyModelText } from '../core/model-message.js';
 import { jsonKey } from '../core/json-contract.js';
 import { createApplication } from './service.js';
 import { recoverableQuestion } from './recovery.js';
-import { createConfigActions } from '../actions/config-apply.js';
-import { createVariableActions } from '../actions/variable-apply.js';
-import { createTaskBundleActions } from '../actions/task-bundle-apply.js';
-import { createProfileActions } from '../actions/profile-save.js';
-import { createBlueprintLibraryChatActions } from '../actions/blueprint-library-chat.js';
-import { createNpcLibraryChatActions } from '../actions/npc-library-chat.js';
-import { createProfileLibraryChatActions } from '../actions/profile-library-chat.js';
-import { createBlueprintLibraryActions } from '../actions/blueprint-library-save.js';
-import { createNpcLibraryActions } from '../actions/npc-library-save.js';
-import { createProfileLibraryActions } from '../actions/profile-library-save.js';
-import { createCustomPromptActions } from '../actions/custom-prompt-save.js';
-import { createCustomAgentActions } from '../actions/custom-agent-save.js';
-import { createScriptActions } from '../actions/script-save.js';
-import { createProviderInstallActions } from '../actions/provider-install.js';
 import { sourcePermission } from '../modules/providers/catalog.js';
 import { checkReceiptConfig } from './config-check.js';
 import { assistantToolAccess, permissionApprovalCurrent, permissionRequestAllowed, permissionRequestAlreadyGranted, toolAvailableInMode } from './capabilities.js';
@@ -52,6 +29,7 @@ import { CLARIFICATION_TOOL, MAX_CLARIFICATIONS, describeAnswer } from '../inter
 import { PERMISSION_TOOL, permissionSources, permissionSource, sourceKey, permissionAnswer } from '../permissions/contract.js';
 import { interactionLimit, MAX_READ_PERMISSIONS, MAX_CODE_PERMISSIONS } from '../interactions/limits.js';
 import { createReadObservation } from './read-observation.js';
+import { createTaskStateStore } from './task-state.js';
 import { createMemoryWorkbench } from '../memory/workbench.js';
 import { tracePermission, permissionTraceError } from '../core/permission-debug.js';
 
@@ -79,6 +57,15 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const listeners = new Set(), sessions = new Map(), inputs = new Map(), intentions = new Map(), notices = new Map();
     const runtimeSessions = new Map();
     const continuations = new Map();
+    const taskStates = createTaskStateStore({ canCarry: (query, target, taskId) => {
+        if (!model || resetting || !builtins) return false;
+        const definition = builtins.registry.get(query.toolId);
+        return !!definition && assistantToolAccess(definition, query.args, target, taskId, permissions, host.providerPort).decision === true;
+    }, canCarryReceipt: (authorization, target, taskId) => !!model && !resetting && authorization.sources.every(source => {
+        const definition = permissionSource(source.slice(7));
+        return !!definition && (!authorization.memoryPruneChatKey || source !== 'source:memoryDiagnostics' || target?.chatKey === authorization.memoryPruneChatKey) &&
+            permissions.allows(source, definition.scope === 'global' ? host.globalTarget : target, taskId);
+    }) });
     const releaseContinuation = taskId => { const pending = continuations.get(taskId); if (pending) { continuations.delete(taskId); builtins?.forgetRun(pending.sourceRunId); } };
     const configChecks = new Map(), autoConfigChecks = [];
     let checking = null;
@@ -94,32 +81,34 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const recordedActions = new Map(), explanations = new Map(), actionOwners = new Map(), approvedPlans = new Set(), declinedPlans = new Set(), invalidPlans = new Set();
     const autoActions = [], autoPlans = [];
     const actionChanged = () => { captureReceipts(); emit(); queueMicrotask(flushAutoActions); queueMicrotask(flushAutoConfigChecks); };
-    const actions = createConfigActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.configWriter, changed: actionChanged });
-    const selectionActions = createSelectionActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.globalTarget,writer:host.selectionEditor,changed:actionChanged});
-    const ledgerEditActions = createLedgerEditActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.currentTarget(),writer:host.ledgerEditor,changed:actionChanged});
-    const characterCardActions = createCharacterCardActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.globalTarget,writer:host.characterCards,changed:actionChanged});
-    const stPresetActions = createStPresetActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.globalTarget,writer:host.stPresetEditor,changed:actionChanged});
-    const worldBookEditActions = createWorldBookEditActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.globalTarget,writer:host.worldBookEditor,changed:actionChanged});
-    const blueprintNodeEditActions = createBlueprintNodeEditActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.currentTarget(),writer:host.blueprintNodeEditor,changed:actionChanged});
-    const npcEditActions = createNpcEditActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.currentTarget(),writer:host.npcEditor,changed:actionChanged});
-    const profileEditActions = createProfileEditActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.currentTarget(),writer:host.profileEditor,changed:actionChanged});
-    const memoryEditActions = createMemoryEditActions({getArtifact:id=>app.getArtifact(id),validate:(id,revision)=>builtins.revalidate(app,id,revision),getTarget:()=>host.currentTarget(),writer:host.memoryEditor,changed:actionChanged});
-    const variableActions = createVariableActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.variableWriter, changed: actionChanged });
-    const bundleActions = createTaskBundleActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.bundleWriter, changed: actionChanged });
-    const profileActions = createProfileActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.profileWriter, changed: actionChanged });
-    const providerActions = createProviderInstallActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.providerAssets, changed: actionChanged });
-    const customAgentActions = createCustomAgentActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.customAgents, changed: actionChanged });
-    const customPromptActions = createCustomPromptActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.customPrompts, changed: actionChanged });
-    const profileLibraryActions = createProfileLibraryActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.profileLibraries, changed: actionChanged });
-    const npcLibraryActions = createNpcLibraryActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.npcLibraries, changed: actionChanged });
-    const blueprintLibraryActions = createBlueprintLibraryActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.blueprintLibraries, changed: actionChanged });
-    const profileLibraryChatActions = createProfileLibraryChatActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.profileLibraryChat, changed: actionChanged });
-    const blueprintLibraryChatActions = createBlueprintLibraryChatActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.blueprintLibraryChat, changed: actionChanged });
-    const npcLibraryChatActions = createNpcLibraryChatActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.currentTarget(), writer: host.npcLibraryChat, changed: actionChanged });
-    const scriptActions = createScriptActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.scriptExecutors, changed: actionChanged });
-    const skillActions = createSkillActions({ getArtifact: id => app.getArtifact(id), validate: (id, revision) => builtins.revalidate(app, id, revision), getTarget: () => host.globalTarget, writer: host.skills, changed: actionChanged });
+    const actionAssembly = createBuiltinActions({ host, getArtifact: id => app.getArtifact(id),
+        validate: (id, revision) => builtins.revalidate(app, id, revision), changed: actionChanged });
+    const actions = actionAssembly.get('actions');
+    const selectionActions = actionAssembly.get('selectionActions');
+    const ledgerEditActions = actionAssembly.get('ledgerEditActions');
+    const characterCardActions = actionAssembly.get('characterCardActions');
+    const stPresetActions = actionAssembly.get('stPresetActions');
+    const worldBookEditActions = actionAssembly.get('worldBookEditActions');
+    const blueprintNodeEditActions = actionAssembly.get('blueprintNodeEditActions');
+    const npcEditActions = actionAssembly.get('npcEditActions');
+    const profileEditActions = actionAssembly.get('profileEditActions');
+    const memoryEditActions = actionAssembly.get('memoryEditActions');
+    const variableActions = actionAssembly.get('variableActions');
+    const bundleActions = actionAssembly.get('bundleActions');
+    const profileActions = actionAssembly.get('profileActions');
+    const providerActions = actionAssembly.get('providerActions');
+    const customAgentActions = actionAssembly.get('customAgentActions');
+    const customPromptActions = actionAssembly.get('customPromptActions');
+    const profileLibraryActions = actionAssembly.get('profileLibraryActions');
+    const npcLibraryActions = actionAssembly.get('npcLibraryActions');
+    const blueprintLibraryActions = actionAssembly.get('blueprintLibraryActions');
+    const profileLibraryChatActions = actionAssembly.get('profileLibraryChatActions');
+    const blueprintLibraryChatActions = actionAssembly.get('blueprintLibraryChatActions');
+    const npcLibraryChatActions = actionAssembly.get('npcLibraryChatActions');
+    const scriptActions = actionAssembly.get('scriptActions');
+    const skillActions = actionAssembly.get('skillActions');
     function flushAutoActions() {
-        if (!fullAccess || !app || resetting || disposed || checking || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actions.busy || selectionActions.busy || ledgerEditActions.busy || worldBookEditActions.busy || characterCardActions.busy || stPresetActions.busy || blueprintNodeEditActions.busy || npcEditActions.busy || profileEditActions.busy || memoryEditActions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || providerActions.busy || scriptActions.busy || customAgentActions.busy || customPromptActions.busy || skillActions.busy || profileLibraryActions.busy || npcLibraryActions.busy || blueprintLibraryActions.busy || profileLibraryChatActions.busy || npcLibraryChatActions.busy || blueprintLibraryChatActions.busy) return;
+        if (!fullAccess || !app || resetting || disposed || checking || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actionAssembly.busy) return;
         const plan = autoPlans.shift();
         if (plan) {
             try { api.approveTaskPlanReads(plan.id, plan.revision); }
@@ -132,7 +121,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const artifact = app.getArtifact(next.id);
             if (artifact.revision !== next.revision || artifact.sessionId !== next.sessionId || artifact.kind !== next.kind ||
                 jsonKey(next.target) !== jsonKey(['selection-draft', 'config-draft', 'profile-draft', 'provider-draft', 'script-draft', 'custom-agent-draft', 'custom-prompt-draft', 'skill-draft', 'profile-library-draft', 'npc-library-draft', 'blueprint-library-draft'].includes(next.kind) ? host.globalTarget : host.currentTarget())) throw Error('ACTION_STALE');
-            const coordinator = next.kind === 'selection-draft' ? selectionActions : next.kind === 'st-preset-draft' ? stPresetActions : next.kind === 'character-card-draft' ? characterCardActions : next.kind === 'worldbook-edit-draft' ? worldBookEditActions : next.kind === 'ledger-edit-draft' ? ledgerEditActions : next.kind === 'blueprint-node-edit-draft' ? blueprintNodeEditActions : next.kind === 'npc-edit-draft' ? npcEditActions : next.kind === 'profile-edit-draft' ? profileEditActions : next.kind === 'memory-edit-draft' ? memoryEditActions : next.kind === 'config-draft' ? actions : ['variable-draft','variable-editor-draft'].includes(next.kind) ? variableActions : next.kind === 'profile-draft' ? profileActions : next.kind === 'provider-draft' ? providerActions : next.kind === 'blueprint-library-chat-draft' ? blueprintLibraryChatActions : next.kind === 'npc-library-chat-draft' ? npcLibraryChatActions : next.kind === 'profile-library-chat-draft' ? profileLibraryChatActions : next.kind === 'blueprint-library-draft' ? blueprintLibraryActions : next.kind === 'npc-library-draft' ? npcLibraryActions : next.kind === 'profile-library-draft' ? profileLibraryActions : next.kind === 'skill-draft' ? skillActions : next.kind === 'custom-prompt-draft' ? customPromptActions : next.kind === 'custom-agent-draft' ? customAgentActions : next.kind === 'script-draft' ? scriptActions : bundleActions;
+            const coordinator = actionAssembly.forKind(next.kind);
             const record = coordinator.prepare(next.id, next.revision);
             actionOwners.set(record.id, next.owner);
             void coordinator.approve(record.id).then(() => queueMicrotask(flushAutoActions));
@@ -161,13 +150,17 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const library = createSessionLibrary({ port: host.history, changed: emit });
     const views = new Map();
     function captureReceipts() {
-        for (const action of [...actions.list(), ...selectionActions.list(), ...ledgerEditActions.list(), ...worldBookEditActions.list(), ...characterCardActions.list(), ...stPresetActions.list(), ...blueprintNodeEditActions.list(), ...npcEditActions.list(), ...profileEditActions.list(), ...memoryEditActions.list(), ...variableActions.list(), ...bundleActions.list(), ...profileActions.list(), ...providerActions.list(), ...scriptActions.list(), ...customAgentActions.list(), ...customPromptActions.list(), ...skillActions.list(), ...profileLibraryActions.list(), ...npcLibraryActions.list(), ...blueprintLibraryActions.list(), ...profileLibraryChatActions.list(), ...npcLibraryChatActions.list(), ...blueprintLibraryChatActions.list()]) {
+        for (const action of actionAssembly.list()) {
             const owner = actionOwners.get(action.id) || [...runtimeSessions].find(([, runtimeId]) => runtimeId === action.sessionId)?.[0];
             if (owner) actionOwners.set(action.id, owner);
+            let artifact;
+            try { artifact = app?.getArtifact(action.artifactId); } catch { /* Removed drafts cannot establish a new link. */ }
+            if (!receiptStatuses.includes(action.status)) taskStates.observeAction(action, artifact);
             if (!receiptStatuses.includes(action.status) || recordedActions.has(action.id)) continue;
             const id = owner;
             if (!id) continue;
             const entry = { id, receipt: actionReceipt(action), failed: false };
+            taskStates.observeAction(action, artifact, entry.receipt);
             recordedActions.set(action.id, entry);
             try { library.recordReceipt(id, entry.receipt); } catch { entry.failed = true; }
             if (action.id.startsWith('apply:') && entry.receipt.version === 2 && entry.receipt.diff.length &&
@@ -208,11 +201,12 @@ export function createMuyuController({ host, createModel = createChatCompletions
         return structuredClone([...receipts.values()]);
     }
     function unloadRuntime(sessionId) {
+        taskStates.forgetSession(sessionId);
         const ownedTasks = app.snapshot().tasks.filter(t => t.sessionId === sessionId).map(t => t.id);
         app.unloadSession(sessionId);
         for (const id of ownedTasks) { releaseContinuation(id); builtins.forgetTask(id); permissions.forgetTask(null, id); }
     }
-    function syncTarget(changed = true) { const retained = changed && mode === 'assistant' ? viewedId || sessions.get(observedAssistantScope) : null; selectionEpoch++; if (changed) { viewedId = retained || null; pinnedTarget = null; noteWorkbench.targetChanged(); } observedAssistantScope = historyScope('assistant', host.currentTarget() || host.globalTarget); if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { releaseContinuation(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
+function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget()); const retained = changed && mode === 'assistant' ? viewedId || sessions.get(observedAssistantScope) : null; selectionEpoch++; if (changed) { viewedId = retained || null; pinnedTarget = null; noteWorkbench.targetChanged(); } observedAssistantScope = historyScope('assistant', host.currentTarget() || host.globalTarget); if (compacting?.target.kind === 'chat' && jsonKey(compacting.target) !== jsonKey(host.currentTarget())) running?.cancel(); if (app) { app.changeTarget(host.currentTarget()); for (const [taskId, pending] of continuations) { const run = app.snapshot().runs.find(row => row.id === pending.sourceRunId); if (run?.target.kind === 'chat' && jsonKey(run.target) !== jsonKey(host.currentTarget())) { releaseContinuation(taskId); permissions.forgetTask(run.target, taskId); } } } emit(); }
     function readOnly(record) {
         if (!record) return false;
         const [task, kind] = JSON.parse(record.scope);
@@ -233,8 +227,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
         emit();
     }
     async function manageSession(id, action, value) {
-        live(); if (resetting || checking || actions.busy || selectionActions.busy || ledgerEditActions.busy || worldBookEditActions.busy || characterCardActions.busy || stPresetActions.busy || blueprintNodeEditActions.busy || npcEditActions.busy || profileEditActions.busy || memoryEditActions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || providerActions.busy || scriptActions.busy || customAgentActions.busy || customPromptActions.busy || skillActions.busy || profileLibraryActions.busy || npcLibraryActions.busy || blueprintLibraryActions.busy || profileLibraryChatActions.busy || npcLibraryChatActions.busy || blueprintLibraryChatActions.busy || !library.meta(id)) throw Error('NOT_READY');
-        if (action !== 'rename') { actions.invalidate(); selectionActions.invalidate(); ledgerEditActions.invalidate(); worldBookEditActions.invalidate(); characterCardActions.invalidate(); stPresetActions.invalidate(); blueprintNodeEditActions.invalidate(); npcEditActions.invalidate(); profileEditActions.invalidate(); memoryEditActions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); providerActions.invalidate(); scriptActions.invalidate(); customAgentActions.invalidate(); customPromptActions.invalidate(); skillActions.invalidate(); profileLibraryActions.invalidate(); npcLibraryActions.invalidate(); blueprintLibraryActions.invalidate(); profileLibraryChatActions.invalidate(); npcLibraryChatActions.invalidate(); blueprintLibraryChatActions.invalidate(); }
+        live(); if (resetting || checking || actionAssembly.busy || !library.meta(id)) throw Error('NOT_READY');
+        if (action !== 'rename') { actionAssembly.invalidate(); }
         resetting = true; selectionEpoch++; emit();
         try {
             const runtimeId = runtimeSessions.get(id);
@@ -310,7 +304,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         const plan = planContext((record?.messages || []).slice(choice.historyStart), choice.omitHistory ? null : record?.contextSummary, contextConfig);
         const taskRuns = state?.runs.filter(r => r.taskId === latestTaskId) || [];
         const taskUsage = taskRuns.reduce((sum, run) => { const b = run.process?.budget; if (b) for (const k of ['modelCalls', 'toolCalls', 'inputTokens', 'outputTokens', 'elapsedMs']) sum[k] += b[k] || 0; return sum; }, { segments: taskRuns.length, modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 });
-        const busy = !!checking || actions.busy || selectionActions.busy || ledgerEditActions.busy || worldBookEditActions.busy || characterCardActions.busy || stPresetActions.busy || blueprintNodeEditActions.busy || npcEditActions.busy || profileEditActions.busy || memoryEditActions.busy || variableActions.busy || bundleActions.busy || profileActions.busy || providerActions.busy || scriptActions.busy || customAgentActions.busy || customPromptActions.busy || skillActions.busy || profileLibraryActions.busy || npcLibraryActions.busy || blueprintLibraryActions.busy || profileLibraryChatActions.busy || npcLibraryChatActions.busy || blueprintLibraryChatActions.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
+        const busy = !!checking || actionAssembly.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
         const switchedChat = mode === 'assistant' && !!record && !record.imported && !record.archived && record.scope !== historyScope('assistant', targetFor());
         const recovery = recoverableQuestion({ record, runs: state?.runs.filter(r => r.sessionId === sessionId) || [], readOnly: isReadOnly || switchedChat, busy });
         return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly, switchedChat,
@@ -371,14 +365,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
         };
     }
     function assemble() {
+        taskStates.clear();
         compactionBreaker.clear();
         historyTransportEpoch++;
         historyGrants.clear();
-        actions.clear();
-        selectionActions.clear(); ledgerEditActions.clear(); worldBookEditActions.clear(); characterCardActions.clear(); stPresetActions.clear(); blueprintNodeEditActions.clear(); npcEditActions.clear(); profileEditActions.clear(); memoryEditActions.clear(); variableActions.clear();
-        bundleActions.clear();
-        profileActions.clear();
-        providerActions.clear(); scriptActions.clear(); customAgentActions.clear(); customPromptActions.clear(); skillActions.clear(); profileLibraryActions.clear(); npcLibraryActions.clear(); blueprintLibraryActions.clear(); profileLibraryChatActions.clear(); npcLibraryChatActions.clear(); blueprintLibraryChatActions.clear();
+        actionAssembly.clear();
         actionOwners.clear(); approvedPlans.clear(); declinedPlans.clear(); invalidPlans.clear();
         for (const [key, entry] of recordedActions) if (!entry.failed) recordedActions.delete(key);
         explanations.clear();
@@ -387,7 +378,16 @@ export function createMuyuController({ host, createModel = createChatCompletions
         selectionEpoch++;
         viewedId = null;
         sessions.clear(); runtimeSessions.clear(); intentions.clear(); notices.clear(); continuations.clear();
-        builtins = createBuiltins({ ...host, historyAccess, historyReadBudget: id => intentions.get(id)?.runConfig?.providerBytes ?? 0 });
+        builtins = createBuiltins({ ...host, historyAccess, historyReadBudget: id => intentions.get(id)?.runConfig?.providerBytes ?? 0,
+            bindTaskStep: (args, ctx) => {
+                const intent = intentions.get(ctx.runId), run = app?.snapshot().runs.find(row => row.id === ctx.runId);
+                if (intent?.mode !== 'assistant' || intent.explanation || !run || run.status !== 'running' || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('STEP_BINDING_STALE');
+                return taskStates.bindCandidate(run, args, intent.candidates);
+            }, bindTaskRead: (args, ctx) => {
+                const intent = intentions.get(ctx.runId), run = app?.snapshot().runs.find(row => row.id === ctx.runId);
+                if (intent?.mode !== 'assistant' || intent.explanation || !run || run.status !== 'running' || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('STEP_BINDING_STALE');
+                return taskStates.bindRead(run, args);
+            } });
         const { registry, handlers } = builtins;
         app = createApplication({ currentTarget: host.currentTarget(), maxSessions: 8, maxTasks: 1024, maxRuns: 1024, startRun: options => {
             const intent = intentions.get(options.identity.id);
@@ -413,6 +413,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const config = intent.runConfig;
             builtins.bindBudget(options.identity.id, config.providerBytes, intent.resumeFrom);
             const handle = startMuyuRun({ ...options, model, registry, handlers, allowedTools, trimRecoveryTools,
+                toolGroups: builtins.toolGroups,
+                taskEvidencePort: intent.mode === 'assistant' && !intent.explanation ? taskStates.begin(options.identity) : null,
                 interactionAdmission: request => interactionLimit(currentTask, request),
                 toolObservation: intent.mode === 'assistant' ? createReadObservation({ permissions, target: options.identity.target, taskId: options.identity.taskId, decisions: intent.readDecisions, registry }) : null,
                 trimRecoveryNote: '部分历史原文已在发送前因上下文预算裁剪。需要具体原文时用本轮提供的 muyu.history.search 按关键词定位，再用 muyu.history.read 回读，或 list 浏览索引；否则说明缺口，不要猜测。',
@@ -494,9 +496,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
             running = handle; return handle;
         } });
         appUnsubscribe = app.subscribe(event => {
+            if (['artifact.deleted', 'artifact.updated'].includes(event.type)) taskStates.retainArtifacts(app.snapshot().artifacts);
             if (['artifact.deleted', 'artifact.updated', 'session.unloaded'].includes(event.type)) builtins.retainArtifacts(app.snapshot().artifacts);
             if (event.type === 'run.settled') {
                 const intent = intentions.get(event.runId), run = app.snapshot().runs.find(r => r.id === event.runId);
+                if (run && intent?.mode === 'assistant' && !intent.explanation) taskStates.settle(run, run.status);
                 tracePermission('controller.settled', { target: run?.target, taskId: run?.taskId, runId: event.runId, decision: run?.status });
                 try {
                     if (run?.status === 'failed' && intent?.failure) notices.set(run.sessionId, intent.failure);
@@ -509,6 +513,8 @@ export function createMuyuController({ host, createModel = createChatCompletions
                         if (notice) notices.set(run.sessionId, notice);
                         const skillPlan = intent.candidates.get('muyu.task.plan');
                         const skillPlanArtifact = skillPlan && published?.get(skillPlan.candidateId);
+                        if (skillPlanArtifact) taskStates.publishPlan(run, skillPlanArtifact);
+                        if (published) taskStates.publishBindings(run, published, intent.candidates);
                         if (skillPlanArtifact && !builtins.parkSkillRun(event.runId, skillPlanArtifact)) { invalidPlans.add(skillPlanArtifact.id); notices.set(run.sessionId, 'RESULT_NEEDS_REVIEW'); }
                         if (fullAccess && intent.candidates.has('muyu.task.plan')) {
                             const plan = published?.get(intent.candidates.get('muyu.task.plan').candidateId);
@@ -534,7 +540,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     async function stopAndDrain() {
         autoActions.length = 0; autoPlans.length = 0;
         if (checking) { checking.abort.abort(); await checking.promise; }
-        actions.invalidate(); selectionActions.invalidate(); ledgerEditActions.invalidate(); worldBookEditActions.invalidate(); characterCardActions.invalidate(); stPresetActions.invalidate(); blueprintNodeEditActions.invalidate(); npcEditActions.invalidate(); profileEditActions.invalidate(); memoryEditActions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); providerActions.invalidate(); scriptActions.invalidate(); customAgentActions.invalidate(); customPromptActions.invalidate(); skillActions.invalidate(); profileLibraryActions.invalidate(); npcLibraryActions.invalidate(); blueprintLibraryActions.invalidate(); profileLibraryChatActions.invalidate(); npcLibraryChatActions.invalidate(); blueprintLibraryChatActions.invalidate(); await Promise.all([actions.drain(), selectionActions.drain(), ledgerEditActions.drain(), worldBookEditActions.drain(), characterCardActions.drain(), stPresetActions.drain(), blueprintNodeEditActions.drain(), npcEditActions.drain(), profileEditActions.drain(), memoryEditActions.drain(), variableActions.drain(), bundleActions.drain(), profileActions.drain(), providerActions.drain(), scriptActions.drain(), customAgentActions.drain(), customPromptActions.drain(), skillActions.drain(), profileLibraryActions.drain(), npcLibraryActions.drain(), blueprintLibraryActions.drain(), profileLibraryChatActions.drain(), npcLibraryChatActions.drain(), blueprintLibraryChatActions.drain()]);
+        actionAssembly.invalidate(); await actionAssembly.drain();
         if (!app) return;
         if (compacting) running?.cancel();
         for (const r of app.snapshot().runs) app.cancel(r.id);
@@ -553,7 +559,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         const tail = record.messages.slice(candidate.through).map(({ role, content }) => ({ role, content }));
         return { ...candidate, tail, coverage: { state: 'complete', total: record.messages.length, summarized: candidate.through, raw: tail.length, omitted: 0, excluded: 0 } };
     }
-    function clear() { webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); actions.clear(); selectionActions.clear(); ledgerEditActions.clear(); worldBookEditActions.clear(); characterCardActions.clear(); stPresetActions.clear(); blueprintNodeEditActions.clear(); npcEditActions.clear(); profileEditActions.clear(); memoryEditActions.clear(); variableActions.clear(); bundleActions.clear(); profileActions.clear(); providerActions.clear(); scriptActions.clear(); customAgentActions.clear(); customPromptActions.clear(); skillActions.clear(); profileLibraryActions.clear(); npcLibraryActions.clear(); blueprintLibraryActions.clear(); profileLibraryChatActions.clear(); npcLibraryChatActions.clear(); blueprintLibraryChatActions.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
+    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
     const unsubscribeConnection = host.modelConnection?.subscribe(() => {
         if (!hostConnectionCurrent || resetting || disposed) return;
@@ -890,7 +896,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             const sources = artifact.content.plan.sources.map(source => sourceKey(source));
             const result = permissions.grantTaskSources(sources, artifact.content.target, artifact.taskId,
                 () => send({ planArtifactId: id }));
-            approvedPlans.add(id); emit(); return result;
+            approvedPlans.add(id); taskStates.reviewPlan(artifact, 'approved-read-only'); emit(); return result;
         },
         declineTaskPlanReads(id, revision) {
             live(); const s = snapshot(), artifact = s.artifacts.find(a => a.id === id && a.revision === revision);
@@ -898,6 +904,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 artifact.validation?.intent !== 'read-scope-review' ||
                 !app.snapshot().tasks.some(task => task.id === artifact.taskId && task.status === 'awaiting_acceptance')) throw Error('TASK_PLAN_STALE');
             declinedPlans.add(id);
+            taskStates.reviewPlan(artifact, 'declined');
             builtins.forgetTask(artifact.taskId);
             permissions.forgetTask(artifact.content.target, artifact.taskId);
             emit();
@@ -923,7 +930,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
                 return result;
             });
         },
-        cancelInteraction(id) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); const request = snapshot().interaction; app.cancelInteraction(id); releaseContinuation(request.taskId); permissions.forgetTask(request.target, request.taskId); emit(); },
+        cancelInteraction(id) { live(); if (!app || snapshot().readOnly || snapshot().interaction?.id !== id || resetting) throw Error('INTERACTION_STALE'); const request = snapshot().interaction; app.cancelInteraction(id); taskStates.invalidateWait(request.taskId); releaseContinuation(request.taskId); permissions.forgetTask(request.target, request.taskId); emit(); },
         setInstructionDraft(value) { live(); instructionDraft = validateInstructionDraft(value); emit(); },
         discardInstructionDraft() { live(); instructionDraft = { ...instructionConfig }; emit(); },
         resetInstructionDraft() { live(); instructionDraft = { ...INSTRUCTION_DEFAULTS }; emit(); },
@@ -1078,7 +1085,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         },
         async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); if (connection?.source === 'st') await host.credentials?.saveSourcePreference?.('st', false); else await host.credentials?.setAutoConnect?.(false); clear(); hostConnectionCurrent = null; inputs.clear(); } finally { resetting = false; emit(); } },
         send({ consent, fields, artifactId, interactionId } = {}) { return send({ consent, fields, artifactId, interactionId }); },
-        stop() { live(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; checking?.abort.abort(); actions.invalidate(); selectionActions.invalidate(); ledgerEditActions.invalidate(); worldBookEditActions.invalidate(); characterCardActions.invalidate(); stPresetActions.invalidate(); blueprintNodeEditActions.invalidate(); npcEditActions.invalidate(); profileEditActions.invalidate(); memoryEditActions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); providerActions.invalidate(); scriptActions.invalidate(); customAgentActions.invalidate(); customPromptActions.invalidate(); skillActions.invalidate(); profileLibraryActions.invalidate(); npcLibraryActions.invalidate(); blueprintLibraryActions.invalidate(); profileLibraryChatActions.invalidate(); npcLibraryChatActions.invalidate(); blueprintLibraryChatActions.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) { builtins.forgetSkillTask(t.id); permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); } for (const r of state.runs) app.cancel(r.id); } emit(); },
+        stop() { live(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; checking?.abort.abort(); actionAssembly.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const task of state.tasks) taskStates.invalidateWait(task.id); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) { builtins.forgetSkillTask(t.id); permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); } for (const r of state.runs) app.cancel(r.id); } emit(); },
         revalidate(id, revision) { live(); if (!app || resetting || snapshot().busy) throw new Error('NOT_READY');
             if (!['draft', 'assistant'].includes(mode) || !snapshot().artifacts.some(a => a.id === id && a.revision === revision)) throw new Error('INVALID_ARTIFACT');
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }
@@ -1123,7 +1130,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
             let sessionId = runtimeSessions.get(id);
             if (sessionId && jsonKey(app.snapshot().sessions.find(s => s.id === sessionId)?.target) !== jsonKey(target)) {
                 unloadRuntime(sessionId); runtimeSessions.delete(id); sessionId = null;
-                actions.invalidate(); selectionActions.invalidate(); ledgerEditActions.invalidate(); worldBookEditActions.invalidate(); characterCardActions.invalidate(); stPresetActions.invalidate(); blueprintNodeEditActions.invalidate(); npcEditActions.invalidate(); profileEditActions.invalidate(); memoryEditActions.invalidate(); variableActions.invalidate(); bundleActions.invalidate(); profileActions.invalidate(); providerActions.invalidate(); scriptActions.invalidate(); customAgentActions.invalidate(); customPromptActions.invalidate(); skillActions.invalidate(); profileLibraryActions.invalidate(); npcLibraryActions.invalidate(); blueprintLibraryActions.invalidate(); profileLibraryChatActions.invalidate(); npcLibraryChatActions.invalidate(); blueprintLibraryChatActions.invalidate();
+                actionAssembly.invalidate();
             }
             if (!sessionId) {
                 if (runtimeSessions.size >= 8) {

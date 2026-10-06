@@ -28,10 +28,15 @@ const groups = Object.freeze({
     'muyu.generation_batch.': ['generation-batch', '整单生成 / Generation batch'],
 });
 const providerAssets = new Set(['muyu.provider.assets', 'muyu.provider.source', 'muyu.provider.preview', 'muyu.provider.update_preview', 'muyu.provider.remove_preview', 'muyu.provider.test']);
-export function createToolSelection(definitions, allowedTools) {
+// Keep the common four-field memory and simple variable previews available without a discovery round.
+const configDrafts = new Set(['muyu.settings.preview', 'muyu.task.preview', 'muyu.profile.preview']);
+export function createToolSelection(definitions, allowedTools, moduleGroups = {}) {
+    if (!moduleGroups || typeof moduleGroups !== 'object' || Array.isArray(moduleGroups) || Object.keys(moduleGroups).some(id =>
+        !definitions.some(d => d.id === id) || !(moduleGroups[id] === null || moduleGroups[id] && typeof moduleGroups[id].id === 'string' && moduleGroups[id].id && typeof moduleGroups[id].title === 'string' && moduleGroups[id].title))) throw Error('INVALID_MODULE_TOOL_GROUP');
     const allowed = new Set(allowedTools), values = definitions.filter(row => allowed.has(row.id)), base = [], optional = new Map();
     for (const row of values) {
-        const group = ['muyu.skills.discover', 'muyu.skills.load'].includes(row.id) ? null : providerAssets.has(row.id) ? ['provider-assets', 'Provider资产 / Provider assets'] : Object.entries(groups).find(([prefix]) => row.id.startsWith(prefix))?.[1];
+        const declared = moduleGroups[row.id];
+        const group = Object.hasOwn(moduleGroups, row.id) ? declared && [declared.id, declared.title] : ['muyu.skills.discover', 'muyu.skills.load'].includes(row.id) ? null : configDrafts.has(row.id) ? ['config-drafts', '领域配置、配置档与整单草稿 / Domain configuration, configuration profile and batch drafts'] : providerAssets.has(row.id) ? ['provider-assets', 'Provider资产 / Provider assets'] : Object.entries(groups).find(([prefix]) => row.id.startsWith(prefix))?.[1];
         if (!group) base.push(row);
         else { if (!optional.has(group[0])) optional.set(group[0], { id: group[0], title: group[1], tools: [] }); optional.get(group[0]).tools.push(row); }
     }

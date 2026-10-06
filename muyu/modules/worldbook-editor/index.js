@@ -48,6 +48,6 @@ export function createWorldBookEditorModule({port,charge}) {
             if(artifact.kind!=='worldbook-edit-draft'||artifact.revision!==revision||state?.status!=='succeeded'||state.taskId!==artifact.taskId)throw Error('INVALID_WORLD_BOOK_DRAFT');
             port.assertFresh(artifact.content);return app.validateArtifact(id,revision,{structural:'passed',baseline:'cached-evidence-only-rechecked-before-save',intent:'requires_user_review',writes:'one-shared-world-book-operation'});
         },
-        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();port?.clear();},
+        retainArtifacts:artifacts=>runs.retainArtifacts(artifacts),forgetRun:id=>runs.delete(id),dispose(){runs.clear();},
     };
 }

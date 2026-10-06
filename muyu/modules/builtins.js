@@ -46,6 +46,12 @@ import { createVariableDraftPort } from '../host/variable-draft.js';
 import { createTaskBundleDraftPort } from '../host/task-bundle-draft.js';
 import { createToolPlan } from './tool-plan.js';
 import { createArtifactOwners } from './artifact-owners.js';
+import { createDraftAssembly } from './draft-assembly.js';
+import { editorDescriptors } from './editor-assembly.js';
+import { assetDescriptors } from './asset-assembly.js';
+import { executionDescriptors } from './execution-assembly.js';
+import { readDescriptors } from './read-assembly.js';
+import { supportDescriptors } from './support-assembly.js';
 import { toolCapability } from '../application/capabilities.js';
 import { toolLabels } from './catalog.js';
 
@@ -55,7 +61,7 @@ export function createBuiltins(host) {
     const draft = createConfigDraftModule({ getSettings: host.getSettings, getTarget: host.configTarget });
     const director = createDirectorModule({ ports: host.memoryPorts });
     const settings = createSettingsModule({ getSettings: host.getSettings, getTarget: host.configTarget, memoryLimitPort: host.memoryLimitPort, completionVariablePort: host.completionVariablePort, blueprintTogglePort: host.blueprintTogglePort });
-    const context = createContextModule(), history = createHistoryModule({ access: host.historyAccess, budget: host.historyReadBudget }), providers = createProviderModule(host), interaction = createInteractionModule(), permission = createPermissionModule(), taskPlan = createTaskPlanModule();
+    const context = createContextModule(), history = createHistoryModule({ access: host.historyAccess, budget: host.historyReadBudget }), providers = createProviderModule(host), interaction = createInteractionModule(), permission = createPermissionModule(), taskPlan = createTaskPlanModule({ bindStep: host.bindTaskStep, bindRead: host.bindTaskRead });
     const variablePort = host.variableDraftPort || createVariableDraftPort(host.memoryPorts);
     const variableEditor = createVariableEditorModule({port:host.variableEditor,charge:(id,bytes)=>providers.charge(id,bytes)});
     const variables = createVariableDraftModule({ port: variablePort });
@@ -94,11 +100,22 @@ export function createBuiltins(host) {
     const legacyPreview = (args, ctx) => {
         const run = unified.get(ctx.runId);
         if (run && !run.bound) {
-            draft.bindRun({ runId: ctx.runId, taskId: run.identity.taskId, target: ctx.target, allowedFields: memoryFields, previousArtifact: run.intent.artifact });
+            draft.bindRun({ runId: ctx.runId, taskId: run.identity.taskId, target: ctx.target, allowedFields: memoryFields,
+                previousArtifact: run.intent.artifact?.kind === 'config-draft' ? run.intent.artifact : null });
             run.bound = true;
         }
         return draft.handlers['muyu.config.preview'](args, ctx);
     };
+    const draftAssembly = createDraftAssembly({ draft, settings, variables, bundle, legacyPreview,
+        extraEntries: [
+            ...editorDescriptors(host, { selectionEditor, ledgerEditor, blueprintNodeEditor, stPresetEditor, characterCards, worldBookEditor,
+                variableEditor, memoryEditor, profileEditor, npcEditor, providerAssets }),
+            ...assetDescriptors(host, { customPrompts, skills, profileLibraries, npcLibraries, blueprintLibraries, profileLibraryChat, npcLibraryChat, blueprintLibraryChat }),
+            ...executionDescriptors(host, { scriptExecutors: scripts, customAgents, generationBatch, memoryGeneration, profileGeneration, npcGeneration }),
+            ...readDescriptors(host, { toolbox, memory, director, context, history, interaction, permission, skillRuntime }),
+            ...supportDescriptors(host, { providers, taskPlan, profiles, web, notes }),
+        ] });
+    const draftEntry = id => draftAssembly.toolEntries.find(row => row.id === id);
     const entries = [
         { id: 'toolbox', module: toolbox },
         ...(host.generationBatch ? [{ id: 'generation-batch', module: generationBatch }] : []),
@@ -116,11 +133,11 @@ export function createBuiltins(host) {
         ...(host.memoryEditor ? [{id:'memory-editor',module:memoryEditor}] : []),
         ...(host.variableEditor ? [{id:'variable-editor',module:variableEditor}] : []),
         { id: 'memory', module: memory },
-        { id: 'legacy-draft', module: { registry: draft.registry, handlers: { ...draft.handlers, 'muyu.config.preview': legacyPreview } } },
+        draftEntry('legacy-draft'),
         { id: 'director', module: director }, { id: 'context', module: context }, { id: 'history', module: history },
         { id: 'providers', module: providers }, { id: 'interaction', module: interaction },
-        { id: 'permission', module: permission }, { id: 'settings', module: settings }, { id: 'task-plan', module: taskPlan }, { id: 'variables', module: variables },
-        { id: 'task-bundle', module: bundle },
+        { id: 'permission', module: permission }, draftEntry('settings'), { id: 'task-plan', module: taskPlan }, draftEntry('variables'),
+        draftEntry('task-bundle'),
         { id: 'profile-draft', module: profiles },
         ...(host.blueprintLibraryChat ? [{ id: 'blueprint-library-chat', module: blueprintLibraryChat }] : []),
         ...(host.npcLibraryChat ? [{ id: 'npc-library-chat', module: npcLibraryChat }] : []),
@@ -139,54 +156,25 @@ export function createBuiltins(host) {
     ];
     const labels = Object.fromEntries(Object.entries(toolLabels).filter(([id]) => (host.generationBatch || !generationBatch.registry.list().some(tool => tool.id === id)) && (host.npcGeneration || !npcGeneration.registry.list().some(tool => tool.id === id)) && (host.profileGeneration || !profileGeneration.registry.list().some(tool => tool.id === id)) && (host.memoryGeneration || !memoryGeneration.registry.list().some(tool => tool.id === id)) && (host.selectionEditor || !selectionEditor.registry.list().some(tool=>tool.id===id)) && (host.stPresetEditor || !stPresetEditor.registry.list().some(tool=>tool.id===id)) && (host.characterCards || !characterCards.registry.list().some(tool=>tool.id===id)) && (host.worldBookEditor || !worldBookEditor.registry.list().some(tool=>tool.id===id)) && (host.ledgerEditor || !ledgerEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintNodeEditor || !blueprintNodeEditor.registry.list().some(tool=>tool.id===id)) && (host.npcEditor || !npcEditor.registry.list().some(tool=>tool.id===id)) && (host.profileEditor || !profileEditor.registry.list().some(tool=>tool.id===id)) && (host.memoryEditor || !memoryEditor.registry.list().some(tool=>tool.id===id)) && (host.variableEditor || !variableEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintLibraryChat || !blueprintLibraryChat.registry.list().some(tool => tool.id === id)) && (host.blueprintLibraries || !blueprintLibraries.registry.list().some(tool => tool.id === id)) && (host.npcLibraryChat || !npcLibraryChat.registry.list().some(tool => tool.id === id)) && (host.npcLibraries || !npcLibraries.registry.list().some(tool => tool.id === id)) && (host.profileLibraryChat || !profileLibraryChat.registry.list().some(tool => tool.id === id)) && (host.profileLibraries || !profileLibraries.registry.list().some(tool => tool.id === id)) && (host.skills || !skills.registry.list().some(tool => tool.id === id)) && (host.customPrompts || !customPrompts.registry.list().some(tool => tool.id === id)) && (host.customAgents || !customAgents.registry.list().some(tool => tool.id === id)) && (host.providerAssets || !providerAssets.registry.list().some(tool => tool.id === id)) && (host.scriptExecutors || !scripts.registry.list().some(tool => tool.id === id))));
     if (!host.skills?.catalog) for (const definition of skillRuntime.registry.list()) delete labels[definition.id];
-    const { registry, handlers } = createToolPlan(entries, { capabilityFor: toolCapability, labels });
-    const artifacts = createArtifactOwners([
-        {toolId:'muyu.selection.preview',moduleId:'selection-editor',owner:selectionEditor},
-        {toolId:'muyu.ledger_editor.preview',moduleId:'ledger-editor',owner:ledgerEditor},
-        {toolId:'muyu.st_preset.preview',moduleId:'st-preset-editor',owner:stPresetEditor},
-        {toolId:'muyu.character_card.preview',moduleId:'character-card',owner:characterCards},
-        {toolId:'muyu.worldbook_editor.preview',moduleId:'worldbook-editor',owner:worldBookEditor},
-        ...['muyu.blueprint_node_editor.preview','muyu.blueprint_node_editor.structure_preview','muyu.blueprint_node_editor.initialize_preview'].map(toolId=>({toolId,moduleId:'blueprint-node-editor',owner:blueprintNodeEditor})),
-        {toolId:'muyu.npc_editor.preview',moduleId:'npc-editor',owner:npcEditor},
-        {toolId:'muyu.npc_editor.create_preview',moduleId:'npc-editor',owner:npcEditor},
-        {toolId:'muyu.profile_editor.preview',moduleId:'profile-editor',owner:profileEditor},
-        {toolId:'muyu.profile_editor.create_preview',moduleId:'profile-editor',owner:profileEditor},
-        {toolId:'muyu.memory_editor.preview',moduleId:'memory-editor',owner:memoryEditor},
-        {toolId:'muyu.memory_editor.create_preview',moduleId:'memory-editor',owner:memoryEditor},
-        {toolId:'muyu.variable_editor.preview',moduleId:'variable-editor',owner:variableEditor},
-        ...['muyu.blueprint_library_chat.capture_preview', 'muyu.blueprint_library_chat.apply_preview'].map(toolId => ({ toolId, moduleId: 'blueprint-library-chat', owner: blueprintLibraryChat })),
-        ...['muyu.npc_library_chat.capture_preview', 'muyu.npc_library_chat.apply_preview'].map(toolId => ({ toolId, moduleId: 'npc-library-chat', owner: npcLibraryChat })),
-        ...['muyu.library_chat.capture_preview', 'muyu.library_chat.apply_preview'].map(toolId => ({ toolId, moduleId: 'profile-library-chat', owner: profileLibraryChat })),
-        { toolId: 'muyu.blueprint_libraries.preview', moduleId: 'blueprint-library', owner: blueprintLibraries },
-        { toolId: 'muyu.npc_libraries.preview', moduleId: 'npc-library', owner: npcLibraries },
-        { toolId: 'muyu.libraries.preview', moduleId: 'profile-library', owner: profileLibraries },
-        { toolId: 'muyu.prompts.batch_preview', moduleId: 'custom-prompt', owner: customPrompts },
-        { toolId: 'muyu.prompts.import_preview', moduleId: 'custom-prompt', owner: customPrompts },
-        { toolId: 'muyu.skills.preview', moduleId: 'skill', owner: skills },
-        { toolId: 'muyu.prompts.preview', moduleId: 'custom-prompt', owner: customPrompts },
-        { toolId: 'muyu.agents.preview', moduleId: 'custom-agent', owner: customAgents },
-        { toolId: 'muyu.agents.batch_preview', moduleId: 'custom-agent', owner: customAgents },
-        { toolId: 'muyu.agents.import_preview', moduleId: 'custom-agent', owner: customAgents },
-        { toolId: 'muyu.scripts.preview', moduleId: 'script-executor', owner: scripts },
-        { toolId: 'muyu.config.preview', moduleId: 'memory-config', owner: draft },
-        { toolId: 'muyu.settings.preview', moduleId: 'settings-config', owner: settings },
-        { toolId: 'muyu.task.plan', moduleId: 'task-plan', owner: taskPlan },
-        { toolId: 'muyu.variables.preview', moduleId: 'variable-draft', owner: variables },
-        { toolId: 'muyu.task.preview', moduleId: 'task-bundle', owner: bundle },
-        { toolId: 'muyu.profile.preview', moduleId: 'generated-profile', owner: profiles },
-        { toolId: 'muyu.provider.preview', moduleId: 'provider-asset', owner: providerAssets },
-        { toolId: 'muyu.provider.update_preview', moduleId: 'provider-asset', owner: providerAssets },
-        { toolId: 'muyu.provider.remove_preview', moduleId: 'provider-asset', owner: providerAssets },
-    ]);
+    if (!host.bindTaskStep) delete labels['muyu.task.bind_step'];
+    if (!host.bindTaskRead) delete labels['muyu.task.bind_read'];
+    const { registry, handlers } = createToolPlan(entries.map(entry => {
+        const declared = draftEntry(entry.id);
+        if (!declared || declared.module !== entry.module && !draftAssembly.owns(entry.module)) throw Error('MODULE_OWNER_MISSING');
+        return declared;
+    }), { capabilityFor: toolCapability, labels });
+    const artifacts = createArtifactOwners(draftAssembly.artifactEntries);
     const shared = [...context.registry.list(), ...interaction.registry.list()].map(d => d.id);
     const tasks = {
         assistant: { module: null,
-            bind(identity, intent) { unified.set(identity.id, { identity, intent, bound: false }); selectionEditor.bindRun(identity); ledgerEditor.bindRun(identity); characterCards.bindRun(identity); stPresetEditor.bindRun(identity); worldBookEditor.bindRun(identity); blueprintNodeEditor.bindRun(identity); npcEditor.bindRun(identity); profileEditor.bindRun(identity); memoryEditor.bindRun(identity); settings.bindRun(identity); taskPlan.bindRun(identity); variables.bindRun(identity); variableEditor.bindRun(identity); bundle.bindRun(identity); profiles.bindRun(identity); providerAssets.bindRun(identity); scripts.bindRun(identity); customAgents.bindRun(identity); generationBatch.bindRun(identity); npcGeneration.bindRun(identity); profileGeneration.bindRun(identity); memoryGeneration.bindRun(identity); customPrompts.bindRun(identity); skills.bindRun(identity); profileLibraries.bindRun(identity); npcLibraries.bindRun(identity); blueprintLibraries.bindRun(identity); profileLibraryChat.bindRun(identity); npcLibraryChat.bindRun(identity); blueprintLibraryChat.bindRun(identity); web.bindRun(identity, intent); notes.bindRun(identity, intent); },
+            bind(identity, intent) {
+                unified.set(identity.id, { identity, intent, bound: false });
+                draftAssembly.bindAssistant(identity, intent);
+            },
             publish(app, id, intent) {
                 let failed = false; const published = new Map();
                 const publish = fn => { try { fn(); } catch { failed = true; } };
-                if (intent.completedTools?.has('muyu.memory.inspect')) publish(() => memory.publishReport(app, id));
-                if (intent.completedTools?.has('muyu.director.inspect')) publish(() => director.publishReport(app, id));
+                publish(() => draftAssembly.publishReports(app, id, intent.completedTools));
                 for (const candidate of intent.candidates?.values() || []) publish(() => published.set(candidate.candidateId, artifacts.publish(app, id, candidate)));
                 return { notice: failed ? 'RESULT_NEEDS_REVIEW' : null, published };
             },
@@ -201,16 +189,21 @@ export function createBuiltins(host) {
         },
     };
     for (const task of Object.values(tasks)) task.tools = task.module ? [...shared, ...task.module.registry.list().map(d => d.id)] : registry.list().map(d => d.id);
-    const bindAssistant = tasks.assistant.bind;
-    tasks.assistant.bind = (identity, intent) => { bindAssistant(identity, intent); if (host.skills?.catalog) skillRuntime.bindRun(identity, intent.selectedSkill); };
     tasks.chat.tools.push(...permission.registry.list().map(d => d.id));
-    return { registry, handlers, tasks, candidateTool: artifacts.produces, candidateGroup: artifacts.group, invalidateSettingsAttempt: (id, fields) => settings.invalidateAttempt(id, fields), takeInvalidatedSettingsCandidates: id => settings.takeInvalidatedCandidates(id),
+    return { registry, handlers, tasks, toolGroups: draftAssembly.toolGroups, moduleDescriptors: draftAssembly.describe, candidateTool: artifacts.produces, candidateGroup: artifacts.group, invalidateSettingsAttempt: (id, fields) => settings.invalidateAttempt(id, fields), takeInvalidatedSettingsCandidates: id => settings.takeInvalidatedCandidates(id),
         skillGuides: id => host.skills?.catalog ? { prepare: signal => skillRuntime.prepare(id, signal), project: () => skillRuntime.project(id) } : null,
         skillUsage: id => { try { return skillRuntime.usage(id); } catch { return []; } },
         parkSkillRun: (id, artifact) => host.skills?.catalog ? skillRuntime.parkRun(id, artifact) : true,
         forgetSkillTask: id => skillRuntime.forgetTask(id),
-        transferRun(from, identity, intent) { const previous = unified.get(from); if (previous) { unified.delete(from); unified.set(identity.id, { ...previous, identity, intent }); } for (const module of modules) if (module !== providers) module.transferRun?.(from, identity); },
-        bindBudget: (id, limit, from = null) => from ? providers.transferRun(from, id, limit) : providers.bindRun(id, limit),
-        retainArtifacts: values => modules.forEach(m => m.retainArtifacts?.(values)),
-        resourceUsage: id => providers.usage(id), revalidate: artifacts.revalidate, forgetTask: id => { skillRuntime.forgetTask(id); web.forgetTask(id); scripts.forgetTask(id); customAgents.forgetTask(id); generationBatch.forgetTask(id); npcGeneration.forgetTask(id); profileGeneration.forgetTask(id); memoryGeneration.forgetTask(id); }, forgetRun: id => { unified.delete(id); modules.forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); modules.forEach(m => m.dispose()); } };
+        transferRun(from, identity, intent) { const previous = unified.get(from); if (previous) { unified.delete(from); unified.set(identity.id, { ...previous, identity, intent }); } draftAssembly.transferRun(from, identity); for (const module of modules) if (!draftAssembly.owns(module)) module.transferRun?.(from, identity); },
+        bindBudget: (id, limit, from = null) => draftAssembly.bindBudget(id, limit, from),
+        retainArtifacts: values => { draftAssembly.retainArtifacts(values); modules.filter(m => !draftAssembly.owns(m)).forEach(m => m.retainArtifacts?.(values)); },
+        resourceUsage: id => draftAssembly.resourceUsage(id), revalidate: artifacts.revalidate,
+        forgetTask: id => {
+            const errors = [];
+            try { draftAssembly.forgetTask(id); } catch (error) { errors.push(error); }
+            for (const module of modules) if (!draftAssembly.owns(module)) try { module.forgetTask?.(id); } catch (error) { errors.push(error); }
+            if (errors.length) throw new AggregateError(errors, 'MODULE_TASK_CLEANUP_FAILED');
+        },
+        forgetRun: id => { unified.delete(id); draftAssembly.forgetRun(id); modules.filter(m => !draftAssembly.owns(m)).forEach(m => m.forgetRun(id)); }, dispose: () => { unified.clear(); draftAssembly.dispose(); modules.filter(m => !draftAssembly.owns(m)).forEach(m => m.dispose()); } };
 }

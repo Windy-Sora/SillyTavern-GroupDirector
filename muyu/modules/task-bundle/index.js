@@ -2,6 +2,8 @@ import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { taskBundleSchema } from '../../host/task-bundle-draft.js';
 import { configChangesSchema } from '../../config/registry.js';
+import { taskBundleLayout } from './steps.js';
+import { createArtifactLeases } from '../artifact-leases.js';
 
 // Avoid duplicating the full settings schema in every model request.
 const toolSchema = { type: 'object', properties: {
@@ -12,10 +14,12 @@ const toolSchema = { type: 'object', properties: {
 /** One model call proposes data; only the trusted UI can approve writes. */
 export function createTaskBundleModule({ port }) {
     const registry = createToolRegistry(), runs = new Map(); let disposed = false;
+    const published = createArtifactLeases(content => port.forget(content));
     registry.register({ id: 'muyu.task.preview', version: 1,
-        description: 'Preview one bounded operation bundle: up to six distinct numeric shared current-chat variable definitions (scope=global, no per-character selector; use variable_editor for character scopes), ordinary global settings changes, and up to three explicit Script Executor definition requests in scripts [{operation,id?,revision?,changesJson}]. Order: variables then settings then scripts. Script saving does not actively run code; enabled definitions allow later automatic events and require full-source review. Unconfirmed saves stop the rest. Put settings changes in settingsJson as a JSON object string of exact field names and values; omit unused sections. In full-access mode ONLY, set apply=true when the user explicitly asks to execute the bundle now; the host validates and saves after the run. For preview-only or read-only requests omit apply. Without full access, separate UI approval is required. customPromptsEnabled, profileLibraryAutoLoad.*, memoryMaxEntries, storyBlueprintEnabled, storyBlueprintCompletionVariable, blueprint/resource writes, other executable assets and secrets require separate workflows. Do not add changes the user did not request.',
+        description: 'Preview one bounded operation bundle: up to six distinct numeric shared current-chat variable definitions (scope=global, no per-character selector; use variable_editor for character scopes), ordinary global settings changes, and up to three explicit Script Executor definition requests in scripts [{operation,id?,revision?,changesJson}]. Order: variables then settings then scripts. Script saving does not actively run code; enabled definitions allow later automatic events and require full-source review. Unconfirmed saves stop the rest. Put settings changes in settingsJson as a JSON object string of exact field names and values; omit unused sections. In full-access mode ONLY, set apply=true when the user explicitly asks to execute the bundle now; the host validates and saves after the run. For preview-only or read-only requests omit apply. Without full access, separate UI approval is required. customPromptsEnabled, profileLibraryAutoLoad.*, memoryMaxEntries, storyBlueprintEnabled, storyBlueprintCompletionVariable, blueprint/resource writes, other executable assets and secrets require separate workflows. Do not add changes the user did not request. For a multi-kind request (for example variable definitions plus settings), first publish task.plan and await read-scope approval; then preview. If the current approved plan is present, associate successful actual-read evidence using task.bind_read, then associate this candidate and returned steps IDs using task.bind_step with bundleSteps before concluding. Simple single-kind previews need no artificial plan. These associations are not approvals or completion.',
         inputSchema: toolSchema,
-        outputSchema: { type: 'object', properties: { candidateId: { type: 'string', maxLength: 100 }, text: { type: 'string', maxLength: 12000 }, applyRequested: { type: 'boolean' } }, required: ['candidateId', 'text'], additionalProperties: false },
+        outputSchema: { type: 'object', properties: { candidateId: { type: 'string', maxLength: 100 }, text: { type: 'string', maxLength: 12000 }, applyRequested: { type: 'boolean' },
+            steps: { type: 'array', maxItems: 10, items: { type: 'object', properties: { id: { type: 'string', maxLength: 100 }, kind: { type: 'string', enum: ['variable', 'settings', 'script'] }, displayIndex: { type: 'integer', minimum: 1, maximum: 10 } }, required: ['id', 'kind', 'displayIndex'], additionalProperties: false } } }, required: ['candidateId', 'text'], additionalProperties: false },
         scope: 'chat', effect: 'read', dataClasses: ['chat-variables', 'settings-whitelist'], confirmation: 'policy', resourceKeys: [], timeoutMs: 1000, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     registry.seal();
     const handlers = { 'muyu.task.preview': (args, ctx) => {
@@ -35,7 +39,8 @@ export function createTaskBundleModule({ port }) {
         if (text.length > 12000) { port.forget(content); throw Error('BUNDLE_PREVIEW_TOO_LARGE'); }
         const candidateId = 'bundle:' + crypto.randomUUID();
         run.candidate = { candidateId, content };
-        return { candidateId, text, ...(input.apply ? { applyRequested: true } : {}) };
+        const steps = taskBundleLayout(content).map((step, index) => ({ id: candidateId + ':step:' + (index + 1), kind: step.kind, displayIndex: index + 1 }));
+        return { candidateId, text, steps, ...(input.apply ? { applyRequested: true } : {}) };
     } };
     return { registry, handlers,
         bindRun(identity) { if (disposed || runs.size >= 128 || runs.has(identity.id)) throw Error('RUN_CAPACITY'); runs.set(identity.id, { target: copyJson(identity.target), taskId: identity.taskId, candidate: null }); },
@@ -45,7 +50,7 @@ export function createTaskBundleModule({ port }) {
             if (!run?.candidate || run.candidate.candidateId !== candidateId || state?.status !== 'succeeded' || state.taskId !== run.taskId || jsonKey(state.target) !== jsonKey(run.target)) throw Error('INVALID_CANDIDATE_SOURCE');
             port.assertFresh(run.candidate.content);
             const artifact = app.createArtifact({ taskId: run.taskId, sourceRunId: id, kind: 'task-bundle', content: run.candidate.content });
-            runs.delete(id); return artifact;
+            published.track(artifact); runs.delete(id); return artifact;
         },
         validateSaved(app, id, revision) {
             const artifact = app.getArtifact(id), state = app.snapshot().runs.find(row => row.id === artifact.sourceRunId);
@@ -54,6 +59,7 @@ export function createTaskBundleModule({ port }) {
             return app.validateArtifact(id, revision, { structural: 'passed', baseline: 'matched-at-validation', intent: 'review-only', writes: 'bundle-approval-required' });
         },
         forgetRun(id) { const run = runs.get(id); if (run?.candidate) port.forget(run.candidate.content); runs.delete(id); },
-        dispose() { disposed = true; runs.clear(); port.clear(); },
+        retainArtifacts: values => published.retain(values),
+        dispose() { if (disposed) return; disposed = true; for (const run of runs.values()) if (run.candidate) port.forget(run.candidate.content); runs.clear(); published.clear(); },
     };
 }

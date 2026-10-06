@@ -178,5 +178,5 @@ export function createProviderModule(host) {
         'muyu.provider.execute': execute,
         'muyu.provider.result': result,
         ...retrieval,
-    }, forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); } };
+    }, retainArtifacts() {}, forgetRun(id) { runs.delete(id); }, dispose() { disposed = true; runs.clear(); } };
 }

@@ -8,11 +8,74 @@ import { CONTEXT_DEFAULTS } from '../../muyu/context/policy.js';
 import { MUYU_PERSONA } from '../../muyu/instructions/persona.js';
 import { identity, registry, toolId, scriptedModel, request, call, text, done, createClock } from './helpers/muyu-subject.mjs';
 import { createProfileSystem } from '../../systems/profile-system.js';
+import { readFile } from 'node:fs/promises';
+import { validateInstructions } from '../../muyu/instructions/contract.js';
+
+test('Presentation rules preserve technical output and leave instruction capacity for runtime notices', async () => {
+    const instructions = composeInstructions('assistant', { enabled: true, text: '中'.repeat(4000) });
+    assert.ok(instructions.base.length <= 3700, 'Reserve at least 300 base characters without raising the contract');
+    assert.ok(instructions.task.length <= 3300, 'Reserve at least 700 task characters and verify actual notice combinations below');
+    assert.match(instructions.base, /代码\/JSON的键和值不翻译、不改写/);
+    assert.match(instructions.base, /不写伪造工具调用标记/);
+    assert.match(instructions.task, /原样代码\/JSON不附解释、提醒或邀约/);
+    assert.match(instructions.task, /映射缺失不证明没有GUI入口/);
+    assert.match(instructions.task, /报错定位保留用户给出的准确报错码/);
+    assert.match(instructions.task, /不以免责声明否定已确认部分/);
+    // Use actual controller notices, not shorter test-only copies.
+    const source = await readFile(new URL('../../muyu/application/controller.js', import.meta.url), 'utf8');
+    const notice = prefix => {
+        const start = source.indexOf("'\\n" + prefix);
+        assert.ok(start >= 0, 'Missing production notice ' + prefix);
+        const end = source.indexOf("'", start + 1);
+        return source.slice(start + 1, end).replaceAll('\\n', '\n');
+    };
+    const full = notice('本连接已由用户在界面开启全权限模式');
+    const omitted = notice('部分历史因缺少资料授权未发送') + 'memoryConfig, configSettings';
+    const historical = notice('部分历史原文因上下文预算未携带');
+    const switchNotes = ['', notice('用户已在同一暮羽会话中切换'), notice('本暮羽会话曾跨 ST 聊天继续')];
+    const webNotes = [notice('用户已开启小地球联网搜索'), notice('用户未开启联网搜索')];
+    for (const mode of ['assistant', 'chat', 'draft', 'memory', 'director']) {
+        const current = composeInstructions(mode, { enabled: true, text: '中'.repeat(4000) });
+        for (const fullNotice of mode === 'assistant' ? ['', full] : [''])
+            for (const historyNotice of ['', historical]) for (const omit of ['', omitted])
+                for (const switched of switchNotes) for (const web of mode === 'assistant' ? webNotes : [''])
+                    assert.doesNotThrow(() => validateInstructions({ ...current, task: current.task + fullNotice + historyNotice + omit + switched + web }));
+    }
+    assert.doesNotThrow(() => validateInstructions(composeReceiptInstructions({ enabled: true, text: '中'.repeat(4000) })));
+});
 
 test('Long-term memory instructions use the current settings navigation', () => {
     const base = composeInstructions('assistant').base;
     assert.match(base, /配置→存储与记忆→暮羽长期记忆/);
     assert.doesNotMatch(base, /配置→资料与历史→暮羽长期记忆/);
+});
+
+test('Receipt brief keeps uncertainty and warnings but reserves raw flags for explicit detail requests', () => {
+    const receipt = composeReceiptInstructions().task;
+    assert.match(receipt, /默认2至4句/);
+    assert.match(receipt, /风险和变化警告不能省略/);
+    assert.match(receipt, /仅用户追问标志含义或要开发详情时展开changed、saveError/);
+    assert.match(receipt, /没有警告不能推断当前值/);
+    assert.match(receipt, /不要建议直接刷新、重复应用或一键回滚/);
+    assert.match(composeInstructions('assistant').base, /未读到不等于不存在或无需修改/);
+});
+
+test('Follow-up rules carry the latest object without expanding local questions into global analysis', () => {
+    const { base, task } = composeInstructions('assistant');
+    assert.match(base, /“现在开始”.*最近未取消的明确对象/);
+    assert.match(base, /局部问题只查目标及必要依赖/);
+    assert.match(base, /整体分析默认至多3个重点/);
+    assert.match(base, /局部问题不凑发现数量/);
+    assert.match(base, /最新纠正、取消、拒绝及完成情况优先/);
+    assert.match(base, /简短同意不扩大范围/);
+    assert.match(task, /只展开本问题所需证据/);
+    assert.match(task, /分类键和版本默认不列/);
+    assert.match(task, /用户回答不授予权限/);
+    assert.match(task, /只读分析不生成修改草稿/);
+    assert.match(base, /合同解释条件机制，不证明运行或落盘/);
+    assert.match(base, /空值逐字段核对，不泛称默认/);
+    assert.match(base, /不列举原因或指定诊断字段/);
+    assert.match(base, /分析与标题都只陈述证据支持的事实/);
 });
 
 test('Assistant discovers unloaded capabilities and separates generated format from factual attribution', () => {

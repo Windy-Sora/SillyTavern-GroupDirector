@@ -7,10 +7,12 @@ import { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES } from './context-limits.js';
 import { modelDiagnosticStage } from './model-diagnostics.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
-export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, interactionPort = null, toolHandoffPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
+export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, taskEvidencePort = null, interactionPort = null, toolHandoffPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
     if (toolHandoffPort !== null && (typeof toolHandoffPort.isControl !== 'function' || typeof toolHandoffPort.read !== 'function')) throw new TypeError('Invalid tool handoff port');
     if (taskGuidePort !== null && (typeof taskGuidePort.prepare !== 'function' || typeof taskGuidePort.project !== 'function')) throw new TypeError('Invalid task guide port');
+    taskEvidencePort = resume?.taskEvidenceTaskId === identity.taskId ? resume.taskEvidencePort || taskEvidencePort : taskEvidencePort;
+    if (taskEvidencePort !== null && (typeof taskEvidencePort.observe !== 'function' || typeof taskEvidencePort.project !== 'function')) throw new TypeError('Invalid task evidence port');
     let state = createRunState(identity);
     const budget = { modelCalls: RUN_DEFAULTS.modelCalls, toolCalls: RUN_DEFAULTS.toolCalls, corrections: 2, timeMs: RUN_DEFAULTS.timeMs, ...limits };
     const ceilings = { modelCalls: 16, toolCalls: 64, corrections: 2, timeMs: RUN_RANGES.timeMs[1] };
@@ -88,8 +90,8 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
     function move(status) { state = transitionRun(state, { eventId: 'control:' + (state.seq + 1), runId: state.id, seq: state.seq + 1, status }); }
     function history() { return messages.map(copyModelMessage); }
     function projectedGuides() {
-        const guides = taskGuidePort?.project() || [];
-        if (!Array.isArray(guides) || guides.length > 257 || guides.some(m => m.role !== 'user')) throw new TypeError('Invalid task guides');
+        const guides = [...(taskGuidePort?.project() || []), ...(taskEvidencePort?.project() || [])];
+        if (!Array.isArray(guides) || guides.length > 258 || guides.some(m => m.role !== 'user')) throw new TypeError('Invalid task guides');
         if (guides.length + messages.length > MAX_CONTEXT_MESSAGES) throw new ExecutionError('CONTEXT_LIMIT');
         return guides.map(copyModelMessage);
     }
@@ -269,12 +271,14 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
                     else {
                         interaction = requested;
                         resumeState = { target: copyJson(state.target), messages: history(), pendingCalls: toolCalls.slice(i).map(copyJson), toolIds: pinned.map(d => d.id), instructions: instructions ? copyJson(instructions) : null, modelContext,
+                            taskEvidencePort, taskEvidenceTaskId: identity.taskId,
                             dispose: () => { try { model.releaseContext?.(modelContext); } catch { /* Cleanup only. */ } } };
                         return interactionPort.describe(interaction);
                     }
                 }
                 const requested = interactionPort?.read(call, result);
                 if (requested) result = admissionFailure(requested) || result;
+                try { taskEvidencePort?.observe(call, result, identity.id); } catch { /* Evidence cannot control execution. */ }
                 if (toolObservation) {
                     try {
                         const observation = toolObservation.observe(call, result);

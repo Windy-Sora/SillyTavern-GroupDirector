@@ -1,10 +1,12 @@
 import { jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createExecutionTasks } from '../execution-tasks.js';
 
 const string = maxLength => ({ type: 'string', maxLength });
 /** Preparation is read-only; exact business execution requires independent consent. */
 export function createNpcGenerationModule({ port, charge }) {
     const registry = createToolRegistry(), runs = new Map();
+    const taskExecutions = createExecutionTasks(port);
     const outputSchema = { type: 'object', properties: { candidateId: string(100), text: string(24000) }, required: ['candidateId', 'text'], additionalProperties: false };
     const tools = {
         state: { properties: {}, required: [], description: 'Read current-chat NPC generation availability, count, limit, batch option and revision. Requires npcGenerationState. No names, character bodies, rendering, model call or store initialization. This read permission never authorizes paid generation.' },
@@ -25,13 +27,15 @@ export function createNpcGenerationModule({ port, charge }) {
     const readResult = (value, ctx) => { const out = encoded(value); if (charge && !charge(ctx.runId, new TextEncoder().encode(out.text).length)) throw Error('PROVIDER_BUDGET_EXCEEDED'); return out; };
     return { registry, handlers: {
         'muyu.npc_generation.state': (_args, ctx) => { bound(ctx); return readResult(port.readState(ctx.target), ctx); },
-        'muyu.npc_generation.prepare': (args, ctx) => { const run = bound(ctx); return readResult(port.prepareExecution(args, { target: ctx.target, taskId: run.taskId }), ctx); },
+        'muyu.npc_generation.prepare': (args, ctx) => { const run = bound(ctx); return readResult(taskExecutions.prepare(args, { target: ctx.target, taskId: run.taskId }), ctx); },
         'muyu.npc_generation.execute': async (args, ctx) => {
             const run = bound(ctx);
+            taskExecutions.track(run.taskId);
             if (charge && !charge(ctx.runId, 16000)) return encoded({ status: 'not_started', code: 'RESULT_BUDGET_EXCEEDED', modelCallAttempted: false, resultWriteStarted: false, chatSave: 'not_started' });
             return encoded(await port.execute(args.executionId, { target: ctx.target, taskId: run.taskId, signal: ctx.signal }));
         },
     }, bindRun(identity) { runs.set(identity.id, { taskId: identity.taskId, target: identity.target }); },
     transferRun(from, identity) { const old = runs.get(from); if (!old) return; if (old.taskId !== identity.taskId || jsonKey(old.target) !== jsonKey(identity.target)) throw Error('RUN_NOT_BOUND'); runs.delete(from); runs.set(identity.id, old); },
-    forgetTask(id) { port?.forgetExecutions?.(id); }, forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); port?.clearExecutions?.(); } };
+    retainArtifacts() {}, // Execution receipts are not draft artifacts.
+    forgetTask(id) { taskExecutions.forget(id); }, forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); taskExecutions.clear(); } };
 }

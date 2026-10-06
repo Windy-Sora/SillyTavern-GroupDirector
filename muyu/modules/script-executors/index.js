@@ -1,9 +1,11 @@
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
+import { createExecutionTasks } from '../execution-tasks.js';
 import { SCRIPT_EXECUTION_GUIDANCE, scriptExecutionEvidence } from '../../scripts/execution-evidence.js';
 const str = maxLength => ({ type: 'string', maxLength });
 export function createScriptExecutorModule({ port, charge }) {
     const registry = createToolRegistry(), runs = new Map();
+    const taskExecutions = createExecutionTasks(port);
     const outputSchema = { type: 'object', properties: { candidateId: str(100), text: str(24000), applyRequested: { type: 'boolean' } }, required: ['candidateId', 'text'], additionalProperties: false };
     const inputs = {
         list: { properties: { offset: { type: 'integer', minimum: 0, maximum: 4096 } }, required: [] },
@@ -27,11 +29,12 @@ export function createScriptExecutorModule({ port, charge }) {
     return { registry, handlers: {
         'muyu.scripts.prepare_execution': (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
-            return encoded({ ...port.prepareExecution(args, { target: ctx.target, taskId: run.taskId }),
+            return encoded({ ...taskExecutions.prepare(args, { target: ctx.target, taskId: run.taskId }),
                 ticketLifecycle: 'This ticket belongs only to this task and is removed when it ends. After denial, do not suggest approving this old ticket later. A later explicit user execution request needs a new task, fresh read/prepare and new approval; never do that automatically or as a save-verification retry.' }, ctx);
         },
         'muyu.scripts.execute': async (args, ctx) => {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
+            taskExecutions.track(run.taskId);
             // Reserve the bounded receipt budget before any side effect starts.
             if (charge && !charge(ctx.runId, 16000)) return { candidateId: '', text: JSON.stringify(scriptExecutionEvidence({ executionId: args.executionId, status: 'not_started', code: 'RESULT_BUDGET_EXCEEDED' })) };
             const result = await port.execute(args.executionId, { target: ctx.target, taskId: run.taskId, signal: ctx.signal });
@@ -68,7 +71,8 @@ export function createScriptExecutorModule({ port, charge }) {
             port.assertDraft(artifact.content);
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'script-definition-and-future-event-execution' });
         },
-        forgetTask(id) { port?.forgetExecutions?.(id); },
-        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); port?.clearExecutions?.(); },
+        retainArtifacts() {}, // Definition drafts are plain DTOs, not execution tickets.
+        forgetTask(id) { taskExecutions.forget(id); },
+        forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); taskExecutions.clear(); },
     };
 }

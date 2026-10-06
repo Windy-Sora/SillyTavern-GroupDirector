@@ -66,6 +66,8 @@ export function createCustomPromptModule({ port, charge }) {
             port.assertDraft(artifact.content);
             return app.validateArtifact(id, revision, { structural: 'passed', semantic: 'format_only', intent: 'requires_user_review', writes: 'custom-prompt-definition' });
         },
+        // Saved drafts contain plain DTOs, not leased host resources.
+        retainArtifacts() {},
         forgetRun(id) { runs.delete(id); }, dispose() { runs.clear(); },
     };
 }
