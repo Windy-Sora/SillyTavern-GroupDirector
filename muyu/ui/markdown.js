@@ -1,5 +1,5 @@
 /** Bounded Markdown subset rendered exclusively with DOM/textContent. Never parses HTML. */
-export function renderMarkdown(root, source) {
+export function renderMarkdown(root, source, { lang } = {}) {
     const doc = root.ownerDocument;
     const node = (tag, text, parent) => { const el = doc.createElement(tag); if (text) el.textContent = text; parent.append(el); return el; };
     function inline(parent, text, depth = 0) {
@@ -62,5 +62,5 @@ export function renderMarkdown(root, source) {
         } else { list = null; paragraph.push(line); }
     }
     flush();
-    if (raw.length > 32768 || lines.length > 2000) node('small', '显示已截断 / Display truncated', root);
+    if (raw.length > 32768 || lines.length > 2000) node('small', lang === 'en' ? 'Display truncated' : lang === 'zh' ? '显示已截断' : '显示已截断 / Display truncated', root);
 }

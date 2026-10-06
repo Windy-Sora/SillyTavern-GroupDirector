@@ -19,7 +19,7 @@ import { createAgentMemoryView } from './agent-memory-view.js';
 import { createSettingsLayout } from './settings-layout.js';
 import { createInteractionView } from './interaction-view.js';
 import { createPermissionView } from './permission-view.js';
-import { permissionTitle } from '../permissions/contract.js';
+import { permissionDisplayTitle } from './catalog-labels.js';
 import { createReceiptView } from './receipt-view.js';
 import { createWebSearchView } from './web-search-view.js';
 import { createConnectionTools } from './connection-tools.js';
@@ -30,6 +30,7 @@ import { createFormFeedback } from './form-feedback.js';
 export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen } = {}) {
     root.__gdMuyuDispose?.(); const doc = root.ownerDocument, en = lang === 'en';
     const t = (zh, english) => en ? english : zh;
+    const permissionTitle = id => permissionDisplayTitle(id, lang);
     const unified = controller.snapshot().mode === 'assistant';
     const artifactViews = createBuiltinArtifactViews();
     const legacyRoot = doc.createElement('div'); // Detached compatibility controls for legacy embedders only.
@@ -346,7 +347,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 }
                 const p = node('div', '', permissionRecord || history); p.className = message.role === 'user' ? 'gd-muyu-message gd-muyu-user' : 'gd-muyu-message gd-muyu-assistant';
                 const author = node('strong', message.role === 'user' ? t('你：', 'You: ') : t('暮羽：', 'Muyu: '), p); author.className = 'gd-muyu-author';
-                const content = node('div', '', p); content.className = 'gd-muyu-markdown'; renderMarkdown(content, message.content);
+                const content = node('div', '', p); content.className = 'gd-muyu-markdown'; renderMarkdown(content, message.content, { lang });
                 if (message.role === 'user' && message.runId) processAnchors.set(message.runId, { root: node('div', '', history), child: null });
                 if (message.role === 'assistant' && message.runId && !requestPrefix) artifactAnchors.set(message.runId, node('div', '', history));
                 if (!paired) permissionRecord = null;

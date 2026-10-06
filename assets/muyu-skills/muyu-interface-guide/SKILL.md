@@ -2,7 +2,7 @@
 name: muyu-interface-guide
 display-name: 暮羽界面与按钮指南
 description: 用户问暮羽接口或API密钥在哪里配置、测试连接、获取模型、隐藏悬浮球、导出对话、长期记忆或技能管理按钮位置与操作方式时使用；界面入口不是模型工具能力，不能根据没有工具就说GUI没有功能。
-version: "1.2"
+version: "1.3"
 ---
 
 # 暮羽界面与按钮指南

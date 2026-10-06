@@ -2,7 +2,7 @@
 name: configuration-orchestration
 display-name: 多模块配置方案
 description: 用户要求金币系统、无限流配置或其他跨变量、全局配置和资源的成套改动时使用；先明确整体目标，再组织有边界的读取、预览与执行。
-version: "1.3"
+version: "1.4"
 ---
 
 # 多模块配置方案

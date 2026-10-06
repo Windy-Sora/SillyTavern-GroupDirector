@@ -13,6 +13,24 @@ const input = { goal: 'Create a coin system for this chat', scope: 'mixed', sour
         { kind: 'variables', title: 'Create balance', detail: 'Needs a future variable write port' },
     ], risks: ['An existing variable could be overwritten; no write is authorized'], unknowns: ['Existing balance variable may conflict'] };
 
+test('Binding rejection exposes only closed validation reasons and never reports completion', () => {
+    let failure = 'INVALID_BUNDLE_STEP_BINDING';
+    const module = createTaskPlanModule({ bindStep() { throw Error(failure); } });
+    module.bindRun({ id: 'binding', taskId: 'task', target });
+    const call = () => module.handlers['muyu.task.bind_step']({}, { runId: 'binding', target });
+    const bundle = call();
+    assert.equal(bundle.bound, false);
+    assert.match(bundle.notice, /variable→variables, settings→settings, script→code/);
+    assert.match(bundle.notice, /draft remains unapplied; no step completed/);
+    assert.ok(bundle.notice.length <= 300);
+    failure = 'INVALID_STEP_BINDING';
+    assert.equal(call().bound, false);
+    failure = 'private host error';
+    assert.throws(call, /private host error/); // Broker still redacts unknown exceptions.
+    module.dispose();
+    assert.throws(call, /RUN_NOT_BOUND/);
+});
+
 test('Plan review only hands off successful plan proposals, not failed or ordinary reads', () => {
     const plan = { toolId: 'muyu.task.plan' }, read = { toolId: 'muyu.settings.read' };
     assert.equal(taskPlanReviewPort.isControl(plan), true);

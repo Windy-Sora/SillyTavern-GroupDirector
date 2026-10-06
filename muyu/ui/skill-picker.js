@@ -1,3 +1,5 @@
+import { skillDisplay } from './catalog-labels.js';
+
 /** A real GUI selection, never inferred from transcript or model output. */
 export function createSkillPicker({ doc, parent, controller, act, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
@@ -13,16 +15,17 @@ export function createSkillPicker({ doc, parent, controller, act, lang }) {
     return { render(state) {
         root.hidden = !state.skills?.available || state.mode !== 'assistant'; if (root.hidden) return;
         choices = state.skills.rows.filter(row => row.userInvocable);
+        const selectedDisplay = state.selectedSkill ? skillDisplay(choices.find(row => row.id === state.selectedSkill.id) || { ...state.selectedSkill, source: state.selectedSkill.id.startsWith('builtin:') ? 'builtin' : 'user' }, lang).displayName : '';
         const next = JSON.stringify([choices.map(row => [row.id, row.revision, row.displayName]), state.selectedSkill]);
         if (next !== signature) {
             signature = next; select.replaceChildren();
             const option = (id, text) => { const el = doc.createElement('option'); el.value = id; el.textContent = text; select.append(el); };
             option('', t('自动按需选用', 'Automatic, when relevant'));
-            for (const row of choices) option(row.id, row.displayName + ' · ' + (row.source === 'builtin' ? t('内置', 'Builtin') : t('用户', 'User')));
-            if (state.selectedSkill && !choices.some(row => row.id === state.selectedSkill.id && String(row.revision) === state.selectedSkill.revision)) option(state.selectedSkill.id, state.selectedSkill.displayName + t('（版本已变化，请重选）', ' (version changed; select again)'));
+            for (const row of choices) option(row.id, skillDisplay(row, lang).displayName + ' · ' + (row.source === 'builtin' ? t('内置', 'Builtin') : t('用户', 'User')));
+            if (state.selectedSkill && !choices.some(row => row.id === state.selectedSkill.id && String(row.revision) === state.selectedSkill.revision)) option(state.selectedSkill.id, selectedDisplay + t('（版本已变化，请重选）', ' (version changed; select again)'));
             select.value = state.selectedSkill?.id || '';
         }
-        summary.textContent = state.selectedSkill ? t('技能：', 'Skill: ') + state.selectedSkill.displayName : t('技能 · 自动按需', 'Skills · automatic');
+        summary.textContent = state.selectedSkill ? t('技能：', 'Skill: ') + selectedDisplay : t('技能 · 自动按需', 'Skills · automatic');
         select.disabled = refresh.disabled = state.busy || state.resetting || state.readOnly;
     } };
 }

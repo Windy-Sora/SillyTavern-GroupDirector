@@ -1,11 +1,12 @@
 import { CONTEXT_DEFAULTS, MAX_MANUAL_INPUT_TOKENS, SUMMARY_TIME_RANGE } from '../context/policy.js';
 import { formatBudget } from './budget-view.js';
-import { permissionTitle } from '../permissions/contract.js';
+import { permissionDisplayTitle } from './catalog-labels.js';
 import { createFormFeedback } from './form-feedback.js';
 
 /** View only. Summary text is plain reference data; no operation comes from model output. */
 export function createContextView({ doc, settings, parent, controller, act, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
+    const permissionTitle = id => permissionDisplayTitle(id, lang);
     const node = (tag, text, owner) => { const el = doc.createElement(tag); el.textContent = text; owner.append(el); return el; };
     const button = (text, owner) => { const el = node('button', text, owner); el.type = 'button'; el.className = 'menu_button'; return el; };
     const field = (text, type, owner) => { const label = node('label', text, owner), el = node('input', '', label); el.type = type; el.className = type === 'checkbox' ? '' : 'text_pole'; return el; };

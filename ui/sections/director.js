@@ -74,7 +74,7 @@ registerSection('director', function (ctx) {
         }
         $('#gd-history-meta-display').hide();
         saveChatConditional();
-        toastr.info('导演账本已清空');
+        toastr.info(settings.lang === 'en' ? 'Director ledger cleared' : '导演账本已清空');
     });
 
     $c('llm-prompt-reset').on('click', () => {

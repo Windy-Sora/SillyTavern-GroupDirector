@@ -1,8 +1,10 @@
-import { permissionTitle, permissionSource } from '../permissions/contract.js';
+import { permissionSource } from '../permissions/contract.js';
+import { permissionDisplayTitle } from './catalog-labels.js';
 
 /** UI can answer an existing request, never supply its target or permission scope. */
 export function createPermissionView({ doc, parent, settings, controller, act, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
+    const permissionTitle = id => permissionDisplayTitle(id, lang);
     const node = (tag, text, owner) => { const e = doc.createElement(tag); e.textContent = text; owner.append(e); return e; };
     const root = node('section', '', parent); root.className = 'gd-muyu-interaction'; root.hidden = true;
     root.setAttribute('role', 'group'); root.setAttribute('aria-label', t('暮羽资料授权', 'Muyu data permission'));

@@ -1,3 +1,5 @@
+import { skillDisplay } from './catalog-labels.js';
+
 let skillViewSequence = 0;
 export function createSkillView({ doc, settings, controller, act, lang }) {
     const viewId = `gd-muyu-skills-${++skillViewSequence}`;
@@ -63,6 +65,8 @@ export function createSkillView({ doc, settings, controller, act, lang }) {
     tabs.setAttribute('aria-label', t('技能详情', 'Skill details'));
     const instructions = node('div', '', editor), resources = node('div', '', editor), advanced = node('div', '', editor);
     const readonlyBody = node('pre', '', instructions, 'gd-muyu-skill-readonly');
+    const originalNote = node('small', t('正文与参考文件保留原语言；译名仅用于界面，不修改技能内容。', 'Instructions and references remain in their original language. Translated labels are for display only and do not change the Skill.'), instructions);
+    originalNote.hidden = true;
     let activeTab = 'body';
     const tabEntries = [['body', t('正文', 'Instructions'), instructions], ['resources', t('参考文件', 'References'), resources], ['advanced', t('高级设置', 'Advanced'), advanced]];
     const tabButtons = tabEntries.map(([key, title, panel]) => {
@@ -154,7 +158,7 @@ export function createSkillView({ doc, settings, controller, act, lang }) {
     function renderRows() {
         if (!state) return;
         const query = search.value.toLowerCase().trim();
-        const rows = state.rows.filter(row => `${row.displayName} ${row.name} ${row.description}`.toLowerCase().includes(query) && (!source.value || row.source === source.value) && (!enabled.value || row.enabled === (enabled.value === 'on')));
+        const rows = state.rows.filter(row => { const display = skillDisplay(row, lang); return `${display.displayName} ${display.description} ${row.displayName} ${row.name} ${row.description}`.toLowerCase().includes(query) && (!source.value || row.source === source.value) && (!enabled.value || row.enabled === (enabled.value === 'on')); });
         count.textContent = t(`显示 ${rows.length} / ${state.rows.length} 项`, `${rows.length} / ${state.rows.length} shown`);
         const key = JSON.stringify([rows, state.draft.id, state.busy, query, source.value, enabled.value]); if (key === listKey) return; listKey = key;
         list.replaceChildren();
@@ -165,15 +169,16 @@ export function createSkillView({ doc, settings, controller, act, lang }) {
             group.setAttribute('data-source', kind); group.open = !!query || !!source.value || !!enabled.value || groupOpen.get(kind);
             group.ontoggle = () => { if (!search.value.trim() && !source.value && !enabled.value) groupOpen.set(kind, group.open); };
             for (const row of matches) {
+                const display = skillDisplay(row, lang);
                 const item = node('div', '', group, 'gd-muyu-skill-row'); item.setAttribute('data-skill-id', row.id); item.setAttribute('data-selected', String(row.id === state.draft.id));
                 const selectRow = button('', () => request({ type: 'edit', id: row.id, revision: row.revision }), item);
                 selectRow.className = 'gd-muyu-skill-select'; selectRow.disabled = state.busy;
-                selectRow.setAttribute('aria-label', t('查看／编辑', 'View / edit') + ': ' + (row.displayName || row.name));
-                node('strong', row.displayName || row.name, selectRow);
-                const description = node('small', row.description, selectRow); description.title = row.description;
+                selectRow.setAttribute('aria-label', t('查看／编辑', 'View / edit') + ': ' + display.displayName);
+                node('strong', display.displayName, selectRow);
+                const description = node('small', display.description, selectRow); description.title = display.description;
                 const enableButton = button(row.enabled ? t('已启用', 'Enabled') : t('已禁用', 'Disabled'), () => controller.setSkillEnabled(row.id, row.revision, !row.enabled), item);
                 enableButton.disabled = state.busy; enableButton.setAttribute('aria-pressed', String(row.enabled));
-                enableButton.setAttribute('aria-label', (row.enabled ? t('禁用', 'Disable') : t('启用', 'Enable')) + ': ' + (row.displayName || row.name));
+                enableButton.setAttribute('aria-label', (row.enabled ? t('禁用', 'Disable') : t('启用', 'Enable')) + ': ' + display.displayName);
             }
         }
     }
@@ -203,7 +208,9 @@ export function createSkillView({ doc, settings, controller, act, lang }) {
         const readonly = state.draft.source === 'builtin';
         basic.hidden = readonly; (inputs.body.parentElement || inputs.body.parent).hidden = readonly;
         resume.hidden = !state.dirty; resume.disabled = state.busy;
-        readonlyDescription.hidden = !readonly; readonlyDescription.textContent = state.draft.description;
+        const display = skillDisplay(state.draft, lang);
+        readonlyDescription.hidden = !readonly; readonlyDescription.textContent = display.description;
+        originalNote.hidden = !readonly || activeTab !== 'body';
         readonlyBody.textContent = state.draft.body; readonlyBody.hidden = !readonly || activeTab !== 'body';
         saveActions.hidden = readonly;
         removeSkill.hidden = readonly || !state.draft.id; removeSkill.disabled = state.busy;
@@ -217,7 +224,7 @@ export function createSkillView({ doc, settings, controller, act, lang }) {
         reset.disabled = state.busy || !state.draft.id || !state.rows.some(row => row.id === state.draft.id);
         editorStatus.textContent = (readonly ? t('内置只读 · 可复制后修改', 'Builtin read-only · copy to edit') : state.dirty ? t('未保存编辑', 'Unsaved edits') : state.draft.id ? t('已载入保存版本', 'Saved version loaded') : t('新建草稿 · 尚未保存', 'New draft · not saved')) + ` · ${bytes(state.draft.body)} B`;
         editorStatus.setAttribute('data-state', state.error ? 'error' : state.busy ? 'saving' : state.dirty ? 'dirty' : 'ready');
-        editorTitle.textContent = state.draft.displayName || state.draft.name || t('新建技能', 'New Skill');
+        editorTitle.textContent = display.displayName || t('新建技能', 'New Skill');
         tabButtons[1].textContent = t('参考文件', 'References') + ` · ${resourceFields.length}`;
         status.textContent = state.error ? t('操作失败，编辑内容已保留：', 'Operation failed; draft retained: ') + state.error : state.busy ? t('正在处理…', 'Working…') : state.result ? t('已更新内存，持久化未确认；请核对，不自动重试。', 'Memory updated; persistence unconfirmed. Check, do not auto retry.') : state.enabled ? t('技能按需使用，点击名称查看或编辑。', 'Skills are used on demand. Select a name to view or edit.') : t('技能已停用；保留各项启用状态。', 'Skills are off; individual enabled states are retained.');
         renderRows();

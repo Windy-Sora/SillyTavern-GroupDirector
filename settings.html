@@ -619,15 +619,15 @@
                         <div style="border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:7px;margin-top:8px;">
                             <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
                                 <select id="gd-npc-library-select" class="text_pole" style="width:auto;font-size:0.85em;">
-                                    <option value="">NPC 包...</option>
+                                    <option value="" data-i18n="npcLibraryPlaceholder">NPC 包...</option>
                                 </select>
-                                <span class="menu_button menu_button_icon" id="gd-npc-library-apply" style="font-size:0.82em;"><i class="fa-solid fa-folder-open"></i> 应用</span>
-                                <span class="menu_button menu_button_icon" id="gd-npc-library-save" style="font-size:0.82em;"><i class="fa-solid fa-floppy-disk"></i> 保存当前</span>
-                                <span class="menu_button menu_button_icon" id="gd-npc-library-import" style="font-size:0.82em;"><i class="fa-solid fa-file-import"></i> 导入为包</span>
+                                <span class="menu_button menu_button_icon" id="gd-npc-library-apply" style="font-size:0.82em;"><i class="fa-solid fa-folder-open"></i> <span data-i18n="npcLibraryApply">应用</span></span>
+                                <span class="menu_button menu_button_icon" id="gd-npc-library-save" style="font-size:0.82em;"><i class="fa-solid fa-floppy-disk"></i> <span data-i18n="npcLibrarySave">保存当前</span></span>
+                                <span class="menu_button menu_button_icon" id="gd-npc-library-import" style="font-size:0.82em;"><i class="fa-solid fa-file-import"></i> <span data-i18n="npcLibraryImport">导入为包</span></span>
                                 <input type="file" id="gd-npc-library-import-file" accept=".json" style="display:none;">
                                 <label class="checkbox_label" for="gd-npc-library-import-template" style="margin:0;font-size:0.82em;display:inline-flex;align-items:center;gap:4px;">
                                     <input type="checkbox" id="gd-npc-library-import-template">
-                                    <span>含 Prompt</span>
+                                    <span data-i18n="npcImportTemplateShort">含 Prompt</span>
                                 </label>
                             </div>
                             <div id="gd-npc-library-list" style="margin-top:5px;"></div>

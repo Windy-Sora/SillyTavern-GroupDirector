@@ -1,4 +1,38 @@
 import test from 'node:test';
+
+for (const lang of ['zh', 'en']) test('Builtin Skill labels localize in picker, catalog, search and readonly editor without changing identity / ' + lang, () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, settings = doc.createElement('section'), parent = doc.createElement('div');
+    const calls = [], controller = { loadSkills() {}, selectSkill: (...args) => calls.push(args) };
+    const draft = { id: 'builtin:memory-maintenance', revision: '2:0', name: 'memory-maintenance', displayName: '记忆配置与维护', description: '原始中文用途', body: '原始中文正文', contentVersion: '1.1', modelInvocable: true, userInvocable: true, resourcesJson: '[]', enabled: true, source: 'builtin' };
+    const state = { mode: 'assistant', skills: { available: true, loaded: true, enabled: true, busy: false, dirty: false, draft, rows: [{ ...draft }] }, selectedSkill: { id: draft.id, revision: draft.revision, displayName: draft.displayName } };
+    const original = JSON.stringify(state);
+    const view = createSkillView({ doc, settings, controller, act: fn => fn(), lang }); view.render(state);
+    const picker = createSkillPicker({ doc, parent, controller, act: fn => fn(), lang }); picker.render(state);
+    const all = root => { const nodes = []; const walk = el => { nodes.push(el); el.children.forEach(walk); }; walk(root); return nodes; };
+    const title = lang === 'en' ? 'Character memory maintenance' : draft.displayName;
+    assert.ok(all(settings).some(el => el.tag === 'strong' && el.textContent === title));
+    assert.ok(all(settings).some(el => el.tag === 'pre' && el.textContent === draft.body));
+    const search = all(settings).find(el => el.type === 'search'); search.value = lang === 'en' ? 'character memory' : '记忆'; search.oninput();
+    assert.ok(all(settings).some(el => el.className === 'gd-muyu-skill-select'));
+    const select = all(parent).find(el => el.tag === 'select');
+    assert.ok(select.options.some(el => el.textContent === title + (lang === 'en' ? ' · Builtin' : ' · 内置')));
+    select.value = draft.id; select.onchange();
+    assert.deepEqual(calls, [[draft.id, draft.revision]]);
+    assert.equal(JSON.stringify(state), original);
+});
+
+for (const lang of ['zh', 'en']) test('Permission GUI title follows language while source identity and user purpose stay unchanged / ' + lang, () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div'), answers = [];
+    const view = createPermissionView({ doc, parent, settings, lang, act: fn => fn(), controller: { answerPermission: (...args) => answers.push(args) } });
+    const request = { id: 'read', kind: 'permission', source: 'memoryConfig', status: 'pending', reason: '用户原话不翻译' };
+    view.render({ interaction: request, sourceGrants: ['source:memoryConfig'] });
+    const all = root => { const nodes = []; const walk = el => { nodes.push(el); el.children.forEach(walk); }; walk(root); return nodes; };
+    assert.ok(all(parent).some(el => el.textContent === (lang === 'en' ? 'Muyu requests access to: Raw memory settings' : '暮羽希望读取：记忆配置原始值')));
+    assert.ok(all(parent).some(el => el.textContent?.includes(request.reason)));
+    all(parent).find(el => el.tag === 'button' && el.textContent === (lang === 'en' ? 'Allow this task' : '允许本任务')).onclick();
+    assert.deepEqual(answers, [['read', 'task']]);
+    assert.equal(request.source, 'memoryConfig');
+});
 for(const operation of ['copy','save_current','update','select'])for(const lang of ['zh','en'])test('ST preset review '+operation+' / '+lang+' folds full diff and requires exact approval',async()=>{
     const f=fixture(lang,true,{initialMode:'assistant'});let prepared=0,approved=0;
     f.state.artifacts=[{id:'draft',kind:'st-preset-draft',revision:1,sourceRunId:'r',content:{module:'st-preset-editor',operation,name:'<script>Preset</script>',before:{temperature:1},after:{temperature:1.5},warnings:['Saved resource and live settings are distinct']}}];

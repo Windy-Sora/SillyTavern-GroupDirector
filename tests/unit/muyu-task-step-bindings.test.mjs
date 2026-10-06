@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTaskStateStore } from '../../muyu/application/task-state.js';
+import { createTaskPlanModule } from '../../muyu/modules/task-plan/index.js';
 import { identity } from './helpers/muyu-subject.mjs';
 
 function fixture(kinds = ['settings', 'settings', 'variables', 'read']) {
@@ -135,6 +136,22 @@ function bundleFixture() {
     ] };
     return { ...f, candidate, args, artifact, action, candidates, publish, receipt };
 }
+
+test('Wrong bundle kind is explained without recording a binding; corrected exact mapping still works', () => {
+    const f = bundleFixture();
+    const module = createTaskPlanModule({ bindStep: args => f.store.bindCandidate(f.run, args, f.candidates) });
+    module.bindRun({ id: f.run.id, taskId: f.run.taskId, target: f.run.target });
+    const wrong = { ...f.args, bundleSteps: f.args.bundleSteps.map(row => ({ ...row, stepId: f.steps[0].id })) };
+    const result = module.handlers['muyu.task.bind_step'](wrong, { runId: f.run.id, target: f.run.target });
+    assert.equal(result.bound, false);
+    assert.match(result.notice, /same operation kind/);
+    f.store.publishBindings(f.run, new Map([[f.candidate.candidateId, f.artifact]]), f.candidates);
+    f.store.observeAction(f.action, f.artifact);
+    assert.equal(f.frame().actionEvidence.operations[0].stepMapping, 'unmapped');
+    assert.equal(module.handlers['muyu.task.bind_step'](f.args, { runId: f.run.id, target: f.run.target }).bound, true);
+    assert.ok(f.frame().taskState.plan.steps.every(step => step.status === 'not-assessed'));
+    module.dispose();
+});
 
 test('Exact bundle IDs associate only verified receipt layout; partial persistence never completes proposed steps', () => {
     const f = bundleFixture(); f.publish();

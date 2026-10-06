@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createContextModule } from '../../muyu/modules/context/index.js';
 import { navigationDocument, SETTINGS_PAGES, UI_LABELS } from '../../muyu/ui/navigation-metadata.js';
+import { configPresentation } from '../../muyu/config/presentation.js';
+import { validateJson } from '../../muyu/core/json-contract.js';
 import { configFields, fieldDefinition } from '../../muyu/config/registry.js';
 import { bundleFieldPolicy, BUNDLE_LIMITS } from '../../muyu/config/bundle-policy.js';
 import { createTaskBundleDraftPort, taskBundleSchema } from '../../muyu/host/task-bundle-draft.js';
@@ -15,10 +17,18 @@ test('Public GUI document is bounded, discoverable and uses the UI labels withou
     assert.equal(list.length, 7); assert.ok(list.some(row => row.id === 'muyu.interface'));
     assert.ok(list.every(row => !Object.hasOwn(row, 'text')));
     const result = m.handlers['muyu.context.read']({ ids: ['muyu.interface'] });
-    assert.equal(result.complete, true); assert.ok(result.documents[0].text.length <= 2000);
+    assert.equal(result.complete, true); assert.ok(result.documents[0].text.length <= 4000);
+    assert.deepEqual(validateJson(m.registry.get('muyu.context.read').outputSchema, result), result);
     const doc = JSON.parse(result.documents[0].text);
     assert.deepEqual(doc.buttons, UI_LABELS);
     assert.deepEqual(doc.pages.map(row => row.label.zh), SETTINGS_PAGES.map(row => row[1]));
+    assert.deepEqual(doc.pages.map(row => row.description.zh), SETTINGS_PAGES.map(row => row[3]));
+    assert.match(doc.pages.find(row => row.id === 'storage').description.zh, /不修改角色记忆/);
+    assert.match(doc.characterMemory.location.zh, /经典设置 → 角色记忆$/);
+    assert.deepEqual(doc.characterMemory.controls.autoMemoryInterval.label, configPresentation('autoMemoryInterval').label);
+    assert.equal(Object.hasOwn(doc.characterMemory.controls.autoMemoryInterval, 'section'), false);
+    assert.match(doc.characterMemory.intervalMeaning, /减少触发频率应增大间隔/);
+    assert.match(doc.characterMemory.boundary, /不在暮羽齿轮/);
     assert.deepEqual(doc.connection.sources, ['使用酒馆当前连接（推荐）', '使用暮羽独立接口']);
     assert.equal(doc.connection.defaultForNewUsers, 'st');
     assert.equal(doc.connection.stDoesNotInheritRoleplayContext, true);
@@ -28,6 +38,17 @@ test('Public GUI document is bounded, discoverable and uses the UI labels withou
     assert.equal(doc.skills.importOnlyFillsUnsavedEditor, true);
     assert.match(doc.historyExport.location, /⋯/);
     assert.equal(navigationDocument().text, result.documents[0].text);
+});
+
+test('Preview guidance separates requested direction, numeric target and historical draft validity', () => {
+    for (const mode of ['assistant', 'draft']) {
+        const instructions = composeInstructions(mode);
+        assert.match(instructions.task, /减少自动提取频率应增大间隔/);
+        assert.match(instructions.task, /未指定数值先简短询问/);
+        assert.match(instructions.task, /不等于宿主作废旧草稿/);
+        assert.match(instructions.task, /不能据旧基线断言当前值/);
+        assert.ok(instructions.base.length <= 4000 && instructions.task.length <= 4000);
+    }
 });
 
 test('Field contract and bundle validator share the registered-setting boundary', () => {

@@ -6,7 +6,7 @@ const sourceIds = requestableSources.filter(item => item.permission !== 'code').
 const stepKinds = ['read', 'settings', 'variables', 'blueprint', 'resource', 'code', 'other'];
 const string = maxLength => ({ type: 'string', maxLength });
 const stepSchema = { type: 'object', properties: {
-    kind: { type: 'string', enum: stepKinds, description: 'Operation kind, not subject/domain. All reading, contract lookup and analysis use read, including blueprint/variables/world-book reads. Other kinds denote proposed writes/actions.' }, title: string(100), detail: string(600),
+    kind: { type: 'string', enum: stepKinds, description: 'Operation kind, not subject/domain. All reading, contract lookup and analysis use read. Split different proposed operation kinds even inside one bundle: variable definitions use variables, settings use settings, script definitions use code. Never label a combined variable/settings proposal as one settings step.' }, title: string(100), detail: string(600),
 }, required: ['kind', 'title', 'detail'], additionalProperties: false };
 export const taskPlanSchema = { type: 'object', properties: {
     goal: string(300), scope: { type: 'string', enum: ['global', 'current-chat', 'mixed'] },
@@ -60,7 +60,13 @@ export function createTaskPlanModule({ bindStep = null, bindRead = null } = {}) 
     } };
     if (bindStep) handlers['muyu.task.bind_step'] = (args, ctx) => {
         if (disposed || !runs.has(ctx.runId)) throw Error('RUN_NOT_BOUND');
-        return bindStep(args, ctx);
+        try { return bindStep(args, ctx); }
+        catch (error) {
+            // Closed synchronous validation failures; never expose arbitrary host messages.
+            if (error instanceof Error && error.message === 'INVALID_BUNDLE_STEP_BINDING') return { bound: false, notice: 'Association rejected: each bundle substep must map to a proposal step of the same operation kind (variable→variables, settings→settings, script→code), using exact host IDs. The draft remains unapplied; no step completed. Do not repeat the same mapping.' };
+            if (error instanceof Error && error.message === 'INVALID_STEP_BINDING') return { bound: false, notice: 'Association rejected: use existing matching write-step IDs from the current approved plan and its exact artifact/revision. No draft applied, no permission granted and no step completed. Do not repeat the same mapping.' };
+            throw error;
+        }
     };
     if (bindRead) handlers['muyu.task.bind_read'] = (args, ctx) => {
         if (disposed || !runs.has(ctx.runId)) throw Error('RUN_NOT_BOUND');

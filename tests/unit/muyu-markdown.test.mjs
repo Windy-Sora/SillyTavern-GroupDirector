@@ -22,6 +22,12 @@ test('Markdown malformed fences and oversized input remain bounded and explicitl
     renderMarkdown(f.root, 'a'.repeat(40000)); assert.ok(f.all().some(e => e.tag === 'small' && e.textContent.includes('truncated')));
 });
 
+for (const lang of ['zh', 'en']) test('Markdown truncation follows GUI language without rewriting original text / ' + lang, () => {
+    const f = dom(); renderMarkdown(f.root, '原文'.repeat(20000), { lang });
+    assert.equal(f.all().find(e => e.tag === 'small').textContent, lang === 'en' ? 'Display truncated' : '显示已截断');
+    assert.ok(f.all().some(e => e.textContent?.includes('原文')));
+});
+
 test('Numbered findings keep their source numbers across explanatory paragraphs', () => {
     const f = dom(); renderMarkdown(f.root, '1. First finding\nDetails for the first finding.\n\n2. Second finding\nMore details.\n\n5. Fifth finding\n\n- Summary');
     const lists = f.all().filter(e => e.tag === 'ol');
