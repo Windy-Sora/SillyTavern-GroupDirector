@@ -10,6 +10,28 @@ import { identity, registry, toolId, scriptedModel, request, call, text, done, c
 import { createProfileSystem } from '../../systems/profile-system.js';
 import { readFile } from 'node:fs/promises';
 import { validateInstructions } from '../../muyu/instructions/contract.js';
+import { RESPONSE_CHECKS } from '../../muyu/instructions/behavior.js';
+
+test('Every answer mode and receipt renders shared language and evidence checks without changing the instruction DTO', () => {
+    const cases = ['assistant', 'chat', 'draft', 'memory', 'director'].map(mode => composeInstructions(mode));
+    cases.push(composeReceiptInstructions());
+    for (const instructions of cases) {
+        const before = JSON.stringify(instructions), rendered = renderInstructions(instructions);
+        assert.ok(rendered.includes(RESPONSE_CHECKS));
+        assert.equal(rendered.split(RESPONSE_CHECKS).length, 2);
+        assert.equal(JSON.stringify(instructions), before);
+        assert.equal(Object.keys(instructions).sort().join(','), 'base,preference,task,version');
+    }
+    assert.match(RESPONSE_CHECKS, /Short follow-ups inherit that language/);
+    assert.match(RESPONSE_CHECKS, /host approval messages do not choose/);
+    assert.match(RESPONSE_CHECKS, /Keep user content, code and JSON unchanged/);
+    assert.match(RESPONSE_CHECKS, /For English use label.en, not label.zh or both/);
+    assert.match(MUYU_PERSONA, /中文回答可偶尔/);
+    assert.match(MUYU_PERSONA, /不夹中文语气词或照搬中文例句/);
+    assert.match(RESPONSE_CHECKS, /not that the current value equals or differs/);
+    assert.match(RESPONSE_CHECKS, /does not guarantee saving/);
+    assert.match(RESPONSE_CHECKS, /does not delete or invalidate/);
+});
 
 test('Presentation rules preserve technical output and leave instruction capacity for runtime notices', async () => {
     const instructions = composeInstructions('assistant', { enabled: true, text: '中'.repeat(4000) });

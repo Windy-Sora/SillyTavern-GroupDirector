@@ -12,8 +12,8 @@ export const taskPlanSchema = { type: 'object', properties: {
     goal: string(300), scope: { type: 'string', enum: ['global', 'current-chat', 'mixed'] },
     sources: { type: 'array', items: { type: 'string', enum: sourceIds }, maxItems: 12 },
     steps: { type: 'array', items: stepSchema, maxItems: 8 },
-    risks: { type: 'array', items: string(200), maxItems: 6 },
-    unknowns: { type: 'array', items: string(200), maxItems: 6 },
+    risks: { type: 'array', items: { ...string(200), description: 'At most 200 characters per item, not 200 words. Use one short sentence.' }, maxItems: 6 },
+    unknowns: { type: 'array', items: { ...string(200), description: 'At most 200 characters per item, not 200 words. Shorten long explanations before submitting; never retry the same oversized text.' }, maxItems: 6 },
 }, required: ['goal', 'scope', 'sources', 'steps', 'unknowns'], additionalProperties: false };
 
 const availability = Object.freeze({ read: 'read-only', settings: 'bundle-or-separate-draft-approval-required', variables: 'bundle-or-separate-draft-approval-required',

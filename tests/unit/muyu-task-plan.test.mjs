@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTaskPlanModule, projectTaskPlan } from '../../muyu/modules/task-plan/index.js';
+import { createTaskPlanModule, projectTaskPlan, taskPlanSchema } from '../../muyu/modules/task-plan/index.js';
 import { createSourcePermissions } from '../../muyu/permissions/store.js';
 import { createWorkspace } from '../../muyu/workspace/store.js';
 import { taskPlanReviewPort } from '../../muyu/modules/task-plan/review.js';
@@ -12,6 +12,15 @@ const input = { goal: 'Create a coin system for this chat', scope: 'mixed', sour
         { kind: 'settings', title: 'Prepare switches', detail: 'Preview only; requires separate apply approval' },
         { kind: 'variables', title: 'Create balance', detail: 'Needs a future variable write port' },
     ], risks: ['An existing variable could be overwritten; no write is authorized'], unknowns: ['Existing balance variable may conflict'] };
+
+test('Plan length hints keep the original per-item character limit and reject oversized English', () => {
+    for (const field of ['risks', 'unknowns']) {
+        assert.equal(taskPlanSchema.properties[field].items.maxLength, 200);
+        assert.match(taskPlanSchema.properties[field].items.description, /200 characters.*not 200 words/);
+        assert.doesNotThrow(() => projectTaskPlan({ ...input, [field]: ['a'.repeat(200)] }, target));
+        assert.throws(() => projectTaskPlan({ ...input, [field]: ['a'.repeat(201)] }, target));
+    }
+});
 
 test('Binding rejection exposes only closed validation reasons and never reports completion', () => {
     let failure = 'INVALID_BUNDLE_STEP_BINDING';

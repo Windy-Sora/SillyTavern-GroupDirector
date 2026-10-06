@@ -6,6 +6,7 @@ import { createHttpTransport } from '../../muyu/model/http-transport.js';
 import { probeConnection } from '../../muyu/model/connection-probe.js';
 import { startMuyuRun } from '../../muyu/composition.js';
 import { composeInstructions } from '../../muyu/instructions/compose.js';
+import { RESPONSE_CHECKS } from '../../muyu/instructions/behavior.js';
 import { identity, registry, toolId, createClock, flush, deferred } from './helpers/muyu-subject.mjs';
 
 const connection = { endpoint: 'https://model.invalid/v1/chat/completions', apiKey: 'test-only-placeholder', model: 'fixture', supportsTools: true };
@@ -152,7 +153,7 @@ test('System instructions are injected once after internal indexing and preserve
     const first = { ...request(), instructions }; await collect(s.model, first, context);
     const follow = { ...first, finalize: true, messages: [...first.messages, { role: 'assistant', content: '', toolCalls: [{ callId: 'c1', toolId, version: 1, args: { n: 1 } }] }, { role: 'tool', callId: 'c1', result: { ok: true, data: 1 } }] };
     assert.ok(s.model.inspect(follow, context).instructionBytes > 0); await collect(s.model, follow, context);
-    for (const r of s.requests) { assert.equal(r.payload.messages[0].role, 'system'); assert.equal(r.payload.messages.filter(m => m.role === 'system').length, 1); assert.equal(Object.hasOwn(r.payload, 'instructions'), false); }
+    for (const r of s.requests) { assert.equal(r.payload.messages[0].role, 'system'); assert.equal(r.payload.messages.filter(m => m.role === 'system').length, 1); assert.equal(Object.hasOwn(r.payload, 'instructions'), false); assert.ok(r.payload.messages[0].content.includes(RESPONSE_CHECKS)); }
     assert.equal(s.requests[1].payload.messages[2].reasoning_content, 'private thought'); assert.equal(Object.hasOwn(s.requests[1].payload, 'tools'), false);
     assert.equal(first.messages.length, 1);
     await assert.rejects(collect(s.model, { ...request(), messages: [{ role: 'system', content: 'untrusted history' }] }), /MODEL_PROTOCOL_ERROR/);
@@ -243,7 +244,7 @@ test('Host permission pause retains private thinking for the resumed original to
     const s = subject([response('', [tc()], { reasoning_content: 'private-before-approval' }),
         response('done', [], { reasoning_content: 'private-after-approval' })], { connection: { ...connection, profile: 'deepseek' } });
     let granted = false, reads = 0;
-    const options = { input: 'read', model: s.model, registry: registry(), handlers: { [toolId]: () => { reads++; return 7; } },
+    const options = { input: 'Read in English', instructions: composeInstructions('assistant'), model: s.model, registry: registry(), handlers: { [toolId]: () => { reads++; return 7; } },
         allowedTools: [toolId], policy: () => granted ? true : { decision: 'permission_required', missingSources: ['source:memoryConfig'] } };
     const first = startMuyuRun({ ...options, identity });
     const paused = await first.completion; await first.drained;
@@ -255,8 +256,20 @@ test('Host permission pause retains private thinking for the resumed original to
     const result = await next.completion; await next.drained;
     assert.equal(result.state.status, 'succeeded'); assert.equal(result.answer, 'done');
     assert.equal(reads, 1); assert.equal(s.requests.length, 2);
+    for (const sent of s.requests) assert.ok(sent.payload.messages[0].content.includes(RESPONSE_CHECKS));
     assert.equal(s.requests[1].payload.messages.find(m => m.tool_calls)?.reasoning_content, 'private-before-approval');
     assert.doesNotMatch(JSON.stringify({ paused: { ...paused, resume: null }, result }), /private-before-approval/);
+});
+
+test('Shared reply checks remain measured and cannot bypass the manual input budget', async () => {
+    const s = subject([]), instructions = composeInstructions('assistant');
+    const input = { ...request(), instructions };
+    const measured = s.model.inspect(input, {});
+    const before = s.model.inspect({ ...input, instructions: undefined }, {});
+    assert.ok(measured.instructionBytes >= Buffer.byteLength(RESPONSE_CHECKS));
+    assert.ok(measured.estimatedTokens > before.estimatedTokens);
+    await assert.rejects(collect(s.model, { ...input, inputTokenLimit: measured.estimatedTokens - 1 }), /CONTEXT_LIMIT/);
+    assert.equal(s.requests.length, 0);
 });
 
 test('Thinking state cannot cross run contexts; prior text becomes labelled reference data', async () => {

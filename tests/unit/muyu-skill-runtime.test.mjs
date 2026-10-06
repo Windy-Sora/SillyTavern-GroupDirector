@@ -16,6 +16,16 @@ async function fixture({ body = 'Use the actual contracts.', manual = false, ena
     return { settings, port, task, charged: () => charged };
 }
 const query = { id: 'user:example', revision: '1', path: 'SKILL.md' };
+
+test('Skill load advertises an explicit required main or resource path without a permissive default', () => {
+    const module = createSkillRuntimeModule({});
+    const schema = module.registry.get('muyu.skills.load').inputSchema;
+    assert.ok(schema.required.includes('path'));
+    assert.equal(schema.properties.path.maxLength, 180);
+    assert.match(schema.properties.path.description, /Required on every load.*SKILL.md/);
+    assert.equal(Object.hasOwn(schema.properties.path, 'default'), false);
+    module.dispose();
+});
 test('Skill guidance discovery routes saved inventory to management without changing catalog data or granting access', async () => {
     const f = await fixture(); f.task.bindRun(identity); await f.task.prepare(identity.id);
     const projected = f.task.project(identity.id)[0].content;
