@@ -70,35 +70,35 @@
 
 中间回归补齐界面预先准备票据在execute（含预算拒绝）时接手Task归属；四生成旧测试的整仓clear预期改为0，不分配资源时不清未知任务，有已执行任务时逐份forget。没有放宽批准／执行验证。
 
-全量3312项：3311通过、1真实ST契约跳过、0失败；静态820源码／13JSON及17/17历史BUG契约通过，git diff --check通过。未跑真实ST／GUI／付费模型；生产和文档同步两份release，不部署测试和日志，未提交／push。Skill运行时、其他只读／诊断模块及GUI仍待迁移，见[合同](muyu/modules/ASSEMBLY.md)。
+全量3312项：3311通过、1真实ST契约跳过、0失败；静态820源码／13JSON及17/17历史BUG契约通过，git diff --check通过。未跑真实ST／GUI／付费模型；生产和文档同步两份release，不部署测试和日志，未提交／push。Skill运行时、其他只读／诊断模块及GUI仍待迁移，见[合同](../muyu/modules/ASSEMBLY.md)。
 
 ## 2026-10-06 优化D第五轮：资产与资源库装配
 
 新增十二项：Skill及三聊天库模块候选替换／Run转移／发布保留／内容替换／删除／精确释放外部票据隔离，Prompt及三资源库普通DTO清理，Skill等待ready时清理，两聊天库no_changes不产候选，生产二十三所有者接线、Prompt批量候选首工具别名、精确分组及无端口不启用。相关155项通过。
 
-全量3303项：3302通过、1真实ST契约跳过、0失败；静态817源码／13JSON和17/17历史BUG契约通过，git diff --check通过。未跑真实ST／GUI／付费模型；生产与文档同步两份release，不部署测试／日志，未提交／push。脚本、自定义Agent、生成及Task级钩子下一组迁移，D尚未全量收口，见[合同](muyu/modules/ASSEMBLY.md)。
+全量3303项：3302通过、1真实ST契约跳过、0失败；静态817源码／13JSON和17/17历史BUG契约通过，git diff --check通过。未跑真实ST／GUI／付费模型；生产与文档同步两份release，不部署测试／日志，未提交／push。脚本、自定义Agent、生成及Task级钩子下一组迁移，D尚未全量收口，见[合同](../muyu/modules/ASSEMBLY.md)。
 
 ## 2026-10-06 优化D第四轮：余下编辑器装配
 
 新增十项：选择／账本／蓝图节点／ST预设／角色卡／世界书六编辑器候选替换、Run转移、发布后旧Run清理保留、验证元数据变化、删除／重复dispose与外部票据隔离；三ST资产编辑器异步预览晚于dispose时释放迟到票据；生产十五模块实际绑定／续接、原global/chat作用域、蓝图三预览候选别名、精确分组及无宿主端口不启用工具。相关208项通过。
 
-全量3291项：3290通过、1真实ST契约跳过、0失败；静态815源码／13JSON及17/17历史BUG契约通过，git diff --check通过。未运行真实ST、GUI或付费模型；生产／文档同步两份release，测试及日志不部署，未提交／push。下一组为其他资产及资源库，D尚未全量收口，见[合同](muyu/modules/ASSEMBLY.md)。
+全量3291项：3290通过、1真实ST契约跳过、0失败；静态815源码／13JSON及17/17历史BUG契约通过，git diff --check通过。未运行真实ST、GUI或付费模型；生产／文档同步两份release，测试及日志不部署，未提交／push。下一组为其他资产及资源库，D尚未全量收口，见[合同](../muyu/modules/ASSEMBLY.md)。
 
 ## 2026-10-06 优化D第三轮：聊天编辑器与Provider资产装配
 
 新增六项回归：变量／记忆／档案／NPC编辑器替换候选、Run转移、发布后旧Run清理、同票据内容替换、精确释放外部票据隔离和重复dispose；公共draft-runs无ID发布不丢候选、产物副本及无ticket删除；生产九模块实际绑定／续接、精确分组、候选别名和Provider测试external边界。相关166项通过。
 
-最终全量3281项：3280通过、1真实ST契约跳过、0失败。静态815源码／13JSON通过，17/17历史BUG契约通过；git diff --check通过。公共容器由其他编辑器复用，全量已一并回归。真实ST／GUI／付费模型未验收；生产／文档同步两份release，测试与日志不部署，未提交／push。见[联合模块合同](muyu/modules/ASSEMBLY.md)。
+最终全量3281项：3280通过、1真实ST契约跳过、0失败。静态815源码／13JSON通过，17/17历史BUG契约通过；git diff --check通过。公共容器由其他编辑器复用，全量已一并回归。真实ST／GUI／付费模型未验收；生产／文档同步两份release，测试与日志不部署，未提交／push。见[联合模块合同](../muyu/modules/ASSEMBLY.md)。
 
 ## 2026-10-06 优化D第二轮：联合模块与产物票据
 
 新增11项：完整／重复／未知描述拒绝，未来测试模块、生产四模块接线、精确工具分组与allowlist、私有产物副本、变量／整单候选替换与续接、发布后Run清理保留、删除／内容替换释放、重复dispose及共享外部票据保留、领域配置计划归属。相关控制器／动作／分组421项及领域专项96项通过；追加生产接线后装配／配置展示27项通过。最终全量3275项：3274通过、1真实ST契约跳过、0失败，静态和17/17历史BUG契约通过。
 
-中间失败：新整单fake端口缺version和有效步骤，旧配置展示createArtifact夹具缺真实ID；均按应用DTO补齐，不放宽生产校验。未增加工具、放宽权限或调用付费模型，真实ST／GUI验收仍待执行。生产／文档同步两份release，测试与日志不部署，未提交／push。见[联合模块合同](muyu/modules/ASSEMBLY.md)。
+中间失败：新整单fake端口缺version和有效步骤，旧配置展示createArtifact夹具缺真实ID；均按应用DTO补齐，不放宽生产校验。未增加工具、放宽权限或调用付费模型，真实ST／GUI验收仍待执行。生产／文档同步两份release，测试与日志不部署，未提交／push。见[联合模块合同](../muyu/modules/ASSEMBLY.md)。
 
 ## 2026-10-06 优化D首轮：动作装配生命周期
 
-新增6项装配回归：非法／重复所有者、未知kind、未来测试模块自动参加公共生命周期、描述隔离、钩子异常不漏清理、排空等待全部物理工作、已派发写入保持busy及配置／变量／整单合同不变。控制器408项通过；全量3264项：3263通过、1真实ST契约跳过、0失败，静态809源码／13JSON与17/17历史BUG契约通过。未增加工具或放宽权限，未调用付费模型；真实ST和GUI验收仍待执行。生产／文档同步两份release，测试和外部harness不部署，未提交／push。见[muyu/actions/ASSEMBLY.md](muyu/actions/ASSEMBLY.md)。
+新增6项装配回归：非法／重复所有者、未知kind、未来测试模块自动参加公共生命周期、描述隔离、钩子异常不漏清理、排空等待全部物理工作、已派发写入保持busy及配置／变量／整单合同不变。控制器408项通过；全量3264项：3263通过、1真实ST契约跳过、0失败，静态809源码／13JSON与17/17历史BUG契约通过。未增加工具或放宽权限，未调用付费模型；真实ST和GUI验收仍待执行。生产／文档同步两份release，测试和外部harness不部署，未提交／push。见[muyu/actions/ASSEMBLY.md](../muyu/actions/ASSEMBLY.md)。
 
 ## 2026-10-05 综合反馈三轮收口
 
@@ -245,7 +245,7 @@ Muyu 检索与记忆结果语义（2026-10-01）：Provider 区分扫描步数�
 
 Muyu `review-75ec948` 三项 P2 修复（2026-10-01）：角色记忆首次搜索绑定目录 revision，拒绝重排／删除／身份替换后的旧序号；账户存档发送预检按实际后端单条8 MiB／总32 MiB及未保存工作副本检查；账户长期记忆只接受明确肯定范围前缀，否定／引用词／冲突修正不能提升范围。新增6项正式回归，相关6文件专项 **173/173 通过**，包括真实控制器模型零调用、草稿及历史保留、容量重试和后端重开选择；独立静态检查 **PASS（557源码、11 JSON、226模块冒烟）**。没有调用付费模型或修改审计脚本，未重跑全量测试或声称已消除先前 checker-platform 超时回收问题。
 
-Muyu 长期记忆第一阶段（2026-10-01）：账户设置独立仓库、关闭默认、账户／当前聊天范围、版本化增删查改、用户明确原话写入及按需字面检索。新增24项回归（领域/仓库/预算/配置档隐私20、控制器2、双语GUI2），覆盖异步失败和未知结果、私有记忆与对话共用修改队列、并发仓库替换、账户与聊天切换、修订冲突、模型衍生内容拒绝、全权限不绕过关闭、工具预算续接、编辑草稿保留、精确重复去重及未知写入不自动重试。最终串行全量测试 **1439 项，1438 通过、1 宿主契约跳过、0 失败**，历史 BUG **17/17**；独立静态检查 **PASS（557源码、11 JSON、226模块导入冒烟）**。最终默认并发合跑两次触发既有 `gd-checker-platform` 子进程超时测试的临时 `grandchild.pid` 缺失，单独重跑8/8通过；失败测试的已确认临时残留进程已清理。串行合跑测试全部通过，但当次综合 Result 仍为 FAIL，因此不记为完整合跑通过，静态另行复验通过；本轮未修改测试平台源码或提交并发配置。Node DOM 替身不能证明真实布局与键盘焦点；未声称已完成真实模型质量、浏览器或酒馆 settings.json 落盘验收。实现与后续范围见 [长期记忆合同](muyu/memory/README.md)。
+Muyu 长期记忆第一阶段（2026-10-01）：账户设置独立仓库、关闭默认、账户／当前聊天范围、版本化增删查改、用户明确原话写入及按需字面检索。新增24项回归（领域/仓库/预算/配置档隐私20、控制器2、双语GUI2），覆盖异步失败和未知结果、私有记忆与对话共用修改队列、并发仓库替换、账户与聊天切换、修订冲突、模型衍生内容拒绝、全权限不绕过关闭、工具预算续接、编辑草稿保留、精确重复去重及未知写入不自动重试。最终串行全量测试 **1439 项，1438 通过、1 宿主契约跳过、0 失败**，历史 BUG **17/17**；独立静态检查 **PASS（557源码、11 JSON、226模块导入冒烟）**。最终默认并发合跑两次触发既有 `gd-checker-platform` 子进程超时测试的临时 `grandchild.pid` 缺失，单独重跑8/8通过；失败测试的已确认临时残留进程已清理。串行合跑测试全部通过，但当次综合 Result 仍为 FAIL，因此不记为完整合跑通过，静态另行复验通过；本轮未修改测试平台源码或提交并发配置。Node DOM 替身不能证明真实布局与键盘焦点；未声称已完成真实模型质量、浏览器或酒馆 settings.json 落盘验收。实现与后续范围见 [长期记忆合同](../muyu/memory/README.md)。
 
 Muyu 可选账户设置存储（2026-10-01）：新增默认关闭的账户设置存储开关，刷新后切换后端，不依赖附属插件或 IndexedDB；原后端记录保留，不自动迁移。新后端复用会话 DTO、账户身份检查和保存失败工作副本；限制单条8 MiB、总32 MiB，不截断旧记录。剧情配置档导出/导入/应用排除私人历史与存储偏好。新增13项回归（存储10、双语GUI2、控制器1），专项 **100/100** 与控制器 **101/101** 通过；全量 **1415 项，1414 通过、1 宿主契约跳过、0 失败**，静态检查及历史 BUG 契约 **17/17 通过**。覆盖刷新序列化恢复、局部版本冲突、删除后不复活、保存等待/失败、并发替换保留、容量与未知版本拒绝、附属插件零探测、账户切换及草稿不丢。没有真实浏览器/酒馆文件落盘验收；账户设置是整文档保存，跨标签页或设备并发覆盖不由本页版本检查保证，GUI明确建议单标签页和备份。
 
@@ -269,7 +269,7 @@ Memory-limit action (2026-09-25): `muyu-memory-limit.test.mjs` covers a single-f
 
 Memory-setting closure (2026-09-25): `muyu-settings.test.mjs` now checks `memoryKeepRecent` contract, 1–100 tool range, dependency freshness, exact diff, sibling preservation, and one-time application. The legacy four-field memory draft remains unchanged. `memoryTokenBudget` is explicitly inactive in the classic UI and is not offered as an agent-write field; `memoryMaxEntries` remains pending a chat-data pruning action. Full suite: **1074 tests, 1073 passed, 1 skipped, 0 failed**; static checks and historical BUG contracts 17/17 passed. No live-browser or paid-model acceptance was performed for this change.
 
-Configuration domains round 1 (2026-09-25): `muyu-settings.test.mjs` and unified controller cases cover the explicit default-key inventory, selective reads, separate config permission, default-deny tool policy, nested sibling preservation, semantic conflicts, runtime guards, one-shot approval, async save failures, long prompts/receipts, inert history import, and invalid replacement candidates. Full suite: **1042 tests, 1041 passed, 1 skipped, 0 failed**; static checks passed; historical BUG contracts 17/17. Report: `.bug-hunter/muyu-settings-round1-tests.json`. No paid-model or real-browser acceptance was performed. The registered 13 leaf fields and remaining scope are documented in [the configuration contract](muyu/config/README.md).
+Configuration domains round 1 (2026-09-25): `muyu-settings.test.mjs` and unified controller cases cover the explicit default-key inventory, selective reads, separate config permission, default-deny tool policy, nested sibling preservation, semantic conflicts, runtime guards, one-shot approval, async save failures, long prompts/receipts, inert history import, and invalid replacement candidates. Full suite: **1042 tests, 1041 passed, 1 skipped, 0 failed**; static checks passed; historical BUG contracts 17/17. Report: `.bug-hunter/muyu-settings-round1-tests.json`. No paid-model or real-browser acceptance was performed. The registered 13 leaf fields and remaining scope are documented in [the configuration contract](../muyu/config/README.md).
 
 Provider 扩展基础（2026-09-25）：用户脚本加载器的私有源码摘要在恢复后保持一致；运行实例替换时拒收迟到结果；可选上下文声明报告缺失并提供有界投影；Provider 执行 v2 的长结果在同一 Run 分页读取且不重复执行，Broker 按原版本授权检查每页。全量 1024 项，1023 通过、1 跳过、0 失败；随后补充的 Broker 分页授权用例另行专项通过，其他代码未变。历史 BUG 合同 17/17。
 
@@ -462,7 +462,7 @@ Behavior tests remain native Node `node:test` files discovered from
 `tests/**/*.test.js` and `tests/**/*.test.mjs`; checker plugins are not a
 replacement test framework.
 The normative Behavior Test v1 development standard is documented in
-[`tests/README.md`](tests/README.md).
+[`tests/README.md`](../tests/README.md).
 
 Tests are discovered automatically from `tests/**/*.test.js` and
 `tests/**/*.test.mjs`; no central list needs to be maintained. Tests that mutate singleton registries must clean up with
@@ -775,7 +775,7 @@ focus, layout, or a SillyTavern-owned widget.
 
 This section is a quick-start summary. File ownership, naming, isolation,
 concurrency, regression, and review requirements are normative in
-[`tests/README.md`](tests/README.md).
+[`tests/README.md`](../tests/README.md).
 
 Use `node:test` directly for pure modules:
 
@@ -849,7 +849,7 @@ Application tests cover physical drain gating, queue limits, chat ownership,
 subscription remounting, task continuation, artifact revisions and capacity.
 The `muyu` directory is now included in module smoke checks and coverage selection.
 This does not establish full-suite coverage or real-model/host compatibility.
-Implementation limits are documented in [muyu/README.md](muyu/README.md).
+Implementation limits are documented in [muyu/README.md](../muyu/README.md).
 
 Classic UI checks cover mount/dispose subscriptions, input preservation, consent reset,
 text-only rendering, connection credential clearing and one-click/keyboard submission.
@@ -953,7 +953,7 @@ passed 169 tests. The final profile-export assertion excluding the history priva
 setting was checked separately (6/6 profile-export tests). No live API request or
 browser acceptance was performed; native IDB quota, account switching, multiple tabs
 and 320/400/600/800px layout remain manual acceptance items. Both local release copies
-receive the same implementation and documentation. See [session contract](muyu/sessions/README.md).
+receive the same implementation and documentation. See [session contract](../muyu/sessions/README.md).
 
 History-workbench phase 2B adds title/scope/task/archive filters, confirmed metadata
 management, read-only foreign-chat and imported records, explicit import previews,
@@ -990,7 +990,7 @@ Validation: full suite 916 tests, 915 passed, 1 skipped, 0 failed; static checks
 17/17 historical BUG contracts passed. Muyu-specific coverage comprises 214 passing
 tests. No live API calls, tokenizer calibration, browser layout acceptance or native
 IndexedDB multi-tab/quota acceptance were performed. Summary quality is not established
-by deterministic fixtures; see [context contract](muyu/context/README.md).
+by deterministic fixtures; see [context contract](../muyu/context/README.md).
 
 Behavior-preference phase adds `muyu-instructions.test.mjs` plus controller/model/panel
 and config-profile cases. Covers opt-in composition, closed bounds and oversized drafts,
@@ -1006,7 +1006,7 @@ then a focused constraint/unknown-state check passed after two base-rule clarifi
 (2 requests). Human review found wording issues in the initial comparison; the final
 wording was not rerun across all four live cases. Total reported live usage: 9522 tokens.
 These are synthetic Node tests, not browser/ST acceptance or general quality guarantees.
-See [instruction contract](muyu/instructions/README.md); harness stays outside the plugin.
+See [instruction contract](../muyu/instructions/README.md); harness stays outside the plugin.
 
 Operation receipts add `muyu-receipts.test.mjs` and controller/context/panel cases:
 closed bounded facts, inert v4 persistence/import/export, deduplication, storage failure

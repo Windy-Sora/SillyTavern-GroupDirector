@@ -1,24 +1,24 @@
 # 暮羽 Agent 模块开发规范
 
-2026-10-06 优化D第十轮：新增动作必须在receipt-protocol登记精确module／操作版本、动作owner／kind、来源与模型／GUI策略，并补原闭合Schema、DTO生产和双语文案。组装拒绝缺失／错归属，未知module／version不能回落配置回执；元数据不授权、不验证用户意图或确认保存。旧无module配置入口仅兼容，不作为通用fallback。详见[回执合同](muyu/actions/RECEIPTS.md)。
+2026-10-06 优化D第十轮：新增动作必须在receipt-protocol登记精确module／操作版本、动作owner／kind、来源与模型／GUI策略，并补原闭合Schema、DTO生产和双语文案。组装拒绝缺失／错归属，未知module／version不能回落配置回执；元数据不授权、不验证用户意图或确认保存。旧无module配置入口仅兼容，不作为通用fallback。详见[回执合同](../muyu/actions/RECEIPTS.md)。
 
-2026-10-06 优化D第九轮：产物GUI须声明双语标题、布局、renderer和精确动作所有者；全部动作kind必须有对应呈现，report与task-plan分别是证据／读取review，不可登记写入动作。未知产物／回执版本不得回落配置diff或应用入口。render只创建安全DOM和原controller回调，不批准动作，不持有或释放会话证据。GUI回执策略只决定技术详情和既有快捷入口，不能改变schema、持久化、来源权限、结果状态及模型解释。详见[布局合同](muyu/ui/LAYOUT.md)。
+2026-10-06 优化D第九轮：产物GUI须声明双语标题、布局、renderer和精确动作所有者；全部动作kind必须有对应呈现，report与task-plan分别是证据／读取review，不可登记写入动作。未知产物／回执版本不得回落配置diff或应用入口。render只创建安全DOM和原controller回调，不批准动作，不持有或释放会话证据。GUI回执策略只决定技术详情和既有快捷入口，不能改变schema、持久化、来源权限、结果状态及模型解释。详见[布局合同](../muyu/ui/LAYOUT.md)。
 
-2026-10-06 优化D第八轮：所有启用工具必须有联合所有者描述。Provider唯一budgetLifecycle禁止普通bindAssistant，普通Run转移不调用其预算专用签名；预算续接不得重置用量／放大限额。task-plan限定read-scope review、null动作和read生产工具，与写入产物分开。联网Task配额、长期记忆原话意图／修订／幂等沿用原模块，不把清理等同仓库删除。配置档草稿仍仅保存库；GUI／回执统一下一切片，见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第八轮：所有启用工具必须有联合所有者描述。Provider唯一budgetLifecycle禁止普通bindAssistant，普通Run转移不调用其预算专用签名；预算续接不得重置用量／放大限额。task-plan限定read-scope review、null动作和read生产工具，与写入产物分开。联网Task配额、长期记忆原话意图／修订／幂等沿用原模块，不把清理等同仓库删除。配置档草稿仍仅保存库；GUI／回执统一下一切片，见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D第七轮：read-assembly声明七基础模块和可选Skill运行时。普通证据报告须用独立reports描述（read工具、report类型、publishReport），不得混入候选artifacts或借用配置动作；按completedTools路由，失败隔离，业务模块仍核验Run／目标／新鲜度。无状态模块显式声明空生命周期；Skill运行时用selectedSkill单次绑定、Task钩子释放停放缓存，不能清共享Skill服务，管理权限不等于激活。Provider预算特殊签名、task-plan／profile-draft／web／agent-memory及GUI保留兼容，见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第七轮：read-assembly声明七基础模块和可选Skill运行时。普通证据报告须用独立reports描述（read工具、report类型、publishReport），不得混入候选artifacts或借用配置动作；按completedTools路由，失败隔离，业务模块仍核验Run／目标／新鲜度。无状态模块显式声明空生命周期；Skill运行时用selectedSkill单次绑定、Task钩子释放停放缓存，不能清共享Skill服务，管理权限不等于激活。Provider预算特殊签名、task-plan／profile-draft／web／agent-memory及GUI保留兼容，见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D第六轮：execution-assembly声明六执行模块，taskLifecycle必须有forgetTask；无草稿生成模块明确artifacts=[]，不得借执行结果注册草稿发布入口。execution-tasks跟踪prepare及接手执行的任务，Run清理不退票据，Task／实例清理按任务forget，不clear共享端口；prepare抛错及执行预算拒绝也要覆盖资源归属。Task钩子失败应继续访问后续所有者。保留真实代码／额外模型调用风险、原批准与不重试unknown规则，见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第六轮：execution-assembly声明六执行模块，taskLifecycle必须有forgetTask；无草稿生成模块明确artifacts=[]，不得借执行结果注册草稿发布入口。execution-tasks跟踪prepare及接手执行的任务，Run清理不退票据，Task／实例清理按任务forget，不clear共享端口；prepare抛错及执行预算拒绝也要覆盖资源归属。Task钩子失败应继续访问后续所有者。保留真实代码／额外模型调用风险、原批准与不重试unknown规则，见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D第五轮：asset-assembly声明Prompt、Skill管理、资源库及聊天库应用八模块，与既有描述合并装配。普通DTO无私有资源须明确空retain，不伪造租约；票据模块只release自身候选／产物，不clear共享服务。保持Prompt批量候选首工具、聊天库capture别名、global/chat工具合同及原分域写入授权；导出不是发布草稿。Skill管理不代替Skill运行时激活／Task清理；脚本、自定义Agent和生成任务下一轮连同Task钩子处理。见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第五轮：asset-assembly声明Prompt、Skill管理、资源库及聊天库应用八模块，与既有描述合并装配。普通DTO无私有资源须明确空retain，不伪造租约；票据模块只release自身候选／产物，不clear共享服务。保持Prompt批量候选首工具、聊天库capture别名、global/chat工具合同及原分域写入授权；导出不是发布草稿。Skill管理不代替Skill运行时激活／Task清理；脚本、自定义Agent和生成任务下一轮连同Task钩子处理。见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D第四轮：现有十个编辑器均通过editor-assembly迁入统一装配，累计十五所有者。必须保留选择／蓝图等原分组ID及候选首工具别名；聊天绑定身份不改变global/chat工具及动作范围。模块dispose不clear宿主共享仓库；异步预览晚于Run清理时仍按原身份检查释放新票据，不发布过时产物。资产／资源库／生成、Task级钩子及GUI呈现继续迁移，见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第四轮：现有十个编辑器均通过editor-assembly迁入统一装配，累计十五所有者。必须保留选择／蓝图等原分组ID及候选首工具别名；聊天绑定身份不改变global/chat工具及动作范围。模块dispose不clear宿主共享仓库；异步预览晚于Run清理时仍按原身份检查释放新票据，不发布过时产物。资产／资源库／生成、Task级钩子及GUI呈现继续迁移，见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D第三轮：新增editor-assembly声明四当前聊天编辑器与Provider资产，按宿主端口启用，合入既有联合装配。已声明模块不得再次手工绑定或遍历生命周期；精确工具／候选分组别名及external测试性质不变。公共draft-runs用内容副本转移产物资源；编辑器只能release自身持有的票据，不能clear共享宿主仓库。Provider普通DTO明确无私有票据，不借清理动作卸载注册。其余模块仍逐组迁移，见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第三轮：新增editor-assembly声明四当前聊天编辑器与Provider资产，按宿主端口启用，合入既有联合装配。已声明模块不得再次手工绑定或遍历生命周期；精确工具／候选分组别名及external测试性质不变。公共draft-runs用内容副本转移产物资源；编辑器只能release自身持有的票据，不能clear共享宿主仓库。Provider普通DTO明确无私有票据，不借清理动作卸载注册。其余模块仍逐组迁移，见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D第二轮：首批模块用`muyu/modules/draft-assembly.js`联合描述，由`assembly.js`校验工具／handler／能力／标签、精确分组、候选／content.module／产物kind／动作归属及Run生命周期；不得登记但不消费或重复遍历同一所有者。私有票据从Run候选转移到产物，删除／内容替换／会话卸载释放，面板解绑保留；共享宿主端口只逐份forget自身资源，不用全局clear代替所有权管理。未迁移模块暂用兼容路径，GUI和回执呈现后续接入，见[合同](muyu/modules/ASSEMBLY.md)。
+2026-10-06 优化D第二轮：首批模块用`muyu/modules/draft-assembly.js`联合描述，由`assembly.js`校验工具／handler／能力／标签、精确分组、候选／content.module／产物kind／动作归属及Run生命周期；不得登记但不消费或重复遍历同一所有者。私有票据从Run候选转移到产物，删除／内容替换／会话卸载释放，面板解绑保留；共享宿主端口只逐份forget自身资源，不用全局clear代替所有权管理。未迁移模块暂用兼容路径，GUI和回执呈现后续接入，见[合同](../muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D首轮：动作所有者统一在`muyu/actions/builtins.js`显式登记writer、scope和产物kind，公共生命周期由`actions/assembly.js`统一遍历。新增协调器必须有完整钩子和唯一归属，不依赖控制器复制busy／失效／排空／清空清单；未知kind拒绝。装配不授予权限，既有GUI批准与业务验证保持；排空须等待全部物理操作，面板卸载不能释放实例／Task资源。联合工具／候选／产物／GUI装配及模块私有票据生命周期仍待下一切片，见[合同](muyu/actions/ASSEMBLY.md)。
+2026-10-06 优化D首轮：动作所有者统一在`muyu/actions/builtins.js`显式登记writer、scope和产物kind，公共生命周期由`actions/assembly.js`统一遍历。新增协调器必须有完整钩子和唯一归属，不依赖控制器复制busy／失效／排空／清空清单；未知kind拒绝。装配不授予权限，既有GUI批准与业务验证保持；排空须等待全部物理操作，面板卸载不能释放实例／Task资源。联合工具／候选／产物／GUI装配及模块私有票据生命周期仍待下一切片，见[合同](../muyu/actions/ASSEMBLY.md)。
 
 2026-10-04审阅修复规范：新增回执版本必须同步receiptContext和receiptText，不把无diff类型送入diff.map；补终态及操作后继续对话回归。私有预览票据必须具有精确release接口：候选替换、失败／取消释放，续接转移不释放，发布转移给artifact，artifact删除／会话卸载释放；禁止只删除模块Map或用全局clear回收单份草稿。十类当前编辑／聊天库模块共用draft-runs。资产创建上限需在预检与最终串行／异步追加处同时检查，持有许可不冻结容量；超限旧集合的读取／删除恢复和新增容量分开，未知代码副作用不声称已回滚或自动重试。
 
@@ -26,19 +26,19 @@
 
 2026-10-04收口边界：本轮能力范围以[当前状态](MUYU-AGENT-STATUS.md)为准；ST消息编辑／删除、蓝图生成／续写跳过，不能从旧阶段“下一轮”自行恢复。既有聊天只读、蓝图文本／结构／进度编辑不移除。无运行消费者、内部仓库／版本、业务连接密钥不因收口自动开放；Capability及通用shell不在范围。各专用整单仍遵循各自效果合同，不能宣传为任意工作流。后续新增或解除暂缓须重新核对业务代码、权限／并发／保存合同及验收。
 
-2026-10-04整单生成入口完成：只为登记的generation_batch.execute及同UUID精确来源做外部效果授权续接；prepare按所选kind请求目录，不新增读取旁路。task-only一次许可不批准子单或设置整单，全权限仍检查。执行前声明业务尝试上限并预留24000字节聚合返回，缓存原执行Promise避免重复计费；Run时间约束独立于底座整体290秒期限。历史依赖新增解析但导入不恢复票据／批准。GUI名称使用textContent、步骤换行、默认折叠定义详情。见[模块合同](muyu/modules/generation-batch/README.md)。
+2026-10-04整单生成入口完成：只为登记的generation_batch.execute及同UUID精确来源做外部效果授权续接；prepare按所选kind请求目录，不新增读取旁路。task-only一次许可不批准子单或设置整单，全权限仍检查。执行前声明业务尝试上限并预留24000字节聚合返回，缓存原执行Promise避免重复计费；Run时间约束独立于底座整体290秒期限。历史依赖新增解析但导入不恢复票据／批准。GUI名称使用textContent、步骤换行、默认折叠定义详情。见[模块合同](../muyu/modules/generation-batch/README.md)。
 
-2026-10-04整单生成底座：后续入口须独立验证精确整单权限及整体调用／结果预算；私有端口不得直接注册成无授权工具。最多8步，仅记忆／档案／NPC原受控管线；后续修订只接纳已确认的本单前一步写入，其他并发变化一律停止。保存未知／部分完成不重试，取消保留物理busy，已完成写入不整仓回滚；历史不恢复执行单。蓝图生成／续写按用户要求跳过。见[合同](muyu/host/GENERATION-BATCH.md)。
+2026-10-04整单生成底座：后续入口须独立验证精确整单权限及整体调用／结果预算；私有端口不得直接注册成无授权工具。最多8步，仅记忆／档案／NPC原受控管线；后续修订只接纳已确认的本单前一步写入，其他并发变化一律停止。保存未知／部分完成不重试，取消保留物理busy，已完成写入不整仓回滚；历史不恢复执行单。蓝图生成／续写按用户要求跳过。见[合同](../muyu/host/GENERATION-BATCH.md)。
 
-2026-10-04 NPC业务生成第二轮：state／prepare／execute、独立npcGenerationState及task-only npcExecution:UUID、原调用续接、16000字节结果预算和双语GUI已装配。读权限／只读方案不授予业务生成；全权限免确认仍核验。trial不写，save仅追加新记录，不创建／导入角色卡、覆盖／裁剪／启用功能。生产busy不能包含自身NPC物理锁；历史不恢复单据，通知不重建草稿。后续蓝图生成／续写按独立精确效果合同设计。见[NPC工具合同](muyu/modules/npc-generation/README.md)。
+2026-10-04 NPC业务生成第二轮：state／prepare／execute、独立npcGenerationState及task-only npcExecution:UUID、原调用续接、16000字节结果预算和双语GUI已装配。读权限／只读方案不授予业务生成；全权限免确认仍核验。trial不写，save仅追加新记录，不创建／导入角色卡、覆盖／裁剪／启用功能。生产busy不能包含自身NPC物理锁；历史不恢复单据，通知不重建草稿。后续蓝图生成／续写按独立精确效果合同设计。见[NPC工具合同](../muyu/modules/npc-generation/README.md)。
 
-2026-10-04 NPC业务生成第一轮：纯inspectGeneration／受控generateApproved及私有npcGeneration端口完成，尚未注册工具／执行许可／预算／GUI。trial不写，save仅追加当前聊天记录；全酒馆角色与批内重名检查、批准数量和容量限制，不创建／导入角色卡或改已有NPC。真实渲染不是沙箱，物理工作未排空不能放开busy；保存未知不重试或整仓回滚。下一轮需独立精确执行来源、调用前结果预算和原调用续接，禁止从读许可推导生成权。详见[NPC合同](systems/NPC-GENERATION.md)。
+2026-10-04 NPC业务生成第一轮：纯inspectGeneration／受控generateApproved及私有npcGeneration端口完成，尚未注册工具／执行许可／预算／GUI。trial不写，save仅追加当前聊天记录；全酒馆角色与批内重名检查、批准数量和容量限制，不创建／导入角色卡或改已有NPC。真实渲染不是沙箱，物理工作未排空不能放开busy；保存未知不重试或整仓回滚。下一轮需独立精确执行来源、调用前结果预算和原调用续接，禁止从读许可推导生成权。详见[NPC合同](../systems/NPC-GENERATION.md)。
 
-2026-10-04档案业务生成第二轮：profile_generation的targets／prepare／execute已装配。profileGenerationTargets仅目录；profileExecution仅UUID精确执行单，任务内一次、不可常驻，不从读取／方案许可推导。runtime只为该登记external工具的单一精确来源续接原调用，不能将任意外部效果变成可申请授权。执行前预留16000 UTF-8字节，不足零付费／写入。生产busy不含自身profileSystem物理锁，保留其他业务生成及档案库加载保护；不使用旧全量档案刷新替换草稿。历史依赖不恢复执行权，详见[模块合同](muyu/modules/profile-generation/README.md)。
+2026-10-04档案业务生成第二轮：profile_generation的targets／prepare／execute已装配。profileGenerationTargets仅目录；profileExecution仅UUID精确执行单，任务内一次、不可常驻，不从读取／方案许可推导。runtime只为该登记external工具的单一精确来源续接原调用，不能将任意外部效果变成可申请授权。执行前预留16000 UTF-8字节，不足零付费／写入。生产busy不含自身profileSystem物理锁，保留其他业务生成及档案库加载保护；不使用旧全量档案刷新替换草稿。历史依赖不恢复执行权，详见[模块合同](../muyu/modules/profile-generation/README.md)。
 
-2026-10-04档案业务生成第一轮：新增受控业务底座及页面内一次执行单，尚未注册暮羽工具／授权卡。trial不写，save只创建缺失记录，所有已有状态、归档和共享Schema元数据保留。仅标准四字段Schema，自定义Schema明确拒绝；原GUI行为不变。物理渲染／原生请求未排空仍保持busy；通知不得走迁移Schema或替换草稿的旧全量刷新。执行许可与预算留待下一轮，禁止从读权限推导。详见[档案业务生成合同](systems/PROFILE-GENERATION.md)。
+2026-10-04档案业务生成第一轮：新增受控业务底座及页面内一次执行单，尚未注册暮羽工具／授权卡。trial不写，save只创建缺失记录，所有已有状态、归档和共享Schema元数据保留。仅标准四字段Schema，自定义Schema明确拒绝；原GUI行为不变。物理渲染／原生请求未排空仍保持busy；通知不得走迁移Schema或替换草稿的旧全量刷新。执行许可与预算留待下一轮，禁止从读权限推导。详见[档案业务生成合同](../systems/PROFILE-GENERATION.md)。
 
-2026-10-04业务生成接入约束：memory_generation使用独立目录读取与精确执行许可，不得把读取／草稿／方案权限升级为付费写入。通过原业务Agent／Schema／caller执行，预扣结果预算，不自动重试或恢复执行单；任务／Provider／角色／聊天／业务配置变更必须拒绝旧单。暮羽自身存档不进入业务指纹。未绑定模块Run的transfer为空操作，避免影响旧任务澄清。界面用中文功能语义明确trial不保存、save可能裁剪及额外业务模型费用；详见[memory-generation合同](muyu/modules/memory-generation/README.md)。
+2026-10-04业务生成接入约束：memory_generation使用独立目录读取与精确执行许可，不得把读取／草稿／方案权限升级为付费写入。通过原业务Agent／Schema／caller执行，预扣结果预算，不自动重试或恢复执行单；任务／Provider／角色／聊天／业务配置变更必须拒绝旧单。暮羽自身存档不进入业务指纹。未绑定模块Run的transfer为空操作，避免影响旧任务澄清。界面用中文功能语义明确trial不保存、save可能裁剪及额外业务模型费用；详见[memory-generation合同](../muyu/modules/memory-generation/README.md)。
 
 2026-10-02 展示合同补充：配置名称、功能区、单位和枚举文案复用 `muyu/config/presentation.js`；读取/诊断通过 `read-presentation.js` 追加展示数据，禁止重写原字段和值。运行状态使用 `kind=runtime`，不宣称是 GUI 设置；缺失、未知、不支持保持区分。原始 Provider 输出先校验，展示字段在可信模块侧生成且计入字节预算。禁止复制长 Prompt 到显示值或放宽既有 24000 字符/32768 字节、指令 4000 字符上限。普通问答/诊断使用界面名，明确技术请求才附原字段；报告内部代码默认折叠。新增路径必须测试 Schema、容量、双语文案、授权与原始值不变。
 
@@ -46,21 +46,21 @@
 
 下一阶段开发约束（规划）：工具发现/按需加载与执行授权分离，用户入口仍统一；检索计数、覆盖及续搜由程序提供，不由模型猜测。结果引用绑定来源/目标/版本，缓存只读不重跑Provider。核心规则与领域指南分离，组合指令包含宿主追加说明仍须长度检查；不得仅扩大限制解决增长。任务检查点不存授权、可执行闭包或私有思考，不重放未知写入；活跃工具/思考轨迹不能无协议裁剪。偏好自动召回、冲突处理和网络重试尚未实现，须先定义独立合同与回归，不从本规范推导已有能力。
 
-长期记忆补充（2026-10-01）：`muyu/memory` 是独立的用户笔记领域，不得复用 GD 角色记忆、对话 DTO 或配置草稿权限。模型写入须经过专用原话／明确意图约束，只读结果为不可信历史参考；GUI 持有控制器草稿，模型完成通知不能替换编辑内容。私有数据和使用开关排除于配置档传播；跨页设置冲突及保存未知不得伪装成成功／确定失败。新增自动提炼前须单独定义来源权限继承、遗忘防复活和冲突处理，详见 [实现合同](muyu/memory/README.md)。
+长期记忆补充（2026-10-01）：`muyu/memory` 是独立的用户笔记领域，不得复用 GD 角色记忆、对话 DTO 或配置草稿权限。模型写入须经过专用原话／明确意图约束，只读结果为不可信历史参考；GUI 持有控制器草稿，模型完成通知不能替换编辑内容。私有数据和使用开关排除于配置档传播；跨页设置冲突及保存未知不得伪装成成功／确定失败。新增自动提炼前须单独定义来源权限继承、遗忘防复活和冲突处理，详见 [实现合同](../muyu/memory/README.md)。
 
-配置扩展必须遵守 [配置领域契约](muyu/config/README.md)：登记字段、依赖和运行限制，保留未指定值；未知工具默认拒绝。新 settings-config/v2 回执与旧 memory-config 保持明确分支，不能把旧历史恢复成批准。前六批及记忆参数收口共有40个叶字段可编辑，不表示108个默认键已全部支持。公式规则的模式与开关、角色描述长度的截断模式、自动总结和自动点评各自的总开关与自动开关、档案预算/并发数的启用条件，以及NPC批量数与上限的关系均属于校验依赖；llmContextDepth 影响多个生成功能。`memoryKeepRecent` 同时控制手动压缩保留数和撤销按钮删除数；`memoryTokenBudget` 暂无运行时消费，不开放暮羽写入；`memoryMaxEntries` 必须独立成草稿，绑定当前聊天记忆快照，保存全局设置后再裁剪当前聊天，并分别记录结果。任何目标或记忆变化都不可按旧预览裁剪。总结、点评、档案与NPC生成状态（包括异步保存）须进入写入前的忙碌检查。
+配置扩展必须遵守 [配置领域契约](../muyu/config/README.md)：登记字段、依赖和运行限制，保留未指定值；未知工具默认拒绝。新 settings-config/v2 回执与旧 memory-config 保持明确分支，不能把旧历史恢复成批准。前六批及记忆参数收口共有40个叶字段可编辑，不表示108个默认键已全部支持。公式规则的模式与开关、角色描述长度的截断模式、自动总结和自动点评各自的总开关与自动开关、档案预算/并发数的启用条件，以及NPC批量数与上限的关系均属于校验依赖；llmContextDepth 影响多个生成功能。`memoryKeepRecent` 同时控制手动压缩保留数和撤销按钮删除数；`memoryTokenBudget` 暂无运行时消费，不开放暮羽写入；`memoryMaxEntries` 必须独立成草稿，绑定当前聊天记忆快照，保存全局设置后再裁剪当前聊天，并分别记录结果。任何目标或记忆变化都不可按旧预览裁剪。总结、点评、档案与NPC生成状态（包括异步保存）须进入写入前的忙碌检查。
 
 全配置目标（2026-09-25）：四项记忆设置只是现有试点。新增配置项应在统一配置目录登记类型/约束、读取权限、作用域、敏感性、运行时副作用及可信保存端口；新增默认设置或 UI 控件必须由覆盖检查发现。按领域调用现有业务验证和保存 API，不提供任意键赋值工具。跨保存域的计划要保留逐步回执与部分完成状态。见 [新版架构](MUYU-AGENT-ARCHITECTURE.md)。
 
-扩展基础整理（2026-09-27）：新增工具须同时登记 wire Schema、handler、`muyu/application/capabilities.js` 的显式效果/来源合同和双语标签。`muyu/modules/tool-plan.js` 在装配期核对并冻结定义与执行器；任一缺失、效果不一致或重名均拒绝装配，不从 Schema 自动授予权限。每个 Run 使用装配后的固定工具集合。产生草稿的工具另在 `muyu/modules/artifact-owners.js` 登记工具 ID、产物模块 ID 和发布/重新校验所有者；候选 ID 只是令牌，不得靠前缀决定归属。用户导入的 Provider 源码摘要由加载器私有持有，结合可选上下文声明生成跨刷新版本；其他注册脚本使用运行期版本。上下文字段在 `muyu/host/provider-context.js` 集中投影，声明缺失时目录给出 `missingContext`。长执行结果留在本 Run 的有界存储，通过只读结果工具分页，不能为翻页重复调用脚本。详见 [执行合同](muyu/modules/providers/EXECUTION.md)。
+扩展基础整理（2026-09-27）：新增工具须同时登记 wire Schema、handler、`muyu/application/capabilities.js` 的显式效果/来源合同和双语标签。`muyu/modules/tool-plan.js` 在装配期核对并冻结定义与执行器；任一缺失、效果不一致或重名均拒绝装配，不从 Schema 自动授予权限。每个 Run 使用装配后的固定工具集合。产生草稿的工具另在 `muyu/modules/artifact-owners.js` 登记工具 ID、产物模块 ID 和发布/重新校验所有者；候选 ID 只是令牌，不得靠前缀决定归属。用户导入的 Provider 源码摘要由加载器私有持有，结合可选上下文声明生成跨刷新版本；其他注册脚本使用运行期版本。上下文字段在 `muyu/host/provider-context.js` 集中投影，声明缺失时目录给出 `missingContext`。长执行结果留在本 Run 的有界存储，通过只读结果工具分页，不能为翻页重复调用脚本。详见 [执行合同](../muyu/modules/providers/EXECUTION.md)。
 
-通用 Provider 执行补充（2026-09-25）：`discover` 只暴露注册元数据；`execute` 是外部效果工具，只可在当前聊天由用户按具体 Provider ID、连接版本和任务批准。使用原有 `render(context, signal)` 签名，内容或 JSON data 受返回与字节预算限制，替换实现使批准失效。超时后的晚到输出丢弃，但不能宣称脚本副作用已取消。将来 Agent 写 Provider 时，代码草稿、隔离测试与真实导入/执行为不同步骤；不得把测试成功自动提升成注册权或执行授权。接口与局限见 [Provider 合同](muyu/modules/providers/README.md)。
+通用 Provider 执行补充（2026-09-25）：`discover` 只暴露注册元数据；`execute` 是外部效果工具，只可在当前聊天由用户按具体 Provider ID、连接版本和任务批准。使用原有 `render(context, signal)` 签名，内容或 JSON data 受返回与字节预算限制，替换实现使批准失效。超时后的晚到输出丢弃，但不能宣称脚本副作用已取消。将来 Agent 写 Provider 时，代码草稿、隔离测试与真实导入/执行为不同步骤；不得把测试成功自动提升成注册权或执行授权。接口与局限见 [Provider 合同](../muyu/modules/providers/README.md)。
 
-Provider 来源开发补充（2026-09-24）：新增来源遵循 [来源适配规范](muyu/modules/providers/README.md) 的闭合目录、纯读取器及输出校验；不得直接开放任意 Provider render。作用域必须区分聊天内 global 与插件全局设置，原始数据不得混称为生效值或执行事实。授权、分页、预算、历史依赖复用公共层，并补来源级与控制器集成测试。
+Provider 来源开发补充（2026-09-24）：新增来源遵循 [来源适配规范](../muyu/modules/providers/README.md) 的闭合目录、纯读取器及输出校验；不得直接开放任意 Provider render。作用域必须区分聊天内 global 与插件全局设置，原始数据不得混称为生效值或执行事实。授权、分页、预算、历史依赖复用公共层，并补来源级与控制器集成测试。
 
 设计草案 v0.1，2026-09-24，部分基础能力已实现。架构依据：[架构设计](MUYU-AGENT-ARCHITECTURE.md)；当前范围：[能力总表](MUYU-AGENT-STATUS.md)。本文“必须”为接入约束，“首版”为实现范围，“后续”为保留接口而非当前功能。
 
-实施更正：基础协议、执行循环、应用队列和内存工作区、模型适配器及运行私有推理回传、只读记忆/配置草稿模块、官方宿主桥接和经典GUI实验入口已实现，详见 [当前实现合同](muyu/README.md)；本文完整模块协议尚未全部落地。运行工厂必须提供completion与drained，逻辑终止不等于已释放上游资源；适配器不得启动未跟踪的后台工作。GUI只拥有可释放订阅，控制器通过deps持有并跨重建复用；禁止在视图回调中保存真实配置、读取未授权正文或持久化密钥。新GUI暂缓，浏览器验收待完成。
+实施更正：基础协议、执行循环、应用队列和内存工作区、模型适配器及运行私有推理回传、只读记忆/配置草稿模块、官方宿主桥接和经典GUI实验入口已实现，详见 [当前实现合同](../muyu/README.md)；本文完整模块协议尚未全部落地。运行工厂必须提供completion与drained，逻辑终止不等于已释放上游资源；适配器不得启动未跟踪的后台工作。GUI只拥有可释放订阅，控制器通过deps持有并跨重建复用；禁止在视图回调中保存真实配置、读取未授权正文或持久化密钥。新GUI暂缓，浏览器验收待完成。
 
 ## 1. 模块合同
 

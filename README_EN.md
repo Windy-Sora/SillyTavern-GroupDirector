@@ -7,7 +7,7 @@
 
 > ⚠️ **This is a development version and may be unstable. For the stable version, please visit: [SillyTavern-GroupWorld](https://github.com/Windy-Sora/SillyTavern-GroupWorld)**
 
-Muyu entry: “Summon Mu” → “Open Muyu Agent (recommended)”, or “Import Muyu character card and world book”. These are separate modes; the Agent needs no character-card import. See the [user guide](USER-GUIDE_EN.md#interface-and-muyu-entry) for connections, permissions and usage.
+Muyu entry: “Summon Mu” → “Open Muyu Agent (recommended)”, or “Import Muyu character card and world book”. These are separate modes; the Agent needs no character-card import. See the [user guide](docs/USER-GUIDE_EN.md#interface-and-muyu-entry) for connections, permissions and usage.
 
 ---
 
@@ -409,7 +409,9 @@ Ultimately, SillyTavern group chat is not just chatting—it's a programmable na
 
 ## Development Documentation
 
-- [Design document](DESIGN_EN.md): runtime architecture, round orchestration, Providers, Agents, UI, and security boundaries
-- [Testing guide](TESTING.md): GD Test Lab, test layers, real SillyTavern contracts, and regression rules
-- [User guide](USER-GUIDE_EN.md): configuration and feature usage
-- [Template syntax](TEMPLATE-SYNTAX_EN.md): Prompt DSL and Provider query syntax
+[Documentation index](docs/README.md): user guides, architecture, Muyu and testing.
+
+- [Design document](docs/DESIGN_EN.md): runtime architecture, round orchestration, Providers, Agents, UI, and security boundaries
+- [Testing guide](docs/TESTING.md): GD Test Lab, test layers, real SillyTavern contracts, and regression rules
+- [User guide](docs/USER-GUIDE_EN.md): configuration and feature usage
+- [Template syntax](docs/TEMPLATE-SYNTAX_EN.md): Prompt DSL and Provider query syntax

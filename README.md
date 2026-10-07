@@ -7,7 +7,7 @@
 
 > ⚠️ **此版本为开发版，可能存在不稳定问题。如需稳定版，请访问：[SillyTavern-GroupWorld](https://github.com/Windy-Sora/SillyTavern-GroupWorld)**
 
-暮羽入口：仪表盘“召唤暮羽”→“打开暮羽 Agent（推荐）”，或选择“导入暮羽角色卡与世界书”。两种方式独立，打开Agent不需要导入角色卡；连接、授权与使用说明见[用户手册](USER-GUIDE.md#界面与暮羽入口)。
+暮羽入口：仪表盘“召唤暮羽”→“打开暮羽 Agent（推荐）”，或选择“导入暮羽角色卡与世界书”。两种方式独立，打开Agent不需要导入角色卡；连接、授权与使用说明见[用户手册](docs/USER-GUIDE.md#界面与暮羽入口)。
 
 ---
 
@@ -481,7 +481,9 @@ Group Director 不是一个发言过滤器。
 
 # 开发文档
 
-- [设计文档](DESIGN.md)：运行时架构、回合编排器、Provider、Agent、UI 与安全边界
-- [测试指南](TESTING.md)：GD Test Lab、测试分层、真实 SillyTavern 契约与回归规则
-- [用户手册](USER-GUIDE.md)：配置与功能使用说明
-- [模板语法](TEMPLATE-SYNTAX.md)：Prompt DSL 与 Provider 查询语法
+[完整文档目录](docs/README.md)（用户手册、开发设计、暮羽与测试维护）。
+
+- [设计文档](docs/DESIGN.md)：运行时架构、回合编排器、Provider、Agent、UI 与安全边界
+- [测试指南](docs/TESTING.md)：GD Test Lab、测试分层、真实 SillyTavern 契约与回归规则
+- [用户手册](docs/USER-GUIDE.md)：配置与功能使用说明
+- [模板语法](docs/TEMPLATE-SYNTAX.md)：Prompt DSL 与 Provider 查询语法
