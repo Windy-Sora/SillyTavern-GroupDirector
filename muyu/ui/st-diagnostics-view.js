@@ -1,3 +1,5 @@
+import { bindAutoSave } from './auto-save.js';
+
 /** Local inspection does not grant model access or export logs. */
 export function createStDiagnosticsView({ doc, settings, controller, act, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
@@ -17,11 +19,13 @@ export function createStDiagnosticsView({ doc, settings, controller, act, lang }
     for (const [, input] of toggles) input.onchange = () => { dirty = true; };
     const button = (zh, en, work) => { const b = doc.createElement('button'); b.type = 'button'; b.className = 'menu_button'; b.textContent = t(zh, en); actions.append(b); b.onclick = () => act(work); return b; };
     const save = button('保存诊断设置', 'Save diagnostics', async () => { if (busy) return; busy = true;
+        feedback.textContent = t('保存中…', 'Saving…');
         save.disabled = true; for (const [, input] of toggles) input.disabled = true;
-        try { await controller.saveDiagnosticsConfig(Object.fromEntries(toggles.map(([key, input]) => [key, input.checked]))); dirty = false; feedback.textContent = t('已保存', 'Saved'); }
-        catch { feedback.textContent = t('保存失败，未更新采集设置', 'Save failed; collection settings unchanged'); }
+        try { await controller.saveDiagnosticsConfig(Object.fromEntries(toggles.map(([key, input]) => [key, input.checked]))); dirty = false; save.hidden = true; feedback.textContent = t('已保存', 'Saved'); }
+        catch { save.hidden = false; feedback.textContent = t('保存失败，未更新采集设置', 'Save failed; collection settings unchanged'); }
         finally { busy = false; save.disabled = false; for (const [, input] of toggles) input.disabled = false; }
     });
+    bindAutoSave(toggles.map(([, input]) => input), save, lang);
     button('查看本地记录', 'View local records', () => { output.textContent = JSON.stringify(controller.diagnosticsSnapshot(), null, 2); output.hidden = false; });
     button('清空本地记录', 'Clear local records', () => { controller.clearDiagnostics(); output.textContent = ''; output.hidden = true; });
     return { render(state) { const config = state.diagnostics?.config || {}; if (!dirty && !busy) for (const [key, input] of toggles) input.checked = config[key] === true;

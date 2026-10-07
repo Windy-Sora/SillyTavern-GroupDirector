@@ -1,6 +1,6 @@
 let nextErrorId = 0;
 /** Local form feedback. Never owns persisted settings or sends requests. */
-export function createFormFeedback({ doc, parent, fields, buttons = [], lang, savedText, errorText, dirtyText, busyText, disabledWhen }) {
+export function createFormFeedback({ doc, parent, fields, buttons = [], lang, savedText, errorText, dirtyText, busyText, disabledWhen, retryButton }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const status = doc.createElement('p'); status.className = 'gd-muyu-form-status'; status.setAttribute('role', 'status'); parent.append(status);
     const notes = new Map(), disabled = new Map();
@@ -8,6 +8,7 @@ export function createFormFeedback({ doc, parent, fields, buttons = [], lang, sa
     const signature = () => JSON.stringify(fields.map(f => f.type === 'checkbox' ? f.checked : f.value));
     const dirty = () => baseline !== null && baseline !== signature();
     function refresh() {
+        if (retryButton) retryButton.hidden = !failed;
         status.textContent = busy ? busyText || t('保存中…', 'Saving…') : message || (dirty() ? dirtyText || t('有未保存修改', 'Unsaved changes') : t('未修改', 'Unchanged'));
         status.setAttribute('data-state', failed ? 'error' : busy ? 'saving' : dirty() ? 'dirty' : 'ready');
     }

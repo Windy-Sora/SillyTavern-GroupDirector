@@ -1,5 +1,6 @@
 import { INSTRUCTION_DEFAULTS, validateInstructionConfig } from '../instructions/contract.js';
 import { REPLY_LANGUAGE_DEFAULTS, REPLY_LANGUAGES } from '../instructions/reply-language.js';
+import { bindAutoSave } from './auto-save.js';
 
 /** Draft belongs to controller, not DOM; rebuilding/closing the window does not lose it. */
 export function createInstructionView({ doc, settings, controller, act, lang }) {
@@ -26,7 +27,7 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
     node('small', t('最多4000字符、16000 UTF-8字节；不静默截断。内容明文保存在插件设置，启用后外发给当前模型，不要填写密钥或敏感信息。草稿仅在本页保留，刷新页面会丢失。', 'Maximum 4000 characters and 16000 UTF-8 bytes; no silent truncation. Stored unencrypted in extension settings and sent to the active model when enabled. Do not enter credentials or sensitive data. Unsaved drafts survive view changes, not page reloads.'), section);
     const status = node('p', '', section); status.className = 'gd-muyu-form-status'; status.setAttribute('role', 'status');
     const actions = node('div', '', section); actions.className = 'gd-muyu-settings-actions';
-    const save = button(t('保存行为偏好', 'Save behavior preferences')), discard = button(t('放弃修改', 'Discard changes')), reset = button(t('恢复默认（需保存）', 'Restore defaults (save required)'));
+    const save = button(t('保存行为偏好', 'Save behavior preferences')), discard = button(t('放弃修改', 'Discard changes')), reset = button(t('恢复默认并保存', 'Restore and save defaults'));
     let saveFailed = false, customMode = null;
     const edit = () => act(() => { saveFailed = false; controller.setInstructionDraft({ enabled: enabled.checked, text: text.value,
         replyLanguage: { enabled: languageEnabled.checked, language: language.value === '__custom__' ? customLanguage.value : language.value } }); });
@@ -34,10 +35,13 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
     languageEnabled.onchange = edit;
     language.onchange = () => { customMode = language.value === '__custom__'; return edit(); };
     customLanguage.oninput = edit;
-    save.onclick = () => act(async () => { saveFailed = false; try { await controller.saveInstructions(); } catch { saveFailed = true; } });
-    discard.onclick = () => act(() => { saveFailed = false; customMode = null; controller.discardInstructionDraft(); });
-    reset.onclick = () => act(() => { saveFailed = false; customMode = null; controller.resetInstructionDraft(); });
-    return { render(s) {
+    save.onclick = () => act(async () => { saveFailed = false; try { validateInstructionConfig(controller.snapshot().instructionSettings.draft); await controller.saveInstructions(); } catch { saveFailed = true; } });
+    discard.onclick = () => act(() => { autoSave.cancel(); saveFailed = false; customMode = null; controller.discardInstructionDraft(); });
+    reset.onclick = () => act(async () => { autoSave.cancel(); saveFailed = false; customMode = null; controller.resetInstructionDraft(); try { await controller.saveInstructions(); } catch { saveFailed = true; } });
+    text.onchange = customLanguage.onchange = edit;
+    const autoSave = bindAutoSave([enabled, text, languageEnabled, language, customLanguage], save, lang, () => controller.snapshot().instructionSettings?.dirty);
+    node('small', t('自动保存：开关与选择立即保存，文字停止输入600毫秒后保存。失败时保留草稿并提供重试。', 'Auto-save: switches and selections save immediately; text saves after 600 ms of inactivity. Failed drafts are retained for retry.'), section);
+    return { dispose: autoSave.dispose, render(s) {
         const state = s.instructionSettings || { draft: INSTRUCTION_DEFAULTS, saved: INSTRUCTION_DEFAULTS, dirty: false, saving: false }, draft = state.draft;
         if (text.value !== draft.text) text.value = draft.text; enabled.checked = draft.enabled;
         const reply = draft.replyLanguage || { ...REPLY_LANGUAGE_DEFAULTS, language: lang === 'en' ? 'English' : 'Simplified Chinese' };
@@ -58,6 +62,7 @@ export function createInstructionView({ doc, settings, controller, act, lang }) 
         status.textContent += ' · ' + (fixed?.enabled ? t('当前固定语种：', 'Current fixed language: ') + fixed.language : t('当前自动跟随语言', 'Currently follows the user’s language'));
         if (!valid) status.textContent = t('偏好或语种无效：补充指令需在限制内，启用的语种名称不能为空（最多80字符，仅名称，不填指令）。草稿已保留。', 'Invalid preferences or language: keep instructions within limits and provide a nonempty language name when enabled (up to 80 characters; names only, not instructions). Draft retained.');
         if (saveFailed) status.textContent = t('保存未完成，草稿已保留，请重试。', 'Save did not complete. Draft retained; retry.');
+        save.hidden = !saveFailed;
         status.setAttribute('data-state', saveFailed || !valid ? 'error' : state.saving ? 'saving' : state.dirty ? 'dirty' : 'ready');
         discard.disabled = !state.dirty || state.saving; reset.disabled = state.saving;
     } };

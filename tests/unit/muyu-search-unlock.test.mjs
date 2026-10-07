@@ -35,7 +35,7 @@ controller.setInput('请将发言人数改为2');
 const input=all().find(e=>e.tag==='textarea'&&e.parent.textContent==='Message to Muyu'); input.value='请将发言人数改为2';
 await button('Send').click();
 for(let i=0;i<20;i++)await flush();
-const result={busy:controller.snapshot().busy,status:controller.snapshot().runs.at(-1)?.status,saveSearch:button('Save search settings').disabled,checks:controller.snapshot().configChecks};
+const result={busy:controller.snapshot().busy,status:controller.snapshot().runs.at(-1)?.status,saveSearch:button('Update search key').disabled,checks:controller.snapshot().configChecks};
 assert.equal(result.busy,false);assert.equal(result.status,'succeeded');
 assert.equal(settings.topN, 2);
 assert.ok(Object.values(result.checks).some(check => check.state === 'matched'));
@@ -43,5 +43,5 @@ assert.ok(Object.values(result.checks).some(check => check.state === 'matched'))
 await button('⚙').click();
 const field=all().find(e=>e.tag==='input'&&e.parent.textContent==='Search attempts per task');field.value='2';field.events.input();
 const searchKey=all().find(e=>e.tag==='input'&&e.parent.textContent==='Brave Search API key');searchKey.value='SYNTHETIC_BRAVE_KEY';searchKey.events.input();
-assert.equal(button('Save search settings').disabled,false);
+assert.equal(button('Update search key').disabled,false);
 });

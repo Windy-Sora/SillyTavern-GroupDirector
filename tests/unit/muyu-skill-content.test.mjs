@@ -16,7 +16,7 @@ test('Live-quality guide revisions preserve numeric intent, separate memory navi
     for (const [name, revision, patterns] of [
         ['memory-maintenance', 2, [/没有明确目标数值时/, /意味着增大自动提取间隔/, /不能断言当前值/]],
         ['muyu-interface-guide', 4, [/经典设置→角色记忆/, /不另加未列出的二级分区/, /不属于|不能把角色记忆/]],
-        ['configuration-orchestration', 5, [/同一份整单不等于同一种步骤/, /variables步骤/, /不篡改草稿类型/]],
+        ['configuration-orchestration', 6, [/同一份整单不等于同一种步骤/, /variables步骤/, /不篡改草稿类型/]],
     ]) {
         assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
@@ -28,10 +28,10 @@ test('Live-quality guide revisions preserve numeric intent, separate memory navi
 test('Complex-task guides associate host evidence without forcing simple previews or granting completion', async () => {
     const packs = await readBuiltins();
     for (const name of ['configuration-orchestration', 'config-review']) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'configuration-orchestration' ? 5 : 4);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'configuration-orchestration' ? 6 : 4);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
         const main = pack.package.files[0].text, content = pack.package.files.map(row => row.text).join('\n');
-        assert.match(main, name === 'configuration-orchestration' ? /version: "1.4"/ : /version: "1.3"/);
+        assert.match(main, name === 'configuration-orchestration' ? /version: "1.5"/ : /version: "1.3"/);
         assert.match(content, /muyu.task.bind_read/);
         assert.match(content, /不增加权限|不增加读取或写入授权/);
         assert.doesNotMatch(main, /必要时括注字段名/);
@@ -47,7 +47,7 @@ test('Complex-task guides associate host evidence without forcing simple preview
 test('Third-round guides distinguish explicit independent goals and operation stages from approval count', async () => {
     const packs = await readBuiltins();
     for (const [name, revision, version, patterns] of [
-        ['configuration-orchestration', 5, '1.4', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
+        ['configuration-orchestration', 6, '1.5', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
         ['script-agent-workbench', 2, '1.1', [/阶段不等于固定审批次数/, /同一候选/, /trial／save/]],
         ['resource-library-workflow', 4, '1.3', [/不是保留当前聊天旧蓝图/, /不保证这个目标/, /定向编辑方案/]],
     ]) {
@@ -92,9 +92,9 @@ test('Revised guides retain live-test boundaries and publish new content revisio
         'skill-workbench': [/muyu.tools.list/, /select/, /显式传新版 load.*SKILL_STALE/, /下一新任务/],
     };
     for (const [name, checks] of Object.entries(patterns)) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name==='muyu-troubleshooting' ? 5 : ['resource-library-workflow','character-npc-workbench','prompt-template-workbench'].includes(name) ? 4 : 2);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name==='muyu-troubleshooting' || name==='prompt-template-workbench' ? 5 : ['resource-library-workflow','character-npc-workbench'].includes(name) ? 4 : 2);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
-        assert.match(pack.package.files[0].text, name==='muyu-troubleshooting' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench','prompt-template-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
+        assert.match(pack.package.files[0].text, name==='muyu-troubleshooting' || name==='prompt-template-workbench' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
         for (const pattern of checks) assert.match(pack.package.files[1].text, pattern);
     }
 });
@@ -113,9 +113,10 @@ for (const name of [...newNames, ...remainingNames]) {
         assert.equal(reference.complete, true); assert.equal(reference.permissionGranted, false);
         const packageRows = await readBuiltins(), pack = packageRows.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
         for (const file of pack.package.files) {
+            if (!['SKILL.md', 'references/workflow.md'].includes(file.path)) await task.load(identity.id, { ...query, path: file.path });
             assert.ok(task.project(identity.id).some(message => JSON.parse(message.content.split('\n')[1]).text === file.text));
         }
-        assert.deepEqual(task.usage(identity.id)[0].paths, ['SKILL.md', 'references/workflow.md']);
+        assert.deepEqual(task.usage(identity.id)[0].paths, pack.package.files.map(file => file.path));
         assert.equal(saves, initialSaves);
         const body = pack.package.files[1].text;
         for (const pattern of required[name]) assert.match(body, pattern);
@@ -123,7 +124,7 @@ for (const name of [...newNames, ...remainingNames]) {
     });
 }
 
-test('Eighteen builtin skills remain discoverable through bounded catalog pages without projecting bodies', async () => {
+test('Nineteen builtin skills remain discoverable through bounded catalog pages without projecting bodies', async () => {
     const settings = {};
     const port = createSkillPort({ getSettings: () => settings, saveSettings: async () => {}, loadBuiltins: readBuiltins });
     await port.ready();
@@ -136,8 +137,8 @@ test('Eighteen builtin skills remain discoverable through bounded catalog pages 
         assert.doesNotMatch(JSON.stringify(page), /# 技能开发和管理合同/);
         rows.push(...page.entries); offset = page.nextOffset;
     } while (offset !== -1);
-    assert.equal(rows.length, 18); assert.equal(new Set(rows.map(row => row.id)).size, 18);
-    assert.equal(rows.at(-1).id, 'builtin:muyu-interface-guide');
+    assert.equal(rows.length, 19); assert.equal(new Set(rows.map(row => row.id)).size, 19);
+    assert.equal(rows.at(-1).id, 'builtin:dsl-template-workbench');
 });
 
 test('Remaining plugin skill evaluation questions cover all ten workflows with explicit boundary cases', async () => {

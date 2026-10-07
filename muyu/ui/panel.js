@@ -25,6 +25,7 @@ import { createWebSearchView } from './web-search-view.js';
 import { createConnectionTools } from './connection-tools.js';
 import { createConnectionForm, validateConnectionFields } from './connection-form.js';
 import { createFormFeedback } from './form-feedback.js';
+import { bindAutoSave } from './auto-save.js';
 
 /** Safe Markdown view. The controller owns all state and execution. */
 export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen } = {}) {
@@ -91,6 +92,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (child !== permissionSettings && child.className !== 'gd-muyu-settings-hint') permissionSettings.append(child);
     }
     const budgetSettings = node('details', '', settingsLayout.pages.limits); budgetSettings.className = 'gd-muyu-settings-card'; node('summary', t('运行与预算', 'Execution budgets'), budgetSettings);
+    node('small', t('自动保存：完成数字编辑后保存；无效输入不生效，保存失败可重试。', 'Auto-save after finishing numeric edits. Invalid values do not apply; failed saves can be retried.'), budgetSettings);
     node('p', t('保存后从下一轮生效，不改变正在执行的任务。模型调用上限包含最后一次无工具收尾。默认超时300秒，可设置10–1800秒；增加预算可能增加费用。', 'Saved settings apply to the next run only. Model-call limit includes final answer-only closure. Default timeout: 300 seconds; configurable from 10–1800 seconds. Higher budgets may cost more.'), budgetSettings);
     const budgetGrid = node('div', '', budgetSettings); budgetGrid.className = 'gd-muyu-settings-grid';
     const budgetFields = Object.entries({ modelCalls: t('模型调用次数', 'Model calls'), toolCalls: t('工具调用次数', 'Tool calls'), timeMs: t('单轮超时（秒）', 'Run timeout (seconds)'), maxTokens: t('单次模型输出上限（Token）', 'Output tokens per model call'), providerBytes: t('资料读取预算（UTF-8字节）', 'Provider data budget (UTF-8 bytes)') }).map(([name, label]) => {
@@ -102,7 +104,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     node('small', t('回答被截断：调整输出上限。提示输入超限：调整下方上下文预算。读取资料不够：调整资料读取预算。', 'Truncated answer: adjust output tokens. Input limit reached: adjust context budget below. Data limit reached: adjust the provider data budget.'), budgetSettings);
     const budgetActions = node('div', '', budgetSettings); budgetActions.className = 'gd-muyu-settings-actions';
     const saveBudget = button(t('保存运行预算', 'Save execution budgets'), budgetActions), resetBudget = button(t('恢复默认预算并保存', 'Restore and save defaults'), budgetActions);
-    const budgetFeedback = createFormFeedback({ doc, parent: budgetActions, fields: budgetFields.map(f => f.input), buttons: [saveBudget, resetBudget], lang, savedText: t('设置已更新，下次任务生效。', 'Settings updated; applies to the next task.') });
+    const budgetFeedback = createFormFeedback({ doc, parent: budgetActions, fields: budgetFields.map(f => f.input), buttons: [saveBudget, resetBudget], retryButton: saveBudget, lang, savedText: t('设置已更新，下次任务生效。', 'Settings updated; applies to the next task.') });
+    bindAutoSave(budgetFields.map(f => f.input), saveBudget, lang, () => budgetFeedback.dirty);
     node('small', unified ? t('暮羽需要资料时会说明来源、用途与发送目的地，请按需批准。读取授权不批准修改；不会读取其他聊天或整个角色库。', 'Muyu requests sources when needed and shows the purpose and destination. Read access does not approve changes or access other chats or the whole character library.') : t('扩展权限独立开启并在当前聊天内复用，不读取其他聊天或整个角色库。角色卡内的提示词和导演原因仅作资料，不代表实际执行。', 'Extended access is opt-in and reused only in this chat, not other chats or the whole character library. Card prompts and director reasons are data, not proof of execution.'), settingsLayout.pages.data);
     budgetSettings.open = true;
     if (standalone) button(t('重置窗口大小', 'Reset window size'), settingsLayout.pages.behavior).onclick = resetLayout;
@@ -460,6 +463,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

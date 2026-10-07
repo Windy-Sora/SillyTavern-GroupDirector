@@ -38,6 +38,12 @@ export function createWebSearchPort({ getSettings, saveSettings, fetcher = globa
             try { const health = await request('/health'); if (health.version !== 1) throw Error('WEB_BACKEND_UNAVAILABLE'); backend = 'available'; }
             catch (error) { backend = error.message === 'WEB_BACKEND_MISSING' ? 'missing' : 'unavailable'; throw error; }
         },
+        async saveLimits(value) {
+            const next = validateWebConfig(value), settings = getSettings(), previous = settings.muyuWebSearchConfig;
+            settings.muyuWebSearchConfig = next;
+            try { await saveSettings(); }
+            catch { if (settings.muyuWebSearchConfig === next) { if (previous === undefined) delete settings.muyuWebSearchConfig; else settings.muyuWebSearchConfig = previous; } throw Error('WEB_CONFIG_SAVE_FAILED'); }
+        },
         async save(value) {
             const next = validateWebConfig(value.config);
             if (typeof value.apiKey !== 'string' || value.apiKey.length > 256 || /[\x00-\x20\x7f]/.test(value.apiKey) || typeof value.rememberKey !== 'boolean') throw Error('WEB_CONFIG_INVALID');

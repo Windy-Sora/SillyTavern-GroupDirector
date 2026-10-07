@@ -2,6 +2,7 @@ import { permissionTitle } from '../permissions/contract.js';
 
 // Display metadata only: never rewrites a Skill package, selector or permission ID.
 const builtinEnglish = Object.freeze({
+    'dsl-template-workbench': ['DSL and structured templates', 'Design and troubleshoot Provider data paths, filters, loops and nested template scopes.'],
     'config-review': ['Configuration review', 'Review connected Group Director settings and how modules work together, without modifying them.'],
     'currency-system': ['Currency systems', 'Design chat currency and counters, clarify scope, and preview only the requested changes.'],
     'provider-workbench': ['Provider workbench', 'Inspect, draft and test user Providers while respecting system locks and execution permissions.'],

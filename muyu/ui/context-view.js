@@ -2,6 +2,7 @@ import { CONTEXT_DEFAULTS, MAX_MANUAL_INPUT_TOKENS, SUMMARY_TIME_RANGE } from '.
 import { formatBudget } from './budget-view.js';
 import { permissionDisplayTitle } from './catalog-labels.js';
 import { createFormFeedback } from './form-feedback.js';
+import { bindAutoSave } from './auto-save.js';
 
 /** View only. Summary text is plain reference data; no operation comes from model output. */
 export function createContextView({ doc, settings, parent, controller, act, lang }) {
@@ -13,6 +14,7 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     const config = node('details', '', settings); node('summary', t('上下文预算', 'Context budget'), config);
     config.open = true;
     config.className = 'gd-muyu-settings-card';
+    node('small', t('自动保存：开关与选择立即保存，数字完成编辑后保存；下一轮生效。', 'Auto-save switches and selections immediately, numbers after editing; effective next task.'), config);
     const historyGroup = node('div', '', config); historyGroup.className = 'gd-muyu-settings-group';
     node('h4', t('携带已有对话', 'Conversation history'), historyGroup);
     const historyLabel = node('label', t('已有对话外发', 'Sending existing conversation history'), historyGroup);
@@ -26,7 +28,7 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     const tokens = field(t('手动输入预算（估算 Token）', 'Manual input budget (estimated tokens)'), 'number', config); tokens.min = 4096; tokens.max = MAX_MANUAL_INPUT_TOKENS; tokens.step = 1;
     autoBudget.onchange = () => { tokens.disabled = autoBudget.checked; };
     const auto = field(t('发送时自动整理较早历史（额外模型调用，默认关闭）', 'Auto-summarize on send (extra model call, off by default)'), 'checkbox', config);
-    node('small', t('历史较长时按需整理；会额外调用模型，原始对话仍保留。修改后请保存。', 'Summarize long histories when needed. Uses an extra model call and retains originals. Save to apply.'), config);
+    node('small', t('历史较长时按需整理；会额外调用模型，原始对话仍保留。设置自动保存，下一轮生效。', 'Summarize long histories when needed. Uses an extra model call and retains originals. Settings save automatically for the next task.'), config);
     const compression = node('details', '', config); compression.className = 'gd-muyu-settings-advanced';
     node('summary', t('历史整理与摘要预算', 'History summarization and budget'), compression);
     node('p', t('输入预算决定能带多少资料；摘要预算决定整理后的长度；单次输出上限决定每次回答最多生成多少。', 'Input budget limits the context sent to the model. Summary budget limits the summary length. Per-call output limits how much each response can generate.'), compression);
@@ -44,7 +46,8 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     const save = button(t('保存上下文设置', 'Save context settings'), actions);
     save.onclick = () => act(() => feedback.run(() => controller.saveContextConfig({ inputTokens: autoBudget.checked ? null : Number(tokens.value), recentTurns: Number(turns.value), autoSummary: auto.checked, historyAuthorization: historyPolicy.value, summaryTokens: Number(summaryTokens.value), summaryTimeMs: Number(summaryTime.value) * 1000 }), () => feedback.validateNumbers()));
     const reset = button(t('恢复默认上下文预算并保存', 'Restore and save default context budget'), actions);
-    const feedback = createFormFeedback({ doc, parent: actions, fields: [historyPolicy, autoBudget, tokens, auto, turns, summaryTokens, summaryTime], buttons: [save, reset], lang, savedText: t('设置已更新，下次任务生效。', 'Settings updated; applies to the next task.') });
+    const feedback = createFormFeedback({ doc, parent: actions, fields: [historyPolicy, autoBudget, tokens, auto, turns, summaryTokens, summaryTime], buttons: [save, reset], retryButton: save, lang, savedText: t('设置已更新，下次任务生效。', 'Settings updated; applies to the next task.') });
+    bindAutoSave([historyPolicy, autoBudget, tokens, auto, turns, summaryTokens, summaryTime], save, lang, () => feedback.dirty);
     const fill = c => { historyPolicy.value = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization; autoBudget.checked = c.inputTokens === null; tokens.value = String(c.inputTokens ?? CONTEXT_DEFAULTS.inputTokens); turns.value = String(c.recentTurns); summaryTokens.value = String(c.summaryTokens ?? CONTEXT_DEFAULTS.summaryTokens); summaryTime.value = String((c.summaryTimeMs ?? CONTEXT_DEFAULTS.summaryTimeMs) / 1000); auto.checked = c.autoSummary; };
     reset.onclick = () => act(() => feedback.run(async () => { const next = { ...CONTEXT_DEFAULTS, historyAuthorization: savedHistoryPolicy }; await controller.saveContextConfig(next); fill(next); configKey = ''; }));
     const details = node('details', '', parent); details.className = 'gd-muyu-context'; node('summary', t('上下文', 'Context'), details);

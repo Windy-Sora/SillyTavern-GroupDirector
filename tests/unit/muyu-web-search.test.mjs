@@ -12,6 +12,19 @@ const response = (value, status = 200) => new Response(JSON.stringify(value), { 
 const upstream = { type: 'search', web: { results: [{ title: 'Documentation', url: 'https://docs.example.test/st', description: 'Public source' }] } };
 const result = () => ({ ...webResult('ok', 'query'), fetchedAt: new Date().toISOString(), results: [{ title: 'Docs', url: 'https://docs.example.test/', snippet: 'Public content' }] });
 
+test('Saving search limits alone preserves credentials, session keys and captured task limits', async () => {
+    let fail = false;
+    const settings = {}, port = createWebSearchPort({ getSettings: () => settings, saveSettings: async () => { if (fail) throw Error('disk'); } });
+    await port.save({ config: WEB_DEFAULTS, apiKey: input.apiKey, rememberKey: false });
+    const captured = port.capture();
+    await port.saveLimits({ ...WEB_DEFAULTS, maxSearches: 2 });
+    assert.equal(port.describe().maxSearches, 2); assert.equal(port.describe().hasKey, true); assert.equal(port.describe().remembered, false);
+    assert.equal(captured.limits.maxSearches, WEB_DEFAULTS.maxSearches);
+    assert.equal(settings.agentConfigs['muyu-web-search'], undefined);
+    fail = true; await assert.rejects(port.saveLimits({ ...WEB_DEFAULTS, maxSearches: 1 }), /SAVE_FAILED/);
+    assert.equal(port.describe().maxSearches, 2); assert.equal(port.describe().hasKey, true);
+});
+
 test('Search service uses the fixed Brave endpoint, never fetches result URLs and filters unsafe links', async () => {
     const calls = [];
     const service = createWebSearchService({ fetcher: async (url, options) => { calls.push({ url, options }); return response({ type: 'search', web: { results: [...upstream.web.results, { title: 'Bad', url: 'javascript:alert(1)' }, { title: 'Private', url: 'https://user:pass@example.test' }, upstream.web.results[0]] } }); } });

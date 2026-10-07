@@ -620,6 +620,12 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             try { await host.webSearch.check(); live(); if (epoch === webEpoch && model && !resetting) webSearchEnabled = true; }
             finally { savingWebSearch = false; emit(); }
         },
+        async saveWebSearchLimits(value) {
+            live(); if (resetting || snapshot().busy || savingWebSearch) throw Error('NOT_READY');
+            if (!host.webSearch?.saveLimits) throw Error('WEB_BACKEND_MISSING');
+            savingWebSearch = true; emit();
+            try { await host.webSearch.saveLimits(value); } finally { savingWebSearch = false; emit(); }
+        },
         async saveWebSearchConfig(value) {
             live(); if (resetting || snapshot().busy || savingWebSearch) throw Error('NOT_READY');
             if (!host.webSearch) throw Error('WEB_BACKEND_MISSING');

@@ -1,13 +1,15 @@
 ---
 name: provider-workbench
 display-name: 用户 Provider 开发与测试
-description: 用户要创建、修改、删除或合成测试用户 Provider 数据源和占位符时使用；核对资产身份、完整源码和精确版本，区分预览、测试、导入与真实 render。只读取聊天或询问 Provider 概念无需此流程。
-version: "1.1"
+description: 用户要创建、修改、删除或测试用户Provider，设计结构化data与DSL模板配合时使用；区分预览、合成测试、导入和真实render。普通聊天读取无需此流程。
+version: "1.2"
 ---
 
 # 用户 Provider 开发与测试
 
 先完整加载 references/contracts.md。结合本轮可见的实际工具 Schema 工作，不把技能里的示例当现有资产、运行结果或许可。
+
+需要结构化data、模板接入或动态数据设计时完整读取 references/structured-template.md；路径、过滤、循环等语法配合“DSL与结构化模板”技能。先选状态来源再设计视图，不把常量样本当实时系统。
 
 系统内置和非用户归属 Provider 只可查询，不能修改、删除或覆盖 ID，全权限同样不能突破。用户导入的资产可编辑，不要求必须由暮羽创建。
 

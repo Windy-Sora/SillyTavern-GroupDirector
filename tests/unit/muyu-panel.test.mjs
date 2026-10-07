@@ -1,5 +1,63 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) test('Ordinary preferences auto-save without applying credentials or sending a model request / ' + lang, async () => {
+    const f = fixture(lang, true), en = lang === 'en';
+    const control = label => f.all().find(e => e.parent?.textContent === label && ['input', 'select'].includes(e.tag));
+    const calls = [];
+    f.controller.saveDisplayConfig = async value => { calls.push(['display', value]); f.state.displayConfig = value; f.emit(); };
+    const display = control(en ? 'Execution detail' : '执行过程显示');
+    assert.equal(f.find('button', en ? 'Save display settings' : '保存显示设置').hidden, true);
+    display.value = 'standard'; await display.onchange();
+    assert.equal(f.state.displayConfig.processDetail, 'standard');
+    f.controller.saveRunConfig = async value => { calls.push(['budget', value]); f.state.runConfig = value; f.emit(); };
+    const budget = control(en ? 'Model calls' : '模型调用次数');
+    budget.value = ''; await budget.onchange(); assert.equal(calls.length, 1);
+    budget.value = '7'; await budget.onchange(); assert.equal(f.state.runConfig.modelCalls, 7);
+    await budget.onblur(); assert.equal(calls.length, 2, 'change followed by blur must not save twice');
+    f.controller.saveWebSearchLimits = async value => { calls.push(['web', value]); f.state.webSearch = { ...f.state.webSearch, ...value }; f.emit(); };
+    const key = control(en ? 'Brave Search API key' : 'Brave Search API 密钥'); key.value = 'UNSUBMITTED_KEY'; key.events.input();
+    const limits = control(en ? 'Search attempts per task' : '每任务最多搜索次数');
+    limits.value = '2'; await limits.onchange();
+    assert.equal(calls.at(-1)[0], 'web'); assert.equal(calls.at(-1)[1].maxSearches, 2);
+    assert.equal(key.value, 'UNSUBMITTED_KEY'); assert.equal(f.configs.length, 0); assert.equal(f.sent.length, 0);
+    f.root.__gdMuyuDispose();
+});
+
+test('Behavior switches auto-save; text commits on blur and disposed editors cancel delayed saves', async () => {
+    const f = fixture('en', true);
+    f.state.instructionSettings = { saved: { enabled: false, text: '' }, draft: { enabled: false, text: '' }, dirty: false, saving: false };
+    let writes = 0;
+    f.controller.setInstructionDraft = value => { f.state.instructionSettings.draft = value; f.state.instructionSettings.dirty = true; f.emit(); };
+    f.controller.saveInstructions = async () => { writes++; const s = f.state.instructionSettings; s.saved = structuredClone(s.draft); s.dirty = false; f.emit(); };
+    f.emit();
+    const toggle = f.all().find(e => e.type === 'checkbox' && e.parent.textContent === 'Enable additional instructions (off by default)');
+    toggle.checked = true; await toggle.onchange(); assert.equal(writes, 1);
+    const text = f.all().find(e => e.tag === 'textarea' && e.parent.textContent === 'Additional instructions');
+    text.value = 'Be concise'; await text.oninput(); assert.equal(writes, 1);
+    await text.onblur(); assert.equal(writes, 2); assert.equal(f.state.instructionSettings.saved.text, 'Be concise');
+    text.value = 'After typing'; await text.oninput();
+    await new Promise(resolve => setTimeout(resolve, 650)); assert.equal(writes, 3); assert.equal(f.state.instructionSettings.saved.text, 'After typing');
+    text.value = 'Retained draft'; await text.oninput(); f.root.__gdMuyuDispose();
+    await new Promise(resolve => setTimeout(resolve, 650)); assert.equal(writes, 3);
+});
+
+test('Context and collection switches save automatically; failed collection saves retain input for retry', async () => {
+    const f = fixture('en', true), calls = [];
+    const control = label => f.all().find(e => e.parent?.textContent === label && ['input', 'select'].includes(e.tag));
+    f.controller.saveContextConfig = async value => { calls.push(['context', value]); f.state.contextConfig = value; f.emit(); };
+    const summary = control('Auto-summarize on send (extra model call, off by default)');
+    summary.checked = true; await summary.onchange(); assert.equal(calls.at(-1)[0], 'context'); assert.equal(calls.at(-1)[1].autoSummary, true);
+    let fail = true;
+    f.controller.saveDiagnosticsConfig = async value => { if (fail) throw Error('disk'); calls.push(['diagnostics', value]); f.state.diagnostics = { config: value }; f.emit(); };
+    const diagnostics = control('Collect local diagnostics (off by default)'); diagnostics.checked = true; await diagnostics.onchange();
+    const retry = f.find('button', 'Save diagnostics'); assert.equal(retry.hidden, false); assert.equal(diagnostics.checked, true);
+    fail = false; await retry.click(); assert.equal(retry.hidden, true); assert.equal(f.state.diagnostics.config.enabled, true);
+    f.controller.savePromptCaptureConfig = async value => { calls.push(['capture', value]); f.state.promptCapture = { config: value }; f.emit(); };
+    const capture = control('Capture prompt text (off by default)'); capture.checked = true; await capture.onchange();
+    assert.equal(f.state.promptCapture.config.enabled, true); assert.equal(f.sent.length, 0);
+    f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test('Builtin Skill labels localize in picker, catalog, search and readonly editor without changing identity / ' + lang, () => {
     const doc = { createElement: tag => new Element(tag, doc) }, settings = doc.createElement('section'), parent = doc.createElement('div');
     const calls = [], controller = { loadSkills() {}, selectSkill: (...args) => calls.push(args) };
@@ -727,7 +785,7 @@ test('Connection validation is local and test results do not replace the active 
 
 test('Search locking uses the latest state after completion, failure, cancellation and saving', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' });
-    const save = f.find('button', 'Save search settings'), forget = f.find('button', 'Forget search key');
+    const save = f.find('button', 'Update search key'), forget = f.find('button', 'Forget search key');
     const key = f.all().find(e => e.type === 'password' && e.parent.textContent === 'Brave Search API key');
     f.state.webSearch = { maxSearches: 3, maxResults: 5, resultBytes: 12000, hasKey: false };
     for (const terminal of ['succeeded', 'failed', 'cancelled']) {
@@ -752,7 +810,7 @@ test('Search field validation expands limits and failed saving retains the key a
     const f = fixture('en', true, { initialMode: 'assistant' }); let calls = 0;
     const attempts = f.all().find(e => e.type === 'number' && e.parent.textContent === 'Search attempts per task');
     const key = f.all().find(e => e.type === 'password' && e.parent.textContent === 'Brave Search API key');
-    const save = f.find('button', 'Save search settings');
+    const save = f.find('button', 'Update search key');
     f.controller.saveWebSearchConfig = async () => { calls++; throw Error('WEB_CONFIG_SAVE_FAILED'); };
     attempts.value = '0'; attempts.events.input(); await save.click(); assert.equal(calls, 0);
     assert.equal(f.find('summary', 'Search limits and data budget').parent.open, true);
@@ -1188,7 +1246,7 @@ for (const lang of ['zh', 'en']) test('Display settings retain failed drafts and
     select.value = 'standard'; select.events.change(); await f.find('button', en ? 'Discard display changes' : '放弃显示修改').click();
     assert.equal(select.value, 'verbose'); f.root.__gdMuyuDispose();
 });
-test('Behavior editor keeps drafts through remount, rejects over-limit saves and requires saving restored defaults', async () => {
+test('Behavior editor keeps drafts through remount, rejects over-limit saves and saves restored defaults', async () => {
     const f = fixture('en', true); const defaults = { enabled: false, text: '' };
     f.state.instructionSettings = { saved: { ...defaults }, draft: { ...defaults }, dirty: false, saving: false };
     f.controller.setInstructionDraft = value => { f.state.instructionSettings.draft = value; f.state.instructionSettings.dirty = true; f.emit(); };
@@ -1200,7 +1258,7 @@ test('Behavior editor keeps drafts through remount, rejects over-limit saves and
     f.state.viewToken++; f.emit(); f.root.__gdMuyuDispose(); f.mount(); assert.equal(editor().value, '<img>literal preference</img>'); assert.equal(f.find('img'), undefined);
     await f.find('button', 'Save behavior preferences').click(); assert.equal(f.state.instructionSettings.saved.enabled, true);
     editor().value = 'a'.repeat(4001); await editor().oninput(); assert.equal(f.find('button', 'Save behavior preferences').disabled, true); assert.equal(editor().value.length, 4001);
-    await f.find('button', 'Restore defaults (save required)').click(); assert.equal(editor().value, ''); assert.equal(f.state.instructionSettings.saved.enabled, true);
+    await f.find('button', 'Restore and save defaults').click(); assert.equal(editor().value, ''); assert.equal(f.state.instructionSettings.saved.enabled, false);
     await f.find('button', 'Save behavior preferences').click(); assert.equal(f.state.instructionSettings.saved.enabled, false); assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
 test('Reply language editor is independent, bilingual, customisable and survives remount', async () => {
@@ -1265,7 +1323,7 @@ test('Custom reply language mode survives preset prefixes while typing and expli
         select().value = '__custom__'; await select().onchange(); assert.equal(custom().parent.hidden, false);
         await f.find('button', t('放弃修改', 'Discard changes')).click();
         assert.equal(custom().value, name); assert.equal(custom().parent.hidden, false);
-        await f.find('button', t('恢复默认（需保存）', 'Restore defaults (save required)')).click();
+        await f.find('button', t('恢复默认并保存', 'Restore and save defaults')).click();
         assert.notEqual(select().value, '__custom__'); assert.equal(custom().parent.hidden, true);
         assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
     }

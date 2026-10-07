@@ -1,3 +1,5 @@
+import { bindAutoSave } from './auto-save.js';
+
 /** Collection is separate from model permission. Local UI shows metadata only. */
 export function createStPromptSnapshotsView({doc,settings,controller,act,lang}){
     const t=(zh,en)=>lang==='en'?en:zh;
@@ -10,7 +12,8 @@ export function createStPromptSnapshotsView({doc,settings,controller,act,lang}){
     const actions=node('div','');actions.className='gd-muyu-settings-actions';const output=node('pre','');output.hidden=true;output.className='gd-muyu-diagnostics-records';const feedback=node('small','');let dirty=false,busy=false;
     input.onchange=()=>{dirty=true;};
     const button=(zh,en,fn)=>{const b=node('button',t(zh,en),actions);b.type='button';b.className='menu_button';b.onclick=()=>act(fn);return b;};
-    const save=button('保存快照采集设置','Save capture settings',async()=>{if(busy)return;busy=true;save.disabled=input.disabled=true;try{await controller.savePromptCaptureConfig({enabled:input.checked});dirty=false;feedback.textContent=t('已保存','Saved');}catch{feedback.textContent=t('保存失败，采集设置未更新','Save failed; capture settings unchanged');}finally{busy=false;save.disabled=input.disabled=false;}});
+    const save=button('保存快照采集设置','Save capture settings',async()=>{if(busy)return;busy=true;save.disabled=input.disabled=true;feedback.textContent=t('保存中…','Saving…');try{await controller.savePromptCaptureConfig({enabled:input.checked});dirty=false;save.hidden=true;feedback.textContent=t('已保存','Saved');}catch{save.hidden=false;feedback.textContent=t('保存失败，采集设置未更新','Save failed; capture settings unchanged');}finally{busy=false;save.disabled=input.disabled=false;}});
+    bindAutoSave([input],save,lang);
     button('查看最近概况','View latest overview',()=>{output.textContent=JSON.stringify(controller.promptCaptureSnapshot(),null,2);output.hidden=false;});
     button('清空快照','Clear snapshot',()=>{controller.clearPromptCapture();output.textContent='';output.hidden=true;});
     return{render(state){const config=state.promptCapture?.config||{};if(!dirty&&!busy)input.checked=config.enabled===true;if(!config.enabled||!state.promptCapture?.available){output.textContent='';output.hidden=true;}}};

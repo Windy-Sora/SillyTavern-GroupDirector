@@ -98,7 +98,7 @@ test('Builtin resources load exclusively shipped static paths and preserve compl
     const paths = [];
     const builtins = await loadBuiltinSkills({ readText: async path => { paths.push(path); return readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8'); } });
     assert.deepEqual(paths, BUILTIN_SKILL_MANIFEST.flatMap(row => row.files.map(path => `${row.name}/${path}`)));
-    assert.equal(builtins.length, 18); assert.match(builtins[0].package.files[0].text, /整体配置检查/);
+    assert.equal(builtins.length, 19); assert.match(builtins[0].package.files[0].text, /整体配置检查/);
     const f = fixture();
     const service = createSkillManagement({ store: f.store, builtins });
     assert.equal((await service.list()).entries[0].id, 'builtin:config-review');
@@ -108,7 +108,7 @@ test('All shipped skills load complete main and referenced instructions with dis
     const builtins = await loadBuiltinSkills({ readText: path => readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8') });
     const f = fixture(), service = createSkillManagement({ store: f.store, builtins });
     const rows = (await service.list()).entries;
-    assert.deepEqual(rows.map(row => row.id), ['builtin:config-review', 'builtin:currency-system', 'builtin:provider-workbench', 'builtin:director-diagnosis', 'builtin:memory-maintenance', 'builtin:blueprint-workflow', 'builtin:configuration-orchestration', 'builtin:chat-context-analysis', 'builtin:variable-workbench', 'builtin:character-npc-workbench', 'builtin:resource-library-workflow', 'builtin:prompt-template-workbench', 'builtin:script-agent-workbench', 'builtin:worldbook-workflow', 'builtin:automation-workflow', 'builtin:muyu-troubleshooting', 'builtin:skill-workbench', 'builtin:muyu-interface-guide']);
+    assert.deepEqual(rows.map(row => row.id), BUILTIN_SKILL_MANIFEST.map(row => `builtin:${row.name}`));
     for (const row of rows) {
         const snapshot = await service.registry.snapshot({ id: row.id, revision: row.revision, invocation: 'model' });
         const main = snapshot.package.files.find(file => file.path === 'SKILL.md').text;
@@ -142,7 +142,7 @@ test('Default builtin reader uses bounded static fetch, no redirects, and comple
         } }));
     };
     const result = await loadBuiltinSkills();
-    assert.equal(result.length, 18); assert.ok(paths.every(path => path.includes('/assets/muyu-skills/')));
+    assert.equal(result.length, 19); assert.ok(paths.every(path => path.includes('/assets/muyu-skills/')));
     assert.match(result[0].package.files[0].text, /整体配置检查/);
 });
 

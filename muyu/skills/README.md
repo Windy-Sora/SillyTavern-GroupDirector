@@ -2,28 +2,31 @@
 
 版本：设计v0.8，2026-10-05。本文为Skill开发的单一入口。A／B底座、C管理入口、D运行、E三份试点及DeepSeek合成环境实测已完成；两轮新增14份工作流技能已完成离线与首批付费模型测试。本轮针对首批六类质量问题修正工具发现／证据指引、六份内容revision及默认档案生成Prompt，并接DeepSeek同题和新题复测。详见 [验收记录](EVALUATION.md)，不宣称模型答案或自动选用全通过。真实酒馆GUI／代码导入／持久化仍待验收。第2–6节保留设计目标，第7节及分阶段“实际合同”记录落地范围；历史阶段的待办不覆盖当前合同。
 
-## 当前内置技能：18份
+## 当前内置技能：19份
+
+2026-10-07：新增独立DSL与结构化模板技能，基本路径／过滤／循环与高级嵌套／递归／缓存成本分为按需参考；12份静态渲染样本随包发布并由真实renderPrompt验证。Provider技能增加结构化数据与模板接入参考（revision 3）；多模块方案增加状态／视图／执行分工及商店、背包、任务、无限流设计参考（revision 6）；Prompt技能增加DSL路由（revision 5）。加载文档不执行源码，不改变权限；同任务已加载版本保持固定，新任务使用新版。
 
 | 技能 | 适用目标 | 内容 revision |
 | --- | --- | --- |
-| 整体配置检查（config-review） | 只读整体核对 | 3 |
+| 整体配置检查（config-review） | 只读整体核对 | 4 |
 | 金币与积分系统搭建（currency-system） | 当前聊天数值系统 | 1 |
-| 用户Provider开发与测试（provider-workbench） | 用户代码资产与隔离测试 | 2 |
+| 用户Provider开发与测试（provider-workbench） | 用户代码资产、结构化data与模板配合、隔离测试 | 3 |
 | 导演选人与抢话排查（director-diagnosis） | 模式、人数、历史原因的证据边界 | 2 |
-| 记忆配置与维护（memory-maintenance） | 自动提取、容量、条目编辑与实际生成 | 1 |
+| 记忆配置与维护（memory-maintenance） | 自动提取、容量、条目编辑与实际生成 | 2 |
 | 剧情蓝图搭建与调整（blueprint-workflow） | 创作提案、节点文本、结构和进度风险 | 1 |
-| 多模块配置方案（configuration-orchestration） | 跨模块读取、精确整单及分阶段执行 | 3 |
+| 多模块配置方案（configuration-orchestration） | 跨模块读取、复杂系统组件分工、精确整单及分阶段执行 | 6 |
 | 聊天资料与历史分析（chat-context-analysis） | 正文、剧情／人物、账本、暮羽原文回读 | 1 |
 | 聊天变量与状态系统（variable-workbench） | 通用类型、定义／存储值、作用域迁移 | 2 |
 | 角色档案、NPC与酒馆角色卡维护（character-npc-workbench） | 档案／NPC编辑与生成，角色卡正文、创建／复制／显示名／文本与保留聊天的受限删除 | 4 |
 | 资源库与配置档复用（resource-library-workflow） | 三种资源库、存包／应用、加载策略、配置档 | 4 |
-| Prompt与模板设计（prompt-template-workbench） | 功能Prompt、自定义条目、预设管理；提示词构建与注册注入快照证据 | 3 |
+| Prompt与模板设计（prompt-template-workbench） | 功能Prompt、自定义条目、DSL路由、预设管理；构建快照证据 | 5 |
 | 脚本与自定义Agent开发（script-agent-workbench） | 定义管理、合成检查、实际执行与费用 | 2 |
 | 世界书与酒馆资料核对（worldbook-workflow） | 正文／GD选择、ST预设只读、世界书及条目管理、全局／聊天绑定 | 5 |
 | 自动化与发言后策略（automation-workflow） | 总结／点评／PostSpeech、触发与开销 | 1 |
-| 暮羽连接与上下文排障（muyu-troubleshooting） | 连接、预算、历史／摘要、授权／存储、本页诊断与提示词构建快照排查 | 4 |
+| 暮羽连接与上下文排障（muyu-troubleshooting） | 连接、预算、历史／摘要、授权／存储、本页诊断与提示词构建快照排查 | 5 |
 | 技能编写与管理（skill-workbench） | 文档设计、用户CRUD、复制／启停／包格式 | 2 |
-| 暮羽界面与按钮指南（muyu-interface-guide） | 连接、显隐、历史导出、长期记忆及技能入口 | 2 |
+| 暮羽界面与按钮指南（muyu-interface-guide） | 连接、显隐、历史导出、长期记忆及技能入口 | 4 |
+| DSL与结构化模板（dsl-template-workbench） | 路径／过滤／循环、嵌套$it、Provider数据与渲染边界 | 1 |
 
 2026-10-05综合反馈第一轮：新增独立界面指南，公开入口资料`muyu.interface`共用GUI分类及关键按钮元数据；不读取用户值、不证明按钮当前可用。配置字段的`bundle`合同与实际整单排除规则共用政策，目录也返回变量／设置／脚本及共享数值作用域。自动记忆普通参数可合并，容量等特殊项仍独立，逐角色变量不进入共享数值整单。没有增加写入能力、执行权限或依赖。多模块指南修订至revision 2，不把新正文在已锁定的同任务中强行替换。
 
