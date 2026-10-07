@@ -9,6 +9,22 @@ import { assistantToolAccess } from '../../muyu/application/capabilities.js';
 
 const A = { kind: 'chat', userKey: 'user', chatKey: 'A' }, B = { ...A, chatKey: 'B' };
 const request = { source: 'chatHistory', reason: 'Check recent events', target: A, taskId: 't1' };
+for (const decision of ['task', 'deny']) test(`Provider execution ${decision} rollback restores existing records without granting new ones`, () => {
+    const p = createPermissions(), execution = { ...request, source: 'providerExecution', providerId: 'custom', providerRevision: 'a'.repeat(64) + '-0' };
+    const has = r => p[decision === 'task' ? 'allowsExecution' : 'deniedExecution'](r.target, r.taskId, r.providerId, r.providerRevision);
+    const failure = Error('enqueue failed'), fail = () => { throw failure; };
+    assert.throws(() => p.decide(execution, decision, fail), error => error === failure);
+    assert.equal(has(execution), false);
+    assert.equal(p.decide(execution, decision, () => 'queued'), 'queued');
+    assert.throws(() => p.decide(execution, decision, fail), error => error === failure);
+    assert.equal(has(execution), true);
+    for (const other of [{ ...execution, target: B }, { ...execution, taskId: 't2' }, { ...execution, providerRevision: 'b'.repeat(64) + '-0' }, { ...execution, providerId: 'other' }]) {
+        assert.throws(() => p.decide(other, decision, fail), error => error === failure);
+        assert.equal(has(other), false); assert.equal(has(execution), true);
+    }
+    assert.equal(p[decision === 'task' ? 'deniedExecution' : 'allowsExecution'](A, 't1', execution.providerId, execution.providerRevision), false);
+    p.forgetTask(A, 't1'); assert.equal(has(execution), false);
+});
 test('Public source catalog never probes host availability or content', () => {
     const fail = () => { throw Error('Host must not be accessed'); };
     const module = createProviderModule({ providerPort: { available: fail, read: fail }, currentTarget: fail });

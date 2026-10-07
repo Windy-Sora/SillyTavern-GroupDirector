@@ -46,8 +46,9 @@ export function createSourcePermissions() {
                 const map = decision === 'task' ? executions : executionDenials;
                 const id = executionKey(request.target, request.taskId, request.providerId, request.providerRevision);
                 if (!map.has(id) && map.size >= 1024) throw Error('PERMISSION_CAPACITY');
+                const old = map.get(id);
                 map.set(id, true);
-                try { return continuation(); } catch (error) { map.delete(id); throw error; }
+                try { return continuation(); } catch (error) { if (old) map.set(id, old); else map.delete(id); throw error; }
             }
             const map = decision === 'chat' ? chats : decision === 'task' ? tasks : denied;
             const id = decision === 'chat' ? scopeId : taskKey(request.target, request.taskId);

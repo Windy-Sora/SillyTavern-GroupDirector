@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createToolSelection } from '../../muyu/tools/selection.js';
 import { createToolRegistry } from '../../muyu/tools/registry.js';
+import { createToolBroker } from '../../muyu/tools/broker.js';
+import { ExecutionError } from '../../muyu/core/execution.js';
 import { createToolboxModule } from '../../muyu/modules/toolbox.js';
 import { startMuyuRun } from '../../muyu/composition.js';
 import { identity, request, text, done, scriptedModel } from './helpers/muyu-subject.mjs';
@@ -91,4 +93,38 @@ test('Runtime rejects mixed selection and host operations before executing eithe
     assert.equal((await handle.completion).state.status, 'succeeded'); assert.equal(calls, 0);
     assert.equal(model.requests[1].tools.length, 2);
     assert.ok(model.requests[1].messages.filter(m => m.role === 'tool').every(m => m.result.error.code === 'INVALID_ARGUMENT'));
+});
+
+for (const groups of [['missing'], ['skills', 'skills'], ['skills', 'prompts', 'agents']]) test(`Invalid selection ${groups.join('/')} gives safe correction guidance and preserves visible tools`, async () => {
+    const r = registry(), model = scriptedModel([
+        [call('load', 'muyu.tools.select', { groups: ['skills'] }), done],
+        [call('invalid', 'muyu.tools.select', { groups }), done],
+        [call('corrected', 'muyu.tools.select', { groups: ['prompts'] }), done],
+        [text('Finished'), done],
+    ]);
+    const result = await startMuyuRun({ identity, input: 'Use tools', registry: r, allowedTools: r.list().map(d => d.id), policy: () => true, model }).completion;
+    assert.equal(result.state.status, 'succeeded');
+    const failed = model.requests[2].messages.find(m => m.role === 'tool' && m.callId === 'invalid').result;
+    assert.equal(failed.error.code, 'INVALID_ARGUMENT'); assert.equal(failed.error.retryable, false);
+    assert.equal(failed.effectState, 'not_started'); assert.match(failed.error.message, /muyu.tools.list/);
+    assert.deepEqual(model.requests[2].tools, model.requests[1].tools);
+    assert.ok(model.requests[3].tools.some(d => d.id.startsWith('muyu.prompts.')));
+    assert.ok(model.requests[3].tools.every(d => !d.id.startsWith('muyu.skills.')));
+});
+
+test('Repeated invalid selections consume correction budget rather than generic execution retries', async () => {
+    const r = registry(), model = scriptedModel(Array.from({ length: 3 }, (_, i) => [call(`invalid${i}`, 'muyu.tools.select', { groups: ['missing'] }), done]));
+    const result = await startMuyuRun({ identity, input: 'Use tools', registry: r, allowedTools: r.list().map(d => d.id), policy: () => true, model, limits: { corrections: 2 } }).completion;
+    assert.equal(result.error, 'BUDGET_EXCEEDED'); assert.equal(model.requests.length, 3);
+    assert.equal(result.budget.reason, 'corrections'); assert.equal(result.budget.corrections, 3);
+    assert.equal(result.messages.filter(m => m.role === 'tool' && m.result.error?.code === 'INVALID_ARGUMENT').length, 3);
+});
+
+test('Selection error disclosure is restricted to typed errors from the selection tool', async () => {
+    const r = registry(), controller = new AbortController();
+    for (const [toolId, error] of [['muyu.tools.select', Error('INVALID_TOOL_GROUP secret')], ['muyu.skills.tool_0', new ExecutionError('INVALID_TOOL_GROUP')], ['muyu.tools.select', new ExecutionError('UNEXPECTED_SECRET')]]) {
+        const broker = createToolBroker({ registry: r, handlers: { [toolId]: () => { throw error; } }, runId: 'test', target: identity.target, allowedTools: [toolId], policy: () => true, signal: controller.signal });
+        const result = await broker.call({ callId: 'error', toolId, version: 1, args: toolId === 'muyu.tools.select' ? { groups: [] } : {} });
+        assert.deepEqual(result, { ok: false, error: { code: 'TOOL_FAILED', message: 'TOOL_FAILED', retryable: false }, effectState: 'unknown' });
+    }
 });

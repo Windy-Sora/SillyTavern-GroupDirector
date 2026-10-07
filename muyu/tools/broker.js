@@ -77,8 +77,17 @@ export function createToolBroker({ registry, handlers, runId, target, allowedToo
             return remember({ ok: true, data: output });
         } catch (error) {
             assertActive(signal);
-            // Only these closed, read-only preview contract errors are safe to disclose.
+            // Only closed, read-only selection and preview contract errors are safe to disclose.
             // Other handler exceptions may contain secrets or have unknown effects.
+            const selection = d.id === 'muyu.tools.select' && error instanceof ExecutionError &&
+                ['INVALID_TOOL_GROUP', 'TOOL_GROUP_CAPACITY'].includes(error.code);
+            if (selection) {
+                const result = safeFailure('INVALID_ARGUMENT');
+                result.error.message = error.code === 'INVALID_TOOL_GROUP'
+                    ? 'Use only group IDs returned by muyu.tools.list, without duplicates, and select at most 8 groups.'
+                    : 'Selected groups exceed the visible tool limit. Use muyu.tools.list counts to select fewer groups.';
+                return remember(result);
+            }
             const splitDraft = d.id === 'muyu.settings.preview' && error instanceof ExecutionError &&
                 ['MEMORY_LIMIT_REQUIRES_SEPARATE_DRAFT', 'COMPLETION_VARIABLE_REQUIRES_SEPARATE_DRAFT'].includes(error.code);
             return remember(safeFailure(splitDraft ? error.code : error instanceof ExecutionError && error.code === 'TIMEOUT' ? 'TIMEOUT' : 'TOOL_FAILED', splitDraft ? 'not_started' : 'unknown'));
