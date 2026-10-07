@@ -137,16 +137,18 @@ export async function renderPrompt(template, context, options = {}) {
     }
 
     // ── Phase 1.5: block loops ──
-    result = processBlockLoops(result, cache, context, unresolvable, false, passthrough);
+    let passState = { processed: 0, remaining: maxPasses - 1 };
+    result = processBlockLoops(result, cache, context, unresolvable, false, passthrough, passState);
 
     // ── Phase 2+3: placeholders and path queries ──
-    result = renderPhases2and3(result, cache, context, unresolvable, false, passthrough);
+    result = renderPhases2and3(result, cache, context, unresolvable, false, passthrough, passState);
 
     // ── Post-render passes ──
     for (let pass = 1; pass < maxPasses; pass++) {
         const before = result;
-        result = processBlockLoops(result, cache, context, unresolvable, true, passthrough);
-        result = renderPhases2and3(result, cache, context, unresolvable, true, passthrough);
+        passState = { processed: 0, remaining: maxPasses - pass - 1 };
+        result = processBlockLoops(result, cache, context, unresolvable, true, passthrough, passState);
+        result = renderPhases2and3(result, cache, context, unresolvable, true, passthrough, passState);
         if (result === before) break;
     }
 
@@ -168,9 +170,10 @@ export async function renderPrompt(template, context, options = {}) {
  * in a single pass. When isRePass is true, counters are preserved
  * rather than incremented.
  */
-function renderPhases2and3(template, cache, context, unresolvable, isRePass = false, passthrough) {
+function renderPhases2and3(template, cache, context, unresolvable, isRePass = false, passthrough,
+    passState = { processed: 0, remaining: 0 }, scoped = false, depth = 0) {
     // Phase 2
-    let result = template.replace(/\{\{(\w+)\}\}/g, (match, id) => {
+    let result = outsideBlocks(template, text => text.replace(/\{\{(\w+)\}\}/g, (match, id) => {
         if (id === 'counter' || id === 'counter0') {
             return isRePass ? match : String(id === 'counter' ? roundCounterNext() : promptCounterNext());
         }
@@ -179,11 +182,26 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
             return match;
         }
         if (!(id in cache)) return unresolvable(match);
-        return cache[id].content;
-    });
+        const content = cache[id].content;
+        if (scoped && typeof content === 'string') {
+            // A generated loop's source still belongs to the enclosing iteration.
+            // Use the same expansion budget, including self-referential fragments.
+            if (findAllBlocks(content).length) {
+                if (passState.processed >= 200) return content;
+                return processBlockLoops(content, cache, context, unresolvable, false,
+                    passthrough, passState, true, depth);
+            }
+            // Recursive placeholder chains must not escape into the root $it scope.
+            if (depth < passState.remaining && /\{\{\w+\}\}/.test(content)) {
+                return renderPhases2and3(content, cache, context, unresolvable, isRePass,
+                    passthrough, passState, true, depth + 1);
+            }
+        }
+        return content;
+    }));
 
     // Phase 3
-    result = replacePathQueries(result, (match, id, path, fallback) => {
+    result = outsideBlocks(result, text => replacePathQueries(text, (match, id, path, fallback) => {
         const entry = cache[id];
         if (!entry) return unresolvable(match);
         if (!entry.data) return fallback ?? '';
@@ -195,9 +213,21 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
 
         if (value === null || value === undefined) return fallback ?? '';
         return formatValue(value);
-    });
+    }));
 
     return result;
+}
+
+// Unexpanded loop bodies are templates, not queries in the current scope.
+// This also protects loops deferred by recursion settings or the safety budget.
+function outsideBlocks(template, render) {
+    let result = '', cursor = 0;
+    for (const block of findAllBlocks(template)) {
+        result += render(template.slice(cursor, block.openStart));
+        result += template.slice(block.openStart, block.closeEnd);
+        cursor = block.closeEnd;
+    }
+    return result + render(template.slice(cursor));
 }
 
 function replacePathQueries(template, replace) {
@@ -240,71 +270,62 @@ function replacePathQueries(template, replace) {
  * - Empty/null array → whole block replaced with empty string
  * - Join uses literal newlines from the template (user controls)
  */
-function processBlockLoops(template, cache, context, unresolvable, isRePass, passthrough) {
-    let result = template;
-    let safety = 0;
+function processBlockLoops(template, cache, context, unresolvable, isRePass, passthrough,
+    passState = { processed: 0, remaining: 0 }, scopedRoot = false, depth = 0) {
     const MAX_BLOCKS = 200;
-
-    // Process from innermost outward until no more blocks remain
-    while (safety++ < MAX_BLOCKS) {
-        // Find all blocks in current result
-        const blocks = findAllBlocks(result);
-        if (blocks.length === 0) break;
-
-        // Process innermost first (shortest inner → deepest nesting)
-        blocks.sort((a, b) => a.innerLength - b.innerLength);
-        const block = blocks[0];
-
-        const inner = result.slice(block.openEnd, block.closeIdx);
-
-        // Resolve path to get array
-        const array = resolveArray(cache, block.providerId, block.path, context);
-        if (!Array.isArray(array) || array.length === 0) {
-            result = result.slice(0, block.openStart) + result.slice(block.closeEnd);
-            continue;
+    // One budget for the entire pass, not a fresh budget per nested invocation.
+    function renderRegion(start, end, blocks, regionContext, scoped) {
+        let result = '', cursor = start;
+        const renderText = text => scoped
+            ? renderPhases2and3(text, cache, regionContext, unresolvable, false, passthrough,
+                passState, true, depth) : text;
+        for (const block of blocks) {
+            result += renderText(template.slice(cursor, block.openStart));
+            if (passState.processed >= MAX_BLOCKS) {
+                result += template.slice(block.openStart, end);
+                return result;
+            }
+            passState.processed++;
+            // The source path belongs to the parent scope; only the body shadows $it.
+            const array = resolveArray(cache, block.providerId, block.path, regionContext);
+            if (Array.isArray(array) && array.length) {
+                result += [...new Set(array)].map(el => renderRegion(block.openEnd, block.closeIdx,
+                    block.children, { ...regionContext, it: formatValue(el) }, true)).join('\n');
+            }
+            cursor = block.closeEnd;
         }
-
-        // Deduplicate (primitive-safe)
-        const unique = [...new Set(array)];
-
-        // Render inner for each element
-        const parts = unique.map(el => {
-            const elCtx = { ...context, it: formatValue(el) };
-            return renderPhases2and3(inner, cache, elCtx, unresolvable, isRePass, passthrough);
-        });
-
-        // Replace entire block with joined results
-        result = result.slice(0, block.openStart) + parts.join('\n') + result.slice(block.closeEnd);
+        return result + renderText(template.slice(cursor, end));
     }
-
+    let result = template;
+    while (passState.processed < MAX_BLOCKS) {
+        const blocks = findAllBlocks(result);
+        if (!blocks.length) break;
+        template = result;
+        result = renderRegion(0, template.length, blocks, context, scopedRoot);
+    }
     return result;
 }
 
 function findAllBlocks(template) {
-    const openRegex = /\{\{#(\w+):([^}]+)\}\}/g;
-    const blocks = [];
+    const tagRegex = /\{\{#(\w+):([^}]+)\}\}|\{\{\/(\w+)\}\}/g;
+    const blocks = [], stack = [];
     let match;
-
-    while ((match = openRegex.exec(template)) !== null) {
-        const providerId = match[1];
-        const openStart = match.index;
-        const openEnd = match.index + match[0].length;
-        const closeTag = `{{/${providerId}}}`;
-        const closeIdx = template.indexOf(closeTag, openEnd);
-
-        if (closeIdx !== -1) {
-            blocks.push({
-                providerId,
-                path: match[2],
-                openStart,
-                openEnd,
-                closeIdx,
-                closeEnd: closeIdx + closeTag.length,
-                innerLength: closeIdx - openEnd,
-            });
+    while ((match = tagRegex.exec(template)) !== null) {
+        if (match[1]) {
+            stack.push({ providerId: match[1], path: match[2], openStart: match.index,
+                openEnd: tagRegex.lastIndex, children: [] });
+        } else if (stack.length) {
+            if (stack[stack.length - 1].providerId !== match[3]) {
+                // Never pair crossing tags or consume the next well-formed sibling.
+                stack.length = 0;
+                continue;
+            }
+            const block = stack.pop();
+            block.closeIdx = match.index;
+            block.closeEnd = tagRegex.lastIndex;
+            (stack.length ? stack[stack.length - 1].children : blocks).push(block);
         }
     }
-
     return blocks;
 }
 
