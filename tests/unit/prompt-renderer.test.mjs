@@ -22,6 +22,16 @@ function dynamicProviders(t) {
     return { loop, calls: () => calls };
 }
 
+test('nested and unclosed raw slots never render their inner placeholders or loop tails', async t => {
+    let calls = 0;
+    register(t, { id: 'testRawNested', render: () => { calls++; return { content: 'RENDERED', data: { keys: [1] } }; } });
+    const inner = 'before {[{ {{testRawNested}} }]} {{#testRawNested:keys}}{{counter0}}{{/testRawNested}} after';
+    assert.equal(await renderPrompt(`{[{${inner}}]}|{{counter0}}`, {}), inner + '|0');
+    const unclosed = '{[{ {{testRawNested}} {[{ nested }]} {{counter0}}';
+    assert.equal(await renderPrompt('start ' + unclosed, {}), 'start ' + unclosed);
+    assert.equal(calls, 2);
+});
+
 test('Dynamic root loops defer queries and fresh counters until their iteration is bound', async t => {
     const fixture = dynamicProviders(t);
     for (const context of [{}, { it: 'seed' }]) {

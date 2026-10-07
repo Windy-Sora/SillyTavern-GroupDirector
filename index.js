@@ -15,6 +15,7 @@ import { parseLlmResponse, extractJsonObject, sanitizeJson } from './utils/json-
 import { djb2Hash, hashChar } from './utils/string-utils.js';
 import { roundCounterReset, roundCounterGet, roundCounterSet } from './utils/counter.js';
 import { scoreFormulaCharacter } from './systems/speaker-selection.js';
+import { matchEnabledCharacter, directorScriptKey } from './utils/character-identity.js';
 import { decideFormulaTurn } from './systems/round-state.js';
 import { recoverDirectorPlan } from './systems/director-plan.js';
 import { createRoundOrchestrator } from './systems/round-orchestrator.js';
@@ -135,11 +136,11 @@ let roundInitialized = false;
 let initPromise = null;              // guards concurrent interceptor calls
 let isGroupChat = false;
 const roundOrchestrator = createRoundOrchestrator();
-let directorScripts = {};           // { characterName: scriptText } from LLM
+let directorScripts = {};           // unique name keys for compatibility; avatar keys for same-name cards
 let directorLastReason = '';         // reason from last director decision, exposed to script executors
 let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, read by interceptor
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
-const scriptCounterSnapshots = new Map();   // charName → counter value at first render
+const scriptCounterSnapshots = new Map();   // avatar → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
 let directorRoundEpoch = 0;
 let takeoverOwner = null;
@@ -234,17 +235,26 @@ function getScriptPosition() {
         : extension_prompt_types.IN_PROMPT;
 }
 
-async function getScriptForChar(charName, extraContext) {
+async function getScriptForChar(charRef, extraContext) {
     if (settings.llmScriptEnabled === false) return '';
-    const script = directorScripts[charName] || '';
+    const char = characters.find(c => c.avatar === charRef)
+        || matchCharacterByName(charRef, characters.map(c => c.avatar));
+    if (!char) return '';
+    const charName = char.name;
+    const uniqueName = characters.filter(c => c.name === charName).length === 1;
+    const script = directorScripts[char.avatar] || (uniqueName ? directorScripts[charName] : '') || '';
+    // Old snapshots remain usable only where their name identifies one card.
+    if (!scriptCounterSnapshots.has(char.avatar) && uniqueName && scriptCounterSnapshots.has(charName)) {
+        scriptCounterSnapshots.set(char.avatar, scriptCounterSnapshots.get(charName));
+    }
     // On swipe/regenerate, restore the counter to what it was when this
     // character's script was first rendered this round. On first render,
     // snapshot the current counter for future restores.
     const isReroll = roundGenerateType === 'swipe' || roundGenerateType === 'regenerate';
-    if (isReroll && scriptCounterSnapshots.has(charName)) {
-        roundCounterSet(scriptCounterSnapshots.get(charName));
+    if (isReroll && scriptCounterSnapshots.has(char.avatar)) {
+        roundCounterSet(scriptCounterSnapshots.get(char.avatar));
     } else if (!isReroll) {
-        scriptCounterSnapshots.set(charName, roundCounterGet());
+        scriptCounterSnapshots.set(char.avatar, roundCounterGet());
         // Persist to chat_metadata for crash/tab-close recovery
         const cm = chat_metadata[EXT_KEY];
         if (cm) {
@@ -257,8 +267,7 @@ async function getScriptForChar(charName, extraContext) {
     // (Previously it was injected after renderPrompt via a sentinel,
     // which left nested {{?directorLedger:xxx}} unresolved.)
     const combined = wrapper.split('{{script}}').join(script);
-    const char = characters.find(c => c.name === charName);
-    const ctx = { character: charName, avatar: char?.avatar, ...extraContext };
+    const ctx = { ...extraContext, character: charName, avatar: char.avatar, characterNameAmbiguous: !uniqueName };
     return await renderPrompt(combined, ctx, {
         maxPasses: settings.templateMaxPasses,
         recursive: settings.templateRecursive,
@@ -810,6 +819,7 @@ function scoreCharacter(chId, recentMessages) {
     const avatar = char.avatar;
     const result = scoreFormulaCharacter({
         character: char,
+        nameAmbiguous: characters.some(c => c.avatar !== char.avatar && c.name === char.name),
         recentMessages,
         chat,
         scoreWeights: settings.scoreWeights,
@@ -1095,7 +1105,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             }
             if (!takeoverDecision.reroll) roundSpeakerCount++;
             // Safety-net script injection: ensure the correct per-character script is set
-            const takeoverScript = await getScriptForChar(char.name, {
+            const takeoverScript = await getScriptForChar(char.avatar, {
                 speakerIndex: roundSpeakerCount,
                 speakerIndex0: roundSpeakerCount - 1,
                 speakerCount: llmPickedAvatars?.length || 0,
@@ -1136,7 +1146,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             // Re-rolls operate on an existing message, not a new Director
             // decision. Keep script context if available, but do not mutate
             // the plan cursor, spoken set, or round speaker count.
-            const rerollScript = await getScriptForChar(char.name, {
+            const rerollScript = await getScriptForChar(char.avatar, {
                 speakerIndex: Math.max(roundSpeakerCount, 1),
                 speakerIndex0: Math.max(roundSpeakerCount - 1, 0),
                 speakerCount: llmPickedAvatars?.length || 0,
@@ -1150,7 +1160,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         llmSpokenSet = new Set(llmTurn.spokenAvatars);
         llmCursor = llmTurn.cursor;
         roundSpeakerCount++;
-        const plannedScript = await getScriptForChar(char.name, {
+        const plannedScript = await getScriptForChar(char.avatar, {
             speakerIndex: roundSpeakerCount,
             speakerIndex0: roundSpeakerCount - 1,
             speakerCount: llmPickedAvatars?.length || 0,
@@ -1186,7 +1196,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         llmSpokenSet.add(avatar);
         roundSpeakerCount++;
         // Inject per-character director script
-        const charScript = await getScriptForChar(char.name, {
+        const charScript = await getScriptForChar(char.avatar, {
             speakerIndex: roundSpeakerCount,
             speakerIndex0: roundSpeakerCount - 1,
             speakerCount: llmPickedAvatars?.length || 0,
@@ -1285,6 +1295,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
                 const members = group?.members?.filter(a => !group.disabled_members?.includes(a)) || [];
                 const recovered = recoverDirectorPlan(lastPlan, {
                     enabledMembers: members,
+                    characters,
                     maxSpeakers: settings.llmMaxSpeakers,
                     matchCharacterByName,
                 });
@@ -1318,7 +1329,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
                     if (lastPlan.scripts && typeof lastPlan.scripts === 'object') {
                         for (const [name, script] of Object.entries(lastPlan.scripts)) {
                             const c = matchCharacterByName(name, members);
-                            if (c) directorScripts[c.name] = script;
+                            if (c) directorScripts[directorScriptKey(c, characters)] = script;
                         }
                     }
                     roundInitialized = true;
@@ -2137,7 +2148,7 @@ async function runManualOrderedGeneration() {
             // Inject per-character director script with order context.
             // Use original plan position so retries/skips don't shift the index.
             const origPos = llmPickedAvatars.indexOf(avatar);
-            const charScript = await getScriptForChar(characters[chId].name, {
+            const charScript = await getScriptForChar(characters[chId].avatar, {
                 speakerIndex: origPos + 1,
                 speakerIndex0: origPos,
                 speakerCount: llmPickedAvatars.length,
@@ -2364,14 +2375,14 @@ async function initForceSpeakLLM(char, avatar) {
         if (parsed.scripts && typeof parsed.scripts === 'object') {
             for (const [name, s] of Object.entries(parsed.scripts)) {
                 const c = matchCharacterByName(name, enabledMembers);
-                if (c && c.name === char.name && s) { script = s; break; }
+                if (c && c.avatar === char.avatar && s) { script = s; break; }
             }
         }
         if (!script && parsed.script) script = parsed.script;
 
         if (script) {
-            directorScripts[char.name] = script;
-            const charScript = await getScriptForChar(char.name, {
+            directorScripts[directorScriptKey(char, characters)] = script;
+            const charScript = await getScriptForChar(char.avatar, {
                 speakerIndex: 1, speakerIndex0: 0, speakerCount: 1,
             });
             if (charScript) {
@@ -2463,6 +2474,7 @@ async function initRoundWithLLM() {
             await addToDirectorHistory({
                 ...parsed,
                 speakers: parsed.names || capped.map(a => characters.find(c => c.avatar === a)?.name || '?'),
+                speakerAvatars: [...capped],
                 reason: parsed.reason ?? '',
                 scripts: parsed.scripts ?? {},
                 loreAssignments: parsed.loreAssignments ?? {},
@@ -2475,7 +2487,7 @@ async function initRoundWithLLM() {
             for (const [name, script] of Object.entries(parsed.scripts)) {
                 if (script && typeof script === 'string') {
                     const c = matchCharacterByName(name, enabledMembers);
-                    if (c) directorScripts[c.name] = script;
+                    if (c) directorScripts[directorScriptKey(c, characters)] = script;
                 }
             }
         }
@@ -2506,6 +2518,7 @@ async function initRoundWithLLM() {
         if (lastPlan && Array.isArray(lastPlan.speakers) && lastPlan.speakers.length > 0) {
             const recovered = recoverDirectorPlan(lastPlan, {
                 enabledMembers,
+                characters,
                 maxSpeakers: settings.llmMaxSpeakers,
                 matchCharacterByName,
             });
@@ -2530,7 +2543,7 @@ async function initRoundWithLLM() {
                     directorScripts = {};
                     for (const [name, script] of Object.entries(lastPlan.scripts)) {
                         const c = matchCharacterByName(name, enabledMembers);
-                        if (c) directorScripts[c.name] = script;
+                        if (c) directorScripts[directorScriptKey(c, characters)] = script;
                     }
                 }
                 if (settings.llmRespectOrder) roundOrchestrator.setPending(true);
@@ -2552,40 +2565,9 @@ async function initRoundWithLLM() {
  * Returns the character object or null.
  */
 function matchCharacterByName(name, enabledMembers) {
-    if (!name || typeof name !== 'string') return null;
-
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-
-    // 1. Exact match (case-sensitive)
-    for (const avatar of enabledMembers) {
-        const c = characters.find(c => c.avatar === avatar);
-        if (c && c.name === trimmed) return c;
-    }
-
-    // 2. Case-insensitive exact match
-    const lower = trimmed.toLowerCase();
-    for (const avatar of enabledMembers) {
-        const c = characters.find(c => c.avatar === avatar);
-        if (c && c.name.toLowerCase() === lower) return c;
-    }
-
-    // 3. Substring match — character name contains the LLM name or vice versa
-    let best = null;
-    let bestLen = 0;
-    for (const avatar of enabledMembers) {
-        const c = characters.find(c => c.avatar === avatar);
-        if (!c) continue;
-        const cLower = c.name.toLowerCase();
-        if (cLower.includes(lower) || lower.includes(cLower)) {
-            if (c.name.length > bestLen) {
-                best = c;
-                bestLen = c.name.length;
-            }
-        }
-    }
-
-    return best;
+    const matched = matchEnabledCharacter(name, enabledMembers, characters);
+    if (!matched && typeof name === 'string' && name.trim()) log(`Unknown or ambiguous speaker reference: "${name}" — use the exact avatar id for same-name cards`);
+    return matched;
 }
 
 function getDefaultLlmPrompt() {

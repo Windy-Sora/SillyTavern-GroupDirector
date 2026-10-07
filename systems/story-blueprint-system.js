@@ -478,6 +478,25 @@ function sanitizeDoneSignals(doneSignals, steps, chatLength, source = 'import') 
     return sanitized;
 }
 
+// Recovery copies may be sparse or come from a different progression mode.
+// Validate against every node without promoting them into the active progress.
+function sanitizeLegacyDoneSignals(signals, nodes, chatLength) {
+    const steps = flattenNodes(nodes, { mode: 'all', level: 0 });
+    const indexes = new Map(steps.map((step, index) => [step.id, index]));
+    const seen = new Set();
+    const numeric = value => typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : NaN;
+    return signals.flatMap(signal => {
+        if (!isJsonObject(signal) || typeof signal.nodeId !== 'string' || !indexes.has(signal.nodeId) || seen.has(signal.nodeId)) return [];
+        seen.add(signal.nodeId);
+        const length = numeric(signal.chatLength);
+        const time = numeric(signal.time);
+        return [{ nodeId: signal.nodeId, stepIndex: indexes.get(signal.nodeId),
+            chatLength: Number.isFinite(length) ? Math.min(Math.max(0, length), chatLength) : chatLength,
+            time: Number.isFinite(time) && time >= 0 ? time : Date.now(),
+            source: typeof signal.source === 'string' && signal.source ? signal.source : 'import' }];
+    });
+}
+
 function progressScopeKey(mode, level) {
     if (mode === 'all') return 'all';
     if (mode === 'level') {
@@ -1218,7 +1237,7 @@ ${schema}`;
             state.progressTracks = tracks;
             state.doneSignals = active.doneSignals;
             state.completeNoticeKey = '';
-            if (Array.isArray(payload.legacyDoneSignals)) state.legacyDoneSignals = clone(payload.legacyDoneSignals);
+            if (Array.isArray(payload.legacyDoneSignals)) state.legacyDoneSignals = sanitizeLegacyDoneSignals(payload.legacyDoneSignals, state.blueprint.nodes, chatLength);
             if (options.persist !== false) saveChatConditional?.();
         }
         return { ok: true };

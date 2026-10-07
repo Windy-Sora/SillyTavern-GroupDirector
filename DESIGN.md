@@ -117,6 +117,17 @@ buildContextPool({ group, enabledMembers, ... }) → {
 
 Agent 通过 `contextAccess` 声明需要哪些字段，Pool 通过 Proxy 强制约束。
 
+`createScopedPool` 使用独立的空原型只读 facade：直接读取、`in`、枚举、属性描述符和对象展开都只暴露已声明字段；禁止反射定义、删除、替换原型及冻结 facade，不修改原 pool。方法仍绑定原 pool，保留已有 receiver 约定；这是受信同页 Agent 的访问纪律与纵深防御，不是任意 JavaScript 的隔离沙箱，也不深度冻结允许读取的数据。
+
+### 2.3.1 角色身份、触发与导入边界（2026-10-07）
+
+- 同名卡片：可用角色列表为同名卡显示 `speaker id`（avatar 文件名），Director 的 `speakers`、`scripts`、`loreAssignments` 可用该 ID 精确指定；不明确的同名或并列模糊匹配会跳过并写日志。无歧义名称的既有精确、忽略大小写及最长模糊匹配继续工作。自定义 Prompt 应保留 `{{characters}}` 或自行提供精确 ID。
+- 剧本按可区分的角色归属：唯一名称键保持旧脚本执行器兼容，同名卡使用 avatar 键。注入和计数快照按 avatar 处理；旧名称键、旧计数快照仅在全角色列表中名称唯一时兼容读取。新导演历史增加 `speakerAvatars`，恢复优先读取真实 ID；只有同名名称的旧历史无法可靠恢复，不猜测归属。世界书分配也优先读取 avatar 键，同名的旧名称分配不共用。
+- 公式评分：酒馆消息中的 `original_avatar`（其次 `avatar`）优先于显示名称，其他角色同名消息不算自身发言。无真实 ID 的旧消息只在名称无歧义时参与发言次数与最近发言统计；纯文本提及同名名称仍可能影响多个同名角色，不能凭文本补造身份。
+- 自动关键词：过滤一组常见英文停用词；Latin 词按词边界匹配，避免 `hero` 命中 `heroine`，中文等非 Latin 关键词保持子串匹配。此规则适用于从角色描述自动提取的触发词，不修改 Prompt 或世界书的匹配规则。
+- 蓝图进度导入：`legacyDoneSignals` 仅作为恢复备份，过滤非对象、重复和未知节点，按全部现有节点校正索引、消息锚点、时间与来源，剥离未知字段；保留跨层级及非连续的合法备份，不提升为当前进度。不导入进度时不保留这些备份。
+- Anthropic：仅对 `https://api.anthropic.com` 的直连生成和连接测试添加官方 SDK 使用的 `anthropic-dangerous-direct-browser-access: true`；兼容代理保持原请求头。浏览器直连密钥仍由本地浏览器使用，并非服务端代管；请求头修复不等于已完成真实付费接口或所有代理的验收。
+
 ### 2.4 Execution Trace（可观测性层）
 
 Agent 执行过程完全可追溯。通过 `config.enableTrace = true` 开启，零开销关闭。

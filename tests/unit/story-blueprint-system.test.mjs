@@ -296,6 +296,27 @@ test('export and import round-trip every progress track while clean export exclu
     assert.equal(target.system.getProgress().doneCount, 0);
 });
 
+test('blueprint imports sanitize sparse legacy recovery signals without promoting them into active progress', () => {
+    const { system, metadata } = fixture();
+    const blueprint = { nodes: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] };
+    assert.deepEqual(system.applyImportText(JSON.stringify({ blueprint, doneSignals: [], legacyDoneSignals: [
+        null, 'bad', 4, { nodeId: 'missing' },
+        { nodeId: 'b', stepIndex: 99, chatLength: -2, time: { valueOf: 1, toString: 1 }, source: { bad: true }, extra: 'drop' },
+        { nodeId: 'b', time: 99 }, { nodeId: 'a', chatLength: 999, time: 12, source: 'manual' },
+    ] }), { includeProgress: true }), { ok: true });
+    const legacy = metadata.gd.storyBlueprint.legacyDoneSignals;
+    assert.deepEqual(legacy.map(s => s.nodeId), ['b', 'a']);
+    assert.equal(legacy[0].stepIndex, 1);
+    assert.equal(legacy[0].chatLength, 0);
+    assert.equal(legacy[0].source, 'import');
+    assert.ok(Number.isFinite(legacy[0].time));
+    assert.equal('extra' in legacy[0], false);
+    assert.deepEqual(legacy[1], { nodeId: 'a', stepIndex: 0, chatLength: 2, time: 12, source: 'manual' });
+    assert.equal(system.getProgress().doneCount, 0);
+    system.applyImportText(JSON.stringify({ blueprint, doneSignals: [], legacyDoneSignals: [{ nodeId: 'a' }] }), { includeProgress: false });
+    assert.equal(metadata.gd.storyBlueprint.legacyDoneSignals, undefined);
+});
+
 test('failed blueprint import restores all mode-specific tracks', async () => {
     let attempts = 0;
     const { system, settings } = fixture({ saveChatConfirmed: async () => {

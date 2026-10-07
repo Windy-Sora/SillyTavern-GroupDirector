@@ -47,7 +47,7 @@ export async function renderPrompt(template, context, options = {}) {
     // Useful for teaching the LLM DSL syntax without evaluation.
     const rawSlots = [];
     const RAW_MARKER = '\x00GDRAW';
-    let result = template.replace(/\{\[\{([\s\S]*?)\}\]\}/g, (_m, inner) => {
+    let result = protectRawTemplates(template, inner => {
         const idx = rawSlots.length;
         rawSlots.push(inner);
         return `${RAW_MARKER}${idx}\x00`;
@@ -164,6 +164,22 @@ export async function renderPrompt(template, context, options = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+
+function protectRawTemplates(template, protect) {
+    const tags = /\{\[\{|\}\]\}/g;
+    let result = '', cursor = 0, start = -1, depth = 0, match;
+    while ((match = tags.exec(template))) {
+        if (match[0] === '{[{') {
+            if (depth++ === 0) start = match.index;
+        } else if (depth && --depth === 0) {
+            result += template.slice(cursor, start) + protect(template.slice(start + 3, match.index));
+            cursor = tags.lastIndex;
+        }
+    }
+    // A malformed raw region must not accidentally execute its tail.
+    if (depth) return result + template.slice(cursor, start) + protect(template.slice(start));
+    return result + template.slice(cursor);
+}
 
 /**
  * Phase 2 + Phase 3: resolve simple placeholders and path queries
