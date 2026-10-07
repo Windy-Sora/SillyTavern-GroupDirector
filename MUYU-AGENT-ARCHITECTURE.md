@@ -18,7 +18,7 @@
 
 2026-10-06 优化D第二轮：四个配置／变量／整单所有者试点联合模块装配，tool-plan／artifact-owners／Run生命周期及工具选择实际消费描述。实例内artifact-leases保存私有预览资源归属，续接不释放、发布转移、删除／卸载精确释放；变量与整单共享仓库不由单模块clear。保留其他模块的兼容装配、原权限和GUI，D尚未全量迁移，见[合同](muyu/modules/ASSEMBLY.md)。
 
-2026-10-06 优化D首轮：动作协调器的创建与生命周期装配提取至`muyu/actions/builtins.js`／`assembly.js`，控制器只调用公共busy、失效、排空、清空和回执收集，保留原GUI批准门禁。24个所有者显式映射25种产物及目标／writer，未知kind不回落整单；已派发写入等待物理排空，不因停止或面板重建撤销。联合模块装配、工具分组和其他资源生命周期尚未完成，详见[动作装配合同](muyu/actions/ASSEMBLY.md)及[优化进度](MUYU-AGENT-OPTIMIZATION.md)。本处D为优化轮次，与下文历史Skill A–D不同。
+2026-10-06 优化D首轮历史记录：动作协调器的创建与生命周期装配提取至`muyu/actions/builtins.js`／`assembly.js`，控制器只调用公共busy、失效、排空、清空和回执收集，保留原GUI批准门禁。24个所有者显式映射25种产物及目标／writer，未知kind不回落整单；已派发写入等待物理排空，不因停止或面板重建撤销。后续装配状态以[动作装配合同](muyu/actions/ASSEMBLY.md)及[能力总表](MUYU-AGENT-STATUS.md)为准。本处D为优化轮次，与下文历史Skill A–D不同。
 
 2026-10-05 模型来源扩展不改变 Agent 内核：`createChatCompletionsAdapter` 共用协议映射／解码／私有轨迹，独立 HTTP 与 `host/model-connection.js` 酒馆官方服务分别提供传输；后者只继承连接，不调用普通聊天生成、全局 ToolManager 或角色提示词。控制器统一组装，连接快照和密钥事件使旧任务／授权失效；GUI只选择来源，不直接持有宿主密钥。独立接口保留，首次宿主自动就绪不恢复授权、不主动发请求。首版范围和真实宿主验收边界见 [模型合同](muyu/model/README.md)。
 
@@ -122,11 +122,11 @@ generation_batch.prepare／execute已装配；prepare仅要求选中生成目录
 
 2026-10-01 增量：长期记忆第一阶段已实现独立账户设置仓库、GUI 增删查改、模型按需检索，以及明确用户原话保存／指定记录删除。默认关闭，不自动提炼或整库注入，不继承工具权限；受保护资料不能由模型写进记忆绕过授权。实现与扩展边界见 [长期记忆合同](muyu/memory/README.md)。自动整理、来源权限继承和语义检索仍是后续阶段；正文旧“首版／规划”描述不得据此扩张现有能力。
 
-状态：2026-10-02 按代码复核。本文区分 **已实现** 与 **规划中**；规划中的对象和流程是开发合同，不代表现有 API。当前行为以 [暮羽实现说明](muyu/README.md)、[Provider 执行合同](muyu/modules/providers/EXECUTION.md)、[配置应用合同](muyu/actions/README.md) 和实际测试为准。[开发规范](MUYU-AGENT-DEVELOPMENT.md)、[阶段路线](MUYU-AGENT-ROADMAP.md) 提供模块细节和历次验收记录。
+状态：2026-10-02 按代码复核。本文区分 **已实现** 与 **规划中**；规划中的对象和流程是开发合同，不代表现有 API。当前行为以 [暮羽实现说明](muyu/README.md)、[Provider 执行合同](muyu/modules/providers/EXECUTION.md)、[配置应用合同](muyu/actions/README.md) 和实际测试为准。[开发规范](MUYU-AGENT-DEVELOPMENT.md)提供模块接入约束；旧阶段路线和验收记录可从Git历史恢复。
 
 ## 1. 定位与目标
 
-当前性入口（2026-10-05）：实现范围以[能力总表](MUYU-AGENT-STATUS.md)及模块合同为准；后续表达、读取、任务状态和装配收敛见[优化工作单](MUYU-AGENT-OPTIMIZATION.md)。下文带旧数量／未实现状态的条目是历史基线，不据其否认后续已接工具与Skill；不变量和分层约束继续保留。
+当前性入口：实现范围以[能力总表](MUYU-AGENT-STATUS.md)及模块合同为准，后续需求另行确定。下文带旧数量／未实现状态的条目是历史基线，不据其否认后续已接工具与Skill；不变量和分层约束继续保留。
 
 暮羽是运行在 Group Director 插件内、面向 SillyTavern 当前用户与聊天的任务 Agent。聊天框负责交互；任务、授权、上下文、工具执行和结果归属由应用层持有。它应逐步完成以下工作：
 

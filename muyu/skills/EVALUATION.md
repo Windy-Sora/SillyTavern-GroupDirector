@@ -97,7 +97,7 @@ DeepSeek默认预算下共16场景执行、72次请求（7首轮＋2修订＋1�
 
 专项59项通过；全量2884项，2883通过、1跳过、0失败，静态检查752份源码／13份JSON通过，历史BUG契约17/17通过。常驻指令仍遵守4000字符上限，压缩重复说明而非提升上限。原始报告在外部harness：`comprehensive-phase1-20261005-results.json`、`comprehensive-phase1-polish-20261005-results.json`、`comprehensive-phase1-bundle-polish-20261005-results.json`、`comprehensive-phase1-final-20261005-results.json`。无真实ST布局／CSP／持久化验收，无commit或push。
 
-217场景执行及剩余问题见[综合测试记录](../../MUYU-COMPREHENSIVE-TEST-20261005.md)。主批179题155回答完成／23澄清／1协议错误（默认预算同题复测成功）；不能把结构或退出状态当语义正确率。优先补暮羽GUI指南、精确整单支持合同、参数与运行证据区分；不是继续堆叠常驻Skill正文。原始报告与harness保留仓库外，不进release。
+历史217场景执行的详细记录可从Git历史恢复。主批179题155回答完成／23澄清／1协议错误（默认预算同题复测成功）；不能把结构或退出状态当语义正确率。当时优先补暮羽GUI指南、精确整单支持合同、参数与运行证据区分；不是继续堆叠常驻Skill正文。原始报告与harness保留仓库外，不进release。
 
 ### 综合反馈第二轮修正
 
