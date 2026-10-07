@@ -46,11 +46,11 @@ export function sanitizeJson(raw) {
                 if (next === '\\' && i + 1 < raw.length) {
                     const escaped = raw[++i];
                     token += escaped;
-                    value += escaped === quote || escaped === '\\' ? escaped : `\\${escaped}`;
+                    value += escaped === "'" && quote === "'" ? escaped : `\\${escaped}`;
                 } else if (next === quote) { closed = true; break; }
-                else value += next;
+                else value += JSON.stringify(next).slice(1, -1);
             }
-            result += quote === "'" && closed ? JSON.stringify(value) : token;
+            result += quote === "'" && closed ? `"${value}"` : token;
         } else if (ch === ',' && /^\s*[}\]]/.test(raw.slice(i + 1))) {
             continue;
         } else if (/[​-‍﻿]/.test(ch)) {

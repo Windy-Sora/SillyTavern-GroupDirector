@@ -12,6 +12,8 @@ import { createCustomAgentSystem } from '../../systems/custom-agent-system.js';
 import { createProviderModule } from '../../muyu/modules/providers/index.js';
 import { createVariableDraftPort } from '../../muyu/host/variable-draft.js';
 import { createVariableWriter } from '../../muyu/host/variable-write.js';
+import { normalizeDirectorScripts } from '../../systems/director-plan.js';
+import { matchEnabledCharacter } from '../../utils/character-identity.js';
 
 const deferred = () => {
     let resolve, reject;
@@ -26,6 +28,40 @@ test('review P3-11: valid JSON strings retain apostrophes, commas, fences and Un
     assert.equal(sanitizeJson(text), text);
     assert.deepEqual(parseLlmResponse(`\`\`\`json\n${text}\n\`\`\``), value);
     assert.deepEqual(parseLlmResponse("{'speakers':['Alice',], 'reason':'ok',}"), { speakers: ['Alice'], reason: 'ok' });
+});
+
+test('BUG-D1D-01: single-quoted Unicode script keys still associate with the actual character', () => {
+    const text = String.raw`{"speakers":["Alice Smith"], "reason":'first\nsecond', "scripts":{'Alice\u0020Smith':'one\ntwo'}}`;
+    const parsed = parseLlmResponse(text);
+    assert.deepEqual(parsed, { speakers: ['Alice Smith'], reason: 'first\nsecond', scripts: { 'Alice Smith': 'one\ntwo' } });
+    const characters = [{ avatar: 'alice.png', name: 'Alice Smith' }];
+    const enabledMembers = ['alice.png'];
+    assert.deepEqual(normalizeDirectorScripts(parsed.scripts, {
+        enabledMembers, characters,
+        matchCharacterByName: ref => matchEnabledCharacter(ref, enabledMembers, characters),
+    }), { 'Alice Smith': 'one\ntwo' });
+});
+
+test('single-quoted repair decodes standard escapes exactly once in keys and values', () => {
+    const values = ['line\nnext\r\ttab\b\f', 'Alice Smith', '猫头鹰 🦉', '\ud800',
+        'quote " and apostrophe \'', String.raw`C:\notes\n\u0041`, String.raw`slash\'quote`,
+        'raw\nnewline', 'braces { }, comma ,], fences ```json, \u200b'];
+    const asSingle = value => `'${JSON.stringify(value).slice(1, -1).replace(/'/g, "\\'")}'`;
+    for (const value of values) {
+        const text = `{${asSingle(value)}:${asSingle(value)},}`;
+        assert.deepEqual(JSON.parse(sanitizeJson(text)), { [value]: value }, text);
+        const standard = JSON.stringify({ [value]: value });
+        assert.equal(sanitizeJson(standard), standard);
+    }
+    assert.deepEqual(JSON.parse(sanitizeJson(String.raw`{'\u0041':'\u732b\uD83E\uDD89', 'slash':'a\/b', 'quote':'a\"b'}`)),
+        { A: '猫🦉', slash: 'a/b', quote: 'a"b' });
+});
+
+test('single-quoted repair does not silently turn invalid JSON escapes into literal text', () => {
+    for (const raw of [String.raw`{'value':'bad\q'}`, String.raw`{'value':'bad\uZZZZ'}`, String.raw`{'value':'bad\u12'}`]) {
+        assert.throws(() => JSON.parse(sanitizeJson(raw)), SyntaxError);
+        assert.equal(parseLlmResponse(raw), null);
+    }
 });
 
 test('review P3-8: recovery finds speakers, not a bracket in reason', () => {
