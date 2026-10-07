@@ -1156,9 +1156,9 @@
 .gd-muyu-panel :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* Plugin-wide floating surface; no full-screen overlay or business lifecycle ownership. */
-.gd-floating-root { color: var(--SmartThemeBodyColor, #eee); font-family: inherit; }
+.gd-floating-root { color: var(--SmartThemeBodyColor, #eee); font-family: inherit; position: fixed; z-index: 3100; width: 0; height: 0; pointer-events: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
 .gd-floating-root [hidden] { display: none !important; }
-.gd-floating-ball, .gd-floating-window, .gd-floating-menu { position: fixed; box-sizing: border-box; z-index: 3100; }
+.gd-floating-ball, .gd-floating-window, .gd-floating-menu { position: fixed; box-sizing: border-box; z-index: 3100; pointer-events: auto; }
 .gd-floating-ball { border-radius: 50%; border: 1px solid var(--SmartThemeBorderColor, #777); color: inherit; background: var(--SmartThemeBlurTintColor, #252530); box-shadow: 0 4px 18px #0006; cursor: grab; touch-action: none; font-weight: 700; }
 .gd-floating-ball::after { content: ''; position: absolute; right: 0; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #888; border: 1px solid #222; }
 .gd-floating-ball[data-status="running"]::after { background: #68b5ff; }
@@ -1179,6 +1179,25 @@
 @media (max-width: 480px) { .gd-floating-window { resize: none; } }
 
 /* Chat-first Muyu: only the transcript scrolls during a normal conversation. */
+.gd-floating-root[data-mobile="true"] .gd-floating-window {
+    min-width: 0; min-height: 0; max-width: none; max-height: none; resize: none; border-radius: 14px;
+    background: #252530; background: rgb(from var(--SmartThemeBlurTintColor, #252530) r g b / 1); backdrop-filter: none;
+}
+.gd-floating-root[data-mobile="true"] .gd-floating-header { flex-wrap: nowrap; padding: 6px 8px; gap: 4px; cursor: default; touch-action: auto; }
+.gd-floating-root[data-mobile="true"] .gd-floating-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gd-floating-root[data-mobile="true"] .gd-floating-header button { min-width: 40px; min-height: 40px; padding: 6px 8px; flex-shrink: 0; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-session-bar { padding: 6px 10px; gap: 4px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-session-bar .menu_button { min-height: 40px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-transcript { padding: 10px; min-height: 0; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-composer { padding: 6px 10px 8px; max-height: 50%; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-input-box { padding: 6px; border-radius: 14px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-input-box textarea.text_pole { font-size: 16px; min-height: 40px; max-height: 90px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-input-toolbar .menu_button { min-height: 40px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-input-hint { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-settings { padding: 8px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-settings-page > details,
+.gd-floating-root[data-mobile="true"] .gd-muyu-settings-page > section,
+.gd-floating-root[data-mobile="true"] .gd-muyu-settings-card { padding: 10px; }
 .gd-floating-ball { z-index: 3103; }
 .gd-floating-menu { z-index: 3104; }
 .gd-floating-header-actions { display: flex; gap: 4px; }

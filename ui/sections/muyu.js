@@ -348,7 +348,14 @@ registerSection('muyu', ctx => {
                 },
             }),
         });
-        owner.floating = createFloatingShell({ registry: owner.floatingRegistry, lang: ctx.settings.lang });
+        owner.floating = createFloatingShell({ registry: owner.floatingRegistry, lang: ctx.settings.lang,
+            getBallPosition: () => (owner.currentContext || ctx).settings.muyuFloatingPosition,
+            saveBallPosition: position => {
+                const current = owner.currentContext || ctx;
+                current.settings.muyuFloatingPosition = position;
+                return current.saveMuyuCredentials();
+            },
+        });
         window.addEventListener('pagehide', event => {
             if (event.persisted) return;
             owner.floating.dispose(); owner.floatingRegistry.dispose(); void owner.controller.dispose().catch(() => {});

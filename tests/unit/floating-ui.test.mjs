@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFloatingRegistry } from '../../ui/floating/registry.js';
 import { createFloatingShell, fitFloatingRect, fitSidebarRect } from '../../ui/floating/shell.js';
+import { visibleViewport, validBallPosition, dockedBallRect } from '../../ui/floating/geometry.js';
 
 const entry = (id, overrides = {}) => ({ id, label: { zh: id, en: id }, icon: '*', order: 10, mount: () => () => {}, ...overrides });
 test('Floating ball visibility survives status updates without closing the active view', () => {
@@ -55,13 +56,13 @@ class Element {
     get firstElementChild() { return this.children[0]; }
     closest(tag) { return this.tag === tag ? this : this.parent?.closest(tag); }
 }
-function surface(onMount = () => {}, windowOptions = {}) {
+function surface(onMount = () => {}, windowOptions = {}, shellOptions = {}) {
     const doc = { createElement: tag => new Element(tag, doc) }; doc.body = new Element('body', doc);
     const events = new Map(), win = { innerWidth: 1000, innerHeight: 800, addEventListener(k, fn) { events.set(k, fn); }, removeEventListener(k) { events.delete(k); } };
     Object.assign(win, windowOptions);
     const registry = createFloatingRegistry(); let mounts = 0, disposals = 0;
     registry.register(entry('chat', { mount: (root, options) => { mounts++; onMount(options); return () => disposals++; } }));
-    const shell = createFloatingShell({ registry, doc, win });
+    const shell = createFloatingShell({ registry, doc, win, ...shellOptions });
     const all = (el = doc.body) => [el, ...el.children.flatMap(n => all(n))];
     const find = cls => all().find(e => e.className === cls);
     return { doc, win, events, registry, shell, find, mounts: () => mounts, disposals: () => disposals };
@@ -72,6 +73,58 @@ test('Single entry opens directly, repeated open focuses existing view; close te
     f.shell.close(); assert.equal(f.disposals(), 1); assert.equal(f.doc.activeElement, ball);
     f.shell.open('chat'); assert.equal(f.mounts(), 2); f.shell.dispose(); f.shell.dispose();
     assert.equal(f.disposals(), 2); assert.equal(f.events.size, 0); assert.equal(f.doc.body.children.length, 0); f.registry.dispose();
+});
+
+test('Mobile viewport respects visible offsets, safe insets and keyboard recovery without remounting', () => {
+    const listeners = new Map(), visual = { width: 390, height: 760, offsetLeft: 0, offsetTop: 0,
+        addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: key => listeners.delete(key) };
+    const f = surface(() => {}, { innerWidth: 390, innerHeight: 844, visualViewport: visual,
+        getComputedStyle: () => ({ paddingTop: '20px', paddingBottom: '10px', paddingLeft: '0px', paddingRight: '0px' }) });
+    f.shell.open('chat');
+    const frame = f.find('gd-floating-window'), ball = f.find('gd-floating-ball');
+    assert.equal(frame.style.width, '374px'); assert.equal(frame.style.top, '28px'); assert.equal(frame.style.height, '714px');
+    assert.equal(ball.hidden, true);
+    visual.height = 360; visual.offsetTop = 35; listeners.get('resize')(); listeners.get('scroll')();
+    assert.equal(frame.style.top, '63px'); assert.equal(frame.style.height, '314px'); assert.equal(f.mounts(), 1);
+    visual.height = 760; visual.offsetTop = 0; listeners.get('resize')();
+    assert.equal(frame.style.height, '714px'); assert.equal(f.mounts(), 1);
+    f.shell.close(); assert.equal(ball.hidden, false);
+    f.shell.dispose(); assert.equal(listeners.size, 0); f.registry.dispose();
+});
+
+test('Mobile drag docks, stores a proportional position and restores it across surfaces', () => {
+    let saved;
+    const f = surface(() => {}, { innerWidth: 400, innerHeight: 800 }, { saveBallPosition: p => { saved = p; } });
+    const ball = f.find('gd-floating-ball');
+    ball.onpointerdown({ button: 0, pointerId: 1, target: ball, clientX: 370, clientY: 700 });
+    ball.onpointermove({ pointerId: 1, clientX: 30, clientY: 390 }); ball.onpointerup();
+    assert.equal(saved.side, 'left'); assert.ok(saved.fraction >= 0 && saved.fraction <= 1);
+    assert.equal(ball.style.left, '-16px'); ball.onclick(); assert.equal(f.mounts(), 0);
+    ball.onclick(); assert.equal(f.mounts(), 1); assert.equal(ball.hidden, true);
+    f.shell.close(); assert.equal(ball.hidden, false); f.shell.dispose(); f.registry.dispose();
+    const restored = surface(() => {}, { innerWidth: 320, innerHeight: 500 }, { getBallPosition: () => saved });
+    assert.equal(restored.find('gd-floating-ball').style.top, 8 + 436 * saved.fraction + 'px');
+    assert.equal(restored.find('gd-floating-ball').style.left, '-16px');
+    restored.shell.dispose(); restored.registry.dispose();
+});
+
+test('Mobile layout preserves desktop geometry and rejects corrupt saved positions', () => {
+    let port;
+    const f = surface(p => { port = p; }); f.shell.open('chat');
+    const frame = f.find('gd-floating-window');
+    f.win.innerWidth = 400; f.events.get('resize')(); port.setSidebarOpen(true);
+    assert.equal(frame.style.width, '384px'); assert.equal(frame.style.height, '784px');
+    const header = f.find('gd-floating-header');
+    header.onpointerdown({ button: 0, pointerId: 2, target: header, clientX: 100, clientY: 20 });
+    header.onpointermove({ pointerId: 2, clientX: 300, clientY: 300 }); header.onpointerup();
+    assert.equal(frame.style.top, '8px');
+    port.setSidebarOpen(false); f.win.innerWidth = 1000; f.events.get('resize')();
+    assert.equal(frame.style.width, '520px'); assert.equal(frame.style.height, '660px'); assert.equal(frame.style.top, '70px');
+    f.shell.dispose(); f.registry.dispose();
+    for (const bad of [null, {}, { side: 'left', fraction: NaN }, { side: 'right', fraction: 2 }, { side: 'no', fraction: 0.5 }])
+        assert.deepEqual(validBallPosition(bad), { side: 'right', fraction: 0.9 });
+    const area = visibleViewport({ innerWidth: 400, innerHeight: 800 });
+    assert.equal(dockedBallRect({ side: 'left', fraction: 0 }, area).y, 8);
 });
 
 test('Bubble toggles an active window closed and reopens without double-mounting', () => {

@@ -122,7 +122,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const transcript = node('div', '', chat); transcript.className = 'gd-muyu-transcript';
     const welcome = node('div', '', transcript); welcome.className = 'gd-muyu-welcome';
     node('h3', t('今天想一起解决什么？', 'What shall we work on today?'), welcome);
-    node('p', t('你好，我是暮羽。可以查阅已授权的聊天资料、排查记忆和导演状态，或整理配置草稿。', 'Hi, I’m Muyu. I can consult authorized chat data, diagnose memory/director state, or prepare configuration drafts.'), welcome);
+    node('p', t('你好，我是暮羽，你的猫头鹰搭档。聊剧情、查资料、排问题，或一起调整配置、管理世界书和角色卡——直接说你想做什么就好。', 'Hi, I’m Muyu, your owl companion. We can explore the story, look things up, troubleshoot, adjust settings, or manage world books and character cards—just tell me what you have in mind.'), welcome);
     const history = node('div', '', transcript); history.className = 'gd-muyu-history'; history.setAttribute('aria-label', t('对话记录', 'Conversation'));
     const cards = node('div', '', transcript);
     const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang });
