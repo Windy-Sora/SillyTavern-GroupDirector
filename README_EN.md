@@ -7,6 +7,8 @@
 
 > ⚠️ **This is a development version and may be unstable. For the stable version, please visit: [SillyTavern-GroupWorld](https://github.com/Windy-Sora/SillyTavern-GroupWorld)**
 
+Muyu entry: “Summon Mu” → “Open Muyu Agent (recommended)”, or “Import Muyu character card and world book”. These are separate modes; the Agent needs no character-card import. See the [user guide](USER-GUIDE_EN.md#interface-and-muyu-entry) for connections, permissions and usage.
+
 ---
 
 > A programmable runtime for SillyTavern group chat scenarios

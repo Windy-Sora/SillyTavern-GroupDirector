@@ -57,6 +57,14 @@ The framework is not bound to any specific use case — replace prompt templates
 
 ---
 
+### 1.3 Muyu entry and interaction boundaries (2026-10-07)
+
+The interactive Muyu Agent is a separate `muyu/` application, not the business Agent pipeline described above. “Summon Mu” opens a menu with “Open Muyu Agent (recommended)” first and “Import Muyu character card and world book” second. Opening calls the existing `muyuOwner.floating.open('muyu')`, reusing the window, session and controller without importing assets or starting a model request. Importing retains the existing character/avatar/world-book flow and confirmation; it does not grant Agent data or write permissions.
+
+`ui/assistant-menu.js` owns menu presentation and keyboard interaction; `ui/sections/gdAssistant.js` wires the actions. An opaque fixed overlay attached to document.body avoids layout expansion and ancestor clipping, with positioning bounded by the viewport. Outside clicks, Escape, Tab, scrolling and viewport resizing close it; arrow keys switch items. Actions restore entry focus before opening another surface. Panel rebuilds dispose the menu and listeners to prevent stale or duplicate handlers. Labels follow the panel language at initialization.
+
+Ordinary Muyu preferences now save on control changes, with debounced text saving and blur submission. Validation/save failures retain input and offer retry; explicit credential/connection submission is not made unconditional auto-apply. There are 19 builtin skills, including DSL, structured Provider data and complex-system references. Independent asset resources load on demand without granting data access, writes or code execution. Template render samples, synthetic Provider tests and real SillyTavern execution remain separate verification layers.
+
 ## 2. Agent Runtime (Core)
 
 ### 2.1 Agent Definition

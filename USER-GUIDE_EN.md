@@ -1,6 +1,18 @@
 # Group Director — User Guide
 
-## Navigation preview
+## Interface and Muyu entry
+
+The public entry currently uses Classic. The navigation-preview entry is disabled while its code is retained; the historical instructions below no longer describe an available interface switcher.
+
+Click “Summon Mu” on the dashboard to choose:
+
+- **Open Muyu Agent (recommended)**: open the independent chat window for questions, permission-scoped reads, configuration previews and supported tools. No character-card import is required. Reopen it through the same entry after closing. Configure its model inside the window, using a compatible current SillyTavern connection or an independent endpoint.
+- **Import Muyu character card and world book**: confirm before the existing import flow runs, then start a character chat from the character list. This is separate from the Agent window and does not automatically share sessions, permissions or tool capabilities. Import success does not confirm actual world-book injection.
+
+The menu does not expand the settings layout. Click outside or press Escape to close it; arrow keys select items. Ordinary Agent preferences save automatically, with a short delay for text; failures retain input and offer retry. Credentials/endpoints still use explicit connection submission. Auto-saving preferences does not bypass data permissions or modification approvals.
+
+<details>
+<summary>Historical navigation preview (entry currently disabled)</summary>
 
 Use the Interface selector at the top of the extension panel to switch between
 Classic (the default) and New · Preview. Four common categories are visible;
@@ -44,6 +56,8 @@ works when storage is unavailable. Applying configuration profiles still rebuild
 the panel as before: finish unsaved edits first. Draft protection across that
 rebuild is not part of this iteration.
 
+</details>
+
 ## Table of Contents
 
 1. [Quick Start (5 Minutes)](#1-quick-start-5-minutes)
@@ -79,15 +93,15 @@ Place the `SillyTavern-GroupDirector` folder into ST's `public/scripts/extension
 
 **Step 3: Start chatting** → Enter a group chat and send a message normally. Characters no longer talk over each other—they speak in the Director's order.
 
-### An Even Faster Way: Adopt Muyu
+### An Even Faster Way: Summon Muyu
 
-At the bottom of the dashboard, click **"🦉 Adopt Muyu"** — GD's built-in development assistant, an owl-girl living under a purple desk lamp. One-click import of character card + world book, then talk to her directly:
+Click **“Summon Mu” → “Open Muyu Agent (recommended)”** to open the owl-girl assistant in an independent window. Alternatively, choose “Import Muyu character card and world book” for a SillyTavern character chat.
 
-- **Not sure how to configure?** Ask her. The world book contains a complete configuration guide.
-- **Want to write a Provider / Capability / Custom Agent / Script Executor?** Ask her. She'll help you find the most elegant solution by following the decision flow.
-- **Hit a bug?** Ask her. She knows which logs to check and which counters to look at.
+- **Need configuration help?** Ask for UI explanations or checks of supported settings, with permission requested for private data.
+- **Designing a Provider, DSL template or complex system?** The Agent can consult specialist skills and distinguish data, display and state updates.
+- **Hit a bug?** Ask it to inspect available state and diagnostics; unavailable server logs, files and unsupported interfaces remain unknown.
 
-Muyu isn't a code generator—she's GD's chief architect. She won't pile on features; she'll guide you to solve problems by composing existing mechanisms.
+Muyu prioritizes a minimal solution using existing mechanisms. Explanations and previews must not silently become applied changes; capabilities depend on current tools and permissions. The Agent can load specialist DSL, structured Provider data and system-design skills on demand. Code candidates, synthetic tests, imports and real execution are separate stages; inaccessible server logs and files must not be described as checked.
 
 ### An Even Faster Way: Presets
 
@@ -102,7 +116,7 @@ Select `group-director-default` from the preset dropdown at the bottom of the da
 | **Tuning** | Continuity | First week—manage ledgers, world books, context summaries |
 | **On demand** | Reactions / Tools | As needed—multimodal, export/import, Agent config, custom Agents, debugging |
 
-> **Recommended learning path**: Click "Adopt Muyu" → chat with her about your needs → she'll teach you step by step. Alternatively: dashboard to understand state → Director drawer to configure modes → Characters drawer to prepare data → start chatting. Advanced drawers are collapsed by default and won't interfere with daily use.
+> **Recommended learning path**: “Summon Mu” → “Open Muyu Agent (recommended)” → describe your goal. Alternatively: dashboard to understand state → Director drawer to configure modes → Characters drawer to prepare data → start chatting. Advanced drawers are collapsed by default and won't interfere with daily use.
 
 ---
 

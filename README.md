@@ -7,6 +7,8 @@
 
 > ⚠️ **此版本为开发版，可能存在不稳定问题。如需稳定版，请访问：[SillyTavern-GroupWorld](https://github.com/Windy-Sora/SillyTavern-GroupWorld)**
 
+暮羽入口：仪表盘“召唤暮羽”→“打开暮羽 Agent（推荐）”，或选择“导入暮羽角色卡与世界书”。两种方式独立，打开Agent不需要导入角色卡；连接、授权与使用说明见[用户手册](USER-GUIDE.md#界面与暮羽入口)。
+
 ---
 
 > 一个面向开放式叙事的可编程运行时（Programmable Narrative Runtime）

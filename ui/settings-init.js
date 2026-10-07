@@ -211,6 +211,7 @@ export async function reloadSettingsUI(deps) {
     const navigation = $panel.find('.group-director-settings')[0]?.__gdNavigation;
     const navigationState = navigation?.getState();
     navigation?.dispose();
+    $panel.find('#gd-dash-get-assistant')[0]?.__gdAssistantDispose?.();
     $panel.find('#gd-muyu-root')[0]?.__gdMuyuDispose?.();
     $panel.empty().append(html);
     const $c = (sel) => $(`#gd-${sel}`);
