@@ -6,9 +6,10 @@ const forbidden = new Set(['__proto__', 'constructor', 'prototype']);
 const editable = ['label', 'rule', 'autoUpdate', 'injectMode', 'updateMode', 'min', 'max', 'showInDashboard'];
 
 /** Read-only, chat-bound preview. This port never invokes the legacy fire-and-forget save methods. */
-export function createVariableDraftPort({ getTarget, getMetadata, extensionKey }) {
+export function createVariableDraftPort({ getTarget, getMetadata, extensionKey, isBusy = () => false }) {
     const drafts = new Map();
     function inspect(target, id) {
+        if (isBusy()) throw Error('VARIABLE_BUSY');
         if (target?.kind !== 'chat' || jsonKey(getTarget()) !== jsonKey(target)) throw Error('TARGET_UNAVAILABLE');
         const metadata = getMetadata();
         if (!metadata || typeof metadata !== 'object') throw Error('TARGET_UNAVAILABLE');

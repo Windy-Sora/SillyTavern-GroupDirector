@@ -89,7 +89,11 @@ registerSection('muyu', ctx => {
         const blueprintTogglePort = createStoryBlueprintTogglePort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata,
             getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, saveChatConfirmed: ctx.saveVariablesChatConfirmed,
             changed: () => { window.__gdRefreshVariables?.(); window.__gdRefreshDashboard?.(); } });
-        const variableDraftPort = createVariableDraftPort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY });
+        const variablesBusy = () => {
+            const guards = ctx.getMuyuGuards?.() || {};
+            return !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending || !!ctx.storyBlueprintSystem?.isGenerating?.();
+        };
+        const variableDraftPort = createVariableDraftPort({ getTarget: () => host?.currentTarget(), getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY, isBusy: variablesBusy });
         const selectionEditor = createSelectionEditorPort({getTarget:()=>host?.globalTarget,getSettings:()=>ctx.settings,getWorldNames:()=>(owner.currentContext||ctx).world_names,
             worldBookScanner:ctx.worldBookScanner,profileLibrarySystem:ctx.profileLibrarySystem,saveSettings:ctx.saveMuyuCredentials,
             isBusy:()=>{const g=ctx.getMuyuGuards?.()||{};return !!g.roundActive||!!g.manualGenerating||!!g.takeoverPending;}});
@@ -151,6 +155,7 @@ registerSection('muyu', ctx => {
             changed: () => { window.__gdRefreshVariables?.(); window.__gdRefreshDashboard?.(); },
         });
         const variableWriter = createVariableWriter({ draftPort: variableDraftPort, editorPort: variableEditor, getTarget: () => host?.currentTarget(),
+            isBusy: variablesBusy,
             getMetadata: ctx.getChatMetadata, extensionKey: ctx.EXT_KEY, saveChatConfirmed: ctx.saveVariablesChatConfirmed,
             changed: () => { window.__gdRefreshVariables?.(); window.__gdRefreshDashboard?.(); } });
         const configWriter = createConfigWriter({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, memoryLimitPort, completionVariablePort, blueprintTogglePort,

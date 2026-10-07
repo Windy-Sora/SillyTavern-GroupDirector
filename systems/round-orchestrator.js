@@ -33,12 +33,13 @@ export function createRoundOrchestrator(initial = {}) {
         return getSnapshot();
     }
 
-    function startWrapper({ generationType = 'normal' } = {}) {
+    function startWrapper({ generationType = 'normal', nestedTakeover = false } = {}) {
         state.generationType = generationType;
         return transitionWrapperStarted({
             generationType,
             manualRemaining: state.takeoverRemaining,
             takeoverFailed: state.takeoverFailed,
+            nestedTakeover,
         });
     }
 

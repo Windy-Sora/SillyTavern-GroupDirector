@@ -119,8 +119,13 @@ export function createCustomAgentSystem({
     }
 
     function syncProviders(list = getList(), { strict = false } = {}) {
-        const entries = normalizeProviderEntries(list, { strict });
-        assertProviderAvailability(entries);
+        let entries = normalizeProviderEntries(list, { strict });
+        if (strict) assertProviderAvailability(entries);
+        else entries = entries.filter(entry => {
+            const conflict = getProviders().find(provider => provider.id === entry.providerName && provider._gdOwner !== PROVIDER_OWNER);
+            if (entry.enabled && conflict) { log?.(`[CustomAgent] Provider "${entry.providerName}" is already registered; skipping conflicting agent`); return false; }
+            return true;
+        });
         for (const provider of getProviders()) {
             if (provider._gdOwner === PROVIDER_OWNER) unregisterProvider(provider.id);
         }

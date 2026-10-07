@@ -183,7 +183,7 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
     });
 
     // Phase 3
-    result = result.replace(/\{\{\?(\w+):([^}|]+)(?:\|([^}]*))?\}\}/g, (match, id, path, fallback) => {
+    result = replacePathQueries(result, (match, id, path, fallback) => {
         const entry = cache[id];
         if (!entry) return unresolvable(match);
         if (!entry.data) return fallback ?? '';
@@ -198,6 +198,28 @@ function renderPhases2and3(template, cache, context, unresolvable, isRePass = fa
     });
 
     return result;
+}
+
+function replacePathQueries(template, replace) {
+    const opening = /\{\{\?(\w+):/g;
+    let result = '', cursor = 0, match;
+    while ((match = opening.exec(template))) {
+        let depth = 1, end = opening.lastIndex, separator = -1;
+        for (; end < template.length; end++) {
+            if (template.startsWith('{{', end)) { depth++; end++; }
+            else if (template.startsWith('}}', end)) {
+                if (--depth === 0) break;
+                end++;
+            } else if (depth === 1 && template[end] === '|' && separator < 0) separator = end;
+        }
+        if (depth !== 0) break;
+        const pathEnd = separator < 0 ? end : separator;
+        result += template.slice(cursor, match.index) + replace(template.slice(match.index, end + 2), match[1],
+            template.slice(opening.lastIndex, pathEnd), separator < 0 ? undefined : template.slice(separator + 1, end));
+        cursor = end + 2;
+        opening.lastIndex = cursor;
+    }
+    return result + template.slice(cursor);
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -312,8 +334,8 @@ function expandVariables(path, context) {
         const val = context[varName];
         if (val === undefined || val === null) return match;
         const s = String(val);
-        if (/[.\[\] ]/.test(s)) {
-            return `["${s.replace(/"/g, '\\"')}"]`;
+        if (/[.\[\]\s"'\\]/.test(s)) {
+            return `[${JSON.stringify(s)}]`;
         }
         return s;
     });

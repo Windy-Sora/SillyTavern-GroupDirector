@@ -77,7 +77,7 @@ function section(file, globals) {
 test('round lifecycle refreshes mounted board controls without navigation or polling', async () => {
     const doc = { createElement: tag => new Element(tag, doc) }, root = new Element('div', doc);
     const d = depsFixture();
-    const runtime = vm.createContext({ isGroupChat: false, log() {}, console: { log() {} },
+    const runtime = vm.createContext({ isGroupChat: false, directorRoundEpoch: 0, log() {}, console: { log() {} },
         roundOrchestrator: { getSnapshot: () => ({ takeoverPending: false }), setPending() {}, canFinalize: () => false },
         settings: { customAgents: [] }, scriptExecutorRoundRan: false, postSpeechRoundQueue: [], manualGenInProgress: false, generationStopped: false,
         window: { __gdRefreshDashboard() { d.quickActions.refresh(); } },

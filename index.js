@@ -141,8 +141,12 @@ let roundGenerateType = 'normal';    // captured from GROUP_WRAPPER_STARTED, rea
 const wiState = { text: '', entries: [] };  // WI cache for WorldInfoProvider
 const scriptCounterSnapshots = new Map();   // charName → counter value at first render
 let generationStopped = false;               // set by GENERATION_STOPPED, checked in retry loop
+let directorRoundEpoch = 0;
+let takeoverOwner = null;
+let takeoverWrapperPending = false;
 let postSpeechRoundQueue = [];                  // caller-owned jobs deferred to group wrapper finished
 let postSpeechRoundQueueEpoch = 0;
+const postSpeechMessageControllers = new Set();
 let postSpeechRoundRan = false;                 // dedup flag for GROUP_WRAPPER_FINISHED
 let scriptExecutorRoundRan = false;              // dedup flag for script executor round trigger
 let postSpeechLastMsgIndex = -1;                // dedup for per-message renders
@@ -231,6 +235,7 @@ function getScriptPosition() {
 }
 
 async function getScriptForChar(charName, extraContext) {
+    if (settings.llmScriptEnabled === false) return '';
     const script = directorScripts[charName] || '';
     // On swipe/regenerate, restore the counter to what it was when this
     // character's script was first rendered this round. On first render,
@@ -1031,7 +1036,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
             await initPromise;
             initPromise = null;
             if (!llmPickedAvatars || llmPickedAvatars.length === 0) {
-                log('LLM produced no decision; falling back to transparent (allow all)');
+                log(generationStopped ? 'LLM stopped; generation remains cancelled' : 'LLM produced no decision; falling back to transparent (allow all)');
             }
         } else {
             initFormulaRound();
@@ -1201,6 +1206,7 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
         topN: settings.topN,
         avatar,
         speakerCount: roundSpeakerCount,
+        generationType: roundGenerateType,
     });
     const { allowed, score, nextSpeakerCount } = formulaTurn;
 
@@ -1215,11 +1221,19 @@ globalThis.groupDirector_Interceptor = async function (chatArray, contextSize, a
 
 // ─── Event Listeners ─────────────────────────────────────────────────
 
+eventSource.on(event_types.GENERATION_STARTED, (type, params, dryRun) => {
+    if (dryRun) return;
+    takeoverWrapperPending = type === 'normal' && !!takeoverOwner && params?.signal === takeoverOwner.controller.signal
+        && params?.force_chid === takeoverOwner.characterId;
+});
+
 eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
     // Always capture the generation type, even for nested wrappers.
     // Auto-swipes during takeover need to be visible to the interceptor.
     roundGenerateType = data?.type || 'normal';
-    const wrapperTransition = roundOrchestrator.startWrapper({ generationType: roundGenerateType });
+    const nestedTakeover = !!takeoverOwner && takeoverWrapperPending;
+    takeoverWrapperPending = false;
+    const wrapperTransition = roundOrchestrator.startWrapper({ generationType: roundGenerateType, nestedTakeover });
 
     // If manual ordered generation is in progress (force_chid sub-calls),
     // don't reset state — the sub-wrapper is just a vehicle for single-char gen.
@@ -1227,6 +1241,14 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
         console.warn('[GroupDirector] Nested GROUP_WRAPPER_STARTED during manual gen — preserving state');
         return;
     }
+    directorRoundEpoch++;
+    if (takeoverOwner) {
+        takeoverOwner.controller.abort();
+        takeoverOwner = null;
+        manualGenInProgress = false;
+        roundOrchestrator.clearTakeover();
+    }
+    generationStopped = false;
 
     // Previous takeover failed mid-round: reuse the existing director decision
     // instead of making a new one. Chat already has partial messages from the
@@ -1372,6 +1394,7 @@ eventSource.on(event_types.GROUP_WRAPPER_STARTED, (data) => {
 });
 
 eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
+    const finishedEpoch = directorRoundEpoch;
     isGroupChat = false;
     window.__gdRefreshDashboard?.();
     log('Group generation finished');
@@ -1379,6 +1402,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
     if (roundOrchestrator.getSnapshot().takeoverPending && llmPickedAvatars && llmPickedAvatars.length > 0) {
         await runManualOrderedGeneration();
     }
+    if (finishedEpoch !== directorRoundEpoch) return;
     roundOrchestrator.setPending(false);
     let postSpeechRoundWasAborted = false;
 
@@ -1778,6 +1802,7 @@ eventSource.on(event_types.GROUP_WRAPPER_FINISHED, async () => {
 // Clear it BEFORE pruning history so no stale pointers linger.
 eventSource.on(event_types.GENERATION_STOPPED, () => {
     generationStopped = true;
+    takeoverOwner?.controller.abort();
     // Always abort PostSpeech if running, even in MODE_OFF (cleanup must run regardless)
     if (postSpeechAbortController) {
         postSpeechAbortController.abort();
@@ -1787,6 +1812,7 @@ eventSource.on(event_types.GENERATION_STOPPED, () => {
         postSpeechMessageAbortController.abort();
         log('PostSpeech message aborted by user');
     }
+    for (const controller of postSpeechMessageControllers) controller.abort();
     if (directorAbortController) {
         directorAbortController.abort();
         log('Director LLM aborted by user');
@@ -1843,7 +1869,15 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
     // Per-message PostSpeech uses its own AbortController so user-Stop can cut
     // the render prompt (including slow providers) mid-flight.
-    postSpeechMessageAbortController = new AbortController();
+    const messageController = new AbortController();
+    postSpeechMessageAbortController = messageController;
+    postSpeechMessageControllers.add(messageController);
+    const messageEpoch = postSpeechRoundQueueEpoch;
+    const messageMetadata = chat_metadata;
+    const messageContent = msg.mes;
+    const isCurrentMessage = () => !messageController.signal.aborted
+        && messageEpoch === postSpeechRoundQueueEpoch && messageMetadata === chat_metadata
+        && chat[msgIndex] === msg && msg.mes === messageContent;
 
     try {
         const charName = msg.name || '';
@@ -1868,7 +1902,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 
         const callCfg = {
             ...agentConfig.call,
-            signal: postSpeechMessageAbortController.signal,
+            signal: messageController.signal,
             onRetry: ({ attempt, maxRetries }) => {
                 log(`PostSpeech retry ${attempt}/${maxRetries}`);
             },
@@ -1879,6 +1913,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
             caller,
             config: { ...modeConfig, call: callCfg, enableTrace: settings.debugLogging },
         });
+        if (!isCurrentMessage()) return;
 
         // Dedup: skip if no new capabilities would be triggered.
         // For swipe/regenerate, allow re-analysis (message content changed).
@@ -1930,6 +1965,7 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
                     { ...policy, intents: activeContexts.map(context => context.intent) },
                     CapabilityRegistry.listExecutableForMode('message')
                 );
+                if (!isCurrentMessage()) { reservation.release(); return; }
                 if (execResult.deferred.length) {
                     enqueuePostSpeechRoundJob(activeContexts, execResult.deferred);
                     reservation.release();
@@ -1960,8 +1996,9 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
         // PostSpeech failure never interrupts the conversation
         log('PostSpeech skipped:', e.message);
     } finally {
-        if (postSpeechMessageAbortController) {
-            const wasAborted = postSpeechMessageAbortController.signal.aborted;
+        postSpeechMessageControllers.delete(messageController);
+        if (postSpeechMessageAbortController === messageController) {
+            const wasAborted = messageController.signal.aborted;
             postSpeechMessageAbortController = null;
             if (wasAborted) log('PostSpeech message aborted by user');
         }
@@ -1971,6 +2008,12 @@ eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, async (messageId, msgType
 // ───
 
 eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
+    directorRoundEpoch++;
+    takeoverOwner?.controller.abort();
+    takeoverOwner = null;
+    takeoverWrapperPending = false;
+    invalidatePostSpeechRoundQueue();
+    for (const controller of postSpeechMessageControllers) controller.abort();
     customAgentSystem.invalidateExecutions();
     roundScores = {};
     roundSpeakerCount = 0;
@@ -1998,6 +2041,13 @@ eventSource.on(event_types.MESSAGE_DELETED, async (newChatLength) => {
 });
 
 eventSource.on(event_types.CHAT_CHANGED, async () => {
+    directorRoundEpoch++;
+    takeoverOwner?.controller.abort();
+    takeoverOwner = null;
+    takeoverWrapperPending = false;
+    manualGenInProgress = false;
+    roundOrchestrator.clearTakeover();
+    for (const controller of postSpeechMessageControllers) controller.abort();
     invalidatePostSpeechRoundQueue();
     postSpeechSystem.resetPending();
     customAgentSystem.invalidateExecutions();
@@ -2038,6 +2088,17 @@ eventSource.on(event_types.CHAT_CHANGED, async () => {
 // ─── Manual Ordered Generation (takeover) ─────────────────────────────
 let manualGenInProgress = false;
 async function runManualOrderedGeneration() {
+    if (manualGenInProgress) return;
+    const owner = { controller: new AbortController(), characterId: null };
+    const epoch = directorRoundEpoch;
+    const metadata = chat_metadata;
+    takeoverOwner = owner;
+    const ownsRound = () => takeoverOwner === owner && directorRoundEpoch === epoch && chat_metadata === metadata;
+    const canContinue = () => {
+        if (!ownsRound()) return false;
+        if (generationStopped || owner.controller.signal.aborted) { roundOrchestrator.markFailed(); return false; }
+        return true;
+    };
     manualGenInProgress = true;
     roundOrchestrator.setPending(false);
     const schedule = roundOrchestrator.beginTakeover(llmPickedAvatars, {
@@ -2053,6 +2114,7 @@ async function runManualOrderedGeneration() {
 
     try {
         for (let i = 0; i < orderedList.length; i++) {
+            if (!canContinue()) return;
             const avatar = orderedList[i];
             const chId = characters.findIndex(c => c.avatar === avatar);
             if (chId === -1) {
@@ -2080,6 +2142,7 @@ async function runManualOrderedGeneration() {
                 speakerIndex0: origPos,
                 speakerCount: llmPickedAvatars.length,
             });
+            if (!canContinue()) return;
             if (charScript) {
                 setExtensionPrompt(DIRECTOR_SCRIPT_KEY, charScript, getScriptPosition(), 0, true);
             }
@@ -2092,7 +2155,15 @@ async function runManualOrderedGeneration() {
                 // ensures the JS bridge and async character context settle
                 // before ST's nested generateGroupWrapper cycles characters.
                 await new Promise(r => setTimeout(r, 150));
-                await ctx.generate('normal', { force_chid: chId });
+                if (!canContinue()) return;
+                const previousLength = chat.length;
+                owner.characterId = chId;
+                await ctx.generate('normal', { force_chid: chId, signal: owner.controller.signal });
+                if (!canContinue()) return;
+                if (!chat.slice(previousLength).some(message => !message.is_user && !message.is_system && message.name === characters[chId].name && message.mes)) {
+                    roundOrchestrator.markFailed();
+                    return;
+                }
                 // Post-generation: log full message snapshot for identity diagnostics
                 if (chat.length > 0) {
                     const lastMsg = chat[chat.length - 1];
@@ -2108,12 +2179,12 @@ async function runManualOrderedGeneration() {
                 roundOrchestrator.markCompleted(avatar);
             } catch (e) {
                 console.error('[GroupDirector] GEN FAILED:', e.message, e.stack);
-                roundOrchestrator.markFailed();
+                if (ownsRound()) roundOrchestrator.markFailed();
                 // Preserve llmPickedAvatars, llmPickedSet, directorScripts, roundInitialized
                 // so a retry reuses the same director decision instead of making a new one.
                 return;
             } finally {
-                if (charScript) {
+                if (ownsRound() && charScript) {
                     setExtensionPrompt(DIRECTOR_SCRIPT_KEY, '', getScriptPosition(), 0, true);
                 }
             }
@@ -2122,13 +2193,16 @@ async function runManualOrderedGeneration() {
         console.warn('[GroupDirector] TAKEOVER COMPLETE — all speakers generated');
     } finally {
         console.warn('[GroupDirector] TAKEOVER FINALLY — resetting flags');
-        roundOrchestrator.finishTakeover();
-        manualGenInProgress = false;
-        // Restore the original character context so ST doesn't stay stuck
-        // on the last generated character after takeover
-        if (savedChId !== undefined && savedChId !== null) {
-            setCharacterId(savedChId);
-            setCharacterName(savedChName);
+        if (ownsRound()) {
+            takeoverOwner = null;
+            takeoverWrapperPending = false;
+            roundOrchestrator.finishTakeover();
+            manualGenInProgress = false;
+            // Restore identity only while this takeover still owns the round.
+            if (savedChId !== undefined && savedChId !== null) {
+                setCharacterId(savedChId);
+                setCharacterName(savedChName);
+            }
         }
     }
 }
@@ -2254,7 +2328,7 @@ async function initForceSpeakLLM(char, avatar) {
 
         // Record to ledger with user message anchor — normalize speakers to names for ledger consistency
         if (settings.llmHistoryEnabled) {
-            const forceSpeakName = parsed.names?.[0] || char?.name || parsed.speakers?.[0] || '?';
+            const forceSpeakName = char?.name || parsed.names?.[0] || '?';
             await addToDirectorHistory({
                 ...parsed,
                 speakers: [forceSpeakName],
@@ -2465,7 +2539,8 @@ async function initRoundWithLLM() {
         }
 
         toastr.error('导演决策失败，且无历史记录。请检查网络后重试。');
-        llmPickedSet = new Set();
+        llmPickedSet = null;
+        llmPickedAvatars = null;
     }
 }
 

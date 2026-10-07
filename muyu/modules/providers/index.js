@@ -14,7 +14,7 @@ const obj = properties => ({ type: 'object', properties, required: Object.keys(p
 const statuses = ['ok', 'empty', 'SOURCE_UNAVAILABLE', 'SOURCE_DISABLED', 'SOURCE_TOO_LARGE', 'SOURCE_UNSUPPORTED', 'INVALID_SELECTOR', 'INVALID_READ_ARGUMENTS', 'INVALID_CONTINUATION', 'STALE_SOURCE', 'BUDGET_EXCEEDED', 'TARGET_UNAVAILABLE'];
 export function createProviderModule(host) {
     const registry = createToolRegistry(), runs = new Map(); let sequence = 0, disposed = false;
-    const newRun = (limit = RUN_DEFAULTS.providerBytes) => ({ bytes: 0, limit, exhausted: false, sources: new Map(), results: new Map(), resultChars: 0, continuations: createReadContinuations() });
+    const newRun = (limit = RUN_DEFAULTS.providerBytes) => ({ bytes: 0, limit, exhausted: false, sources: new Map(), results: new Map(), resultChars: 0, pendingResults: 0, reservedChars: 0, continuations: createReadContinuations() });
     const definition = (id, description, inputSchema, outputSchema, dataClasses, timeoutMs = 2000) => registry.register({ id, version: 2, description, inputSchema, outputSchema, scope: 'global', effect: 'read', dataClasses, confirmation: 'policy', resourceKeys: [], timeoutMs, retryPolicy: { kind: 'none', maxAttempts: 1 } });
     definition('muyu.provider.list', '静态来源目录，声明范围、格式、权限、选择器与routingHint用途，不读取宿主状态。目录不表示已授权或当前可用。按当前问题选来源，不只沿用上次读过的来源。variables按item:N读取存储值，global仅指当前聊天；storyBlueprint按node:N读取任务条件与原始保存信号，不推断实际完成。未查到只限已检查来源，不断言所有资料不存在。', obj({}), { type: 'array', maxItems: providerCatalog.length, items: obj({ id: str(64), title: str(100), permission: str(16), selector: str(64), scope: { type: 'string', enum: ['chat', 'global'] }, format: { type: 'string', enum: ['text', 'structured'] }, contractVersion: { type: 'integer', enum: [1] }, routingHint: str(200) }) }, ['public-knowledge']);
     const output = obj({ source: str(64), status: { type: 'string', enum: statuses }, revision: str(40), text: str(2000), nextOffset: { type: 'integer' }, truncated: { type: 'boolean' }, readAt: str(32) });
@@ -138,19 +138,35 @@ export function createProviderModule(host) {
         if (!current(ctx, { scope: 'chat' })) return response('TARGET_UNAVAILABLE');
         if (!host.providerPort?.describe(args.id, args.revision)) return response('STALE_PROVIDER');
         const run = runs.get(ctx.runId); if (!run || run.exhausted) return response('BUDGET_EXCEEDED');
+        if (run.results.size + run.pendingResults >= 4 || run.resultChars + run.reservedChars >= 131072 || run.bytes >= run.limit) return response('BUDGET_EXCEEDED');
+        const capacity = Math.min(32768, 131072 - run.resultChars - run.reservedChars);
+        run.pendingResults++;
+        run.reservedChars += capacity;
+        try {
         let text;
         try { text = await host.providerPort.execute(args.id, args.revision, ctx.signal, args.projection); } catch { return response('OUTCOME_UNKNOWN', '', false, true); }
         if (!current(ctx, { scope: 'chat' })) return response('OUTCOME_UNKNOWN', '', false, true);
-        if (run.results.size >= 4 || run.resultChars + text.length > 131072) return response('BUDGET_EXCEEDED', '', false, true);
+        let storedText = text.slice(0, capacity);
+        if (storedText.length < text.length && /[\uD800-\uDBFF]/.test(storedText.at(-1))) storedText = storedText.slice(0, -1);
+        const storageTruncated = storedText.length < text.length;
         let end = Math.min(text.length, 8000);
         if (end < text.length && /[\uD800-\uDBFF]/.test(text.charAt(end - 1))) end--;
-        const part = text.slice(0, end), bytes = new TextEncoder().encode(part).length;
-        if (run.bytes + bytes > run.limit) { run.exhausted = true; return response('BUDGET_EXCEEDED', '', false, true); }
+        end = Math.min(end, storedText.length);
+        while (end > 0 && new TextEncoder().encode(storedText.slice(0, end)).length > run.limit - run.bytes) {
+            end = Math.floor(end / 2);
+            if (end > 0 && /[\uD800-\uDBFF]/.test(storedText.charAt(end - 1))) end--;
+        }
+        const part = storedText.slice(0, end), bytes = new TextEncoder().encode(part).length;
         run.bytes += bytes; if (run.bytes >= run.limit) run.exhausted = true;
         const resultId = crypto.randomUUID();
-        run.results.set(resultId, { id: args.id, revision: args.revision, target: jsonKey(ctx.target), text });
-        run.resultChars += text.length;
-        return response(text ? 'ok' : 'empty', part, end < text.length, true, resultId, end < text.length ? end : -1);
+        run.results.set(resultId, { id: args.id, revision: args.revision, target: jsonKey(ctx.target), text: storedText, storageTruncated });
+        run.resultChars += storedText.length;
+        if (!end && storedText.length) run.exhausted = true;
+        return response(text ? 'ok' : 'empty', part, storageTruncated || end < storedText.length, true, resultId, end < storedText.length ? end : -1);
+        } finally {
+            run.pendingResults--;
+            run.reservedChars -= capacity;
+        }
     }
     function result(args, ctx) {
         const response = (status, text = '', nextOffset = -1) => ({ id: args.id, status, text, truncated: nextOffset !== -1, nextOffset });
@@ -164,7 +180,9 @@ export function createProviderModule(host) {
         const part = saved.text.slice(args.offset, end), bytes = new TextEncoder().encode(part).length;
         if (run.bytes + bytes > run.limit) { run.exhausted = true; return response('BUDGET_EXCEEDED'); }
         run.bytes += bytes; if (run.bytes >= run.limit) run.exhausted = true;
-        return response(saved.text ? 'ok' : 'empty', part, end < saved.text.length ? end : -1);
+        const page = response(saved.text ? 'ok' : 'empty', part, end < saved.text.length ? end : -1);
+        page.truncated ||= saved.storageTruncated;
+        return page;
     }
     return { registry,
         bindRun(id, limit) { if (!Number.isInteger(limit) || limit < RUN_RANGES.providerBytes[0] || limit > RUN_RANGES.providerBytes[1] || runs.has(id) || runs.size >= 128) throw Error('INVALID_PROVIDER_BUDGET'); runs.set(id, newRun(limit)); },

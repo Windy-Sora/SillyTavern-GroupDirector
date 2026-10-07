@@ -2,9 +2,10 @@ import { jsonKey } from '../core/json-contract.js';
 import { slugifyId } from '../../systems/variable-system.js';
 
 /** Trusted one-variable chat write. An exception after mutation is an unknown outcome, never a retry signal. */
-export function createVariableWriter({ draftPort, getTarget, getMetadata, extensionKey, saveChatConfirmed, editorPort, changed = () => {} }) {
+export function createVariableWriter({ draftPort, getTarget, getMetadata, extensionKey, saveChatConfirmed, editorPort, isBusy = () => false, changed = () => {} }) {
     return Object.freeze({
         async apply(content) {
+            if (isBusy()) throw Error('VARIABLE_BUSY');
             if(content?.module==='variable-editor') { if(!editorPort)throw Error('WRITE_UNAVAILABLE');return editorPort.apply(content); }
             if (typeof saveChatConfirmed !== 'function') throw Error('WRITE_UNAVAILABLE');
             draftPort.assertFresh(content);

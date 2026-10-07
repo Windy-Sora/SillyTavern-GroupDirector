@@ -107,7 +107,7 @@ function isJsonObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function rollbackJsonValue(previous, applied, current) {
+export function rollbackJsonValue(previous, applied, current) {
     if (sameJsonValue(current, applied)) return clone(previous);
     if (sameJsonValue(previous, applied)) return clone(current);
     if (Array.isArray(applied) && Array.isArray(current)) {
@@ -619,14 +619,40 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
     async function applyImportData(data, options = {}) {
         const valid = validateImportData(data);
         if (!valid.ok) return valid;
-        const incoming = valid.variables;
+        const incoming = clone(valid.variables);
         const mode = options.mode || 'merge';
+        const definitions = new Map((mode === 'replace' ? [] : currentMetadata()?.[EXT_KEY]?.variables?.defs || []).map(def => [def.id, normalizeDefinition(def)]));
+        for (const def of incoming.defs || []) {
+            const normalized = normalizeDefinition(def);
+            definitions.set(normalized.id, normalized);
+        }
+        const normalizedValues = clone(incoming.values || { global: {}, character: {} });
+        for (const [scope, values] of Object.entries(normalizedValues)) {
+            for (const [id, value] of Object.entries(values || {})) {
+                const def = definitions.get(id);
+                if (!def) continue;
+                const normalize = input => coerceValue({ ...def, updateMode: 'replace' }, input);
+                if (scope === 'global') {
+                    const result = normalize(value);
+                    if (!result.ok) return { ok: false, error: `Invalid imported value for ${id}: ${result.error}` };
+                    values[id] = result.value;
+                } else {
+                    if (!isJsonObject(value)) return { ok: false, error: `Invalid imported character values for ${id}` };
+                    for (const [avatar, input] of Object.entries(value || {})) {
+                        const result = normalize(input);
+                        if (!result.ok) return { ok: false, error: `Invalid imported value for ${id}: ${result.error}` };
+                        value[avatar] = result.value;
+                    }
+                }
+            }
+        }
+        incoming.values = normalizedValues;
         const metadata = currentMetadata();
         const vars = store();
         const previous = clone(vars);
 
         if (mode === 'replace') {
-            vars.defs = clone(incoming.defs || []);
+            vars.defs = [...definitions.values()];
             vars.values = clone(incoming.values || { global: {}, character: {} });
             vars.log = Array.isArray(incoming.log) ? clone(incoming.log) : vars.log;
         } else {
@@ -646,6 +672,7 @@ export function createVariableSystem({ chat_metadata, getChatMetadata, EXT_KEY, 
                 while (vars.log.length > DEFAULT_LOG_LIMIT) vars.log.shift();
             }
         }
+        if (Array.isArray(vars.log) && vars.log.length > DEFAULT_LOG_LIMIT) vars.log.splice(0, vars.log.length - DEFAULT_LOG_LIMIT);
         const applied = clone(vars);
         try {
             await saveChatConditional?.();
