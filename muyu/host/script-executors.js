@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { normalizeScriptExecutor } from '../../systems/script-executor-validation.js';
 import { checkedScriptReport } from '../scripts/test-contract.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
@@ -19,7 +20,7 @@ export function createScriptExecutorPort({ getSettings, getTarget, getContext, s
     };
     function revision(row) {
         const fingerprint = JSON.stringify(row), old = versions.get(row.id);
-        if (!old || old.row !== row || old.fingerprint !== fingerprint) versions.set(row.id, { row, fingerprint, revision: crypto.randomUUID() });
+        if (!old || old.row !== row || old.fingerprint !== fingerprint) versions.set(row.id, { row, fingerprint, revision: randomUUID() });
         return versions.get(row.id).revision;
     }
     function existing(id, expected) {

@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createDraftRuns } from '../draft-runs.js';
@@ -28,7 +29,7 @@ export function createMemoryEditorModule({port,charge}) {
         'muyu.memory_editor.create_preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId);
-            const content=port.createPreview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='memory-editor:'+crypto.randomUUID();
+            const content=port.createPreview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='memory-editor:'+randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:'create',character:content.character,index:content.index,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
         },
@@ -37,7 +38,7 @@ export function createMemoryEditorModule({port,charge}) {
         'muyu.memory_editor.preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId);
-            const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='memory-editor:'+crypto.randomUUID();
+            const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='memory-editor:'+randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:content.operation,character:content.character,index:content.index,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
         },

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { createBuiltinActions } from '../actions/builtins.js';
 import { DISPLAY_DEFAULTS, validateDisplayConfig } from '../preferences/contract.js';
 import { createSkillWorkbench } from '../skills/workbench.js';
@@ -968,7 +969,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             if (missingHistorySources(record, target).length) throw Error('HISTORY_PERMISSION_REQUIRED');
             const candidate = candidateFor(record, contextConfig); if (!candidate) throw Error('NOTHING_TO_SUMMARIZE');
             const state = { id, target, progress: null, usage: null, summaryEpoch: historyTransportEpoch };
-            const handle = startMuyuRun({ identity: { id: 'compact:' + crypto.randomUUID(), sessionId: id, taskId: 'compact', target }, input: 'Summarize history', model, registry: builtins.registry, handlers: {}, allowedTools: [],
+            const handle = startMuyuRun({ identity: { id: 'compact:' + randomUUID(), sessionId: id, taskId: 'compact', target }, input: 'Summarize history', model, registry: builtins.registry, handlers: {}, allowedTools: [],
                 contextConfig: { ...contextConfig }, compaction: candidate, summaryOnly: true, maxTokens: runConfig.maxTokens,
                 limits: { modelCalls: 1, toolCalls: 1, timeMs: Math.min(runConfig.timeMs, contextConfig.summaryTimeMs) },
                 onSummary: summary => saveSummary(id, record.messages, summary, target, null, state.summaryEpoch),

@@ -1,6 +1,7 @@
 import { openIndexedHistoryStore } from '../sessions/indexeddb-store.js';
 import { openServerHistoryStore } from '../sessions/server-store.js';
 import { openSettingsHistoryStore } from '../sessions/settings-store.js';
+import { sha256 } from '../runtime/crypto.js';
 /** Only the host composition layer supplies account identity, never the model or an import. */
 export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openServer = openServerHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
     async function accountKey() {
@@ -29,10 +30,9 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
         },
         async open() {
             const identity = await accountKey();
-            if (!globalThis.crypto?.subtle) throw Error('HISTORY_UNAVAILABLE');
             // Stable across first-enable races. Hashing reduces raw identifiers at rest;
             // this is NOT encryption or a boundary against hostile same-origin scripts.
-            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('gd-muyu-history-v1:' + identity));
+            const digest = await sha256('gd-muyu-history-v1:' + identity);
             const hex = [...new Uint8Array(digest)].slice(0, 16).map(n => n.toString(16).padStart(2, '0')).join('');
             const namespace = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
             const useSettings = getSettings().muyuHistoryAccountStorage === true;

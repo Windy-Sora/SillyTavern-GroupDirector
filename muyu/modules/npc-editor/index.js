@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createDraftRuns } from '../draft-runs.js';
@@ -27,7 +28,7 @@ export function createNpcEditorModule({port,charge}) {
         'muyu.npc_editor.create_read':(args,ctx)=>encode(port.createRead(ctx.target,args.offset||0),ctx),
         'muyu.npc_editor.create_preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');runs.discardCandidate(ctx.runId);
-            const content=port.createPreview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='npc-editor:'+crypto.randomUUID();run.candidate={content,candidateId};
+            const content=port.createPreview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='npc-editor:'+randomUUID();run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:'create',warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
         },
         'muyu.npc_editor.list':(args,ctx)=>encode(port.list(ctx.target,args.offset||0),ctx),
@@ -35,7 +36,7 @@ export function createNpcEditorModule({port,charge}) {
         'muyu.npc_editor.preview':(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId);
-            const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='npc-editor:'+crypto.randomUUID();
+            const content=port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='npc-editor:'+randomUUID();
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:content.operation,selector:content.selector,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
         },

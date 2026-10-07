@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { permissionSource, requestableSources } from '../../permissions/contract.js';
@@ -54,7 +55,7 @@ export function createTaskPlanModule({ bindStep = null, bindRead = null } = {}) 
         if (disposed) throw Error('MODULE_DISPOSED');
         const run = runs.get(ctx.runId);
         if (!run || jsonKey(run.target) !== jsonKey(ctx.target)) throw Error('RUN_NOT_BOUND');
-        const plan = projectTaskPlan(args, ctx.target), candidateId = 'plan:' + crypto.randomUUID();
+        const plan = projectTaskPlan(args, ctx.target), candidateId = 'plan:' + randomUUID();
         run.candidate = { candidateId, plan };
         return { candidateId, text: JSON.stringify({ ...plan, notice: 'Only a proposal. No data access granted and no changes applied. Step availability describes operation support, not whether any data source exists or can be read. Blueprint/resource write restrictions do not prohibit reading those sources; use provider.read to verify.' }) };
     } };

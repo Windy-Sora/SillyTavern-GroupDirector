@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson,jsonKey } from '../core/json-contract.js';
 import { slugifyId } from '../../systems/variable-system.js';
 import { projectVariableEdit,applyApprovedVariableEdit } from '../../systems/variable-editor.js';
@@ -36,7 +37,7 @@ export function createVariableEditorPort({getTarget,getMetadata,getSettings,getC
     function snapshot(live,id) {return {before:selected(live,id),logs:copyJson((live.vars?.log||[]).filter(r=>r?.id===id)),characters:live.characters,group:live.group,config:live.config};}
     function version(live,id){
         const fingerprint=jsonKey(snapshot(live,id)),key=jsonKey({target:getTarget(),id}),old=versions.get(key);
-        if(!old||old.metadata!==live.metadata||old.vars!==live.vars||old.fingerprint!==fingerprint)versions.set(key,{metadata:live.metadata,vars:live.vars,fingerprint,revision:crypto.randomUUID()});
+        if(!old||old.metadata!==live.metadata||old.vars!==live.vars||old.fingerprint!==fingerprint)versions.set(key,{metadata:live.metadata,vars:live.vars,fingerprint,revision:randomUUID()});
         if(versions.size>512)versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -71,7 +72,7 @@ export function createVariableEditorPort({getTarget,getMetadata,getSettings,getC
         }else if(args.character)throw Error('INVALID_VARIABLE_EDIT');
         const after=projectVariableEdit({id,operation:args.operation,changes:copyJson(args.changes),before,characters:live.characters,group:live.group,targetAvatar:avatar});
         if(jsonKey({definition:after.definition,global:after.global,characters:after.characters})===jsonKey(before)&&args.operation!=='delete')throw Error('EMPTY_CHANGES');
-        const content=copyJson({module:'variable-editor',operation:args.operation,id,target,ticket:'variable-edit:'+crypto.randomUUID(),name:after.definition?.label||before.definition?.label||id,
+        const content=copyJson({module:'variable-editor',operation:args.operation,id,target,ticket:'variable-edit:'+randomUUID(),name:after.definition?.label||before.definition?.label||id,
             before,after:{definition:after.definition,global:after.global,characters:after.characters},character:args.character||'',
             warnings:['仅修改当前聊天；global表示聊天内全局值。差异中的角色值和默认值并非持久化确认或规则求值结果。',
                 '作用域切换会清除原作用域值；resetValues=true会清除该变量全部已存值。类型切换要求剩余值符合新类型。',

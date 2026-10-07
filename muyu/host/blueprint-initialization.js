@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { inspectBlueprintCompletion } from './blueprint-completion.js';
 import { projectBlankBlueprintCreation, applyApprovedBlueprintLibraryChat } from '../../systems/blueprint-library-chat.js';
@@ -22,7 +23,7 @@ export function createBlueprintInitializationPort({ getTarget, getMetadata, getS
     const sameRefs = (a,b) => a.metadata === b.metadata && a.root === b.root && a.state === b.state && a.settings === b.settings && a.vars === b.vars && a.globalValues === b.globalValues;
     function revision(live,target) {
         const key = jsonKey(target), fp = jsonKey(live.snapshot), old = versions.get(key);
-        if (!old || !sameRefs(live,old.live) || old.fp !== fp) versions.set(key,{live,fp,revision:crypto.randomUUID()});
+        if (!old || !sameRefs(live,old.live) || old.fp !== fp) versions.set(key,{live,fp,revision:randomUUID()});
         if (versions.size > 64) versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -39,7 +40,7 @@ export function createBlueprintInitializationPort({ getTarget, getMetadata, getS
         const changes = copyJson(args.changes);
         if (!record(changes) || Object.keys(changes).length) throw Error('INVALID_BLUEPRINT_INITIALIZATION');
         const before = live.snapshot.state, after = copyJson(projectBlankBlueprintCreation({ before, settings:live.snapshot.config, chatLength:live.snapshot.length })), completion = live.snapshot.completion;
-        const content = copyJson({ module:'blueprint-node-editor', operation:'initialize', ticket:'blueprint-initialize:'+crypto.randomUUID(), target, selector:'blueprint-new', name:after.blueprint.title,
+        const content = copyJson({ module:'blueprint-node-editor', operation:'initialize', ticket:'blueprint-initialize:'+randomUUID(), target, selector:'blueprint-new', name:after.blueprint.title,
             before, after, affected:['node_001'], completion:{before:completion,after:completion.exists?{...completion,stored:true,value:false}:completion},
             warnings:['首次创建当前聊天的空白蓝图和默认章节；不覆盖已有蓝图、修改资源库、开启功能或调用生成模型。 / Create the first blank Blueprint and default chapter in this chat; no replacement, library edit, enabling or generation.',
                 '按旧界面新建规则清空各模式／层级进度及旧完成提示；完整差异显示被清除的记录。 / Reset all progress scopes and notices using the existing blank-creation rules; inspect removed records in the full diff.',

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 
 /** Private, page-local evidence. Raw memories never enter model tools or artifacts. */
@@ -31,7 +32,7 @@ export function createMemoryLimitPort({ getTarget, getMetadata, extensionKey, me
             // Old unpublished drafts become stale rather than exhausting the port.
             if (plans.size >= 64) plans.delete(plans.keys().next().value);
             const evidence = inspect(target, max);
-            const publicPlan = copyJson({ id: 'memory-limit:' + crypto.randomUUID(), target, max, counts: evidence.counts.filter(row => row.remove > 0), total: evidence.total });
+            const publicPlan = copyJson({ id: 'memory-limit:' + randomUUID(), target, max, counts: evidence.counts.filter(row => row.remove > 0), total: evidence.total });
             plans.set(publicPlan.id, { public: publicPlan, metadata: evidence.metadata, serialized: evidence.serialized, expectedAfter: evidence.expectedAfter });
             return publicPlan;
         },

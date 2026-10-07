@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson,jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createDraftRuns } from '../draft-runs.js';
@@ -29,7 +30,7 @@ export function createWorldBookEditorModule({port,charge}) {
         'muyu.worldbook_editor.preview':async(args,ctx)=>{
             const run=runs.get(ctx.runId);if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
             runs.discardCandidate(ctx.runId);
-            const content=await port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='worldbook-editor:'+crypto.randomUUID();
+            const content=await port.preview(ctx.target,{...args,changes:JSON.parse(args.changesJson)}),candidateId='worldbook-editor:'+randomUUID();
             if(runs.get(ctx.runId)!==run){port.release(content);throw Error('RUN_NOT_BOUND');}
             run.candidate={content,candidateId};
             return{candidateId,text:JSON.stringify({state:'draft_only',operation:content.operation,selector:content.selector,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};

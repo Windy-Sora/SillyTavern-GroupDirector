@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { peekProfiles, peekMemories, latestActiveSummary } from '../../systems/provider-read-data.js';
 import { providerCatalog } from '../modules/providers/catalog.js';
 import { readExtendedSource } from './extended-sources.js';
@@ -34,7 +35,7 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
             if (!old || old.object !== p || old.render !== p.render || old.enabled !== p.enabled || old.context.join(',') !== requirements.join(',')) {
                 const mutated = old?.object === p;
                 exposed.set(p.id, { object: p, render: p.render, enabled: p.enabled,
-                    context: requirements, revision: !mutated && stableDigest(p, requirements) || crypto.randomUUID(), instance: crypto.randomUUID() });
+                    context: requirements, revision: !mutated && stableDigest(p, requirements) || randomUUID(), instance: randomUUID() });
             }
             found.push({ id: p.id, revision: exposed.get(p.id).revision, origin: p._gdOwner === 'group-director/user-provider' ? 'user' : 'registered', description: typeof p.placeholder === 'string' ? p.placeholder.slice(0, 120) : '', context: requirements, missingContext: missingContext(requirements, getContext()) });
             if (found.length >= 256) break;

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { prepareGeneratedProfile } from '../config/generated-profile.js';
 
@@ -23,7 +24,7 @@ export function createProfileWriter({ getSettings, saveSettings, getDrawerKeys, 
                 for (const [drawer, fields] of Object.entries(getDrawerKeys())) {
                     if (content.fields.some(field => fields.includes(field))) drawers[drawer] = true;
                 }
-                const profile = copyJson({ id: 'cfg_' + crypto.randomUUID(), name: content.name, description: content.description,
+                const profile = copyJson({ id: 'cfg_' + randomUUID(), name: content.name, description: content.description,
                     createdAt: Date.now(), drawers, settings: content.settings });
                 list.push(profile);
                 let confirmation;

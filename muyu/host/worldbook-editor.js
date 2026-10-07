@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 const editable = ['comment', 'content', 'key', 'keysecondary', 'disable', 'constant'];
 const object = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -27,7 +28,7 @@ export function createWorldBookEditorPort({ getTarget, getState, load, save, cre
         const keys = Object.keys(data.entries);
         if (keys.length > 1024 || keys.some(k => !/^(0|[1-9]\d{0,9})$/.test(k) || !object(data.entries[k]) || data.entries[k].uid !== Number(k))) throw Error('UNSUPPORTED_WORLD_BOOK');
         const old = versions.get(book), fingerprint = JSON.stringify([before, serialized]);
-        const revision = old?.fingerprint === fingerprint ? old.revision : crypto.randomUUID();
+        const revision = old?.fingerprint === fingerprint ? old.revision : randomUUID();
         if (!versions.has(book) && versions.size >= 512) versions.delete(versions.keys().next().value);
         const captured = { ...before, name, data, keys, fingerprint, revision }; versions.set(book, captured); return captured;
     }
@@ -37,7 +38,7 @@ export function createWorldBookEditorPort({ getTarget, getState, load, save, cre
         const key = captured.keys[Number(match[2])]; return { key, value: captured.data.entries[key] };
     }
     const bookFor = selector => { const m = /^entry:(0|[1-9]\d{0,2}):(0|[1-9]\d{0,3})$/.exec(selector); if (!m) throw Error('INVALID_WORLD_BOOK_EDIT'); return 'book:' + m[1]; };
-    function directoryVersion(state) { const fingerprint = jsonKey(state); if (directory?.fingerprint !== fingerprint) directory = { fingerprint, revision: crypto.randomUUID() }; return directory.revision; }
+    function directoryVersion(state) { const fingerprint = jsonKey(state); if (directory?.fingerprint !== fingerprint) directory = { fingerprint, revision: randomUUID() }; return directory.revision; }
     const normalizedName = name => name.normalize('NFKC').toLocaleLowerCase();
     function newName(name, state) {
         if (typeof name !== 'string' || name !== name.trim() || !/^[\p{L}\p{N} _-]{1,120}$/u.test(name) || new TextEncoder().encode(name).length > 180 || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(name)) throw Error('INVALID_WORLD_BOOK_EDIT');
@@ -96,7 +97,7 @@ export function createWorldBookEditorPort({ getTarget, getState, load, save, cre
                 if (jsonKey(before) === jsonKey(after)) throw Error('EMPTY_CHANGES');
             }
             if (JSON.stringify(data).length > 1048576) throw Error('WORLD_BOOK_TOO_LARGE');
-            const content = copyJson({ module: 'worldbook-editor', ticket: 'worldbook-edit:' + crypto.randomUUID(), target: captured?.target || state.target, name: creatingBook ? args.name : captured.name,
+            const content = copyJson({ module: 'worldbook-editor', ticket: 'worldbook-edit:' + randomUUID(), target: captured?.target || state.target, name: creatingBook ? args.name : captured.name,
                 ...(args.operation === 'copy_book' ? { sourceName: captured.name } : {}),
                 selector: args.selector, operation: args.operation, before, after, warnings: ['修改共享世界书资源，可影响所有绑定此书的聊天；不是仅当前聊天。 / Shared resource; affects all chats using this book.',
                     '仅更新点名字段；关键词数组整项替换，其他条目和未知字段保留。不修改绑定、不生成、不执行宏。 / Specified fields only; arrays replace whole fields. Other entries/unknown fields preserved. No binding changes, generation or macro execution.',

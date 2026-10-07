@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { validateProfileLibraryDefinition } from '../../systems/profile-library-validation.js';
 const record=v=>v && typeof v==='object' && !Array.isArray(v);
@@ -11,7 +12,7 @@ export function createProfileLibraryPort({ getSettings, system }) {
     };
     function revision(row) {
         const fingerprint=JSON.stringify(row),old=versions.get(row.id);
-        if(!old||old.row!==row||old.fingerprint!==fingerprint) versions.set(row.id,{row,fingerprint,revision:crypto.randomUUID()});
+        if(!old||old.row!==row||old.fingerprint!==fingerprint) versions.set(row.id,{row,fingerprint,revision:randomUUID()});
         return versions.get(row.id).revision;
     }
     function existing(id,expected) {

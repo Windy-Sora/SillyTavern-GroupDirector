@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 
 /** Native binding/delete workflows; never delegates to arbitrary Slash commands. */
@@ -10,7 +11,7 @@ export function createWorldBookControls({ getTarget, getChatTarget, getState, ge
         if (!Array.isArray(state?.names) || !Array.isArray(state?.global) || state.names.length > 512 || state.global.length > 512 || new Set(state.names).size !== state.names.length || state.names.some(n => typeof n !== 'string' || !n.trim() || n.length > 200) || state.global.some(n => typeof n !== 'string')) throw Error('UNSUPPORTED_WORLD_BOOK');
         return copyJson({target:actual,chatTarget:getChatTarget?.() || null,names:state.names,global:state.global,chat:typeof state.chat === 'string' ? state.chat : ''});
     }
-    function revision(state) { const key = jsonKey(state); if (version?.key !== key) version = {key,id:crypto.randomUUID()}; return version.id; }
+    function revision(state) { const key = jsonKey(state); if (version?.key !== key) version = {key,id:randomUUID()}; return version.id; }
     function refs(name) {
         const value = getReferences?.(name);
         if (!value || !Number.isSafeInteger(value.known) || value.known < 0) throw Error('WORLD_BOOK_REFERENCES_UNKNOWN');
@@ -43,7 +44,7 @@ export function createWorldBookControls({ getTarget, getChatTarget, getState, ge
                 if(equal(before,after))throw Error('EMPTY_CHANGES');
             }
             if(epoch!==expectedEpoch || !equal(snapshot(target),state))throw Error('STALE_WORLD_BOOK_EDIT');
-            const content=copyJson({module:'worldbook-editor',ticket:'worldbook-control:'+crypto.randomUUID(),target:state.target,name:name||'World-book binding',selector:args.selector,operation:args.operation,before,after,warnings:[
+            const content=copyJson({module:'worldbook-editor',ticket:'worldbook-control:'+randomUUID(),target:state.target,name:name||'World-book binding',selector:args.selector,operation:args.operation,before,after,warnings:[
                 args.operation==='set_chat_binding' ? '仅替换当前聊天的单本世界书绑定；空名解绑。 / Replaces this chat binding only; empty name unbinds.' : args.operation==='set_global_binding' ? '整项替换酒馆全局激活列表，影响所有聊天。 / Replaces the entire ST global activation list for all chats.' : '永久删除整本共享资源，不提供撤销。已知引用必须先解绑；未加载聊天的引用未知，可能失去资源。 / Permanently deletes a shared book. Unbind known references first; references in unloaded chats are unknown.',
                 '绑定或激活不证明实际注入，不修改GD的世界书选择策略，不调用生成。 / Binding/activation does not prove injection. GD selection policy unchanged; no generation.',
                 '结果未知不自动重试或回滚；保存不证明持久化。删除会由酒馆刷新编辑器，请先保存／放弃其草稿。 / No retries or rollback on unknown outcome. Persistence unconfirmed. Deletion refreshes the ST editor; save/discard its drafts first.'

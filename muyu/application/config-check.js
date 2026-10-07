@@ -1,8 +1,9 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { createToolBroker } from '../tools/broker.js';
 
 /** Deterministic read-only task through the same provider, policy and budget as model reads. */
 export async function checkReceiptConfig({ builtins, target, receipt, allowed, limit, signal }) {
-    const runId = 'config-check:' + crypto.randomUUID();
+    const runId = 'config-check:' + randomUUID();
     builtins.bindBudget(runId, limit);
     try {
         if (receipt.version === 2) {

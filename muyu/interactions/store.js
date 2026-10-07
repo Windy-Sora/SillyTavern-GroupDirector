@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { validateQuestion, validateAnswer } from './contract.js';
 import { validatePermission, permissionFields } from '../permissions/contract.js';
 
@@ -9,7 +10,7 @@ export function createInteractionStore() {
         create(identity, question) {
             if ([...requests.values()].some(r => r.sessionId === identity.sessionId && r.status === 'pending')) throw Error('INTERACTION_PENDING');
             const permission = question?.kind === 'permission';
-            const q = permission ? validatePermission(permissionFields(question)) : validateQuestion(question), id = 'request:' + crypto.randomUUID();
+            const q = permission ? validatePermission(permissionFields(question)) : validateQuestion(question), id = 'request:' + randomUUID();
             const r = { ...structuredClone(identity), id, kind: permission ? 'permission' : 'clarification', ...q,
                 ...(permission ? { hostManaged: question.hostManaged === true } : {}), status: 'pending', draft: '', createdAt: Date.now() };
             requests.set(id, r); return structuredClone(r);

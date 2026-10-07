@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { applyApprovedMemoryEdit } from '../../systems/memory-editor.js';
 import { createMemoryCreationPort } from './memory-creation.js';
@@ -30,7 +31,7 @@ export function createMemoryEditorPort({ getTarget, getMetadata, getCharacters, 
     function version(live, selector) {
         const r = role(live, selector), fingerprint = jsonKey({ avatar: r.avatar, entries: r.entries, characters: live.characters }), key = jsonKey({ target: getTarget(), selector });
         const old = versions.get(key);
-        if (!old || old.metadata !== live.metadata || old.store !== live.store || old.fingerprint !== fingerprint) versions.set(key, { metadata: live.metadata, store: live.store, fingerprint, revision: crypto.randomUUID() });
+        if (!old || old.metadata !== live.metadata || old.store !== live.store || old.fingerprint !== fingerprint) versions.set(key, { metadata: live.metadata, store: live.store, fingerprint, revision: randomUUID() });
         if (versions.size > 512) versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -58,7 +59,7 @@ export function createMemoryEditorPort({ getTarget, getMetadata, getCharacters, 
         if ('mood' in changes && !moods.includes(changes.mood)) throw Error('INVALID_MEMORY_EDIT');
         const after = args.operation === 'delete' ? null : { ...before, ...changes, ...('event' in changes ? { event: changes.event.trim() } : {}) };
         if (jsonKey(before) === jsonKey(after)) throw Error('EMPTY_CHANGES');
-        const candidate = { module: 'memory-editor', ticket: 'memory-edit:' + crypto.randomUUID(), target, operation: args.operation, character: args.character, index: args.index, name: r.name, before, after,
+        const candidate = { module: 'memory-editor', ticket: 'memory-edit:' + randomUUID(), target, operation: args.operation, character: args.character, index: args.index, name: r.name, before, after,
             warnings: ['仅编辑当前聊天的这一条记忆；其他条目和来源信息保持不变。 / Only this entry in this chat changes.', '删除不能直接撤销；保存未知不自动重试或整仓回滚。 / Deletion cannot be undone directly; unknown saves never auto-retry or roll back the store.'] };
         if (new TextEncoder().encode(JSON.stringify(candidate)).length > 24000) throw Error('MEMORY_DRAFT_TOO_LARGE');
         const content = copyJson(candidate);

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 export const CHARACTER_TEXT_FIELDS=Object.freeze({description:'角色描述',personality:'性格',scenario:'场景',first_mes:'首条消息',mes_example:'示例对话',system_prompt:'系统提示词',post_history_instructions:'历史后指令',creator_notes:'创作者备注'});
 const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
@@ -11,7 +12,7 @@ export function createCharacterCardPort({getTarget,getDirectory,load,save,duplic
     const nameOk=name=>typeof name==='string'&&name.length>0&&name.length<=80&&name===name.trim()&&!/[\\/<>:"|?*\x00-\x1f\x7f]/.test(name)&&!/^\.+$/.test(name)&&!name.endsWith('.')&&!/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name);
     const normalized=name=>name.normalize('NFKC').trim().toLowerCase();
     function references(avatar){const result=getReferences?.(avatar);if(!object(result)||!Number.isSafeInteger(result.known)||result.known<0)throw Error('CHARACTER_REFERENCES_UNAVAILABLE');if(result.known)throw Error('CHARACTER_REFERENCED');return {known:0,unloadedReferences:'unknown'};}
-    function directoryRevision(s){const key=JSON.stringify(s);if(directory?.key!==key)directory={key,revision:crypto.randomUUID()};return directory.revision;}
+    function directoryRevision(s){const key=JSON.stringify(s);if(directory?.key!==key)directory={key,revision:randomUUID()};return directory.revision;}
     function fields(raw){const data=object(raw.data)?raw.data:raw,result={};for(const [field,label]of Object.entries(CHARACTER_TEXT_FIELDS)){const value=data[field]??raw[field];if(value===undefined)continue;if(typeof value!=='string'||value.length>131072)throw Error('UNSUPPORTED_CHARACTER');result[field]={label,value};}return result;}
     async function capture(target,selector){const s=state(target),m=/^card:(0|[1-9]\d{0,3})$/.exec(selector),index=m?Number(m[1]):-1,ticketEpoch=epoch;
         if(index<0||index>=s.rows.length)throw Error('INVALID_CHARACTER_CARD');const identity=s.rows[index];
@@ -19,7 +20,7 @@ export function createCharacterCardPort({getTarget,getDirectory,load,save,duplic
         if(!object(raw)||raw.shallow||raw.avatar!==identity.avatar||typeof raw.name!=='string')throw Error('UNSUPPORTED_CHARACTER');
         const serialized=typeof raw.json_data==='string'?raw.json_data:JSON.stringify(raw);if(serialized.length>1048576)throw Error('CHARACTER_TOO_LARGE');
         const persisted=JSON.parse(serialized);if(!object(persisted))throw Error('UNSUPPORTED_CHARACTER');
-        const key=JSON.stringify([s,JSON.parse(serialized)]),old=versions.get(selector),revision=old?.key===key?old.revision:crypto.randomUUID();
+        const key=JSON.stringify([s,JSON.parse(serialized)]),old=versions.get(selector),revision=old?.key===key?old.revision:randomUUID();
         const result={s,identity,raw,persisted,key,revision};if(versions.size>=128&&!versions.has(selector))versions.delete(versions.keys().next().value);versions.set(selector,result);return result;}
     function page(text,revision,offset){if(text.length>131072)throw Error('CHARACTER_TOO_LARGE');if(!Number.isInteger(offset)||offset<0||offset>text.length||offset&&/[\uDC00-\uDFFF]/.test(text[offset]))throw Error('INVALID_CHARACTER_CARD');let end=Math.min(text.length,offset+6000);if(end<text.length&&/[\uD800-\uDBFF]/.test(text[end-1]))end--;return{text:text.slice(offset,end),revision,nextOffset:end<text.length?end:-1};}
     return Object.freeze({
@@ -43,7 +44,7 @@ export function createCharacterCardPort({getTarget,getDirectory,load,save,duplic
             else if(args.operation==='rename'){before={name:c.raw.name};after={name:changes.name};}
             else for(const [k,v]of Object.entries(changes)){if(!Object.hasOwn(current,k))throw Error('UNSUPPORTED_CHARACTER');before[k]={label:CHARACTER_TEXT_FIELDS[k],value:current[k].value};after[k]={label:CHARACTER_TEXT_FIELDS[k],value:v};}
             if(jsonKey(before)===jsonKey(after))throw Error('EMPTY_CHANGES');
-            const content=copyJson({module:'character-card',ticket:'character-card:'+crypto.randomUUID(),target:c.s.target,name:c.raw.name,selector:args.selector,operation:args.operation,before,after,warnings:[
+            const content=copyJson({module:'character-card',ticket:'character-card:'+randomUUID(),target:c.s.target,name:c.raw.name,selector:args.selector,operation:args.operation,before,after,warnings:[
                 '修改共享角色卡，影响使用该卡的其他聊天；不会改已有消息。 / Shared character card affects other chats; existing messages unchanged.',
                 '复制仅复制角色卡PNG，不复制聊天、标签映射或外部附加世界书绑定；原显示名保留，新文件名由酒馆分配。 / Copy duplicates card PNG only, not chats, tag mappings or auxiliary bindings; keeps display name with a host-assigned filename.',
                 '不切换聊天、不执行宏、不调用生成或强制刷新编辑器。保存未知不重试／回滚。手动刷新酒馆目录／编辑器后核对。 / No chat switching, macros, generation or editor reload. No retry/rollback on unknown save; refresh UI manually.',

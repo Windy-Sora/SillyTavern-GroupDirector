@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { jsonKey } from '../../core/json-contract.js';
 
 /** Run-local references to host-generated read arguments, never permissions. */
@@ -10,7 +11,7 @@ export function createReadContinuations() {
                 if (entry.target === targetKey && jsonKey(entry.args) === jsonKey(args)) return { id: args.id, token };
             }
             if (entries.size >= 128) return null;
-            const token = crypto.randomUUID();
+            const token = randomUUID();
             entries.set(token, { args: { ...args }, target: targetKey });
             return { id: args.id, token };
         },

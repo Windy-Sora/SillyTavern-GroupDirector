@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson } from '../core/json-contract.js';
 import { createTaskEvidence } from './task-evidence.js';
 import { assertPlanSteps } from './task-step-bindings.js';
@@ -19,7 +20,7 @@ export function createTaskReadEvidence({ canCarry = () => false } = {}) {
             const probe = createTaskEvidence(); probe.observe(call, result, runId);
             const observation = probe.snapshot().observations[0];
             if (!observation || observation.outcome === 'not-established') return;
-            const id = 'read-evidence:' + crypto.randomUUID();
+            const id = 'read-evidence:' + randomUUID();
             rows.set(id, { id, capturedAt: new Date().toISOString(), observation,
                 query: copyJson({ toolId: call.toolId, args: call.args || {} }), binding: null });
         },

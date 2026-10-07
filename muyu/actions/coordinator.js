@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 
 /** One trusted action type per coordinator. Model tools cannot invoke this API. */
@@ -25,7 +26,7 @@ export function createApprovedActions({ contract, getArtifact, getTarget, change
             contract.validate(artifactId, revision);
             const artifact = getArtifact(artifactId);
             if (artifact.revision !== revision || !contract.matchesArtifact(artifact)) throw Error('INVALID_DRAFT');
-            const record = { id: contract.idPrefix + crypto.randomUUID(), artifactId, revision, sessionId: artifact.sessionId,
+            const record = { id: contract.idPrefix + randomUUID(), artifactId, revision, sessionId: artifact.sessionId,
                 target: copyJson(getTarget()), content: copyJson(artifact.content), status: 'pending', result: null };
             copyJson(record); // Reject oversized approval envelopes before recording them.
             records.set(record.id, record); notify(); return copyJson(record);

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { parseSkillMarkdown, skillCopy, skillKeys, validateSkillData, validateSkillPackage } from '../skills/contract.js';
 import { skillEditorPackage } from '../skills/editor.js';
@@ -55,7 +56,7 @@ export function createSkillPort({ getSettings, saveSettings, loadBuiltins = load
         const meta = next ? parseSkillMarkdown(next.files.find(file => file.path === 'SKILL.md').text) : null;
         if (operation === 'update' && `user:${meta.name}` !== id) throw Error('SKILL_IDENTITY_CHANGE');
         if (['create', 'copy'].includes(operation) && s.rows.some(row => row.id === `user:${meta.name}`)) throw Error('SKILL_DUPLICATE');
-        const ticket = crypto.randomUUID(), content = copyJson({ module: 'skill', ticket, operation, id: next ? `user:${meta.name}` : id,
+        const ticket = randomUUID(), content = copyJson({ module: 'skill', ticket, operation, id: next ? `user:${meta.name}` : id,
             name: meta?.displayName ?? (previous ? parseSkillMarkdown(previous.package.files.find(file => file.path === 'SKILL.md').text).displayName : 'Skill'),
             enabled: operation === 'update' ? previous.enabled : operation === 'delete' ? false : enabled,
             warnings: ['账户内所有聊天；保存不运行技能或调用模型。启用后相关用途和正文可按需发送给当前模型。关闭／删除不撤回已外发内容；未知保存不要自动重试。'] });

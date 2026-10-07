@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { validateBlueprintLibraryDefinition } from '../../systems/blueprint-library-validation.js';
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -12,7 +13,7 @@ export function createBlueprintLibraryPort({ getSettings, system }) {
     };
     function revision(row) {
         const fingerprint=JSON.stringify(row), old=versions.get(row.id);
-        if(!old || old.row!==row || old.fingerprint!==fingerprint) versions.set(row.id,{row,fingerprint,revision:crypto.randomUUID()});
+        if(!old || old.row!==row || old.fingerprint!==fingerprint) versions.set(row.id,{row,fingerprint,revision:randomUUID()});
         return versions.get(row.id).revision;
     }
     function existing(id, expected) {

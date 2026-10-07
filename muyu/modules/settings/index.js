@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { assertActive, ExecutionError } from '../../core/execution.js';
 import { createToolRegistry } from '../../tools/registry.js';
@@ -144,7 +145,7 @@ export function createSettingsModule({ getSettings, getTarget, memoryLimitPort, 
             // Reserve envelope space for artifact, validation and operation metadata.
             if (new TextEncoder().encode(JSON.stringify(content)).length > 24000) throw Error('DRAFT_TOO_LARGE');
         } catch (error) { if (plan) memoryLimitPort?.forget(plan); if (completionPlan) completionVariablePort?.forget(completionPlan); if (togglePlan) blueprintTogglePort?.forget(togglePlan); throw error; }
-        const candidateId = 'settings:' + crypto.randomUUID();
+        const candidateId = 'settings:' + randomUUID();
         // Model-only interpretation; keep the private draft and approval equality contract unchanged.
         const modelPreview = { ...content.preview, interpretation: 'Draft comparison only. before is the captured preview baseline, not proof of the current value. after is proposed, not executed. No write or persistence is confirmed by this result.' };
         const result = copyJson({ candidateId, text: JSON.stringify(apply ? { ...modelPreview, automaticApplication: 'requested; executes only after successful run and fresh host validation; check receipt' } : modelPreview) });

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {applyApprovedProfileEdit} from '../../systems/profile-editor.js';
 import {createProfileCreationPort} from './profile-creation.js';
@@ -29,7 +30,7 @@ export function createProfileEditorPort({getTarget,getMetadata,getCharacters,get
     function fingerprint(live,r){return jsonKey({avatar:r.avatar,before:r.before,archived:r.archived,archivePresent:Object.hasOwn(live.archive||{},r.avatar),characters:live.characters,schema:schemaKey(live)});}
     function version(live,selector){
         const r=role(live,selector),fp=fingerprint(live,r),key=jsonKey({target:getTarget(),selector}),old=versions.get(key);
-        if(!old||old.metadata!==live.metadata||old.store!==live.store||old.archive!==live.archive||old.fp!==fp)versions.set(key,{metadata:live.metadata,store:live.store,archive:live.archive,fp,revision:crypto.randomUUID()});
+        if(!old||old.metadata!==live.metadata||old.store!==live.store||old.archive!==live.archive||old.fp!==fp)versions.set(key,{metadata:live.metadata,store:live.store,archive:live.archive,fp,revision:randomUUID()});
         if(versions.size>512)versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -60,7 +61,7 @@ export function createProfileEditorPort({getTarget,getMetadata,getCharacters,get
             if(jsonKey(profile)===jsonKey(r.before.profile))throw Error('EMPTY_CHANGES');
             after={...r.before,profile,manualEdited:true,updatedAt:Date.now(),state:'ready'};
         }
-        const candidate={module:'profile-editor',ticket:'profile-edit:'+crypto.randomUUID(),target,character:args.character,name:r.name,operation:args.operation,before:r.before,after,
+        const candidate={module:'profile-editor',ticket:'profile-edit:'+randomUUID(),target,character:args.character,name:r.name,operation:args.operation,before:r.before,after,
             archiveBefore:args.operation==='delete'?r.archived:null,archiveAfter:args.operation==='delete'?r.before:null,
             warnings:['仅修改当前聊天档案，不改角色卡或资源库。 / Only this chat profile changes, not the character card or library.',
                 args.operation==='delete'?'删除沿用旧界面的归档语义；同角色已有归档将被替换，完整差异已列出。 / Delete archives the profile and replaces any previous archive for this role.':'保留自定义字段及来源信息；设为手工编辑、已就绪，更新时间为预览时刻。 / Custom/source fields stay; mark manually edited and ready, with the preview timestamp.',

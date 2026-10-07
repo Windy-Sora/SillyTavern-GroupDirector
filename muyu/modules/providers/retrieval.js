@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { searchRecords } from '../../retrieval/literal.js';
 import { fingerprint } from '../../context/planner.js';
 import { jsonKey } from '../../core/json-contract.js';
@@ -55,7 +56,7 @@ export function createProviderRetrieval({ registry, getRun, current, source }) {
                 } else fresh = source(args, run, ctx);
                 const page = searchRecords(fresh, { query: args.query, offset, start, fingerprint: expected, oneHitPerRecord: false });
                 const refs = [], reference = (kind, index, position) => {
-                    const token = crypto.randomUUID();
+                    const token = randomUUID();
                     refs.push([token, { kind, index, start: position, fingerprint: fingerprint(fresh.at(index)), identity: fresh.identity, total: fresh.length, key: key(args), target: jsonKey(ctx.target), query: args.query }]);
                     return token;
                 };
@@ -77,7 +78,7 @@ export function createProviderRetrieval({ registry, getRun, current, source }) {
                 if (end < content.length && /[\uD800-\uDBFF]/.test(content[end - 1])) end--;
                 output.text = content.slice(ref.start, end);
                 const refs = [];
-                if (end < content.length) { output.nextToken = crypto.randomUUID(); refs.push([output.nextToken, { ...ref, start: end }]); }
+                if (end < content.length) { output.nextToken = randomUUID(); refs.push([output.nextToken, { ...ref, start: end }]); }
                 return charge(run, output, refs);
             } catch (e) { return { ...output, status: error(e), text: '', nextToken: '' }; }
         },

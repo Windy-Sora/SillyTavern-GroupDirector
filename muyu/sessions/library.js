@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { HISTORY_LIMITS, historyBytes, validateRecord, summarizeRecord, validateSummary } from './contract.js';
 import { importedRecord, exportHistoryRecord, exportHistoryRecovery, parseHistoryImport } from './exchange.js';
 import { MAX_MESSAGE_BYTES } from '../core/context-limits.js';
@@ -129,7 +130,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
         },
         get: id => records.has(id) ? structuredClone(records.get(id)) : null,
         recoveryMessages: id => recoveries.has(id) ? structuredClone(recoveries.get(id).messages) : null,
-        create(scope) { return add(validateRecord({ version: 2, ...(JSON.parse(scope)[0] === 'assistant' ? { version: 5, receipts: [], contextSummary: null } : {}), id: crypto.randomUUID(), revision: 0, scope, title: '', createdAt: now(), updatedAt: now(), messages: [], required: [], status: 'idle', archived: false, imported: false })); },
+        create(scope) { return add(validateRecord({ version: 2, ...(JSON.parse(scope)[0] === 'assistant' ? { version: 5, receipts: [], contextSummary: null } : {}), id: randomUUID(), revision: 0, scope, title: '', createdAt: now(), updatedAt: now(), messages: [], required: [], status: 'idle', archived: false, imported: false })); },
         import(text) { return add(importedRecord(parseHistoryImport(text), now())); },
         recordReceipt(id, value) {
             const previous = records.get(id); if (!previous || closed || previous.imported || previous.archived) throw Error('NOT_READY');

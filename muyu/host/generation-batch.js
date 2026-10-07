@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 
 const plain = value => value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -122,7 +123,7 @@ export function createGenerationBatchPort({ getTarget, getContext, getSettings, 
             const prior = [...batches.values()].find(t => t.taskId === taskId && !t.retired);
             if (prior) { if (jsonKey(prior.steps) !== jsonKey(requests)) fail('GENERATION_BATCH_ALREADY_PREPARED'); current(prior, target); return copyJson(describe(prior)); }
             if (batches.size >= 64) fail('EXECUTION_CAPACITY_EXCEEDED');
-            const t = { executionId: crypto.randomUUID(), taskId, target: copyJson(target), steps: requests, expected: capture(), descriptors: [], childTasks: [], tickets: [] };
+            const t = { executionId: randomUUID(), taskId, target: copyJson(target), steps: requests, expected: capture(), descriptors: [], childTasks: [], tickets: [] };
             current(t, target);
             const profileSaves = requests.filter(step => step.kind === 'profile' && step.mode === 'save').length;
             if (Object.keys(t.expected.stores.profile || {}).length + profileSaves > 512) fail('PROFILE_CAPACITY_EXCEEDED');

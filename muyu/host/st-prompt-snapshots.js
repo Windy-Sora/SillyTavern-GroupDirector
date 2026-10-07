@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { createBudgetConfigStore } from './budget-config.js';
 import { jsonKey } from '../core/json-contract.js';
 
@@ -33,7 +34,7 @@ export function createStPromptSnapshots({getContext,getTarget,getSettings,saveSe
                     injections.push({index,key:key.slice(0,120),text,chars:value.length,truncated,position:numeric(own(row,'position')),depth:numeric(own(row,'depth')),role:numeric(own(row,'role')),scan:typeof own(row,'scan')==='boolean'?own(row,'scan'):null,hasFilter:typeof own(row,'filter')==='function'});
                 }if(keys.length>MAX_BLOCKS){omitted+=keys.length-MAX_BLOCKS;cut=true;}
             }
-            latest={id:crypto.randomUUID(),owner,time:now(),stage,dryRun:typeof dryRun==='boolean'?dryRun:null,blocks,injections,omitted,truncated:cut};epoch++;
+            latest={id:randomUUID(),owner,time:now(),stage,dryRun:typeof dryRun==='boolean'?dryRun:null,blocks,injections,omitted,truncated:cut};epoch++;
             clearTimeout(expiryTimer);expiryTimer=setTimeout(clear,AGE_MS);expiryTimer.unref?.();
         }catch{clear();} // Observer failures must not break or leak into generation.
     }

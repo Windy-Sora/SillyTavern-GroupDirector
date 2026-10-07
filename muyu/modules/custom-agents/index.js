@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createExecutionTasks } from '../execution-tasks.js';
@@ -41,7 +42,7 @@ export function createCustomAgentModule({ port, charge }) {
                 notice: 'Every input entry was skipped by the requested conflict policy. No draft or save. Do not switch to replacement without explicit user intent.' }) };
             throw error;
         }
-        const candidateId = 'agent:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+        const candidateId = 'agent:' + randomUUID(); run.candidate = { candidateId, content };
         return { candidateId, text: JSON.stringify({ state: 'draft_only', origin: content.origin, modelCalled: false,
             entries: content.entries.map(row => ({ operation: row.operation, name: row.next?.name || row.previous?.name, providerName: row.next?.providerName || row.previous?.providerName,
                 enabled: row.next?.enabled ?? false, autoEnabled: row.next?.autoEnabled ?? false, warnings: row.warnings })), skipped: content.skipped, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
@@ -65,7 +66,7 @@ export function createCustomAgentModule({ port, charge }) {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
             const content = port.preview({ ...args, changes: JSON.parse(args.changesJson) });
-            const candidateId = 'agent:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+            const candidateId = 'agent:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.next?.name || content.previous?.name, enabled: content.next?.enabled ?? false, modelCalled: false, autoEnabled: content.next?.autoEnabled ?? false, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },
     },

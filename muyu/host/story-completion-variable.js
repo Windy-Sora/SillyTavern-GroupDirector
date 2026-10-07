@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { slugifyId } from '../../systems/variable-system.js';
 
@@ -33,7 +34,7 @@ export function createStoryCompletionVariablePort({ getTarget, getMetadata, getS
                 ['__proto__', 'constructor', 'prototype'].includes(newId) || oldId === newId) throw Error('INVALID_COMPLETION_VARIABLE');
             if (plans.size >= 64) plans.delete(plans.keys().next().value);
             const evidence = inspect(target, newId, oldId);
-            const publicPlan = copyJson({ id: 'story-variable:' + crypto.randomUUID(), target, oldId, newId });
+            const publicPlan = copyJson({ id: 'story-variable:' + randomUUID(), target, oldId, newId });
             plans.set(publicPlan.id, { public: publicPlan, metadata: evidence.metadata });
             return publicPlan;
         },

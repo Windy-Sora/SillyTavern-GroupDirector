@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { prepareGeneratedProfile } from '../../config/generated-profile.js';
@@ -24,7 +25,7 @@ export function createProfileDraftModule() {
         const input = validateJson(inputSchema, args);
         const content = prepareGeneratedProfile({ name: input.name, description: input.description || '', changes: JSON.parse(input.settingsJson) });
         if (run.candidates.size >= 16) throw Error('PROFILE_PREVIEW_LIMIT');
-        const candidateId = 'profile:' + crypto.randomUUID();
+        const candidateId = 'profile:' + randomUUID();
         run.candidates.set(candidateId, content);
         return { candidateId, text: JSON.stringify({ name: content.name, description: content.description, settings: content.settings,
             warnings: content.warnings, state: 'preview_only', activeSettingsChanged: false,

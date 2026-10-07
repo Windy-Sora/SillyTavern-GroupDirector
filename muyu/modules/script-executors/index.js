@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createExecutionTasks } from '../execution-tasks.js';
@@ -53,7 +54,7 @@ export function createScriptExecutorModule({ port, charge }) {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
             const content = port.preview({ ...args, changes: JSON.parse(args.changesJson) });
-            const candidateId = 'script:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+            const candidateId = 'script:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.next?.name || content.previous?.name, enabled: content.next?.enabled ?? false, codeExecuted: false, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },
     },

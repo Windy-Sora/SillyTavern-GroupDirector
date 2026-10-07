@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { providerDraftSchema, prepareProviderDraft } from '../../providers/draft.js';
@@ -28,7 +29,7 @@ export function createProviderAssetModule({ port, charge }) {
             if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
             const content = operation === 'update' ? port.previewUpdate(args) : port.previewDelete(args);
-            const candidateId = 'provider:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+            const candidateId = 'provider:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ operation: content.operation, name: content.name, ids: content.ids, warnings: content.warnings, state: 'draft_only', codeExecuted: false, executionScope: 'this_preview_only', notice: 'This preview did not execute code. This is not a claim about earlier or later synthetic tests or imports.' }), ...(args.apply ? { applyRequested: true } : {}) };
         }])),
         'muyu.provider.assets': (args, ctx) => { if (!port) throw Error('PROVIDER_STORE_UNAVAILABLE'); return encoded(port.list(args.offset || 0), ctx); },
@@ -38,7 +39,7 @@ export function createProviderAssetModule({ port, charge }) {
             if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
             const content = prepareProviderDraft(input); port.assertNew(content);
-            const candidateId = 'provider:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+            const candidateId = 'provider:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ name: content.name, ids: content.ids, warnings: content.warnings, state: 'draft_only', codeExecuted: false, executionScope: 'this_preview_only', notice: 'This preview did not execute code. This is not a claim about earlier or later synthetic tests or imports.' }), ...(input.install ? { applyRequested: true } : {}) };
         },
         'muyu.provider.test': async (args, ctx) => {

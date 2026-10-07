@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { createTaskEvidence } from './task-evidence.js';
 import { createReadReferences } from './read-references.js';
@@ -62,7 +63,7 @@ export function createTaskStateStore({ capacity = 8, canCarry = () => false, can
                 !Number.isInteger(artifact.revision) || !Array.isArray(steps) || !steps.length || steps.length > 8 || steps.some(step => !kinds.has(step.kind))) return;
             if (value.plan?.artifactId === artifact.id && value.plan.artifactRevision === artifact.revision) return;
             value.plan = { artifactId: artifact.id, artifactRevision: artifact.revision, referenceState: 'published', intent: 'model-proposal', readScopeReview: 'pending',
-                steps: steps.map((step, index) => ({ id: 'step:' + crypto.randomUUID(), displayIndex: index + 1, kind: step.kind, status: 'not-assessed' })) };
+                steps: steps.map((step, index) => ({ id: 'step:' + randomUUID(), displayIndex: index + 1, kind: step.kind, status: 'not-assessed' })) };
             value.operations.retainPlan(value.plan);
             value.bindings.retain(value.plan);
             value.reads.retainPlan(value.plan);

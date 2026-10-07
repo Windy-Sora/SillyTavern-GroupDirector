@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { memoryGenerationSettings } from '../../systems/memory-generation.js';
 
@@ -35,7 +36,7 @@ export function createMemoryGenerationPort({ getTarget, getSettings, getContext,
                 const selector = 'memory-character:' + (offset + index), state = targetState(character);
                 const key = jsonKey({ target, selector }), old = targets.get(key);
                 if (!old || old.character !== character || old.fingerprint !== state.fingerprint || old.root !== state.root || old.store !== state.store || old.hasEntries !== state.hasEntries || state.hasEntries && old.entries !== state.entries) {
-                    targets.set(key, { character, ...state, revision: crypto.randomUUID() });
+                    targets.set(key, { character, ...state, revision: randomUUID() });
                     if (targets.size > 512) targets.delete(targets.keys().next().value);
                 }
                 return { character: selector, name: character.name, revision: targets.get(key).revision, count: state.entries.length, limit: state.limit };
@@ -60,7 +61,7 @@ export function createMemoryGenerationPort({ getTarget, getSettings, getContext,
             }
             if (tickets.size >= 128) throw Error('MEMORY_EXECUTION_CAPACITY');
             const baseline = system.inspectGeneration(character.avatar), settings = getSettings(), ctx = getContext(), providers = getProviders();
-            const t = { executionId: crypto.randomUUID(), taskId, target: copyJson(target), selector, avatar: character.avatar,
+            const t = { executionId: randomUUID(), taskId, target: copyJson(target), selector, avatar: character.avatar,
                 name: character.name, mode, settings, settingsKey: JSON.stringify(memoryGenerationSettings(settings)), custom: settings.agentConfigs?.memory?.useCustom === true,
                 chat: ctx.chat, metadata: ctx.chatMetadata, mainApi: ctx.mainApi, baseline: baseline.fingerprint,
                 root: baseline.root, store: baseline.store, entries: baseline.entries, hasEntries: !!baseline.store && Object.hasOwn(baseline.store, character.avatar),

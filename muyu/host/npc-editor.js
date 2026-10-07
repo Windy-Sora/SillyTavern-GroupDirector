@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {createNpcCreationPort} from './npc-creation.js';
 const record=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -21,7 +22,7 @@ export function createNpcEditorPort({getTarget,getMetadata,extensionKey,system,s
     }
     function version(live,selector){
         const r=selected(live,selector),fp=jsonKey({before:r.before,layout:live.layout}),key=jsonKey({target:getTarget(),selector}),old=versions.get(key);
-        if(!old||old.metadata!==live.metadata||old.list!==live.list||old.entry!==r.entry||old.fp!==fp)versions.set(key,{metadata:live.metadata,list:live.list,entry:r.entry,fp,revision:crypto.randomUUID()});
+        if(!old||old.metadata!==live.metadata||old.list!==live.list||old.entry!==r.entry||old.fp!==fp)versions.set(key,{metadata:live.metadata,list:live.list,entry:r.entry,fp,revision:randomUUID()});
         if(versions.size>512)versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -48,7 +49,7 @@ export function createNpcEditorPort({getTarget,getMetadata,extensionKey,system,s
         const after=args.operation==='delete'?null:{...r.before,...Object.fromEntries(keys.map(k=>[k,changes[k].trim()]))};
         if(after&&live.list.some((e,i)=>i!==r.index&&e.name.toLowerCase()===after.name.toLowerCase()))throw Error('NPC_NAME_COLLISION');
         if(jsonKey(r.before)===jsonKey(after))throw Error('EMPTY_CHANGES');
-        const candidate={module:'npc-editor',ticket:'npc-edit:'+crypto.randomUUID(),target,selector:args.selector,name:r.before.name,operation:args.operation,before:r.before,after,
+        const candidate={module:'npc-editor',ticket:'npc-edit:'+randomUUID(),target,selector:args.selector,name:r.before.name,operation:args.operation,before:r.before,after,
             warnings:['仅修改当前聊天NPC记录，不修改／删除已导出的角色卡或资源库。 / Only this chat NPC record changes, not exported character cards or libraries.',
                 args.operation==='delete'?'删除不归档，不能直接撤销。 / Deletion does not archive and cannot be directly undone.':'保留导入状态、角色卡标识、创建时间和自定义字段。 / Import status, card IDs, creation time and custom fields stay unchanged.',
                 '保存未知不自动重试或整仓回滚。 / Unknown saves never auto-retry or roll back the store.']};

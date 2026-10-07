@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { jsonKey } from '../core/json-contract.js';
 import { prepareProviderDraft } from '../providers/draft.js';
 import { checkedSyntheticReport } from '../providers/test-contract.js';
@@ -20,7 +21,7 @@ export function createProviderAssetPort({ getSettings, loader, getProviders, reg
     function revision(row) {
         const old = revisions.get(row.name);
         const fingerprint = JSON.stringify(row), instances = (row.ids || []).map(id => (getProviders?.() || []).find(p => p.id === id));
-        if (!old || old.row !== row || old.fingerprint !== fingerprint || instances.some((p, i) => p !== old.instances[i])) revisions.set(row.name, { row, fingerprint, instances, id: crypto.randomUUID() });
+        if (!old || old.row !== row || old.fingerprint !== fingerprint || instances.some((p, i) => p !== old.instances[i])) revisions.set(row.name, { row, fingerprint, instances, id: randomUUID() });
         return revisions.get(row.name).id;
     }
     function assertNew(content) {

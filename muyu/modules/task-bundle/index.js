@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { taskBundleSchema } from '../../host/task-bundle-draft.js';
@@ -37,7 +38,7 @@ export function createTaskBundleModule({ port }) {
             notice: 'Preview only. One separate UI approval executes exact steps in order; an uncertain save stops remaining steps.' };
         const text = JSON.stringify(input.apply ? { ...preview, automaticApplication: 'requested; check step receipts after run' } : preview);
         if (text.length > 12000) { port.forget(content); throw Error('BUNDLE_PREVIEW_TOO_LARGE'); }
-        const candidateId = 'bundle:' + crypto.randomUUID();
+        const candidateId = 'bundle:' + randomUUID();
         run.candidate = { candidateId, content };
         const steps = taskBundleLayout(content).map((step, index) => ({ id: candidateId + ':step:' + (index + 1), kind: step.kind, displayIndex: index + 1 }));
         return { candidateId, text, steps, ...(input.apply ? { applyRequested: true } : {}) };

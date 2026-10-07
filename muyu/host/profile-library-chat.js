@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 export function createProfileLibraryChatPort({ getSettings, getMetadata, getTarget, system, libraryPort, saveChatConfirmed, isBusy = () => false }) {
     const plans = new Map();
@@ -26,7 +27,7 @@ export function createProfileLibraryChatPort({ getSettings, getMetadata, getTarg
         if (!profiles.length) throw Error('LIBRARY_NO_READY_PROFILES');
         const exportData={version:1,type:'profile-export',source:{groupName:state.groupName,groupNote:args.description||''},template:state.template,profiles};
         const draft=libraryPort.preview({operation:'create',changes:{name:args.name,description:args.description||'',exportData}});
-        return keep({module:'profile-library-chat',operation:'capture',ticket:crypto.randomUUID(),target,name:draft.next.name,
+        return keep({module:'profile-library-chat',operation:'capture',ticket:randomUUID(),target,name:draft.next.name,
             draft,changes:[],template:null,skipped:[],unmatched:[],count:profiles.length,
             warnings:['只把当前群聊启用成员的已完成档案复制到全局库，已有聊天档案不变，不立即应用模板；后续自动加载可能使用此包。']},
             live,()=>libraryPort.assertDraft(draft));
@@ -43,7 +44,7 @@ export function createProfileLibraryChatPort({ getSettings, getMetadata, getTarg
         if(!usable.length)throw Error('LIBRARY_NO_CHANGES');
         const changes=usable.map(m=>({avatar:m.targetAvatar,name:m.targetName,matchType:m.matchType,before:state.profiles[m.targetAvatar]??null,
             after:{avatar:m.targetAvatar,name:m.targetName,hash:m.targetHash||m.profile.hash||'',profile:m.profile.profile,state:'ready',manualEdited:!!state.profiles[m.targetAvatar]?.manualEdited}}));
-        const content={module:'profile-library-chat',operation:'apply',ticket:crypto.randomUUID(),target,name:data.libraryMeta?.name||'Profile package',
+        const content={module:'profile-library-chat',operation:'apply',ticket:randomUUID(),target,name:data.libraryMeta?.name||'Profile package',
             libraryId:args.id,libraryRevision:args.revision,draft:null,changes,template:args.importTemplate?{before:state.rawTemplate,after:data.template}:null,
             skipped:skipped.map(m=>m.targetName),unmatched:matched.unmatchedMembers.map(m=>m.name),count:changes.length,
             warnings:['仅将列出的档案写入本聊天；不清空其他档案，不编辑消息正文，不调用模型。保存失败或切聊天后不自动重试。',

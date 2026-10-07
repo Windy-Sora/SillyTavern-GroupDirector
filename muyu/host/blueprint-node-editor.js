@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {createBlueprintStructureEditorPort} from './blueprint-structure-editor.js';
 import {createBlueprintInitializationPort} from './blueprint-initialization.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
@@ -38,7 +39,7 @@ export function createBlueprintNodeEditorPort({getTarget,getMetadata,extensionKe
     }
     function version(live,selector){
         const r=selected(live,selector),fp=jsonKey({before:r.before,layout:live.layout,progress:live.progress}),key=jsonKey({target:getTarget(),selector}),old=versions.get(key);
-        if(!old||old.metadata!==live.metadata||old.blueprint!==live.blueprint||old.node!==r.node||old.fp!==fp)versions.set(key,{metadata:live.metadata,blueprint:live.blueprint,node:r.node,fp,revision:crypto.randomUUID()});
+        if(!old||old.metadata!==live.metadata||old.blueprint!==live.blueprint||old.node!==r.node||old.fp!==fp)versions.set(key,{metadata:live.metadata,blueprint:live.blueprint,node:r.node,fp,revision:randomUUID()});
         if(versions.size>512)versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -57,7 +58,7 @@ export function createBlueprintNodeEditorPort({getTarget,getMetadata,extensionKe
         const live=context(target);if(version(live,args.selector)!==args.revision)throw Error('STALE_BLUEPRINT_NODE_EDIT');
         const r=selected(live,args.selector),after=projectBlueprintNodeEdit(r.before,copyJson(args.changes));
         if(jsonKey(after)===jsonKey(r.before))throw Error('EMPTY_CHANGES');
-        const candidate={module:'blueprint-node-editor',ticket:'blueprint-node-edit:'+crypto.randomUUID(),target,selector:args.selector,name:r.node.title,before:r.before,after,
+        const candidate={module:'blueprint-node-editor',ticket:'blueprint-node-edit:'+randomUUID(),target,selector:args.selector,name:r.node.title,before:r.before,after,
             warnings:['仅修改当前聊天的节点标题／已有内容字段；不改ID、类型、子节点或资源库。 / Only this node title/existing content changes, not IDs, types, children or libraries.',
                 '保留全部进度轨道和完成标记；编辑完成条件不会自动推进或重置。 / Preserve progress and completion signals; editing completion rules does not advance/reset.',
                 '保存未知不自动重试或整仓回滚。 / Unknown saves never auto-retry or roll back the store.']};

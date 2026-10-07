@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createDraftRuns } from '../draft-runs.js';
@@ -20,7 +21,7 @@ export function createBlueprintLibraryChatModule({ port, charge }) {
         if(!run||jsonKey(run.target)!==jsonKey(ctx.target)||!port)throw Error('RUN_NOT_BOUND');
         runs.discardCandidate(ctx.runId);
         const content=operation==='capture'?port.capture(args,ctx.target):port.prepareApply(args,ctx.target);
-        const candidateId='library-chat:'+crypto.randomUUID();run.candidate={candidateId,content};
+        const candidateId='library-chat:'+randomUUID();run.candidate={candidateId,content};
         return {candidateId,text:JSON.stringify({state:'draft_only',operation,name:content.name,count:content.count,includeProgress:content.includeProgress,completionReset:!!content.completion?.exists,warnings:content.warnings}),...(args.apply?{applyRequested:true}:{})};
     }
     return { registry,handlers:{

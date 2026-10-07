@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { jsonKey } from '../../core/json-contract.js';
 import { RUN_DEFAULTS, RUN_RANGES } from '../../core/budget.js';
@@ -158,7 +159,7 @@ export function createProviderModule(host) {
         }
         const part = storedText.slice(0, end), bytes = new TextEncoder().encode(part).length;
         run.bytes += bytes; if (run.bytes >= run.limit) run.exhausted = true;
-        const resultId = crypto.randomUUID();
+        const resultId = randomUUID();
         run.results.set(resultId, { id: args.id, revision: args.revision, target: jsonKey(ctx.target), text: storedText, storageTruncated });
         run.resultChars += storedText.length;
         if (!end && storedText.length) run.exhausted = true;

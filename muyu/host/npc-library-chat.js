@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 export function createNpcLibraryChatPort({getSettings,getMetadata,getTarget,system,libraryPort,saveChatConfirmed,isBusy=()=>false}) {
     const plans=new Map();
@@ -19,7 +20,7 @@ export function createNpcLibraryChatPort({getSettings,getMetadata,getTarget,syst
         const npcs=state.npcs.map(n=>({name:n.name,description:n.description||'',personality:n.personality||'',scenario:n.scenario||'',first_mes:n.first_mes||''}));
         const exportData={version:1,type:'npc-export',source:{groupName:state.groupName,groupNote:args.description||''},template:state.template,npcs};
         const draft=libraryPort.preview({operation:'create',changes:{name:args.name,description:args.description||'',exportData}});
-        return keep({module:'npc-library-chat',operation:'capture',ticket:crypto.randomUUID(),target,name:draft.next.name,
+        return keep({module:'npc-library-chat',operation:'capture',ticket:randomUUID(),target,name:draft.next.name,
             draft,changes:[],template:null,skipped:[],count:npcs.length,
             warnings:['将本聊天 NPC 的五项内容及有效 NPC 提示词复制到新全局库，不修改聊天、不生成角色卡、不应用提示词。导入追踪与角色卡关联不写入资源包。']},
             live,()=>libraryPort.assertDraft(draft));
@@ -36,7 +37,7 @@ export function createNpcLibraryChatPort({getSettings,getMetadata,getTarget,syst
             changes.push({index,before,after});
         }
         if(!changes.length)throw Error('LIBRARY_NO_CHANGES');
-        return keep({module:'npc-library-chat',operation:'apply',ticket:crypto.randomUUID(),target,name:data.libraryMeta?.name||'NPC package',
+        return keep({module:'npc-library-chat',operation:'apply',ticket:randomUUID(),target,name:data.libraryMeta?.name||'NPC package',
             libraryId:args.id,libraryRevision:args.revision,draft:null,changes,template:args.importTemplate?{before:state.rawPrompt,after:data.template}:null,
             skipped,count:changes.length,warnings:['只新增或覆盖列出的聊天 NPC；按不区分大小写的姓名匹配，重名请核对。其他 NPC 保留；不会更新已生成的酒馆角色卡。',
                 '保留已有 NPC 的角色卡导入追踪，新 NPC 为未导入；不启用功能、不生成、不修改消息正文。保存未知不自动重试。',

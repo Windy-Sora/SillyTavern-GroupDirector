@@ -1,8 +1,9 @@
+import { randomUUID, sha256 } from '../runtime/crypto.js';
 import { noteCopy, noteBytes, NOTE_LIMITS, validateNoteData, validateNoteInput, noteVisible } from '../memory/contract.js';
 import { serializeSettings, waitSettingsWrites } from '../storage/settings-queue.js';
 
 /** Independent account-settings repository. No archive, role-memory or model permissions are reused. */
-export function createAgentMemoryPort({ getAccount, getSettings, saveSettings, getTarget, now = Date.now, makeId = () => crypto.randomUUID() }) {
+export function createAgentMemoryPort({ getAccount, getSettings, saveSettings, getTarget, now = Date.now, makeId = () => randomUUID() }) {
     const listeners = new Set();
     const changed = () => { for (const fn of listeners) { try { fn(); } catch { /* A view cannot fail persistence. */ } } };
     async function identity() {
@@ -13,7 +14,7 @@ export function createAgentMemoryPort({ getAccount, getSettings, saveSettings, g
     }
     async function capture(target) {
         const owner = getSettings(), account = await identity();
-        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('gd-muyu-notes-v1:' + account));
+        const digest = await sha256('gd-muyu-notes-v1:' + account);
         const namespace = [...new Uint8Array(digest)].map(n => n.toString(16).padStart(2, '0')).join('');
         async function check(signal) {
             if (signal?.aborted) throw Error('NOTE_CANCELLED');

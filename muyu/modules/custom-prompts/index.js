@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 const str = maxLength => ({ type: 'string', maxLength });
@@ -33,7 +34,7 @@ export function createCustomPromptModule({ port, charge }) {
             if (importing && error?.message === 'PROMPT_IMPORT_NO_CHANGES') return { candidateId: '', text: JSON.stringify({ state: 'no_changes', saved: false, code: 'PROMPT_IMPORT_NO_CHANGES' }) };
             throw error;
         }
-        const candidateId = 'prompt:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+        const candidateId = 'prompt:' + randomUUID(); run.candidate = { candidateId, content };
         return { candidateId, text: JSON.stringify({ state: 'draft_only', origin: content.origin, rendered: false,
             entries: content.entries.map(row => ({ operation: row.operation, name: row.next?.name || row.previous?.name, enabled: row.next?.enabled ?? false })),
             skipped: content.skipped, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
@@ -48,7 +49,7 @@ export function createCustomPromptModule({ port, charge }) {
             const run = runs.get(ctx.runId); if (!run || jsonKey(run.target) !== jsonKey(ctx.target) || !port) throw Error('RUN_NOT_BOUND');
             run.candidate = null;
             const content = port.preview({ ...args, changes: JSON.parse(args.changesJson) });
-            const candidateId = 'prompt:' + crypto.randomUUID(); run.candidate = { candidateId, content };
+            const candidateId = 'prompt:' + randomUUID(); run.candidate = { candidateId, content };
             return { candidateId, text: JSON.stringify({ state: 'draft_only', operation: content.operation, name: content.next?.name || content.previous?.name, enabled: content.next?.enabled ?? false, rendered: false, modelCalled: false, warnings: content.warnings }), ...(args.apply ? { applyRequested: true } : {}) };
         },
     },

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 
 /** Host-owned execution tickets. Never persisted or reconstructed from history. */
@@ -28,7 +29,7 @@ export function createScriptExecutionPort({ getTarget, getContext, getSettings, 
             if (tickets.size >= 256) throw Error('SCRIPT_EXECUTION_CAPACITY');
             const definition = copyJson(row);
             if (JSON.stringify(definition).length > 32000) throw Error('SCRIPT_ASSET_UNSUPPORTED');
-            const ticket = { ...args, executionId: crypto.randomUUID(), definition, target: copyJson(target), taskId,
+            const ticket = { ...args, executionId: randomUUID(), definition, target: copyJson(target), taskId,
                 settings: getSettings(), chat: context.chat, message: args.stage === 'message' ? context.chat[args.messageIndex] : null };
             ticket.messageJson = JSON.stringify(ticket.message);
             tickets.set(ticket.executionId, ticket); return describe(ticket);

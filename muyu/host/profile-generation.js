@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { profileGenerationSettings } from '../../systems/profile-generation.js';
 
@@ -36,7 +37,7 @@ export function createProfileGenerationPort({ getTarget, getSettings, getContext
                 const key = jsonKey({ target, selector }), shape = JSON.stringify({ name: character.name, exists: live.exists, schemaHash: live.schemaHash,
                     enabled: getSettings().profileEnabled }), old = targets.get(key);
                 if (!old || old.character !== character || old.root !== live.root || old.store !== live.store || old.entry !== live.entry || old.shape !== shape) {
-                    targets.set(key, { character, root: live.root, store: live.store, entry: live.entry, shape, revision: crypto.randomUUID() });
+                    targets.set(key, { character, root: live.root, store: live.store, entry: live.entry, shape, revision: randomUUID() });
                     if (targets.size > 512) targets.delete(targets.keys().next().value);
                 }
                 return { character: selector, name: character.name, existing: live.exists, saveAvailable: !live.exists && live.count < 512 && !!getSettings().profileEnabled,
@@ -64,7 +65,7 @@ export function createProfileGenerationPort({ getTarget, getSettings, getContext
                 current(prior, target); return descriptor(prior);
             }
             if (tickets.size >= 128) throw Error('EXECUTION_CAPACITY_EXCEEDED');
-            const t = { executionId: crypto.randomUUID(), selector, index, avatar: chosen.avatar, name: chosen.name, character: chosen,
+            const t = { executionId: randomUUID(), selector, index, avatar: chosen.avatar, name: chosen.name, character: chosen,
                 mode, exists: live.exists, custom: !!settings.agentConfigs?.profile?.useCustom, taskId, target: copyJson(target),
                 settings, settingsKey: JSON.stringify(profileGenerationSettings(settings)), metadata: ctx.chatMetadata, chat: ctx.chat, mainApi: ctx.mainApi,
                 root: live.root, store: live.store, archive: live.archive, entry: live.entry, baseline: live.fingerprint,

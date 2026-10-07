@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { normalizeDefinition, slugifyId } from '../../systems/variable-system.js';
 import { BUNDLE_VARIABLE_SCOPE } from '../config/bundle-policy.js';
@@ -65,7 +66,7 @@ export function createVariableDraftPort({ getTarget, getMetadata, extensionKey, 
     }
     return Object.freeze({
         prepare(target, input) {
-            const content = build(target, input), token = 'variable-preview:' + crypto.randomUUID();
+            const content = build(target, input), token = 'variable-preview:' + randomUUID();
             if (drafts.size >= 128) drafts.delete(drafts.keys().next().value);
             const result = copyJson({ ...content, token });
             drafts.set(token, { content: result, metadata: getMetadata() });

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../core/json-contract.js';
 import { configChangesSchema, dependencyFields, previewSettings, readSettingsFields } from '../config/registry.js';
 import { variablePreviewSchema } from '../modules/variables/index.js';
@@ -43,7 +44,7 @@ export function createTaskBundleDraftPort({ getTarget, getSettings, variableDraf
                 if (new Set(ids).size !== ids.length || new Set(names).size !== names.length) throw Error('INVALID_TASK_BUNDLE');
                 for (const request of requests) variables.push(variableDraftPort.prepare(target, request));
                 const content = copyJson({ module: 'task-bundle', version: scripts.length ? 2 : 1, target, settings, variables, ...(scripts.length ? { scripts } : {}),
-                    token: 'bundle:' + crypto.randomUUID() });
+                    token: 'bundle:' + randomUUID() });
                 if (new TextEncoder().encode(JSON.stringify(content)).length > BUNDLE_LIMITS.draftBytes) throw Error('BUNDLE_TOO_LARGE');
                 if (drafts.size >= 64) forget(drafts.values().next().value);
                 drafts.set(content.token, content);

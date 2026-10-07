@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {configPresentation} from '../config/presentation.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {applyWorldBookSelection} from '../../systems/world-book-selection.js';
@@ -29,7 +30,7 @@ export function createSelectionEditorPort({getTarget,getSettings,getWorldNames,w
  const fp=live=>jsonKey({before:live.before,options:live.options})+JSON.stringify(live.fingerprints);
  function revision(live,kind){
   const old=versions.get(kind),fingerprint=fp(live);
-  if(!old||old.settings!==live.settings||old.fp!==fingerprint||old.refs.some((e,i)=>e!==live.refs[i]))versions.set(kind,{settings:live.settings,fp:fingerprint,refs:live.refs,revision:crypto.randomUUID()});
+  if(!old||old.settings!==live.settings||old.fp!==fingerprint||old.refs.some((e,i)=>e!==live.refs[i]))versions.set(kind,{settings:live.settings,fp:fingerprint,refs:live.refs,revision:randomUUID()});
   return versions.get(kind).revision;
  }
  function read(target,kind){
@@ -58,7 +59,7 @@ export function createSelectionEditorPort({getTarget,getSettings,getWorldNames,w
    if(after.mode==='fixed'&&!live.options.some(e=>e.id===after.fixedId)||('fixedId'in changes&&after.fixedId&&!live.options.some(e=>e.id===after.fixedId)))throw Error('PROFILE_LIBRARY_NOT_FOUND');
   }
   if(jsonKey(after)===jsonKey(live.before))throw Error('EMPTY_CHANGES');
-  const content=copyJson({module:'selection-editor',ticket:'selection-edit:'+crypto.randomUUID(),target:{kind:'global',userKey:target.userKey},kind:args.kind,selector:args.kind,
+  const content=copyJson({module:'selection-editor',ticket:'selection-edit:'+randomUUID(),target:{kind:'global',userKey:target.userKey},kind:args.kind,selector:args.kind,
    name:args.kind==='worldbooks'?'世界书选择 / World book selection':'档案库加载策略 / Profile auto-load policy',before:live.before,after,
    warnings:args.kind==='worldbooks'?['替换完整GD手动列表，未列出的书取消选择；只在manual生效。不修改ST激活状态或正文。 / Full GD manual-list replacement; omitted books deselected, effective only in manual mode. ST untouched.',
    '保存并清理缓存，不立即扫描或调用模型；后续Provider可增加资料量。 / Save/cache invalidation only; later Provider use may add context.']:

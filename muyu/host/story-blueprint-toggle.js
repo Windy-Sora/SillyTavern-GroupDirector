@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { slugifyId } from '../../systems/variable-system.js';
 
@@ -34,7 +35,7 @@ export function createStoryBlueprintTogglePort({ getTarget, getMetadata, getSett
         plan(target, enabled) {
             if (typeof enabled !== 'boolean') throw Error('INVALID_BLUEPRINT_TOGGLE');
             const state = inspect(target);
-            const plan = copyJson({ id: 'blueprint-toggle:' + crypto.randomUUID(), target, enabled, variableId: state.id,
+            const plan = copyJson({ id: 'blueprint-toggle:' + randomUUID(), target, enabled, variableId: state.id,
                 operation: state.definition ? 'reset' : enabled ? 'create' : 'none',
                 before: { exists: !!state.definition, stored: state.snapshot.hasValue, value: state.snapshot.value },
                 enableAutoUpdate: !!(enabled && state.definition && state.definition.autoUpdate === false),

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { normalizeCustomAgent } from '../../systems/custom-agent-validation.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { createCustomAgentBatchPort } from './custom-agent-batch.js';
@@ -23,7 +24,7 @@ export function createCustomAgentPort({ getSettings, system, getProviders, getTa
     };
     function revision(row) {
         const fingerprint = JSON.stringify(row), old = versions.get(row.id);
-        if (!old || old.row !== row || old.fingerprint !== fingerprint) versions.set(row.id, { row, fingerprint, revision: crypto.randomUUID() });
+        if (!old || old.row !== row || old.fingerprint !== fingerprint) versions.set(row.id, { row, fingerprint, revision: randomUUID() });
         return versions.get(row.id).revision;
     }
     function existing(id, expected) {

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {projectLedgerEdit,applyApprovedLedgerEdit} from '../../systems/ledger-editor.js';
 const record=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -21,7 +22,7 @@ export function createLedgerEditorPort({getTarget,getMetadata,extensionKey,saveC
     const layoutMatches=(a,b)=>a.list===b.list&&a.refs.length===b.refs.length&&a.refs.every((e,i)=>e===b.refs[i]);
     function version(live,selector){
         const r=selected(live,selector),fp=jsonKey(r.full),key=jsonKey({target:getTarget(),selector}),old=versions.get(key);
-        if(!old||old.metadata!==live.metadata||old.root!==live.root||!layoutMatches(old.live,live)||old.fp!==fp)versions.set(key,{metadata:live.metadata,root:live.root,live,fp,revision:crypto.randomUUID()});
+        if(!old||old.metadata!==live.metadata||old.root!==live.root||!layoutMatches(old.live,live)||old.fp!==fp)versions.set(key,{metadata:live.metadata,root:live.root,live,fp,revision:randomUUID()});
         if(versions.size>512)versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -40,7 +41,7 @@ export function createLedgerEditorPort({getTarget,getMetadata,extensionKey,saveC
         const live=context(target);if(version(live,args.selector)!==args.revision)throw Error('STALE_LEDGER_EDIT');
         const r=selected(live,args.selector),after=projectLedgerEdit(r.before,args.operation,copyJson(args.changes));
         if(jsonKey(after)===jsonKey(r.before))throw Error('EMPTY_CHANGES');
-        const content=copyJson({module:'ledger-editor',ticket:'ledger-edit:'+crypto.randomUUID(),target,selector:args.selector,operation:args.operation,name:'Ledger #'+(r.index+1),before:r.before,after,
+        const content=copyJson({module:'ledger-editor',ticket:'ledger-edit:'+randomUUID(),target,selector:args.selector,operation:args.operation,name:'Ledger #'+(r.index+1),before:r.before,after,
             warnings:['仅修改当前聊天一条账本；清空保留位置和内部消息锚点，不删除条目。 / One chat ledger entry only; clearing keeps its slot and internal anchors.',
             '发言人／剧本可影响后续导演恢复与提示词；编辑历史不证明过去实际发言或保存成功，不立即生成。 / Speakers/scripts can affect future Director recovery/prompts; editable history is not proof of past execution. No immediate generation.',
             '已有names随speakers同步；其他未指定字段保留。保存未知不重试或整仓回滚。 / Existing names follows speakers; omitted fields preserved. Never retry unknown saves or roll back the store.']});

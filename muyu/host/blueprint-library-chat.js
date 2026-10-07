@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson,jsonKey } from '../core/json-contract.js';
 import {inspectBlueprintCompletion} from './blueprint-completion.js';
 import { projectBlueprintLibraryImport } from '../../systems/blueprint-library-chat.js';
@@ -29,7 +30,7 @@ export function createBlueprintLibraryChatPort({getSettings,getMetadata,getTarge
         const state=args.includeProgress?before:{blueprint:before.blueprint,doneSignals:[],progressTracks:{}};
         const exportData={type:'group-director-story-blueprint',version:1,storyBlueprint:state,libraryMeta:{includeProgress:!!args.includeProgress}};
         const draft=libraryPort.preview({operation:'create',changes:{name:args.name,description:args.description||'',exportData}});
-        return keep({module:'blueprint-library-chat',operation:'capture',ticket:crypto.randomUUID(),target,name:draft.next.name,draft,
+        return keep({module:'blueprint-library-chat',operation:'capture',ticket:randomUUID(),target,name:draft.next.name,draft,
             before:null,after:null,completion:null,count:countNodes(before.blueprint.nodes),includeProgress:!!args.includeProgress,
             warnings:['复制本聊天蓝图到新全局库；默认不带进度，显式选择才保存已有进度。不改聊天或变量、不启用或生成。']},live,()=>libraryPort.assertDraft(draft));
     }
@@ -37,7 +38,7 @@ export function createBlueprintLibraryChatPort({getSettings,getMetadata,getTarge
         if(args.includeProgress!==undefined&&typeof args.includeProgress!=='boolean')throw Error('INVALID_LIBRARY_CHAT');
         const live=inspect(target),data=libraryPort.exportEntry(args.id,args.revision),before=live.snapshot.state;
         const after=projectBlueprintLibraryImport({before,exportData:data,settings:{...live.snapshot.config,includeProgress:!!args.includeProgress},chatLength:live.snapshot.length});
-        return keep({module:'blueprint-library-chat',operation:'apply',ticket:crypto.randomUUID(),target,name:data.libraryMeta.name,
+        return keep({module:'blueprint-library-chat',operation:'apply',ticket:randomUUID(),target,name:data.libraryMeta.name,
             libraryId:args.id,libraryRevision:args.revision,draft:null,before,after,completion:live.snapshot.completion,
             count:countNodes(after.blueprint.nodes),includeProgress:!!args.includeProgress,
             warnings:['替换当前聊天整棵蓝图，不合并旧节点；不修改全局设置、不启用功能或调用模型。',

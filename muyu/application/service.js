@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { copyModelText } from '../core/model-message.js';
 import { HISTORY_LIMITS } from '../sessions/contract.js';
@@ -19,7 +20,7 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
     const interactions = createInteractionStore();
     const processes = createProcessStore({ maxRuns: Math.min(maxRuns, 1024) });
     let target = currentTarget == null ? null : copyJson(currentTarget), active = null, disposed = false, cursor = 0, scheduled = false, targetEpoch = 0;
-    const nextId = prefix => prefix + ':' + crypto.randomUUID();
+    const nextId = prefix => prefix + ':' + randomUUID();
     const live = () => { if (disposed) throw new Error('APPLICATION_DISPOSED'); };
     const session = id => { const s = sessions.get(id); if (!s || s.closed) throw new Error('SESSION_CLOSED'); return s; };
     const task = id => { const t = tasks.get(id); if (!t) throw new Error('TASK_NOT_FOUND'); session(t.sessionId); return t; };

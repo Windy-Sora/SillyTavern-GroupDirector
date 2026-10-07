@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {applyApprovedProfileCreation} from '../../systems/profile-editor.js';
 const record=v=>v&&typeof v==='object'&&!Array.isArray(v);
@@ -24,7 +25,7 @@ export function createProfileCreationPort({getTarget,getMetadata,getCreationCont
   return{metadata,root,store,archive,info,schema,selected,count:avatars.length,exists:!!selected&&Object.hasOwn(store||{},selected.avatar)};
  }
  const fp=live=>jsonKey({info:live.info,schema:live.schema,exists:live.exists});
- function version(live,target,character){const key=jsonKey({target,character}),old=versions.get(key),fingerprint=fp(live);if(!old||old.metadata!==live.metadata||old.root!==live.root||old.store!==live.store||old.archive!==live.archive||old.fp!==fingerprint)versions.set(key,{...live,fp:fingerprint,revision:crypto.randomUUID()});if(versions.size>512)versions.delete(versions.keys().next().value);return versions.get(key).revision;}
+ function version(live,target,character){const key=jsonKey({target,character}),old=versions.get(key),fingerprint=fp(live);if(!old||old.metadata!==live.metadata||old.root!==live.root||old.store!==live.store||old.archive!==live.archive||old.fp!==fingerprint)versions.set(key,{...live,fp:fingerprint,revision:randomUUID()});if(versions.size>512)versions.delete(versions.keys().next().value);return versions.get(key).revision;}
  function createTargets(target,offset=0){
   if(!Number.isInteger(offset)||offset<0||offset>512)throw Error('INVALID_PROFILE_EDIT');const live=context(target);
   return{items:live.info.characters.slice(offset,offset+16).map((c,i)=>{const character='profile-character:'+(offset+i),selected={...live,selected:c,exists:Object.hasOwn(live.store||{},c.avatar)};return{character,name:c.name,canCreate:!selected.exists&&selected.count<512,revision:version(selected,target,character)};}),nextOffset:offset+16<live.info.characters.length?offset+16:-1};
@@ -36,7 +37,7 @@ export function createProfileCreationPort({getTarget,getMetadata,getCreationCont
   if(!record(fields)||Object.keys(fields).some(k=>!['summary','tags','motivation','relationships'].includes(k))||typeof fields.summary!=='string'||!fields.summary.trim())throw Error('INVALID_PROFILE_EDIT');
   for(const k of ['summary','motivation','relationships'])if(k in fields&&(typeof fields[k]!=='string'||fields[k].length>12000))throw Error('INVALID_PROFILE_EDIT');
   if('tags'in fields&&(!Array.isArray(fields.tags)||fields.tags.length>64||fields.tags.some(t=>typeof t!=='string'||!t.trim()||t.length>200)))throw Error('INVALID_PROFILE_EDIT');
-  const content=copyJson({module:'profile-editor',operation:'create',ticket:'profile-create:'+crypto.randomUUID(),target,character:args.character,name:live.selected.name,before:null,
+  const content=copyJson({module:'profile-editor',operation:'create',ticket:'profile-create:'+randomUUID(),target,character:args.character,name:live.selected.name,before:null,
    after:{avatar:live.selected.avatar,name:live.selected.name,hash:live.selected.hash,profile:{summary:fields.summary.trim(),tags:(fields.tags||[]).map(t=>t.trim()),motivation:fields.motivation||'',relationships:fields.relationships||''},state:'ready',manualEdited:true,updatedAt:Date.now()},archiveBefore:null,archiveAfter:null,
    warnings:['仅新建当前聊天指定角色档案，不覆盖任何已有记录，保留归档与共享Schema元数据。 / Create this chat profile only; no overwrite, archive or shared schema metadata changes.',
    '手工档案使用标准四字段；不承诺通过用户自定义生成Schema校验。已就绪不证明事实正确或已持久化。 / Manual standard four-field profile; no custom generation-schema validation claim. Ready is not fact or persistence confirmation.',

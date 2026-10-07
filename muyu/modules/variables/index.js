@@ -1,3 +1,4 @@
+import { randomUUID } from '../../runtime/crypto.js';
 import { copyJson, jsonKey, validateJson } from '../../core/json-contract.js';
 import { createToolRegistry } from '../../tools/registry.js';
 import { createArtifactLeases } from '../artifact-leases.js';
@@ -27,7 +28,7 @@ export function createVariableDraftModule({ port }) {
         const { apply, ...request } = validateJson(variablePreviewSchema, args);
         if (run.candidate) port.forget(run.candidate.content);
         run.candidate = null;
-        const content = port.prepare(ctx.target, request), candidateId = 'variable:' + crypto.randomUUID();
+        const content = port.prepare(ctx.target, request), candidateId = 'variable:' + randomUUID();
         run.candidate = { candidateId, content };
         return { candidateId, text: JSON.stringify(apply ? { ...content.preview, automaticApplication: 'requested; check receipt after run' } : content.preview), ...(apply ? { applyRequested: true } : {}) };
     } };

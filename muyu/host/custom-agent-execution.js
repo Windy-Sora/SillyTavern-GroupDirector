@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { agentExecutionEvidence } from '../agents/execution-evidence.js';
 
@@ -37,7 +38,7 @@ export function createCustomAgentExecutionPort({ getTarget, getContext, getSetti
             if (row.name.length > 80 || row.prompt.length > 12000 || row.schema.length > 8000) throw Error('AGENT_ASSET_UNSUPPORTED');
             const definition = copyJson(Object.fromEntries(['id', 'name', 'providerName', 'prompt', 'schema', 'enabled', 'autoEnabled', 'autoInterval', 'order'].map(key => [key, row[key]]))), providers = getProviders();
             const custom = getSettings()?.agentConfigs?.['custom-agent']?.useCustom === true;
-            const t = { id, revision, mode, taskId, definition, executionId: crypto.randomUUID(), target: copyJson(target),
+            const t = { id, revision, mode, taskId, definition, executionId: randomUUID(), target: copyJson(target),
                 settings: getSettings(), config: config(), chat: ctx.chat, metadata: ctx.chatMetadata, mainApi: ctx.mainApi, chatKey: chatKey(ctx.chat),
                 resultBaseline: system.executionBaseline?.(id),
                 providers: [...providers], renders: providers.map(p => p.render),

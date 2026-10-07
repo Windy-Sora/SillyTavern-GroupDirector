@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { npcGenerationSettings } from '../../systems/npc-generation.js';
 
@@ -18,7 +19,7 @@ export function createNpcGenerationPort({ getTarget, getSettings, getContext, ge
         const shape = JSON.stringify({ count: live.entries.length, limit: live.limit, configured: live.requested, firstMes: live.firstMes, enabled: settings.npcEnabled });
         const key = jsonKey(target), old = states.get(key);
         if (!old || old.metadata !== live.metadata || old.root !== live.root || old.list !== live.list || old.shape !== shape) {
-            states.set(key, { metadata: live.metadata, root: live.root, list: live.list, shape, revision: crypto.randomUUID() });
+            states.set(key, { metadata: live.metadata, root: live.root, list: live.list, shape, revision: randomUUID() });
             if (states.size > 64) states.delete(states.keys().next().value);
         }
         return { live, settings, revision: states.get(key).revision };
@@ -57,7 +58,7 @@ export function createNpcGenerationPort({ getTarget, getSettings, getContext, ge
                 current(prior, target); return describe(prior);
             }
             if (tickets.size >= 128) throw Error('EXECUTION_CAPACITY_EXCEEDED');
-            const t = { executionId: crypto.randomUUID(), mode, taskId, target: copyJson(target), requested: live.requested,
+            const t = { executionId: randomUUID(), mode, taskId, target: copyJson(target), requested: live.requested,
                 effectiveCount: live.effectiveCount, existingCount: live.entries.length, limit: live.limit, firstMes: live.firstMes,
                 custom: settings.agentConfigs?.npc?.useCustom === true, settings, settingsKey: JSON.stringify(npcGenerationSettings(settings)),
                 metadata: ctx.chatMetadata, chat: ctx.chat, mainApi: ctx.mainApi, root: live.root, list: live.list, baseline: live.fingerprint,

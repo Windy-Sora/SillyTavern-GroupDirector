@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { normalizeCustomPrompt } from '../../systems/custom-prompt-validation.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { createCustomPromptBatchPort } from './custom-prompt-batch.js';
@@ -19,7 +20,7 @@ export function createCustomPromptPort({ getSettings, system, changed = () => {}
     };
     function revision(row) {
         const fingerprint = JSON.stringify(row), old = versions.get(row.id);
-        if (!old || old.row !== row || old.fingerprint !== fingerprint) versions.set(row.id, { row, fingerprint, revision: crypto.randomUUID() });
+        if (!old || old.row !== row || old.fingerprint !== fingerprint) versions.set(row.id, { row, fingerprint, revision: randomUUID() });
         return versions.get(row.id).revision;
     }
     function existing(id, expected) {

@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 import { applyApprovedMemoryCreation } from '../../systems/memory-editor.js';
 const record = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -30,7 +31,7 @@ export function createMemoryCreationPort({ getTarget, getMetadata, getCharacters
     const fingerprint = live => jsonKey({ characters: live.characters, limit: live.limit, round: live.round, avatar: live.avatar, entries: live.entries });
     function version(live, target, selector) {
         const key = jsonKey({ target, selector }), fp = fingerprint(live), old = versions.get(key);
-        if (!old || old.metadata !== live.metadata || old.root !== live.root || old.store !== live.store || old.fp !== fp) versions.set(key, { ...live, fp, revision: crypto.randomUUID() });
+        if (!old || old.metadata !== live.metadata || old.root !== live.root || old.store !== live.store || old.fp !== fp) versions.set(key, { ...live, fp, revision: randomUUID() });
         if (versions.size > 512) versions.delete(versions.keys().next().value);
         return versions.get(key).revision;
     }
@@ -48,7 +49,7 @@ export function createMemoryCreationPort({ getTarget, getMetadata, getCharacters
         if (live.entries.length >= Math.min(live.limit, 1024)) throw Error('MEMORY_CAPACITY');
         const changes = copyJson(args.changes);
         if (!record(changes) || Object.keys(changes).some(k => !['event','mood'].includes(k)) || typeof changes.event !== 'string' || !changes.event.trim() || changes.event.length > 12000 || 'mood' in changes && !moods.includes(changes.mood)) throw Error('INVALID_MEMORY_EDIT');
-        const content = copyJson({ module: 'memory-editor', ticket: 'memory-create:' + crypto.randomUUID(), target, operation: 'create', character: args.character, index: live.entries.length, name: live.name, before: null,
+        const content = copyJson({ module: 'memory-editor', ticket: 'memory-create:' + randomUUID(), target, operation: 'create', character: args.character, index: live.entries.length, name: live.name, before: null,
             after: { event: changes.event.trim(), mood: changes.mood || 'neutral', round: live.round, timestamp: Date.now() },
             warnings: ['仅向当前聊天的指定角色追加一条记忆；不覆盖、裁剪旧条目或开启功能。 / Append one memory in this chat; no overwrite, pruning or enabling.', '不会额外调用生成模型。时间与消息数由宿主记录，不证明事件实际发生于该时刻。 / No extra generation call; host timestamp/message count do not date the event.', '保存未知不自动重试或回滚；新增也不证明持久化或当前剧情事实。 / Unknown saving never auto-retries or rolls back; memory text is not verified fact.'] });
         // Do not create a list that this bounded editor cannot subsequently verify/read.

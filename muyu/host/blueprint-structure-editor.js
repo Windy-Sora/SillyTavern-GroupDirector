@@ -1,3 +1,4 @@
+import { randomUUID } from '../runtime/crypto.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {inspectBlueprintCompletion} from './blueprint-completion.js';
 import {inspectBlueprintStructure,projectBlueprintStructureEdit,applyApprovedBlueprintStructure} from '../../systems/blueprint-structure-editor.js';
@@ -21,7 +22,7 @@ export function createBlueprintStructureEditorPort({getTarget,getMetadata,getSet
  const sameRefs=(a,b)=>a.metadata===b.metadata&&a.root===b.root&&a.state===b.state&&a.blueprint===b.blueprint&&a.arrays.length===b.arrays.length&&a.arrays.every((r,i)=>r===b.arrays[i])&&a.settings===b.settings&&a.vars===b.vars&&a.globalValues===b.globalValues&&a.rows.length===b.rows.length&&a.rows.every((r,i)=>r.node===b.rows[i].node);
  function revision(live,target){
   const key=jsonKey(target),fp=jsonKey(live.snapshot),old=versions.get(key);
-  if(!old||!sameRefs(live,old.live)||old.fp!==fp)versions.set(key,{live,fp,revision:crypto.randomUUID()});
+  if(!old||!sameRefs(live,old.live)||old.fp!==fp)versions.set(key,{live,fp,revision:randomUUID()});
   if(versions.size>64)versions.delete(versions.keys().next().value);
   return versions.get(key).revision;
  }
@@ -36,7 +37,7 @@ export function createBlueprintStructureEditorPort({getTarget,getMetadata,getSet
   const changes=copyJson(args.changes),{after,affected}=projectBlueprintStructureEdit({before:live.snapshot.state,operation:args.operation,changes,chatLength:live.snapshot.length,mode:live.snapshot.config.storyBlueprintProgressionMode,level:live.snapshot.config.storyBlueprintProgressionLevel,at:Date.now()});
   if(jsonKey(after.blueprint)===jsonKey(live.snapshot.state.blueprint))throw Error('EMPTY_CHANGES');
   const completion=live.snapshot.completion;
-  const content=copyJson({module:'blueprint-node-editor',operation:args.operation,ticket:'blueprint-structure:'+crypto.randomUUID(),target,selector:'blueprint-tree',name:live.state.blueprint.title||'Story Blueprint',
+  const content=copyJson({module:'blueprint-node-editor',operation:args.operation,ticket:'blueprint-structure:'+randomUUID(),target,selector:'blueprint-tree',name:live.state.blueprint.title||'Story Blueprint',
    before:live.snapshot.state,after,affected,completion:{before:completion,after:completion.exists?{...completion,stored:true,value:false}:completion},
    warnings:['仅修改当前聊天蓝图结构，不修改资源库、功能开关或调用模型。 / Chat Blueprint structure only, no library/settings edits or model calls.',
    '删除包含全部子节点；移动保留子树。各模式／层级进度按原业务连续前缀整理，可能丢弃后续标记；完整差异显示实际结果。 / Delete removes subtree; move retains it. Each progress scope is reconciled to its continuous prefix, possibly dropping later signals; inspect full diff.',
