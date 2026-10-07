@@ -182,24 +182,29 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
         if (!CapabilityRegistry) return;
         const store = getStore('capability');
         const allCaps = CapabilityRegistry.list();
-        const previousByEntry = new Map();
+        const changes = [];
         for (const entry of store) {
-            for (const id of (entry.ids || [])) {
+            const previous = entry.enabledById;
+            const next = Object.fromEntries((entry.ids || []).flatMap(id => {
                 const cap = allCaps.find(c => c.id === id);
-                if (cap && entry.enabled !== cap.enabled) {
-                    const next = cap.enabled !== false;
-                    if (!previousByEntry.has(entry)) previousByEntry.set(entry, entry.enabled);
-                    entry.enabled = next;
-                }
-            }
+                if (cap) return [[id, cap.enabled !== false]];
+                return Object.hasOwn(previous || {}, id) && typeof previous[id] === 'boolean'
+                    ? [[id, previous[id]]]
+                    : [];
+            }));
+            if (previous && Object.keys(previous).length === Object.keys(next).length
+                && Object.entries(next).every(([id, enabled]) => Object.hasOwn(previous, id) && previous[id] === enabled)) continue;
+            changes.push({ entry, previous, next, hadPrevious: Object.hasOwn(entry, 'enabledById') });
+            entry.enabledById = next;
         }
-        const changes = [...previousByEntry].map(([entry, previous]) => ({ entry, previous, next: entry.enabled }));
         if (changes.length) {
             try {
                 await saveStore();
             } catch (e) {
-                for (const { entry, previous, next } of changes) {
-                    if (entry.enabled === next) entry.enabled = previous;
+                for (const { entry, previous, next, hadPrevious } of changes) {
+                    if (entry.enabledById !== next) continue;
+                    if (hadPrevious) entry.enabledById = previous;
+                    else delete entry.enabledById;
                 }
                 throw e;
             }
@@ -212,9 +217,18 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
     async function restoreCapabilityEnabled() {
         if (!CapabilityRegistry) return;
         const store = getStore('capability');
+        const legacyOverrides = extension_settings[EXT_KEY]?._builtinCapEnabled || {};
         for (const entry of store) {
-            const enabled = entry.enabled !== false; // default true
+            const byId = entry.enabledById && typeof entry.enabledById === 'object' && !Array.isArray(entry.enabledById)
+                ? entry.enabledById : null;
             for (const id of (entry.ids || [])) {
+                const enabled = byId && Object.hasOwn(byId, id) && typeof byId[id] === 'boolean'
+                    ? byId[id]
+                    : Object.hasOwn(legacyOverrides, id) && typeof legacyOverrides[id] === 'boolean'
+                        ? legacyOverrides[id]
+                        : byId ? null : entry.enabled !== false;
+                // New IDs without a stored state keep their registration default.
+                if (enabled === null) continue;
                 try { CapabilityRegistry.setEnabled(id, enabled); } catch (_) {}
             }
         }
@@ -287,6 +301,9 @@ export function createUserProviderLoader({ extension_settings, EXT_KEY, saveSett
 
             // Persist with enabled state
             insertedEntry = { name, source, importedAt: Date.now(), ids: addedIds, enabled: true };
+            if (type === 'capability') {
+                insertedEntry.enabledById = Object.fromEntries(addedIds.map(id => [id, getRegistryEntry(type, id, deps)?.enabled !== false]));
+            }
             validate(store);
             store.push(insertedEntry);
             await saveStore();
