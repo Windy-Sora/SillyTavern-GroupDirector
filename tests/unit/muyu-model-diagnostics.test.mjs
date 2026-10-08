@@ -56,7 +56,7 @@ test('Late previous-call diagnostics cannot attach to a later failing model call
     assert.equal(events.find(e => e.type === 'model.failed').payload.diagnosticStage, undefined);
 });
 for (const lang of ['zh', 'en']) test(`Process view shows translated safe failure stage / ${lang}`, () => {
-    const element = tag => ({ tag, textContent: '', children: [], append(e) { this.children.push(e); }, replaceChildren() { this.children = []; }, scrollTop: 0 });
+    const element = tag => ({ tag, textContent: '', children: [], attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }, append(e) { this.children.push(e); }, replaceChildren() { this.children = []; }, scrollTop: 0 });
     const view = createProcessView({ doc: { createElement: element }, lang });
     const root = view.update({ id: 'r', process: { phase: 'failed', cleaned: true, terminal: 'failed', rows: [{ type: 'model.failed', attemptId: 1, tool: null, durationMs: 1, error: 'MODEL_PROTOCOL_ERROR', diagnosticStage: 'decode' }] } }, true);
     const walk = el => [el.textContent, ...el.children.flatMap(walk)];

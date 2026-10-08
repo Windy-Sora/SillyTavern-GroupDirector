@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile as rawReadFile } from 'node:fs/promises';
+const readFile = async (...args) => { const data = await rawReadFile(...args); return typeof data === 'string' ? data.replace(/\r\n/g, '\n') : data; };
 import { createCharacterCardPort } from '../../muyu/host/character-cards.js';
 
 // Exercise the production assembly closure without importing ST's browser modules.

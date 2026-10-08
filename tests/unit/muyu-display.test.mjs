@@ -21,7 +21,7 @@ test('Failed display saving retains previous preference and concurrent unrelated
     assert.equal(settings.muyuDisplayConfig, previous); assert.equal(settings.other, 'keep');
 });
 for (const lang of ['zh', 'en']) test('Process detail modes preserve errors, node identity, and the full source trace / ' + lang, () => {
-    const doc = { createElement: tag => ({ tag, textContent: '', children: [], append(el) { this.children.push(el); }, replaceChildren() { this.children = []; }, scrollTop: 0 }) };
+    const doc = { createElement: tag => ({ tag, textContent: '', children: [], attrs: {}, setAttribute(key, value) { this.attrs[key] = value; }, append(el) { this.children.push(el); }, replaceChildren() { this.children = []; }, scrollTop: 0 }) };
     const rows = [
         { type: 'model.started', attemptId: 1, durationMs: null },
         { type: 'tool.requested', attemptId: 1, durationMs: null },
