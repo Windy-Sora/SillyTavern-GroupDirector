@@ -31,12 +31,16 @@ export function createWebSearchPort({ getSettings, saveSettings, fetcher = globa
             if (reader) { if (!finished) await reader.cancel().catch(() => {}); reader.releaseLock(); }
         }
     }
+    async function checkInstallation() {
+        try { const health = await request('/health'); if (health?.version !== 1 || health?.provider !== 'brave') throw Error('WEB_BACKEND_INCOMPATIBLE'); backend = 'available'; }
+        catch (error) { backend = error.message === 'WEB_BACKEND_MISSING' ? 'missing' : error.message === 'WEB_BACKEND_INCOMPATIBLE' ? 'incompatible' : 'unavailable'; throw error; }
+    }
     return {
         describe() { return { ...config(), provider: 'brave', hasKey: !!key(), remembered: !!getSettings().agentConfigs?.[CREDENTIAL_ID]?.apiKey, backend }; },
+        checkInstallation,
         async check() {
+            await checkInstallation();
             if (!key()) throw Error('WEB_KEY_REQUIRED');
-            try { const health = await request('/health'); if (health.version !== 1) throw Error('WEB_BACKEND_UNAVAILABLE'); backend = 'available'; }
-            catch (error) { backend = error.message === 'WEB_BACKEND_MISSING' ? 'missing' : 'unavailable'; throw error; }
         },
         async saveLimits(value) {
             const next = validateWebConfig(value), settings = getSettings(), previous = settings.muyuWebSearchConfig;

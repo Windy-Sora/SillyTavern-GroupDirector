@@ -1102,6 +1102,20 @@ test('Globe is opt-in even in full access; enabled searches reach the model and 
     await f.enable(); assert.equal(f.controller.snapshot().webSearch.enabled, false); await f.controller.dispose();
 });
 
+test('Installation can be checked before model setup without enabling search, saving or changing the draft', async () => {
+    let checks = 0;
+    const webSearch = { describe: () => ({ hasKey: false, backend: checks ? 'available' : 'unknown' }), checkInstallation: async () => { checks++; }, cancel() {} };
+    const f = fixture([], { webSearch });
+    f.controller.setInput('unsent'); await f.controller.checkWebSearchInstallation();
+    assert.equal(checks, 1); assert.equal(f.controller.snapshot().enabled, false);
+    assert.equal(f.controller.snapshot().webSearch.enabled, false); assert.equal(f.controller.snapshot().input, 'unsent');
+    assert.equal(f.model.requests.length, 0); assert.equal(f.controller.snapshot().webSearch.saving, false);
+    webSearch.checkInstallation = async () => { throw Error('WEB_BACKEND_INCOMPATIBLE'); };
+    await assert.rejects(f.controller.checkWebSearchInstallation(), /INCOMPATIBLE/);
+    assert.equal(f.controller.snapshot().webSearch.saving, false);
+    await f.controller.dispose();
+});
+
 test('Turning the globe off after the model request prevents its queued search from making any network call', async () => {
     let calls = 0, cancels = 0;
     const wait = deferred(), webSearch = { describe: () => ({ hasKey: true }), check: async () => {}, cancel() { cancels++; }, capture: () => ({ limits: { maxSearches: 3, maxResults: 5, resultBytes: 12000 }, search: async () => { calls++; throw Error('must not run'); } }) };

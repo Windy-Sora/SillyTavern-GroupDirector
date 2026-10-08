@@ -12,6 +12,27 @@ const response = (value, status = 200) => new Response(JSON.stringify(value), { 
 const upstream = { type: 'search', web: { results: [{ title: 'Documentation', url: 'https://docs.example.test/st', description: 'Public source' }] } };
 const result = () => ({ ...webResult('ok', 'query'), fetchedAt: new Date().toISOString(), results: [{ title: 'Docs', url: 'https://docs.example.test/', snippet: 'Public content' }] });
 
+test('Installation probe needs no key and sends only a local GET without credentials in its body', async () => {
+    const calls = [], port = createWebSearchPort({ getSettings: () => ({}), saveSettings: async () => { throw Error('must not save'); }, fetcher: async (url, options) => {
+        calls.push({ url, options }); return response({ version: 1, provider: 'brave' });
+    } });
+    await port.checkInstallation();
+    assert.equal(port.describe().backend, 'available'); assert.equal(port.describe().hasKey, false);
+    assert.equal(calls.length, 1); assert.equal(calls[0].url, '/api/plugins/gd-muyu-history/web/health');
+    assert.equal(calls[0].options.method, 'GET'); assert.equal(calls[0].options.body, undefined);
+    await assert.rejects(port.check(), /WEB_KEY_REQUIRED/);
+    assert.equal(port.describe().backend, 'available'); assert.equal(calls.length, 2);
+});
+
+test('Installation probe distinguishes missing, incompatible and unreachable services and permits retry', async () => {
+    for (const [raw, status, code, state] of [[{}, 404, 'MISSING', 'missing'], [{ version: 2, provider: 'brave' }, 200, 'INCOMPATIBLE', 'incompatible'], [{ version: 1, provider: 'other' }, 200, 'INCOMPATIBLE', 'incompatible'], [null, 200, 'INCOMPATIBLE', 'incompatible'], [{}, 503, 'UNAVAILABLE', 'unavailable']]) {
+        let retry = false;
+        const port = createWebSearchPort({ getSettings: () => ({}), saveSettings: async () => {}, fetcher: async () => retry ? response({ version: 1, provider: 'brave' }) : response(raw, status) });
+        await assert.rejects(port.checkInstallation(), new RegExp(code)); assert.equal(port.describe().backend, state);
+        retry = true; await port.checkInstallation(); assert.equal(port.describe().backend, 'available');
+    }
+});
+
 test('Saving search limits alone preserves credentials, session keys and captured task limits', async () => {
     let fail = false;
     const settings = {}, port = createWebSearchPort({ getSettings: () => settings, saveSettings: async () => { if (fail) throw Error('disk'); } });
@@ -55,7 +76,7 @@ test('Deadline cancels upstream fetch and releases account concurrency capacity'
 
 test('Host key is optional to persist, excluded from snapshots, and sent only to the local plugin', async () => {
     const settings = {}, requests = [];
-    const port = createWebSearchPort({ getSettings: () => settings, saveSettings: async () => {}, getHeaders: () => ({ 'X-CSRF-Token': 'CSRF' }), fetcher: async (url, options) => { requests.push({ url, options }); return response(url.endsWith('/health') ? { version: 1 } : result()); } });
+    const port = createWebSearchPort({ getSettings: () => settings, saveSettings: async () => {}, getHeaders: () => ({ 'X-CSRF-Token': 'CSRF' }), fetcher: async (url, options) => { requests.push({ url, options }); return response(url.endsWith('/health') ? { version: 1, provider: 'brave' } : result()); } });
     await port.save({ config: WEB_DEFAULTS, apiKey: input.apiKey, rememberKey: false });
     assert.equal(settings.agentConfigs['muyu-web-search'], undefined); assert.equal(port.describe().hasKey, true);
     assert.ok(!JSON.stringify(port.describe()).includes(input.apiKey));

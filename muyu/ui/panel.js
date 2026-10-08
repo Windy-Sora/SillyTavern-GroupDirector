@@ -246,6 +246,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
             WEB_KEY_REQUIRED: t('请配置独立的 Brave Search API 密钥；模型密钥不能用于搜索。', 'Configure a separate Brave Search API key; your model key cannot be used for search.'),
             WEB_BACKEND_MISSING: t('暮羽搜索服务未加载。请安装或更新服务端插件，开启 enableServerPlugins 并重启酒馆。', 'Muyu search service is not loaded. Install/update the server plugin, enable enableServerPlugins and restart ST.'),
             WEB_BACKEND_UNAVAILABLE: t('无法连接暮羽搜索服务，请检查酒馆服务是否运行。', 'Cannot reach the Muyu search service. Check that ST is running.'),
+            WEB_BACKEND_INCOMPATIBLE: t('暮羽搜索服务版本不兼容，请更新原服务插件目录并重启酒馆。', 'Incompatible Muyu search service. Update the existing server plugin and restart ST.'),
             WEB_CONFIG_INVALID: t('搜索配置无效，请检查密钥与标注范围内的整数预算。', 'Invalid search settings. Check the key and integer budgets within the shown ranges.'),
             WEB_CONFIG_SAVE_FAILED: t('搜索配置未能确认保存，请重试。', 'Search settings persistence was not confirmed. Retry.'),
         };

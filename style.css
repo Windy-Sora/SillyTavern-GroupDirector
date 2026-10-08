@@ -1247,6 +1247,12 @@
 .gd-muyu-web-hint { display: block; font-size: .72em; opacity: .7; margin: 4px 2px 0; }
 .gd-muyu-web-settings { margin-top: 16px; }
 .gd-muyu-web-settings > summary { cursor: pointer; font-weight: 600; }
+.gd-muyu-web-installation { margin: 10px 0; padding: 10px; border: 1px solid var(--gd-muyu-border, var(--SmartThemeBorderColor, #7776)); border-radius: 10px; }
+.gd-muyu-web-installation > p { margin: 0 0 8px; }
+.gd-muyu-web-installation ol { padding-inline-start: 22px; }
+.gd-muyu-web-installation li { margin: 8px 0; overflow-wrap: anywhere; }
+.gd-muyu-web-installation a { display: inline-block; margin-top: 8px; overflow-wrap: anywhere; }
+.gd-muyu-web-install-command { display: block; width: 100%; min-width: 0; box-sizing: border-box; margin: 6px 0; resize: vertical; font-family: monospace; }
 .gd-muyu-input-hint { display: block; text-align: end; font-size: .65em; opacity: .6; margin-top: 6px; }
 .gd-muyu-composer label { margin: 5px 0; font-size: .85em; }
 .gd-muyu-composer .gd-muyu-mode { display: flex; flex-wrap: nowrap; gap: 8px; }

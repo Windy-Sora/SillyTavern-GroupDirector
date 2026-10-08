@@ -2,6 +2,8 @@ import { WEB_DEFAULTS, WEB_RANGES } from '../web/contract.js';
 import { createFormFeedback } from './form-feedback.js';
 import { bindAutoSave } from './auto-save.js';
 
+const SERVICE_REPOSITORY = 'https://github.com/Windy-Sora/SillyTavern-Muyu-Services';
+
 /** Composer switch and stable settings editor; toggling never sends the user's draft. */
 export function createWebSearchView({ doc, settings, toolbar, composer, controller, act, openSettings, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
@@ -15,6 +17,35 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
     const editor = node('details', '', settings); editor.className = 'gd-muyu-web-settings';
     node('summary', t('联网搜索', 'Web search'), editor);
     node('p', t('小地球只控制暮羽的网页搜索。开启后由暮羽按需搜索，不必逐次授权；全权限模式也遵守这个开关。切换模型连接或刷新后关闭。', 'The globe controls Muyu web search. When enabled, Muyu searches as needed without per-search approval; full access respects this switch. Reconnecting or reloading turns it off.'), editor);
+    const installation = node('section', '', editor); installation.className = 'gd-muyu-web-installation';
+    const installationState = node('p', '', installation); installationState.setAttribute('role', 'status');
+    const installationActions = node('div', '', installation); installationActions.className = 'gd-muyu-actions';
+    const getPlugin = button(t('获取服务插件', 'Get service plugin'), installationActions);
+    const checkPlugin = button(t('检查安装状态', 'Check installation'), installationActions);
+    const guide = node('details', '', installation);
+    node('summary', t('安装与更新说明（可选）', 'Installation and update guide (optional)'), guide);
+    node('p', t('联网搜索需要暮羽服务端插件。安装是可选的；不安装仍可聊天、管理配置及使用浏览器或账户设置存储。服务插件具有服务器代码执行能力，请只安装可信来源。', 'Web search requires the Muyu server plugin. Installation is optional: chat, configuration management, browser storage and account-settings storage remain available without it. Server plugins execute server-side code; install trusted sources only.'), guide);
+    const repository = node('a', t('打开暮羽服务插件仓库与完整说明 ↗', 'Open Muyu service repository and full instructions ↗'), guide);
+    repository.href = SERVICE_REPOSITORY; repository.target = '_blank'; repository.rel = 'noopener noreferrer';
+    const steps = node('ol', '', guide);
+    node('li', t('在运行酒馆的电脑／服务器上安装，不是在酒馆「安装扩展」里安装。手机通过局域网访问时，也是在电脑上操作。', 'Install on the computer/server running ST, not through ST’s “Install extension”. When using a phone over LAN, install on that computer.'), steps);
+    const commandStep = node('li', t('在酒馆根目录运行：', 'Run from the ST root directory:'), steps);
+    const command = node('textarea', '', commandStep); command.className = 'text_pole gd-muyu-web-install-command'; command.readOnly = true; command.rows = 2;
+    command.value = `git clone ${SERVICE_REPOSITORY}.git plugins/gd-muyu-history`;
+    command.setAttribute('aria-label', t('服务插件安装命令', 'Service plugin installation command'));
+    const copy = button(t('复制安装命令', 'Copy installation command'), commandStep);
+    const copyState = node('span', '', commandStep); copyState.setAttribute('role', 'status');
+    copy.onclick = async () => {
+        try {
+            const clipboard = doc.defaultView?.navigator?.clipboard;
+            if (!clipboard?.writeText) throw Error('CLIPBOARD_UNAVAILABLE');
+            await clipboard.writeText(command.value); copyState.textContent = t('已复制。', 'Copied.');
+        } catch { command.focus?.(); command.select?.(); copyState.textContent = t('请手动复制已选中的命令。', 'Please copy the selected command manually.'); }
+    };
+    node('li', t('在酒馆 config.yaml 中设置 enableServerPlugins: true，然后重启酒馆。此界面不会自动安装或修改该文件。', 'Set enableServerPlugins: true in ST’s config.yaml, then restart ST. This UI does not install anything or edit that file.'), steps);
+    node('li', t('回到这里检查安装状态，再配置独立的 Brave 搜索密钥并开启小地球。安装检测不需要模型连接或搜索密钥，也不调用 Brave。', 'Return here to check installation, then configure a separate Brave key and enable the globe. Installation checks require neither a model connection nor a search key and do not call Brave.'), steps);
+    node('small', t('也可下载仓库 ZIP，确保 plugins/gd-muyu-history 下直接包含 index.cjs、web-search.cjs 与 package.json。已安装旧版时更新原目录，不要重复安装同名插件；更新后重启。检测成功仅代表服务已加载，不代表搜索密钥有效。', 'Alternatively download the repository ZIP: plugins/gd-muyu-history must directly contain index.cjs, web-search.cjs and package.json. Update an existing installation in place; do not install duplicate plugin IDs. Restart after updating. A successful check only confirms the service is loaded, not that the search key is valid.'), guide);
+    getPlugin.onclick = () => { editor.open = true; guide.open = true; openSettings(guide); };
     node('small', t('搜索服务：Brave Search API。需要独立的搜索密钥；与模型 API Key 无关。', 'Provider: Brave Search API. Requires a separate search key, not your model API key.'), editor);
     const key = field(t('Brave Search API 密钥', 'Brave Search API key'), 'password', editor); key.autocomplete = 'off';
     const remember = field(t('记住搜索密钥', 'Remember search key'), 'checkbox', editor);
@@ -37,10 +68,18 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
         disabledWhen: control => control === forget && !controller.snapshot().webSearch?.hasKey,
         savedText: t('搜索设置已更新。', 'Search settings updated.'),
         errorText: error => error?.message === 'WEB_KEY_REQUIRED' ? t('请填写独立的搜索密钥。', 'Enter a separate search key.') : t('搜索配置未能保存，输入已保留。', 'Search settings could not be saved. Input retained.') });
-    node('small', t('需要安装或更新暮羽服务端插件（muyu/server-plugin 下的全部 .cjs 文件），启用 ST 的 enableServerPlugins 并重启。搜索只返回链接与摘要，不读取网页全文。', 'Install or update the Muyu server plugin (all .cjs files under muyu/server-plugin), enable ST enableServerPlugins and restart. Search returns links and snippets, not full pages.'), editor);
+    node('small', t('搜索只返回链接与摘要，不读取网页全文。', 'Search returns links and snippets, not full pages.'), editor);
     let signature = '', credentialSignature = '';
+    const probe = async () => {
+        try { await controller.checkWebSearchInstallation(); }
+        catch { guide.open = true; }
+    };
+    checkPlugin.onclick = () => act(probe);
     toggle.onclick = () => act(async () => {
         const s = controller.snapshot();
+        if (!s.webSearch?.enabled && s.webSearch?.backend !== 'available') {
+            editor.open = true; guide.open = true; openSettings(guide); await probe(); return;
+        }
         if (!s.webSearch?.enabled && (!s.enabled || !s.webSearch?.hasKey)) { editor.open = true; openSettings(s.enabled ? key : undefined); return; }
         try { await controller.setWebSearchEnabled(!s.webSearch.enabled); }
         catch (error) { editor.open = true; editor.setAttribute('tabindex', '-1'); openSettings(editor); throw error; }
@@ -70,7 +109,10 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
             if (credentialSignature !== nextCredential && !feedback.dirty && !feedback.busy) { remember.checked = web.remembered === true; credentialSignature = nextCredential; feedback.rebase(); }
             limitFeedback.update(web.saving || s.resetting || s.busy);
             feedback.update(web.saving || s.resetting || s.busy);
-            stateText.textContent = (web.hasKey ? t('已提供搜索密钥', 'Search key provided') : t('尚未配置搜索密钥', 'Search key not configured')) + ' · ' + ({ available: t('服务端插件已连接', 'Server plugin connected'), missing: t('服务端插件未安装或尚未重启', 'Server plugin missing or restart required'), unavailable: t('服务端插件连接失败', 'Server plugin unavailable'), unknown: t('开启时检测服务端插件', 'Server plugin checked when enabling') }[web.backend] || '');
+            checkPlugin.disabled = !!web.saving || !!s.resetting || !!s.busy || !!s.readOnly;
+            installationState.textContent = web.saving ? t('正在处理搜索设置…', 'Processing search settings…') : ({ available: t('服务已加载 · 不代表搜索密钥或上游连接有效', 'Service loaded · Search key and upstream connectivity not verified'), missing: t('联网需要服务插件 · 未安装、未启用或尚未重启', 'Web search requires the service plugin · Missing, disabled or restart required'), incompatible: t('服务版本不兼容 · 请更新原安装目录并重启', 'Incompatible service version · Update the existing installation and restart'), unavailable: t('暂时无法检查服务 · 请检查酒馆连接后重试', 'Could not check the service · Check the ST connection and retry'), unknown: t('尚未检查服务安装状态 · 无需密钥即可检查', 'Service installation not checked · No key required') }[web.backend] || '');
+            if (['missing', 'incompatible'].includes(web.backend)) guide.open = true;
+            stateText.textContent = web.hasKey ? t('已提供搜索密钥', 'Search key provided') : t('尚未配置搜索密钥', 'Search key not configured');
         },
         clearKey() { key.value = ''; },
     };

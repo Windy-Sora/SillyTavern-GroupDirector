@@ -969,6 +969,7 @@ test('AI connection controls explicitly test, list and select models without cha
 for (const lang of ['zh', 'en']) test(`Globe setup preserves the composer; toggle survives remount and turns off during a task (${lang})`, async () => {
     const f = fixture(lang, true, { initialMode: 'assistant' }); let toggles = 0;
     f.state.enabled = true; f.state.webSearch = { enabled: false, hasKey: false, maxSearches: 3, maxResults: 5, resultBytes: 12000, backend: 'unknown' };
+    f.controller.checkWebSearchInstallation = async () => { f.state.webSearch.backend = 'available'; f.emit(); };
     f.controller.setWebSearchEnabled = enabled => { toggles++; f.state.webSearch.enabled = enabled; f.emit(); };
     f.find('textarea').value = 'unsent draft'; f.find('textarea').oninput(); f.emit();
     let globe = f.all().find(e => e.className?.includes('gd-muyu-web-toggle'));
@@ -981,6 +982,33 @@ for (const lang of ['zh', 'en']) test(`Globe setup preserves the composer; toggl
     f.state.busy = true; f.emit(); assert.equal(globe.disabled, false); await globe.click();
     assert.equal(f.state.webSearch.enabled, false); assert.equal(toggles, 2); assert.equal(globe.disabled, true);
     assert.equal(f.state.input, 'unsent draft'); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`Search installation guide works without keys or model setup and never sends the composer / ${lang}`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }); let checks = 0, toggles = 0;
+    const label = (zh, en) => lang === 'en' ? en : zh;
+    f.state.webSearch = { enabled: false, hasKey: false, backend: 'unknown', maxSearches: 3, maxResults: 5, resultBytes: 12000 };
+    f.controller.checkWebSearchInstallation = async () => { checks++; f.state.webSearch.backend = checks === 1 ? 'missing' : 'available'; f.emit(); };
+    f.controller.setWebSearchEnabled = () => { toggles++; };
+    f.controller.setInput('keep my question'); f.emit();
+    const globe = f.all().find(e => e.className?.includes('gd-muyu-web-toggle'));
+    await globe.click(); assert.equal(checks, 1); assert.equal(toggles, 0); assert.equal(f.sent.length, 0);
+    const guide = f.find('summary', label('安装与更新说明（可选）', 'Installation and update guide (optional)')).parent;
+    assert.equal(guide.open, true);
+    const link = f.all().find(e => e.tag === 'a' && e.href === 'https://github.com/Windy-Sora/SillyTavern-Muyu-Services');
+    assert.ok(link); assert.equal(link.rel, 'noopener noreferrer');
+    const command = f.all().find(e => e.className?.includes('gd-muyu-web-install-command'));
+    assert.equal(command.readOnly, true); assert.match(command.value, /plugins\/gd-muyu-history$/);
+    await f.find('button', label('复制安装命令', 'Copy installation command')).click();
+    assert.ok(f.all().some(e => e.textContent?.includes(label('请手动复制', 'Please copy'))));
+    let copied = '';
+    f.root.ownerDocument.defaultView = { navigator: { clipboard: { writeText: async value => { copied = value; } } } };
+    await f.find('button', label('复制安装命令', 'Copy installation command')).click();
+    assert.equal(copied, command.value); assert.ok(f.all().some(e => e.textContent === label('已复制。', 'Copied.')));
+    await f.find('button', label('检查安装状态', 'Check installation')).click();
+    assert.equal(checks, 2); assert.equal(f.state.webSearch.enabled, false); assert.equal(f.state.input, 'keep my question');
+    f.state.busy = true; f.emit(); assert.equal(f.find('button', label('检查安装状态', 'Check installation')).disabled, true);
+    f.root.__gdMuyuDispose();
 });
 
 function managedHistory() {
@@ -1696,7 +1724,8 @@ test('Panel clears key after configure; each click/keyboard send runs once and r
 test('Model/user text is rendered as text; English labels and no apply control', () => {
     const f = fixture('en'); f.find('details').toggle(true);
     f.state.messages = [{ role: 'assistant', content: '<img src=x onerror=alert(1)>' }]; f.emit();
-    assert.equal(f.find('span').textContent, '<img src=x onerror=alert(1)>');
+    const transcript = f.all().find(e => e.className === 'gd-muyu-transcript');
+    assert.equal(f.all(transcript).find(e => e.tag === 'span').textContent, '<img src=x onerror=alert(1)>');
     assert.equal(f.find('img'), undefined); assert.ok(f.find('button', 'Send'));
     assert.ok(f.all().every(e => e.innerHTML === undefined)); assert.equal(f.find('button', 'Apply'), undefined);
 });

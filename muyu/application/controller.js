@@ -615,6 +615,13 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         removeAgentMemory(id, revision) { live(); return noteWorkbench.remove(id, revision); },
         setAgentMemoryEnabled(enabled) { live(); return noteWorkbench.setEnabled(enabled); },
         snapshot,
+        async checkWebSearchInstallation() {
+            live(); if (resetting || snapshot().busy || savingWebSearch) throw Error('NOT_READY');
+            if (!host.webSearch?.checkInstallation) throw Error('WEB_BACKEND_MISSING');
+            savingWebSearch = true; emit();
+            try { await host.webSearch.checkInstallation(); }
+            finally { savingWebSearch = false; emit(); }
+        },
         async setWebSearchEnabled(enabled) {
             live(); if (typeof enabled !== 'boolean') throw Error('WEB_CONFIG_INVALID');
             const epoch = ++webEpoch; webSearchEnabled = false; host.webSearch?.cancel(); emit();

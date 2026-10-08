@@ -11,6 +11,14 @@ Click “Summon Mu” on the dashboard to choose:
 
 The menu does not expand the settings layout. Click outside or press Escape to close it; arrow keys select items. Ordinary Agent preferences save automatically, with a short delay for text; failures retain input and offer retry. Credentials/endpoints still use explicit connection submission. Auto-saving preferences does not bypass data permissions or modification approvals.
 
+### Muyu web search (optional)
+
+Web search in Muyu’s gear settings provides **Get service plugin** and **Check installation**. If the service has not been confirmed available, the globe opens the installation guide and checks the local service without sending your draft or enabling search.
+
+Repository: [SillyTavern Muyu Services](https://github.com/Windy-Sora/SillyTavern-Muyu-Services). Install on the computer/server running ST, not through the frontend extension installer. Enable `enableServerPlugins` and restart ST as instructed; phones accessing ST over LAN still require installation on the host computer. Copy the installation command or select it manually if clipboard access is unavailable. Update an existing installation in place instead of installing a duplicate. This UI does not install anything or edit `config.yaml`.
+
+Installation checks need neither a model connection nor a search key and only confirm the local service is reachable, not that Brave credentials work. Then configure a separate Brave Search API key (not your model key) and enable the globe. Queries go to Brave and may incur charges; results contain links and snippets, not full pages. Chat, configuration management and browser/account-settings storage remain available without the server plugin.
+
 <details>
 <summary>Historical navigation preview (entry currently disabled)</summary>
 
