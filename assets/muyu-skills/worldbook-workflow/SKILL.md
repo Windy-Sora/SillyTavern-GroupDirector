@@ -2,10 +2,12 @@
 name: worldbook-workflow
 display-name: 世界书与酒馆资料核对
 description: 用户询问世界书绑定、条目内容、GD世界书选择，或ST预设正文、保存与运行配置差异、Persona、扩展目录时使用；不把绑定和配置启用等同于实际注入或运行。
-version: "1.4"
+version: "1.5"
 ---
 
 # 世界书与酒馆资料核对
+
+EJS可按变量动态读取或过滤条目，这与ST关键词路径不同。涉及getwi、@@preprocessing或条件模板时加载“EJS提示词模板”；正则／前端／MVU共同影响时用“角色卡与预设协作分析”。静态世界书正文读取不等于执行getwi，不能用绑定或候选命中证明最终注入。
 
 先完整读取 references/workflow.md。先分清 ST 绑定／激活、资源库正文和 GD 读取选择，避免用一个开关解释所有世界书路径。
 

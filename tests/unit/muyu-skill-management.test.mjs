@@ -98,7 +98,7 @@ test('Builtin resources load exclusively shipped static paths and preserve compl
     const paths = [];
     const builtins = await loadBuiltinSkills({ readText: async path => { paths.push(path); return readFile(new URL(`../../assets/muyu-skills/${path}`, import.meta.url), 'utf8'); } });
     assert.deepEqual(paths, BUILTIN_SKILL_MANIFEST.flatMap(row => row.files.map(path => `${row.name}/${path}`)));
-    assert.equal(builtins.length, 19); assert.match(builtins[0].package.files[0].text, /整体配置检查/);
+    assert.equal(builtins.length, BUILTIN_SKILL_MANIFEST.length); assert.match(builtins[0].package.files[0].text, /整体配置检查/);
     const f = fixture();
     const service = createSkillManagement({ store: f.store, builtins });
     assert.equal((await service.list()).entries[0].id, 'builtin:config-review');
@@ -142,7 +142,7 @@ test('Default builtin reader uses bounded static fetch, no redirects, and comple
         } }));
     };
     const result = await loadBuiltinSkills();
-    assert.equal(result.length, 19); assert.ok(paths.every(path => path.includes('/assets/muyu-skills/')));
+    assert.equal(result.length, BUILTIN_SKILL_MANIFEST.length); assert.ok(paths.every(path => path.includes('/assets/muyu-skills/')));
     assert.match(result[0].package.files[0].text, /整体配置检查/);
 });
 

@@ -2,6 +2,9 @@ import { permissionTitle } from '../permissions/contract.js';
 
 // Display metadata only: never rewrites a Skill package, selector or permission ID.
 const builtinEnglish = Object.freeze({
+    'st-ejs-template-guide': ['EJS prompt templates', 'Explain and troubleshoot ST-Prompt-Template syntax, variable scopes and dynamic world-book injection without executing templates.'],
+    'tavern-helper-guide': ['TavernHelper and interactive frontends', 'Understand script and message contexts, variables, MVU integration and frontend actions without granting API access.'],
+    'st-card-stack-analysis': ['Character card and preset integration', 'Understand and troubleshoot macros, regex frontends, scripts and state pipelines without assuming a universal card format.'],
     'dsl-template-workbench': ['DSL and structured templates', 'Design and troubleshoot Provider data paths, filters, loops and nested template scopes.'],
     'config-review': ['Configuration review', 'Review connected Group Director settings and how modules work together, without modifying them.'],
     'currency-system': ['Currency systems', 'Design chat currency and counters, clarify scope, and preview only the requested changes.'],

@@ -1,11 +1,13 @@
 ---
 name: script-agent-workbench
 display-name: 脚本与自定义Agent开发
-description: 用户明确需要脚本执行器或自定义Agent定义的增删改、隔离测试或实际运行时使用；不用于普通只读排查的自动执行。
-version: "1.1"
+description: 用户明确需要GD脚本执行器或自定义Agent定义的增删改、隔离测试或实际运行时使用；第三方酒馆助手脚本转专项技能，不用于普通只读排查的自动执行。
+version: "1.2"
 ---
 
 # 脚本与自定义 Agent 开发
+
+TavernHelper／酒馆助手脚本不是GD脚本执行器资产。涉及第三方脚本或消息iframe先加载“酒馆助手与交互前端”，不声称GD编辑／测试工具已覆盖它们，也不借新建GD脚本执行未知第三方代码。复杂组合可配合“角色卡与预设协作分析”。
 
 先完整读取 references/workflow.md。先判断普通设置、变量或 Prompt 是否足够；只有用户确实要代码或额外模型模块才创建，不因任务复杂默认上脚本。
 

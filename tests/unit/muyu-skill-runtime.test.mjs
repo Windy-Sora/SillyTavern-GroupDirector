@@ -24,11 +24,15 @@ test('Skill load advertises an explicit required main or resource path without a
     assert.equal(schema.properties.path.maxLength, 180);
     assert.match(schema.properties.path.description, /Required on every load.*SKILL.md/);
     assert.equal(Object.hasOwn(schema.properties.path, 'default'), false);
+    assert.match(module.registry.get('muyu.skills.load').description, /Required before answering.*explanation-only/);
     module.dispose();
 });
 test('Skill guidance discovery routes saved inventory to management without changing catalog data or granting access', async () => {
     const f = await fixture(); f.task.bindRun(identity); await f.task.prepare(identity.id);
     const projected = f.task.project(identity.id)[0].content;
+    assert.match(projected, /Public Skill lookup is distinct from reading private Tavern data/);
+    assert.match(projected, /MUST load its SKILL.md before answering or acting/);
+    assert.match(projected, /explicit no-tools\/no-lookup request takes precedence/);
     assert.match(projected, /not all saved packages/);
     assert.match(projected, /muyu\.skills\.list/);
     assert.match(projected, /muyu\.tools\.list then select the listed group/);
@@ -39,6 +43,32 @@ test('Skill guidance discovery routes saved inventory to management without chan
     assert.match(definition.description, /no host data or write permissions granted/);
     f.task.dispose();
 });
+test('Initial Skill discovery advertises at most two metadata pages and preserves the next cursor without loading bodies', async () => {
+    const entries = Array.from({ length: 40 }, (_, i) => ({ id: `user:guide-${i}`, revision: '1', description: `Guide ${i}` }));
+    const calls = [];
+    const task = createSkillTaskRuntime({ port: { catalog: async offset => {
+        calls.push(offset);
+        return { entries: entries.slice(offset, offset + 16), nextOffset: offset + 16 < entries.length ? offset + 16 : -1 };
+    } } });
+    task.bindRun(identity); await task.prepare(identity.id);
+    const directory = JSON.parse(task.project(identity.id)[0].content.split('\n')[1]);
+    assert.deepEqual(calls, [0, 16]); assert.equal(directory.entries.length, 32);
+    assert.equal(directory.nextOffset, 32); assert.deepEqual(task.usage(identity.id), []);
+    task.dispose();
+});
+
+test('Extra metadata page budget rejection retains the charged first page and grants no Skill or data access', async () => {
+    let charges = 0;
+    const task = createSkillTaskRuntime({ charge: () => ++charges === 1, port: {
+        catalog: async offset => ({ entries: [{ id: `user:guide-${offset}`, revision: '1' }], nextOffset: offset === 0 ? 16 : -1 }),
+    } });
+    task.bindRun(identity); await task.prepare(identity.id);
+    const directory = JSON.parse(task.project(identity.id)[0].content.split('\n')[1]);
+    assert.deepEqual(directory.entries, [{ id: 'user:guide-0', revision: '1' }]);
+    assert.equal(directory.nextOffset, 16); assert.deepEqual(task.usage(identity.id), []);
+    task.dispose();
+});
+
 test('Plan approval retains fixed Skill snapshot, charges the new segment, and respects target', async () => {
     const f = await fixture(); f.task.bindRun(identity); await f.task.prepare(identity.id); await f.task.load(identity.id, query);
     assert.equal(f.task.parkRun(identity.id, { id: 'plan', kind: 'task-plan', taskId: identity.taskId }), true);

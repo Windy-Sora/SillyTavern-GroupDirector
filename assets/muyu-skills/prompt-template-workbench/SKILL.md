@@ -1,11 +1,13 @@
 ---
 name: prompt-template-workbench
 display-name: Prompt与模板设计
-description: 用户希望修改功能Prompt、创建自定义Prompt数据源、调整输出示例或模板引用时使用；区别提示词、Schema和可执行Provider。
-version: "1.4"
+description: 用户希望修改GD功能Prompt、创建自定义Prompt数据源、调整输出示例或GD模板引用时使用；区别提示词、Schema和可执行Provider，第三方EJS转专项技能。
+version: "1.5"
 ---
 
 # Prompt 与模板设计
+
+ST原生宏、ST-Prompt-Template的EJS和GD DSL是不同解释器。EJS语法／动态注入加载“EJS提示词模板”，酒馆助手前端协议加载“酒馆助手与交互前端”；不要把第三方模板直接当作GD数据源，也不为分析执行模板。跨预设、正则与变量链路可配合“角色卡与预设协作分析”。
 
 “不读取当前资料／不修改”不禁止查阅本技能及其他技能的公共参考；这些参考不含用户聊天。给精确语法前必须加载相关参考，不能用猜测示例代替。自定义提示词正文是content，结构化数据是单独的dataJson字段：正文里的JSON代码块不会自动变成data。
 

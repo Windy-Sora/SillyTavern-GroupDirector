@@ -7,6 +7,7 @@ import { createSkillPort } from '../../muyu/host/skills.js';
 import { createSkillTaskRuntime } from '../../muyu/skills/task-runtime.js';
 import { identity } from './helpers/muyu-subject.mjs';
 import { BUILTIN_SKILL_MANIFEST } from '../../muyu/skills/builtin-manifest.js';
+import { skillDisplay } from '../../muyu/ui/catalog-labels.js';
 
 const newNames = ['director-diagnosis', 'memory-maintenance', 'blueprint-workflow', 'configuration-orchestration'];
 const remainingNames = ['chat-context-analysis', 'variable-workbench', 'character-npc-workbench', 'resource-library-workflow', 'prompt-template-workbench', 'script-agent-workbench', 'worldbook-workflow', 'automation-workflow', 'muyu-troubleshooting', 'skill-workbench'];
@@ -49,7 +50,7 @@ test('Third-round guides distinguish explicit independent goals and operation st
     const packs = await readBuiltins();
     for (const [name, revision, version, patterns] of [
         ['configuration-orchestration', 6, '1.5', [/已有金币不自动等于/, /独立系统/, /后续纠正优先/, /不是固定四次审批/]],
-        ['script-agent-workbench', 2, '1.1', [/阶段不等于固定审批次数/, /同一候选/, /trial／save/]],
+        ['script-agent-workbench', 3, '1.2', [/阶段不等于固定审批次数/, /同一候选/, /trial／save/]],
         ['resource-library-workflow', 4, '1.3', [/不是保留当前聊天旧蓝图/, /不保证这个目标/, /定向编辑方案/]],
     ]) {
         assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, revision);
@@ -93,9 +94,9 @@ test('Revised guides retain live-test boundaries and publish new content revisio
         'skill-workbench': [/muyu.tools.list/, /select/, /显式传新版 load.*SKILL_STALE/, /下一新任务/],
     };
     for (const [name, checks] of Object.entries(patterns)) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name==='muyu-troubleshooting' || name==='prompt-template-workbench' ? 5 : ['resource-library-workflow','character-npc-workbench'].includes(name) ? 4 : 2);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'prompt-template-workbench' ? 6 : name === 'variable-workbench' ? 3 : name==='muyu-troubleshooting' ? 5 : ['resource-library-workflow','character-npc-workbench'].includes(name) ? 4 : 2);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
-        assert.match(pack.package.files[0].text, name==='muyu-troubleshooting' || name==='prompt-template-workbench' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
+        assert.match(pack.package.files[0].text, name === 'prompt-template-workbench' ? /version: "1.5"/ : name === 'variable-workbench' ? /version: "1.2"/ : name==='muyu-troubleshooting' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
         for (const pattern of checks) assert.match(pack.package.files[1].text, pattern);
     }
 });
@@ -125,7 +126,7 @@ for (const name of [...newNames, ...remainingNames]) {
     });
 }
 
-test('Nineteen builtin skills remain discoverable through bounded catalog pages without projecting bodies', async () => {
+test('Builtin skills remain discoverable through bounded catalog pages without projecting bodies', async () => {
     const settings = {};
     const port = createSkillPort({ getSettings: () => settings, saveSettings: async () => {}, loadBuiltins: readBuiltins });
     await port.ready();
@@ -138,8 +139,75 @@ test('Nineteen builtin skills remain discoverable through bounded catalog pages 
         assert.doesNotMatch(JSON.stringify(page), /# 技能开发和管理合同/);
         rows.push(...page.entries); offset = page.nextOffset;
     } while (offset !== -1);
-    assert.equal(rows.length, 19); assert.equal(new Set(rows.map(row => row.id)).size, 19);
-    assert.equal(rows.at(-1).id, 'builtin:dsl-template-workbench');
+    assert.equal(rows.length, BUILTIN_SKILL_MANIFEST.length); assert.equal(new Set(rows.map(row => row.id)).size, BUILTIN_SKILL_MANIFEST.length);
+    assert.equal(rows.at(-1).id, `builtin:${BUILTIN_SKILL_MANIFEST.at(-1).name}`);
+});
+
+test('Card stack guide loads references independently and projects only loaded documents without saving or granting permission', async () => {
+    let saves = 0;
+    const settings = {};
+    const port = createSkillPort({ getSettings: () => settings, saveSettings: async () => { saves++; }, loadBuiltins: readBuiltins });
+    await port.ready();
+    const initialSaves = saves;
+    const task = createSkillTaskRuntime({ port, charge: () => true });
+    task.bindRun(identity); await task.prepare(identity.id);
+    const row = (await catalogAll(port)).find(row => row.id === 'builtin:st-card-stack-analysis');
+    assert.ok(row); assert.equal(row.revision, '3:0');
+    assert.equal(skillDisplay({ ...row, source: 'builtin' }, 'en').displayName, 'Character card and preset integration');
+    const query = { id: row.id, revision: String(row.revision) };
+    const pack = (await readBuiltins()).find(row => row.package.files[0].text.includes('name: st-card-stack-analysis\n')).package;
+    for (const [index, file] of pack.files.entries()) {
+        const result = await task.load(identity.id, { ...query, path: file.path });
+        assert.equal(result.complete, true); assert.equal(result.permissionGranted, false);
+        const projected = task.project(identity.id).map(message => JSON.parse(message.content.split('\n')[1])).filter(item => item.path);
+        assert.deepEqual(projected.map(item => item.path), pack.files.slice(0, index + 1).map(item => item.path));
+        assert.equal(projected.at(-1).text, file.text);
+    }
+    assert.equal(saves, initialSaves);
+});
+
+test('Card stack evaluation cases identify independent mechanisms and explicit unknowns without shipping source assets', async () => {
+    const cases = JSON.parse(await readFile(new URL('../fixtures/muyu-skills/card-stack-evaluation.json', import.meta.url), 'utf8'));
+    assert.equal(cases.length, 6);
+    assert.equal(new Set(cases.map(row => row.id)).size, cases.length);
+    for (const row of cases) {
+        assert.equal(row.skill, 'st-card-stack-analysis');
+        assert.ok(row.question.length > 8); assert.ok(row.expected.length); assert.ok(row.forbidden.length);
+    }
+});
+
+for (const [name, title] of [
+    ['st-ejs-template-guide', 'EJS prompt templates'],
+    ['tavern-helper-guide', 'TavernHelper and interactive frontends'],
+]) test(`${name} discovers bilingual metadata and loads complete resources progressively without grants or saves`, async () => {
+    let saves = 0;
+    const settings = {};
+    const port = createSkillPort({ getSettings: () => settings, saveSettings: async () => { saves++; }, loadBuiltins: readBuiltins });
+    await port.ready(); const initialSaves = saves;
+    const task = createSkillTaskRuntime({ port, charge: () => true });
+    task.bindRun(identity); await task.prepare(identity.id);
+    const row = (await catalogAll(port)).find(row => row.id === `builtin:${name}`);
+    assert.ok(row); assert.equal(row.revision, '3:0');
+    assert.equal(skillDisplay({ ...row, source: 'builtin' }, 'en').displayName, title);
+    const pack = (await readBuiltins()).find(row => row.package.files[0].text.includes(`name: ${name}\n`)).package;
+    assert.equal(pack.files.length, 4);
+    for (const [index, file] of pack.files.entries()) {
+        const result = await task.load(identity.id, { id: row.id, revision: String(row.revision), path: file.path });
+        assert.equal(result.complete, true); assert.equal(result.permissionGranted, false);
+        const projected = task.project(identity.id).map(message => JSON.parse(message.content.split('\n')[1])).filter(item => item.path);
+        assert.deepEqual(projected.map(item => item.path), pack.files.slice(0, index + 1).map(item => item.path));
+        assert.equal(projected.at(-1).text, file.text);
+    }
+    assert.equal(saves, initialSaves);
+});
+
+test('Third-party component evaluation cases cover EJS and TavernHelper boundaries', async () => {
+    const cases = JSON.parse(await readFile(new URL('../fixtures/muyu-skills/third-party-evaluation.json', import.meta.url), 'utf8'));
+    assert.equal(cases.length, 8); assert.equal(new Set(cases.map(row => row.id)).size, cases.length);
+    for (const name of ['st-ejs-template-guide', 'tavern-helper-guide']) assert.equal(cases.filter(row => row.skill === name).length, 4);
+    for (const row of cases) {
+        assert.ok(row.question.length > 8); assert.ok(row.expected.length); assert.ok(row.forbidden.length);
+    }
 });
 
 test('Remaining plugin skill evaluation questions cover all ten workflows with explicit boundary cases', async () => {
