@@ -9,6 +9,7 @@ export const MODE_LLM = 'llm';
 export const DEFAULT_SETTINGS = {
     muyuFloatingBallVisible: true,
     muyuInstructionConfig: { enabled: false, text: '' },
+    muyuPermissionConfig: { readAccess: 'ask' },
     muyuContextConfig: { ...CONTEXT_DEFAULTS },
     muyuRunConfig: { ...RUN_DEFAULTS },
     muyuDisplayConfig: { processDetail: 'compact' },

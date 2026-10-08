@@ -47,6 +47,7 @@ import { createBrowserProviderTester } from '../../muyu/host/provider-test.js';
 import { createCredentialStore } from '../../muyu/host/credentials.js';
 import { createRunConfigStore } from '../../muyu/host/run-config.js';
 import { createDisplayConfigStore } from '../../muyu/host/display-config.js';
+import { createPermissionConfigStore } from '../../muyu/host/permission-config.js';
 import { createContextConfigStore } from '../../muyu/host/context-config.js';
 import { createInstructionConfigStore } from '../../muyu/host/instruction-config.js';
 import { createHistoryPort } from '../../muyu/host/history.js';
@@ -78,6 +79,7 @@ registerSection('muyu', ctx => {
         const credentials = createCredentialStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const runConfig = createRunConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const displayConfig = createDisplayConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
+        const permissionConfig = createPermissionConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const contextConfig = createContextConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const instructionConfig = createInstructionConfigStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
         const history = createHistoryPort({ getAccount: ctx.getMuyuAccount, getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials, fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
@@ -309,7 +311,7 @@ registerSection('muyu', ctx => {
                 return !!ctx.npcSystem?.isGenerating?.() || !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending;
             },
         }) : null;
-        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
+        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, permissionConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
         owner.controller = createMuyuController({ host });
         owner.floatingRegistry = createFloatingRegistry();
         owner.floatingRegistry.register({

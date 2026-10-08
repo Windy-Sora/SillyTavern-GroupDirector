@@ -732,6 +732,7 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
         setHistoryAccountStorage(value) { state.history.accountStorage = value; emit(); },
         configure(config) { configs.push(config); state.enabled = true; emit(); }, disable() { state.enabled = false; emit(); }, stop() { stops++; state.busy = false; emit(); },
         setFullAccess(enabled) { state.fullAccess = enabled; emit(); },
+        savePermissionConfig(value) { state.permissionConfig = value; state.fullAccess = false; emit(); },
     };
     const all = (el = root) => [el, ...el.children.flatMap(e => all(e))];
     // A settings editor now also uses textarea; existing interaction cases target the composer.
@@ -783,15 +784,17 @@ for (const lang of ['zh', 'en']) test('ST source hides independent setup and act
 test('Full-access switch confirms once and keeps a warning visible outside settings', async () => {
     const f = fixture('en', true, { initialMode: 'assistant' });
     f.state.enabled = true; f.emit();
-    const toggle = f.all().find(e => e.tag === 'input' && e.parent?.textContent?.includes('Full-access mode'));
-    assert.ok(toggle); assert.equal(toggle.checked, false);
-    toggle.checked = true; toggle.onchange(); assert.equal(f.state.fullAccess, undefined); assert.equal(toggle.checked, false);
+    const toggle = f.all().find(e => e.tag === 'select' && e.parent?.textContent === 'Access mode');
+    assert.ok(toggle); assert.equal(toggle.value, 'ask');
+    toggle.value = 'full'; toggle.onchange(); assert.equal(f.state.fullAccess, undefined); assert.equal(toggle.value, 'ask');
     assert.equal(f.all().find(e => e.className === 'gd-muyu-danger-confirm').hidden, false);
     await f.find('button', 'Keep disabled').click(); assert.equal(f.state.fullAccess, undefined);
-    toggle.checked = true; toggle.onchange(); await f.find('button', 'I understand the risk, enable').click(); assert.equal(f.state.fullAccess, true);
+    toggle.value = 'full'; toggle.onchange(); await f.find('button', 'I understand the risk, enable').click(); assert.equal(f.state.fullAccess, true);
     const warning = f.all().find(e => e.className === 'gd-muyu-full-access-warning');
     assert.equal(warning.hidden, false); assert.equal(warning.parent.className, 'gd-muyu-chat');
-    toggle.checked = false; toggle.onchange(); assert.equal(f.state.fullAccess, false); assert.equal(warning.hidden, true);
+    toggle.value = 'all'; toggle.onchange(); assert.equal(f.state.fullAccess, false); assert.equal(warning.hidden, false);
+    assert.equal(f.state.permissionConfig.readAccess, 'all');
+    toggle.value = 'ask'; toggle.onchange(); assert.equal(warning.hidden, true);
     f.root.__gdMuyuDispose();
 });
 

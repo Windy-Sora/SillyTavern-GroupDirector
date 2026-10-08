@@ -1,8 +1,8 @@
 ---
 name: st-ejs-template-guide
 display-name: EJS提示词模板
-description: 解释ST-Prompt-Template／EJS提示词模板的getvar、setvar、dryRun、prepareContext、getwi、缓存作用域及生成/显示差异；这些函数不是TavernHelper变量桶API，也不由GD DSL执行。
-version: "1.2"
+description: 用户未命名组件，但授权读取的卡／预设／世界书含<%…%>、getvar/getwi或EjsTemplate调用时也适用。解释ST-Prompt-Template／EJS提示词模板的getvar、setvar、dryRun、prepareContext、getwi、缓存作用域及生成/显示差异；这些函数不是TavernHelper变量桶API，也不由GD DSL执行。
+version: "1.3"
 ---
 
 # EJS 提示词模板

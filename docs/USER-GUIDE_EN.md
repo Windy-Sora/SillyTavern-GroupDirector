@@ -1,5 +1,7 @@
 # Group Director — User Guide
 
+Muyu gear → Data and permissions → Access mode offers Ask, Allow reads; approve changes, and Full access. Allow reads sends requested chat/card/preset data to the current model provider, without authorizing changes, code execution or business generation. Selection saves automatically; existing users default to Ask. Switching back leaves no automatic source grants, but existing manual grants remain valid. Full access is dangerous and connection-local. Cancel pending authorization before switching. Web search follows the globe; existing-history transport follows its separate context preference.
+
 ## Interface and Muyu entry
 
 The public entry currently uses Classic. The navigation-preview entry is disabled while its code is retained; the historical instructions below no longer describe an available interface switcher.

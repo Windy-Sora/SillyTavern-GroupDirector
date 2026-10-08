@@ -19,7 +19,7 @@ export const BUILTIN_SKILL_MANIFEST = Object.freeze([
     Object.freeze({ name: 'skill-workbench', revision: 2, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'muyu-interface-guide', revision: 4, files: Object.freeze(['SKILL.md', 'references/workflow.md']) }),
     Object.freeze({ name: 'dsl-template-workbench', revision: 1, files: Object.freeze(['SKILL.md', 'references/syntax.md', 'references/runtime.md', 'references/examples.json']) }),
-    Object.freeze({ name: 'st-card-stack-analysis', revision: 3, files: Object.freeze(['SKILL.md', 'references/pipeline-analysis.md', 'references/patterns-and-cases.md']) }),
-    Object.freeze({ name: 'st-ejs-template-guide', revision: 3, files: Object.freeze(['SKILL.md', 'references/syntax-and-context.md', 'references/variables-and-worldbook.md', 'references/troubleshooting.md']) }),
-    Object.freeze({ name: 'tavern-helper-guide', revision: 3, files: Object.freeze(['SKILL.md', 'references/scripts-and-rendering.md', 'references/variables-and-mvu.md', 'references/frontend-actions-and-storage.md']) }),
+    Object.freeze({ name: 'st-card-stack-analysis', revision: 4, files: Object.freeze(['SKILL.md', 'references/pipeline-analysis.md', 'references/patterns-and-cases.md']) }),
+    Object.freeze({ name: 'st-ejs-template-guide', revision: 4, files: Object.freeze(['SKILL.md', 'references/syntax-and-context.md', 'references/variables-and-worldbook.md', 'references/troubleshooting.md']) }),
+    Object.freeze({ name: 'tavern-helper-guide', revision: 4, files: Object.freeze(['SKILL.md', 'references/scripts-and-rendering.md', 'references/variables-and-mvu.md', 'references/frontend-actions-and-storage.md']) }),
 ]);

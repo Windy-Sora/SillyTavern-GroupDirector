@@ -90,6 +90,7 @@ export function validateConfigProfileManifest(manifest, { source = 'json' } = {}
 export function sanitizeImportedSettings(settings, { source = 'json' } = {}) {
     const sanitized = structuredClone(settings);
     delete sanitized.muyuInstructionConfig;
+    delete sanitized.muyuPermissionConfig;
     delete sanitized.muyuHistoryAccountStorage;
     delete sanitized.muyuHistoryData;
     delete sanitized.muyuAgentMemoryEnabled;

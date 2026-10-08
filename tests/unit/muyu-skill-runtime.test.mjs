@@ -43,6 +43,19 @@ test('Skill guidance discovery routes saved inventory to management without chan
     assert.match(definition.description, /no host data or write permissions granted/);
     f.task.dispose();
 });
+test('Task can load a newly relevant Skill after preparation without eager reads or granting data permissions', async () => {
+    const f = await fixture(); f.task.bindRun(identity); await f.task.prepare(identity.id);
+    assert.deepEqual(f.task.usage(identity.id), []);
+    const receipt = await f.task.load(identity.id, query);
+    assert.equal(receipt.permissionGranted, false);
+    assert.equal(receipt.complete, true);
+    await f.task.load(identity.id, { ...query, path: 'references/rules.md' });
+    assert.deepEqual(f.task.usage(identity.id)[0].paths, ['SKILL.md', 'references/rules.md']);
+    assert.match(JSON.stringify(f.task.project(identity.id)), /Never grant permissions/);
+    assert.equal(Object.hasOwn(f.settings, 'chat'), false);
+    f.task.dispose();
+});
+
 test('Initial Skill discovery advertises at most two metadata pages and preserves the next cursor without loading bodies', async () => {
     const entries = Array.from({ length: 40 }, (_, i) => ({ id: `user:guide-${i}`, revision: '1', description: `Guide ${i}` }));
     const calls = [];

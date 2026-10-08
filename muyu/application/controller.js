@@ -16,6 +16,7 @@ import { probeConnection } from '../model/connection-probe.js';
 import { createBuiltins } from '../modules/builtins.js';
 import { taskCatalog } from '../modules/catalog.js';
 import { createPermissions } from './permissions.js';
+import { PERMISSION_DEFAULTS, validatePermissionConfig } from '../permissions/read-policy.js';
 import { RUN_DEFAULTS, validateRunConfig } from '../core/budget.js';
 import { createSessionLibrary } from '../sessions/library.js';
 import { historyScope } from '../sessions/contract.js';
@@ -39,6 +40,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     let app, builtins, model, connection = null, running, appUnsubscribe, disposed = false, resetting = false, hostConnectionCurrent = null;
     let completionVersion = 0, completedSessionId = null;
     let mode = 'assistant', error = null, pinnedTarget = null, fullAccess = false;
+    let permissionConfig = validatePermissionConfig(host.permissionConfig?.read() || { ...PERMISSION_DEFAULTS }), savingPermissionConfig = false;
     let webSearchEnabled = false, webEpoch = 0, savingWebSearch = false;
     let runConfig = host.runConfig?.read() || { ...RUN_DEFAULTS }, savingRunConfig = false;
     let displayConfig = host.displayConfig?.read() || { ...DISPLAY_DEFAULTS }, savingDisplayConfig = false;
@@ -53,7 +55,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         !permissions.allows(source, target, taskId) && !historyGrants.get(historyGrantKey(record, target))?.has(source));
     const compactResults = new Map();
     let instructionConfig = host.instructionConfig?.read() || { ...INSTRUCTION_DEFAULTS }, instructionDraft = copyJson(instructionConfig), savingInstructions = false;
-    const permissions = createPermissions({ fullAccess: () => fullAccess });
+    const permissions = createPermissions({ fullAccess: () => fullAccess, readAccess: () => permissionConfig.readAccess === 'all' });
     const requiredPermission = () => mode === 'chat' ? 'chat' : 'diagnostics';
     const category = definition => definition.dataClasses.includes('public-knowledge') ? 'public' : definition.dataClasses.includes('chat-content') ? 'chat' : 'diagnostics';
     const listeners = new Set(), sessions = new Map(), inputs = new Map(), intentions = new Map(), notices = new Map();
@@ -307,13 +309,13 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         const plan = planContext((record?.messages || []).slice(choice.historyStart), choice.omitHistory ? null : record?.contextSummary, contextConfig);
         const taskRuns = state?.runs.filter(r => r.taskId === latestTaskId) || [];
         const taskUsage = taskRuns.reduce((sum, run) => { const b = run.process?.budget; if (b) for (const k of ['modelCalls', 'toolCalls', 'inputTokens', 'outputTokens', 'elapsedMs']) sum[k] += b[k] || 0; return sum; }, { segments: taskRuns.length, modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 });
-        const busy = !!checking || actionAssembly.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
+        const busy = savingPermissionConfig || !!checking || actionAssembly.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
         const switchedChat = mode === 'assistant' && !!record && !record.imported && !record.archived && record.scope !== historyScope('assistant', targetFor());
         const recovery = recoverableQuestion({ record, runs: state?.runs.filter(r => r.sessionId === sessionId) || [], readOnly: isReadOnly || switchedChat, busy });
         return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly, switchedChat,
             webSearch: { ...(host.webSearch?.describe() || { ...WEB_DEFAULTS, provider: 'brave', hasKey: false, remembered: false, backend: 'missing' }), enabled: webSearchEnabled, saving: savingWebSearch },
             interaction: isReadOnly || switchedChat ? null : interaction, taskUsage, recovery,
-            enabled: !!model, resetting, mode, fullAccess, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
+            enabled: !!model, resetting, mode, fullAccess, permissionConfig: { ...permissionConfig }, savingPermissionConfig, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
             permissions: permissions.snapshot(targetFor()), sourceGrants: permissions.sourceGrants(targetFor()), canReadConfig: configAllowed(targetFor()), canCheckReceipts: Object.fromEntries(receiptsFor(selectedId()).map(r => [r.operationId, receiptAllowed(r, host.globalTarget)])), savedConnection: host.credentials?.describe() || null,
             hostConnection: host.modelConnection?.describe() || null,
             runConfig: { ...runConfig }, savingRunConfig,
@@ -965,6 +967,12 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             finally { savingInstructions = false; emit(); }
         },
         setOmitHistory(value) { live(); if (typeof value !== 'boolean' || resetting || snapshot().busy || readOnly(library.get(selectedId()))) throw Error('NOT_READY'); if (value) omittedViews.add(viewKey()); else omittedViews.delete(viewKey()); emit(); },
+        async savePermissionConfig(value) {
+            live(); if (resetting || savingPermissionConfig || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            const next = validatePermissionConfig(value); savingPermissionConfig = true; emit();
+            try { if (!host.permissionConfig) throw Error('PERMISSION_CONFIG_UNAVAILABLE'); await host.permissionConfig.save(next); live(); permissionConfig = next; fullAccess = false; autoActions.length = 0; autoPlans.length = 0; historyTransportEpoch++; }
+            finally { savingPermissionConfig = false; emit(); }
+        },
         async saveContextConfig(value) {
             live(); if (resetting || savingContextConfig) throw Error('NOT_READY');
             const next = validateContextConfig(value); savingContextConfig = true; emit();
@@ -1170,7 +1178,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             const priorLanguage = continuation ? { enabled: !!continuation.instructions?.responseLanguage, language: continuation.instructions?.responseLanguage || 'English' } : planLanguages.get(planArtifactId);
             const taskInstructionConfig = priorLanguage ? { ...instructionConfig, replyLanguage: priorLanguage } : instructionConfig;
             const baseInstructions = explanation ? composeReceiptInstructions(taskInstructionConfig) : composeInstructions(mode, taskInstructionConfig);
-            const instructions = fullAccess && mode === 'assistant' && !explanation ? { ...baseInstructions, task: baseInstructions.task + '\n本连接已由用户在界面开启全权限模式：资料读取和已注册 Provider 执行无需再申请授权，不要调用授权工具。若用户明确要求直接修改，使用相应 preview 工具并在同一次调用中设 apply=true；宿主将在本轮成功结束后校验并执行，真实结果以操作回执为准，不要提前声称已保存。若用户要求只预览、不要应用或只读，绝不设置 apply=true。不要为了省事扩张字段、目标、工具或预算；高风险 Provider 仍需确认其与用户意图相符。' } : baseInstructions;
+            const instructions = fullAccess && mode === 'assistant' && !explanation ? { ...baseInstructions, task: baseInstructions.task + '\n本连接已由用户在界面开启全权限模式：资料读取和已注册 Provider 执行无需再申请授权，不要调用授权工具。若用户明确要求直接修改，使用相应 preview 工具并在同一次调用中设 apply=true；宿主将在本轮成功结束后校验并执行，真实结果以操作回执为准，不要提前声称已保存。若用户要求只预览、不要应用或只读，绝不设置 apply=true。不要为了省事扩张字段、目标、工具或预算；高风险 Provider 仍需确认其与用户意图相符。' } : permissionConfig.readAccess === 'all' && !explanation ? { ...baseInstructions, task: baseInstructions.task + '\\n用户开启阅读全开：已列出的只读资料可按需直接读取、搜索和预览，不要申请这些读取权限；明确拒绝或限制仍有效。不是读取全部资料的要求，不增加密钥或未公开接口访问。写入、执行代码、Provider render、合成测试和业务生成仍需原有批准；不要设置apply/save/install等直写参数。联网遵守小地球开关。' } : baseInstructions;
             if (continuation?.artifact && artifact.revision !== continuation.artifact.revision) throw Error('STALE_DRAFT');
             const contextPlan = planContext(record.messages.slice(historyStart), omitHistory ? null : record.contextSummary, contextConfig, false);
             contextPlan.coverage = { ...contextPlan.coverage, state: omitHistory ? 'omitted' : contextPlan.coverage.state, total: record.messages.length, excluded: historyStart };

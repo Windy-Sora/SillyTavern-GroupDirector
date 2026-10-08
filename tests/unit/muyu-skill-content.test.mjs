@@ -152,7 +152,7 @@ test('Card stack guide loads references independently and projects only loaded d
     const task = createSkillTaskRuntime({ port, charge: () => true });
     task.bindRun(identity); await task.prepare(identity.id);
     const row = (await catalogAll(port)).find(row => row.id === 'builtin:st-card-stack-analysis');
-    assert.ok(row); assert.equal(row.revision, '3:0');
+    assert.ok(row); assert.equal(row.revision, '4:0');
     assert.equal(skillDisplay({ ...row, source: 'builtin' }, 'en').displayName, 'Character card and preset integration');
     const query = { id: row.id, revision: String(row.revision) };
     const pack = (await readBuiltins()).find(row => row.package.files[0].text.includes('name: st-card-stack-analysis\n')).package;
@@ -187,7 +187,7 @@ for (const [name, title] of [
     const task = createSkillTaskRuntime({ port, charge: () => true });
     task.bindRun(identity); await task.prepare(identity.id);
     const row = (await catalogAll(port)).find(row => row.id === `builtin:${name}`);
-    assert.ok(row); assert.equal(row.revision, '3:0');
+    assert.ok(row); assert.equal(row.revision, '4:0');
     assert.equal(skillDisplay({ ...row, source: 'builtin' }, 'en').displayName, title);
     const pack = (await readBuiltins()).find(row => row.package.files[0].text.includes(`name: ${name}\n`)).package;
     assert.equal(pack.files.length, 4);

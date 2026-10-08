@@ -85,7 +85,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const diagnosticPermission = field(t('插件诊断信息（白名单配置、匿名统计与运行状态）', 'Plugin diagnostics (whitelist settings, anonymous counts and state)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const chatPermission = field(t('当前聊天资料（消息、总结、档案、记忆正文及名称）', 'Current chat data (messages, summary, profiles, memories and names)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
     const extendedPermission = field(t('扩展剧情上下文（当前已加载历史分段读取、参聊角色卡、导演历史账本正文）', 'Extended story context (loaded chat history in ranges, participant cards, director ledger bodies)'), 'checkbox', unified ? legacyRoot : settingsLayout.pages.data);
-    const fullAccessToggle = field(t('全权限模式（危险，默认关闭）', 'Full-access mode (dangerous, off by default)'), 'checkbox', settingsLayout.pages.data);
+    const accessLabel = node('label', t('授权模式', 'Access mode'), settingsLayout.pages.data);
+    const fullAccessToggle = node('select', '', accessLabel); fullAccessToggle.className = 'text_pole';
+    for (const [value, label] of [['ask', t('逐项审批', 'Ask for access')], ['all', t('阅读全开，修改审批', 'Allow reads; approve changes')], ['full', t('全权限（危险，仅本连接）', 'Full access (dangerous; this connection)')]]) { const option = node('option', label, fullAccessToggle); option.value = value; }
+    node('small', t('阅读全开会将按需读取的资料发送给当前模型服务商，不批准写入、代码执行或业务生成。偏好保存在本地插件设置；联网仍由小地球控制。运行或等待授权时请先停止／取消任务再切换。', 'Allow reads sends requested data to the current model provider. It does not authorize writes, code execution or business generation. The preference is saved in local extension settings; web search follows the globe. Stop/cancel running or pending authorization tasks before switching.'), settingsLayout.pages.data);
     const fullAccessConfirm = node('section', '', settingsLayout.pages.data); fullAccessConfirm.className = 'gd-muyu-danger-confirm'; fullAccessConfirm.hidden = true;
     node('strong', t('确认开启全权限模式？', 'Enable full-access mode?'), fullAccessConfirm);
     node('p', t('开启后可读取资料、执行 Provider 代码并直接应用配置；可能修改数据、产生费用，且无法可靠撤销。仅本连接有效。', 'This permits reads, Provider code execution and direct settings writes. It may change data, incur costs and cannot reliably be undone. This connection only.'), fullAccessConfirm);
@@ -287,11 +290,12 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         const pendingPermissionId = s.interaction?.kind === 'permission' && s.interaction.status === 'pending' ? s.interaction.id : null;
         const newPermission = pendingPermissionId !== null && pendingPermissionId !== shownPermissionId;
         shownPermissionId = pendingPermissionId;
-        fullAccessToggle.checked = s.fullAccess === true; fullAccessToggle.disabled = !s.enabled || s.resetting || s.busy;
+        fullAccessToggle.value = s.fullAccess ? 'full' : s.permissionConfig?.readAccess || 'ask'; fullAccessToggle.disabled = s.resetting || s.busy || s.savingPermissionConfig || s.interaction?.status === 'pending';
         acceptFullAccess.disabled = !s.enabled || s.resetting || s.busy;
         if (!s.enabled || s.resetting || s.fullAccess) fullAccessConfirm.hidden = true;
         setupLabel.textContent = t('AI 接口：', 'AI connection: ') + (s.enabled ? s.connection?.model || t('已连接', 'Connected') : t('未启用', 'Not enabled'));
-        fullAccessBanner.hidden = s.fullAccess !== true;
+        fullAccessBanner.hidden = !s.fullAccess && s.permissionConfig?.readAccess !== 'all';
+        fullAccessBanner.textContent = s.fullAccess ? t('⚠ 全权限：读取、代码执行及请求的修改可直接进行。', '⚠ Full access: reads, code execution and requested changes may proceed directly.') : t('阅读全开 · 修改与执行需确认', 'Reads allowed · Changes and execution require approval');
         const config = s.runConfig || RUN_DEFAULTS, configSignature = JSON.stringify(config);
         if (configSignature !== lastRunConfig && !budgetFeedback.dirty && !budgetFeedback.busy) { for (const f of budgetFields) f.input.value = String(config[f.name] / f.scale); lastRunConfig = configSignature; budgetFeedback.rebase(); }
         saveBudget.disabled = resetBudget.disabled = !!s.savingRunConfig || s.resetting;
@@ -307,12 +311,13 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         consentText.textContent = s.mode === 'chat' ? t(...task.consent) : t('允许本连接会话内读取记忆与导演白名单配置、匿名统计、运行状态和所选配置草稿；不含角色身份或聊天正文', 'Allow whitelist memory/director settings, anonymous counts, runtime state and selected drafts for this connection session; no character identities or chat bodies');
         consentLabel.hidden = granted; withoutData.hidden = s.mode !== 'chat';
         diagnosticPermission.checked = !!s.permissions?.diagnostics; chatPermission.checked = !!s.permissions?.chat; extendedPermission.checked = !!s.permissions?.extended;
-        diagnosticPermission.disabled = !s.enabled || s.resetting; chatPermission.disabled = !s.enabled || s.resetting || !s.hasChat;
+        diagnosticPermission.disabled = !s.enabled || s.resetting || s.permissionConfig?.readAccess === 'all'; chatPermission.disabled = !s.enabled || s.resetting || !s.hasChat || s.permissionConfig?.readAccess === 'all';
         extendedPermission.disabled = chatPermission.disabled;
         permissionSummary.textContent = t('可读取：', 'Access: ') + [t('内置资料', 'Built-in docs'), ...(s.permissions?.diagnostics ? [t('诊断信息', 'Diagnostics')] : []), ...(s.permissions?.chat ? [t('当前聊天资料', 'This chat')] : [])].join(' · ');
         if (s.permissions?.extended) permissionSummary.textContent += t(' · 扩展剧情上下文', ' · Extended story context');
         if (unified) permissionSummary.textContent = t('资料权限 · ', 'Data access · ') + (s.sourceGrants?.length ? t('已允许 ', 'Allowed: ') + s.sourceGrants.length + t(' 项', ' sources') : t('需要时由暮羽申请', 'Muyu asks when needed'));
         if (s.fullAccess) permissionSummary.textContent = t('⚠ 全权限模式已开启', '⚠ Full-access mode enabled');
+        else if (s.permissionConfig?.readAccess === 'all') permissionSummary.textContent = t('阅读全开 · 修改与执行需确认', 'Reads allowed · Changes and execution require approval');
         savedKeyStatus.textContent = s.savedConnection ? t('已保存密钥；相同接口可留空使用。', 'Saved key available; leave blank for the same endpoint.') : t('未保存密钥', 'No saved key');
         forgetKey.disabled = !s.savedConnection || s.resetting;
         if (!lastConnection && s.savedConnection && !s.connection) { endpoint.value = s.savedConnection.endpoint; model.value = s.savedConnection.model; profile.value = s.savedConnection.profile || 'deepseek'; thinking.checked = s.savedConnection.thinking; effort.value = s.savedConnection.reasoningEffort || 'high'; connectionForm.refreshOptions(); rememberKey.checked = true; autoConnect.checked = s.savedConnection.autoConnect === true; lastConnection = 'saved'; }
@@ -463,14 +468,15 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     chatPermission.onchange = () => act(() => chatPermission.checked ? controller.grantPermission('chat') : controller.revokePermission('chat'));
     extendedPermission.onchange = () => act(() => extendedPermission.checked ? controller.grantPermission('extended') : controller.revokePermission('extended'));
     fullAccessToggle.onchange = () => {
-        const enabled = fullAccessToggle.checked;
-        if (enabled) {
-            fullAccessToggle.checked = false; fullAccessConfirm.hidden = false; acceptFullAccess.focus?.(); return;
+        const value = fullAccessToggle.value;
+        if (value === 'full') {
+            fullAccessToggle.value = controller.snapshot().permissionConfig?.readAccess || 'ask'; fullAccessConfirm.hidden = false; acceptFullAccess.focus?.(); return;
         }
-        act(() => controller.setFullAccess(enabled));
+        fullAccessConfirm.hidden = true;
+        act(() => controller.savePermissionConfig({ readAccess: value }));
     };
     acceptFullAccess.onclick = () => act(() => { controller.setFullAccess(true); fullAccessConfirm.hidden = true; });
-    cancelFullAccess.onclick = () => { fullAccessConfirm.hidden = true; fullAccessToggle.checked = false; };
+    cancelFullAccess.onclick = () => { fullAccessConfirm.hidden = true; const s = controller.snapshot(); fullAccessToggle.value = s.fullAccess ? 'full' : s.permissionConfig?.readAccess || 'ask'; };
     forgetKey.onclick = () => act(async () => { await controller.forgetCredential(); rememberKey.checked = false; autoConnect.checked = false; key.value = ''; });
     cancelAuth.onclick = () => { resetAuthorization(); input.focus?.(); };
     stop.onclick = () => act(() => controller.stop());

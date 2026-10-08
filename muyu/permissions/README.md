@@ -18,6 +18,7 @@
 
 - `contract.js`：固定来源、闭合申请 Schema、可信标题与响应说明。模型只提供一个 source 和有界 reason，不能指定目标或批准范围。
 - `store.js`：连接内的任务授权、聊天授权和拒绝记录，容量有界，不持久化。同步续接失败回滚新决定。
+- `read-policy.js`：固定只读来源白名单与个人阅读策略。`all` 直接允许数据读取／草稿预览，不写入批准记录、不批准执行来源；未知来源不放行，明确拒绝仍有效。阅读偏好可持久化，但全权限仍仅本连接有效。历史外发策略独立，资料读取仍受范围与预算限制。
 - `application/permissions.js`：与旧 chat/extended/diagnostics 整包开关兼容；旧授权仍有效，不会被按需授权隐式收窄。被整包授权覆盖的细粒度授权不重复列出；撤销整包同时撤销对应细粒度授权。
 - `modules/permission`：独立 `muyu.permission.request` 控制工具，普通聊天可用，必须单独调用；不能与读取同批。
 - `interactions/store`、应用服务：可信 request/session/task/run/target 身份、一次性消费、失效；重连销毁应用，旧请求无法跨连接复用。

@@ -2071,6 +2071,50 @@ for(const operation of ['update','copy','create','rename','delete'])for(const ac
     await f.controller.dispose();
 });
 
+test('Read-all policy reads settings without a handoff, persists across reconnect and never enables full access', async () => {
+    let saved = {readAccess:'ask'};
+    const f = fixture([[tool('muyu.settings.read',{fields:['autoMemoryInterval']}),done],[text('Read only'),done]], {
+        permissionConfig:{read:()=>saved,save:async value=>{saved=value;}}
+    });
+    await f.enable(); f.controller.setMode('assistant');
+    await f.controller.savePermissionConfig({readAccess:'all'});
+    f.controller.setInput('Read memory interval'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().interaction?.status==='pending',false);
+    assert.equal(f.controller.snapshot().runs.at(-1).status,'succeeded');
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages),/autoMemoryInterval/);
+    assert.equal(f.controller.snapshot().fullAccess,false);
+    assert.equal(f.settings.autoMemoryInterval,10);
+    await f.enable(); assert.equal(f.controller.snapshot().permissionConfig.readAccess,'all');
+    await f.controller.savePermissionConfig({readAccess:'ask'});
+    assert.equal(f.controller.snapshot().permissionConfig.readAccess,'ask');
+    await f.controller.dispose();
+});
+
+test('Read-all policy blocks direct settings writes, and policy save failure preserves the previous mode', async () => {
+    const f=fixture([[tool('muyu.settings.preview',{changes:{autoMemoryInterval:15},apply:true}),done],[text('No write'),done]],{
+        permissionConfig:{read:()=>({readAccess:'all'}),save:async()=>{throw Error('SAVE_FAILED');}}
+    });
+    await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('Prepare'); f.controller.send(); await settle();
+    assert.equal(f.settings.autoMemoryInterval,10);
+    assert.equal(f.controller.snapshot().artifacts.some(a=>a.kind==='config-draft'),false);
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages),/PERMISSION_DENIED/);
+    await assert.rejects(f.controller.savePermissionConfig({readAccess:'ask'}),/SAVE_FAILED/);
+    assert.equal(f.controller.snapshot().permissionConfig.readAccess,'all');
+    await f.controller.dispose();
+});
+
+test('Read policy cannot change while a source permission continuation is pending', async()=>{
+    const f=fixture([[tool('muyu.settings.read',{fields:['autoMemoryInterval']}),done]],{
+        permissionConfig:{read:()=>({readAccess:'ask'}),save:async()=>{throw Error('Must not save');}}
+    });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('Read'); f.controller.send(); await settle();
+    assert.equal(f.controller.snapshot().interaction.status,'pending');
+    await assert.rejects(f.controller.savePermissionConfig({readAccess:'all'}),/NOT_READY/);
+    assert.equal(f.controller.snapshot().permissionConfig.readAccess,'ask');
+    await f.controller.dispose();
+});
+
 function fixture(steps = [[text('answer'), done]], extraHost = {}) {
     const events = new EventEmitter(), settings = { memoryEnabled: true, autoMemoryEnabled: true, autoMemoryInterval: 10, autoMemorySpeakers: false };
     const ctx = { groupId: 'g', chatId: 'A', groups: [{ id: 'g', members: ['private-avatar'] }], chat: [{ mes: 'PRIVATE_BODY' }], chatMetadata: {}, eventSource: events, eventTypes: { CHAT_CHANGED: 'chat' } };

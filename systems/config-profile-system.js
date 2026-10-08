@@ -18,6 +18,7 @@ const CONFIG_PROFILE_VERSION = 1;
 const INTENTIONALLY_UNCOVERED_KEYS = new Set([
     'muyuInstructionConfig', // Personal assistant instructions, excluded from story profiles.
     'muyuContextConfig', // Private assistant context policy, not a story profile.
+    'muyuPermissionConfig', // Personal read authorization preference, never shared in profiles.
     'muyuRunConfig', // Local assistant execution policy, not a shared story profile.
     'muyuDisplayConfig', 'muyuDisplayConfigVersion', // Local presentation, not a story profile.
     'muyuHistoryEnabled', // Local history privacy choice, never imported with story settings.
@@ -112,7 +113,7 @@ function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
         if (['muyuHistoryAccountStorage', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData', 'muyuSkillData'].includes(k)) continue;
-        if (k === 'muyuInstructionConfig') continue; // Personal instructions are never applied by a story profile.
+        if (['muyuInstructionConfig', 'muyuPermissionConfig'].includes(k)) continue; // Personal instructions and authorization never come from story profiles.
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
         if (k === 'agentConfigs') continue;   // preserved per-user, never overwritten by snapshot
@@ -381,6 +382,7 @@ export function createConfigProfileSystem(deps) {
         // profile could carry raw keys).
         const expSettings = JSON.parse(JSON.stringify(profile.settings));
         delete expSettings.muyuInstructionConfig;
+        delete expSettings.muyuPermissionConfig;
         delete expSettings.muyuHistoryAccountStorage;
         delete expSettings.muyuHistoryData;
         delete expSettings.muyuAgentMemoryEnabled;
@@ -449,6 +451,7 @@ export function createConfigProfileSystem(deps) {
 
         const snap = JSON.parse(JSON.stringify(profile.settings));
         delete snap.muyuInstructionConfig;
+        delete snap.muyuPermissionConfig;
         delete snap.muyuHistoryAccountStorage;
         delete snap.muyuHistoryData;
         delete snap.muyuAgentMemoryEnabled;
