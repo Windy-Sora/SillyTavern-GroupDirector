@@ -1,5 +1,30 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) for (const action of ['rename', 'archive', 'remove']) test(`Floating narrow history row confirmation remains visible and requires explicit confirmation / ${lang}/${action}`, async () => {
+    const launcher = new Element('div', {}), f = fixture(lang, true, { actionsRoot: launcher });
+    f.state.history = managedHistory(); f.emit();
+    const labels = { rename: ['重命名', 'Rename'], archive: ['归档', 'Archive'], remove: ['删除', 'Delete'] };
+    const choose = values => values[lang === 'en' ? 1 : 0];
+    await launcher.children.find(e => e.textContent === choose(['历史', 'History'])).click();
+    const popup = f.all().find(e => e.className === 'gd-muyu-row-menu-list');
+    const before = JSON.stringify(f.state.history);
+    await popup.children.find(e => e.textContent === choose(labels[action])).click();
+    const form = f.all().find(e => e.className === 'gd-muyu-history-confirm');
+    for (let ancestor = form; ancestor; ancestor = ancestor.parent) assert.notEqual(ancestor.hidden, true, 'confirmation and all ancestors must be visible');
+    assert.equal(JSON.stringify(f.state.history), before, 'opening confirmation must not mutate history');
+    const expectedId = f.state.history.sessionId, calls = [];
+    f.controller.renameSession = (...args) => calls.push(['rename', ...args]);
+    f.controller.archiveSession = (...args) => calls.push(['archive', ...args]);
+    f.controller.deleteSession = (...args) => calls.push(['remove', ...args]);
+    const input = f.all(form).find(e => e.tag === 'input');
+    if (action === 'rename') { assert.equal(f.root.ownerDocument.activeElement, input); input.value = 'New title'; }
+    const confirm = f.all(form).find(e => e.tag === 'button' && e.textContent === choose(['确认', 'Confirm']));
+    if (action !== 'rename') assert.equal(f.root.ownerDocument.activeElement, confirm);
+    await confirm.click();
+    assert.equal(calls.length, 1); assert.equal(calls[0][0], action); assert.equal(calls[0][1], expectedId);
+    assert.equal(form.hidden, true); assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test('Header theme segments precede settings, preserve detail and input, and sync settings / ' + lang, async () => {
     const launcher = new Element('div', {}), f = fixture(lang, true, { actionsRoot: launcher });
     f.state.displayConfig = { processDetail: 'full', theme: 'host' }; f.emit();

@@ -162,7 +162,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
                             itemMenu.open = false;
                             await controller.openSession(item.id);
                             if (disposed || controller.snapshot().history?.sessionId !== item.id) return;
-                            if (!wide) setOpen(false); actions.show(action);
+                            if (!wide) setOpen(!!launcherActions); actions.show(action);
                         });
                     }
                     for (const [format, text] of [['json', t('导出 JSON', 'Export JSON')], ['markdown', t('导出 Markdown', 'Export Markdown')]]) {
