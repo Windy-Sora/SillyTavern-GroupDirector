@@ -112,6 +112,57 @@ async function fixture({ unknown = false } = {}) {
         counts: () => [chatSaves, settingsSaves], setTarget: value => { target = value; }, disable: () => { enabled = false; }, online: () => { rejectChat = false; } };
 }
 
+async function interruptedVariableUpdate(legacy) {
+    const f = await fixture(), gold = f.metadata.gd.variables.defs.find(v => v.id === 'gold');
+    if (legacy) {
+        for (const field of ['dashboardOrder', 'labelZh', 'ruleZh', 'enumValues', 'min', 'max', 'showInDashboard']) delete gold[field];
+        gold.autoUpdate = 1; // Supported old storage need not equal its normalized projection.
+        gold.injectMode = 'legacy';
+    }
+    const before = structuredClone(gold), counts = f.counts();
+    const content = f.host.bundleDraftPort.prepare(f.host.currentTarget(), {
+        variables: [{ action: 'update', id: 'gold', label: 'Updated gold', showInDashboard: true, autoUpdate: true, injectMode: 'always' }],
+        settings: { autoMemoryInterval: 15 },
+    });
+    assert.deepEqual(content.variables[0].preview.diff.map(row => row.field), ['label']);
+    const artifact = { id: 'update-draft', revision: 1, kind: 'task-bundle', sessionId: 'runtime', content };
+    let n = 0;
+    const actions = createTaskBundleActions({ getTarget: f.host.currentTarget, getArtifact: () => artifact,
+        validate: () => f.host.bundleDraftPort.assertFresh(content), writer: f.host.bundleWriter,
+        checkpoint: async (record, steps) => { if (++n === 4) throw Error('RECOVERY_SAVE_FAILED'); await f.journal.checkpoint(record, steps); } });
+    const action = actions.prepare(artifact.id, 1), result = await actions.approve(action.id);
+    assert.equal(result.status, 'partial'); assert.equal(result.result.steps[0].status, 'applied_confirmed');
+    assert.deepEqual(gold, { ...before, label: 'Updated gold' });
+    assert.deepEqual(f.counts(), [counts[0] + 1, counts[1]]); assert.equal(f.settings.autoMemoryInterval, 10);
+    return { ...f, id: action.id, gold };
+}
+
+for (const legacy of [false, true]) test('Completed variable update resumes only remaining settings without normalizing stored fields / legacy=' + legacy, async () => {
+    const f = await interruptedVariableUpdate(legacy), before = structuredClone(f.gold), counts = f.counts();
+    const journal = createRecoveryJournal({ port: f.port }), w = createRecoveryWorkbench({ host: f.host, journal });
+    const preview = await w.prepare(f.id);
+    assert.equal(preview.state, 'ready'); assert.deepEqual(preview.steps, []); assert.equal(preview.settingsDiff.length, 1);
+    assert.deepEqual(f.counts(), counts);
+    const result = await w.approve(f.id);
+    assert.equal(result.status, 'applied_confirmed'); assert.equal(f.settings.autoMemoryInterval, 15);
+    assert.deepEqual(f.counts(), [counts[0], counts[1] + 1]); assert.deepEqual(f.gold, before);
+});
+
+for (const field of ['label', 'rule', 'dashboardOrder', 'value']) test('Legacy completed update still rejects concurrent edits to ' + field, async () => {
+    const f = await interruptedVariableUpdate(true), counts = f.counts();
+    if (field === 'value') f.metadata.gd.variables.values.global.gold = 9;
+    else f.gold[field] = field === 'dashboardOrder' ? 100 : 'Concurrent edit';
+    await assert.rejects(f.workbench.prepare(f.id), /RECOVERY_CONFLICT/);
+    assert.deepEqual(f.counts(), counts); assert.equal(f.settings.autoMemoryInterval, 10);
+});
+
+test('Legacy completed update is rechecked after review before remaining settings are written', async () => {
+    const f = await interruptedVariableUpdate(true), counts = f.counts();
+    await f.workbench.prepare(f.id); f.gold.dashboardOrder = 100;
+    await assert.rejects(f.workbench.approve(f.id), /RECOVERY_CONFLICT/);
+    assert.deepEqual(f.counts(), counts); assert.equal(f.settings.autoMemoryInterval, 10);
+});
+
 test('Undo cancelled while its prewrite marker is flushing never dispatches a settings write', async () => {
     const f = await undoFixture(); let finish, marked = false;
     const port = { ...f.port, openRecovery: async () => {

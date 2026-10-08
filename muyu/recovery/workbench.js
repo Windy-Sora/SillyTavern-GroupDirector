@@ -7,6 +7,7 @@ import { createConfigActions } from '../actions/config-apply.js';
 import { createTaskBundleActions } from '../actions/task-bundle-apply.js';
 import { recoveryStepStates } from './intent.js';
 import { inspectConfigUndo } from './config-undo.js';
+import { normalizeDefinition } from '../../systems/variable-system.js';
 
 const unstarted = state => ['not_started', 'not_executed'].includes(state);
 
@@ -36,8 +37,16 @@ export function createRecoveryWorkbench({ host, journal, changed = () => {} }) {
             if (completedOnly && unstarted(states[i])) continue;
             const v = variables[i], actual = host.variableDraftPort?.inspect(target, v.request.id);
             if (!actual) throw Error('WRITE_UNAVAILABLE');
+            const definition = v.request.action === 'create' ? v.definition : { ...v.baseline.definition };
+            if (v.request.action === 'update') {
+                // The writer applies only approved differences, not normalization defaults.
+                const before = normalizeDefinition(v.baseline.definition);
+                for (const field of Object.keys(v.request)) {
+                    if (Object.hasOwn(v.definition, field) && jsonKey(before[field] ?? null) !== jsonKey(v.definition[field])) definition[field] = v.definition[field];
+                }
+            }
             const expected = unstarted(states[i]) ? v.baseline : {
-                definition: v.definition, value: v.request.action === 'create' ? v.definition.defaultValue : v.baseline.value, occupied: true };
+                definition, value: v.request.action === 'create' ? v.definition.defaultValue : v.baseline.value, occupied: true };
             if (jsonKey(actual) !== jsonKey(expected)) throw Error('RECOVERY_CONFLICT');
         }
         const settings = row.intent.settings;
