@@ -65,6 +65,7 @@ export function createVariableDraftPort({ getTarget, getMetadata, extensionKey, 
                 notice: 'Only a preview. No chat variable was changed or saved. Applying this draft requires a separate approval in the UI.' } });
     }
     return Object.freeze({
+        inspect: (target, id) => inspect(target, id),
         prepare(target, input) {
             const content = build(target, input), token = 'variable-preview:' + randomUUID();
             if (drafts.size >= 128) drafts.delete(drafts.keys().next().value);

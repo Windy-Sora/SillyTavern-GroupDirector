@@ -58,10 +58,11 @@ export function builtinActionDescriptors() {
     return definitions.map(({ id, scope, artifactKinds }) => ({ id, scope, artifactKinds: [...artifactKinds] }));
 }
 
-export function createBuiltinActions({ host, getArtifact, validate, changed }) {
+export function createBuiltinActions({ host, getArtifact, validate, changed, checkpoint }) {
     validateReceiptOwners(builtinActionDescriptors());
     return createActionAssembly(definitions.map(row => ({ ...row, coordinator: row.create({
         getArtifact, validate, changed, writer: host[row.writer],
+        ...(['actions', 'bundleActions'].includes(row.id) ? { checkpoint } : {}),
         getTarget: row.scope === 'global' ? () => host.globalTarget : () => host.currentTarget(),
     }) })));
 }

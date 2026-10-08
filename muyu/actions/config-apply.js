@@ -1,7 +1,7 @@
 import { createApprovedActions } from './coordinator.js';
 
 /** Config-specific checks and writer; approval lifecycle stays action-generic. */
-export function createConfigActions({ getArtifact, validate, getTarget, writer, changed = () => {} }) {
+export function createConfigActions({ getArtifact, validate, getTarget, writer, changed = () => {}, checkpoint = null }) {
     const contract = {
         idPrefix: 'apply:',
         available: () => !!writer,
@@ -16,5 +16,5 @@ export function createConfigActions({ getArtifact, validate, getTarget, writer, 
         resultStatus: result => ['applied_confirmed', 'applied_unconfirmed', 'partial', 'outcome_unknown'].includes(result?.status) ? result.status : 'outcome_unknown',
         notExecuted: error => ['STALE_BASELINE', 'STALE_MEMORY_PREVIEW', 'STALE_COMPLETION_PREVIEW', 'STALE_BLUEPRINT_PREVIEW', 'COMPLETION_VARIABLE_CONFLICT', 'COMPLETION_VARIABLE_OCCUPIED', 'TARGET_UNAVAILABLE', 'ACTION_STALE', 'WRITE_UNAVAILABLE', 'EMPTY_CHANGES'].includes(error?.message),
     };
-    return createApprovedActions({ contract, getArtifact, getTarget, changed });
+    return createApprovedActions({ contract, getArtifact, getTarget, changed, checkpoint });
 }

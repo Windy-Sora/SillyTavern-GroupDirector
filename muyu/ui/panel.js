@@ -22,6 +22,7 @@ import { createInteractionView } from './interaction-view.js';
 import { createPermissionView } from './permission-view.js';
 import { permissionDisplayTitle } from './catalog-labels.js';
 import { createReceiptView } from './receipt-view.js';
+import { createCheckpointView } from './checkpoint-view.js';
 import { createWebSearchView } from './web-search-view.js';
 import { createConnectionTools } from './connection-tools.js';
 import { createConnectionForm, validateConnectionFields } from './connection-form.js';
@@ -135,6 +136,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const history = node('div', '', transcript); history.className = 'gd-muyu-history'; history.setAttribute('aria-label', t('对话记录', 'Conversation'));
     const cards = node('div', '', transcript);
     const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang });
+    const checkpointView = createCheckpointView({ doc, parent: transcript, controller, act, lang });
     const interactionView = createInteractionView({ doc, parent: transcript, controller, act, lang });
     const permissionView = createPermissionView({ doc, parent: transcript, settings: settingsLayout.pages.data, controller, act, lang });
     const fullAccessBanner = node('small', t('⚠ 全权限模式已开启：暮羽可读取资料、执行 Provider 并直接应用其请求的修改；请留意任务和操作回执。', '⚠ Full-access mode: Muyu may read data, execute Providers and apply requested changes without further confirmation. Watch task progress and receipts.'), chat);
@@ -265,7 +267,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (code?.startsWith('HISTORY_')) { errors.textContent = code === 'HISTORY_PERMISSION_REQUIRED' ? t('旧对话含需授权的资料。可在会话工具中选择本次不带历史、在配置中授权，或新建对话。', 'Old history requires authorization. Omit history in conversation tools, authorize in settings, or start a new conversation.') : code === 'HISTORY_CAPACITY' ? t('已达到历史容量限制，请导出备份；单会话满时可新建对话。', 'History capacity reached. Export a backup; start a new conversation if this one is full.') : t('历史操作未完成，未自动覆盖或清除记录。请检查存储状态并重试。', 'History operation failed; records were not automatically overwritten or cleared. Check storage and retry.'); return; }
         if (code === 'CREDENTIAL_SAVE_FAILED') { errors.textContent = t('未能确认密钥设置已保存，请检查酒馆存储状态后重试。', 'Could not confirm credential persistence. Check ST storage and retry.'); return; }
         if (code === 'INVALID_RUN_CONFIG' || code === 'RUN_CONFIG_SAVE_FAILED') { errors.textContent = code === 'INVALID_RUN_CONFIG' ? t('预算必须是标注范围内的整数，未保存。', 'Budgets must be integers within the displayed bounds; not saved.') : t('未能确认预算保存，仍使用原配置。', 'Budget save was not confirmed; previous configuration remains active.'); return; }
-        if (code === 'RECOVERY_STALE' || code === 'DRAFT_EXISTS') { errors.textContent = code === 'DRAFT_EXISTS' ? t('输入框已有草稿；先处理或清空草稿，再恢复旧问题。', 'The composer already has a draft. Keep or clear it before restoring the old question.') : t('这条失败记录已变化，不能恢复旧问题。', 'The failed record changed; the old question cannot be restored.'); return; }
+        const recoveryErrors = { RECOVERY_NO_INTENT: ['此记录缺少完整恢复资料，请重新提出需求。', 'This record lacks complete recovery data. Submit a fresh request.'], RECOVERY_CONSUMED: ['此记录已经交给新的恢复操作，请查看其后续记录。', 'This record already has a recovery attempt. Review its follow-up record.'], RECOVERY_WRONG_TARGET: ['请先打开原酒馆聊天；不能在其他聊天续跑。', 'Open the original ST chat. Recovery cannot run in a different chat.'], RECOVERY_UNCERTAIN: ['有步骤的执行或保存结果不确定，请先人工核对；不会直接重跑。', 'A step has an uncertain execution or save result. Verify it manually; no direct replay.'], RECOVERY_COMPLETE: ['没有明确未执行的步骤，不需要续跑。', 'No definitely unexecuted steps remain.'], RECOVERY_CONFLICT: ['当前数据与原基线或已完成结果不符，已停止；请重新提出需求。', 'Current data differs from the original baseline or completed results. Stopped; submit a fresh request.'], RECOVERY_SAVE_FAILED: ['恢复检查点无法保存，未开始的操作已停止，请核对已有结果。', 'Recovery checkpoint could not be saved. Unstarted operations stopped; verify existing results.'] };
+        if (code === 'RECOVERY_UNDO_UNSUPPORTED') { errors.textContent = t('此操作没有受支持的完整字段备份，不能直接撤回。仅支持保存已确认的普通配置，不恢复整仓、删除变量或执行代码。', 'This operation has no supported complete field backup. Undo only supports confirmed ordinary settings, not whole-store restoration, variable deletion or code execution.'); return; }
+        if (recoveryErrors[code]) { errors.textContent = t(...recoveryErrors[code]); return; }
+        if (code === 'RECOVERY_STALE' || code === 'DRAFT_EXISTS') { errors.textContent = code === 'DRAFT_EXISTS' ? t('输入框已有草稿；先处理或清空草稿，再恢复旧问题。', 'The composer already has a draft. Keep or clear it before restoring the old question.') : t('恢复记录或预览已变化，请重新核对；不会使用旧批准继续。', 'Recovery record or preview changed. Verify again; old approval cannot continue.'); return; }
         const known = { CONSENT_REQUIRED: t('请确认本次数据外发范围。', 'Confirm data sharing for this request.'), FIELD_SCOPE_REQUIRED: t('请选择本次可修改的字段。', 'Choose fields for this draft.'), CHAT_REQUIRED: t('请先打开聊天。', 'Open a chat first.'), EMPTY_INPUT: t('请输入问题。', 'Enter a question.'), NOT_READY: t('请先启用连接，或等待任务清理结束。', 'Enable a connection or wait for cleanup.'), STALE_DRAFT: t('草稿或配置已变化，请重新生成预览。', 'Draft/settings changed; generate a fresh preview.') };
         errors.textContent = known[code] || t('操作未完成，请检查连接配置、状态和输入。网络失败也可能是 CORS，禁止据此断言密钥错误。', 'Operation failed. Check connection, state and input. Network failure may be CORS, not necessarily invalid credentials.');
     }
@@ -281,6 +286,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         webSearchView.render(s);
         contextView.render(s);
         receiptView.render(s);
+        checkpointView.render(s);
         instructionView.render(s); displayView.render(s);
         diagnosticsView.render(s);
         promptSnapshotsView.render(s);

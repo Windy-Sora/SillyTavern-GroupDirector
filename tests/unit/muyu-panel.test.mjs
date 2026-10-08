@@ -1,5 +1,55 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) test('Settings undo requires a separate local preview and explicit confirmation / ' + lang, async () => {
+    const f = fixture(lang, true), calls = [];
+    const proposal = { version: 2, operationId: 'apply:undo', artifactId: 'draft', revision: 1, at: 1, status: 'not_executed', diff: [{ field: 'autoMemoryInterval', before: '10', after: '20' }], saveError: false, changed: false };
+    f.state.checkpoints = { enabled: true, error: false, records: [{ version: 2, id: 'apply:undo', conversationId: '', kind: 'config', status: 'applied_confirmed', updatedAt: 1, steps: [], proposal, receipt: { ...proposal, status: 'applied_confirmed' }, intent: {}, continuedBy: '' }], preview: null };
+    f.controller.prepareCheckpointUndo = id => { calls.push(['review', id]); f.state.checkpoints.preview = { id, mode: 'undo', state: 'ready', diff: [{ field: 'autoMemoryInterval', before: '20', after: '10' }], steps: [], settingsDiff: [] }; f.emit(); };
+    f.controller.approveCheckpointRecovery = id => { calls.push(['approve', id]); f.state.checkpoints.preview.state = 'finished'; f.emit(); };
+    f.emit(); const approveLabel = lang === 'en' ? 'Confirm undo of these settings' : '确认撤回这些配置字段';
+    assert.equal(f.find('button', approveLabel), undefined);
+    await f.find('button', lang === 'en' ? 'Verify and preview settings undo' : '核对并预览撤回配置').click();
+    assert.deepEqual(calls, [['review', 'apply:undo']]); assert.equal(f.sent.length, 0);
+    f.state.busy = true; f.emit(); assert.equal(f.find('button', approveLabel).disabled, true);
+    f.state.busy = false; f.emit(); await f.find('button', approveLabel).click();
+    assert.deepEqual(calls, [['review', 'apply:undo'], ['approve', 'apply:undo']]); assert.equal(f.sent.length, 0);
+    assert.equal(f.find('button', approveLabel), undefined); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Recovery preview has separate local verification and explicit execution controls / ' + lang, async () => {
+    const f = fixture(lang, true), calls = [];
+    const proposal = { version: 2, operationId: 'apply:resume', artifactId: 'draft', revision: 1, at: 1, status: 'not_executed', diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], saveError: false, changed: false };
+    f.state.checkpoints = { enabled: true, error: false, records: [{ version: 2, id: 'apply:resume', conversationId: '', kind: 'config', status: 'not_executed', updatedAt: 1, steps: [], proposal, receipt: proposal, intent: {}, continuedBy: '' }], preview: null };
+    f.controller.prepareCheckpointRecovery = id => { calls.push(['review', id]); f.state.checkpoints.preview = { id, state: 'ready', diff: proposal.diff, steps: [], settingsDiff: [] }; f.emit(); };
+    f.controller.approveCheckpointRecovery = id => { calls.push(['approve', id]); f.state.checkpoints.preview.state = 'finished'; f.emit(); };
+    f.emit();
+    await f.find('button', lang === 'en' ? 'Verify locally and preview remaining steps' : '本地核对并生成剩余预览').click();
+    assert.deepEqual(calls, [['review', 'apply:resume']]); assert.equal(f.sent.length, 0);
+    const approve = f.find('button', lang === 'en' ? 'Approve and execute these remaining changes' : '批准并执行这份剩余修改');
+    f.state.busy = true; f.emit(); assert.equal(f.find('button', approve.textContent).disabled, true);
+    f.state.busy = false; f.emit(); await f.find('button', approve.textContent).click();
+    assert.deepEqual(calls, [['review', 'apply:resume'], ['approve', 'apply:resume']]); assert.equal(f.sent.length, 0);
+    assert.equal(f.find('button', approve.textContent), undefined); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Checkpoint recovery is collapsed and offers no replay permission / ' + lang, async () => {
+    const f = fixture(lang, true), calls = [];
+    const proposal = { version: 2, operationId: 'apply:test', artifactId: 'draft', revision: 1, at: 1, status: 'not_executed',
+        diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], saveError: false, changed: false };
+    f.state.checkpoints = { enabled: true, error: false, conversationId: 'other', records: [{ version: 1, id: 'apply:test', conversationId: 'test',
+        kind: 'config', status: 'applying', updatedAt: 1, steps: [], proposal, receipt: null }] };
+    f.controller.refreshCheckpoints = () => calls.push('refresh'); f.controller.removeCheckpoint = id => calls.push(id); f.emit();
+    const label = lang === 'en' ? 'Operation checkpoints · Local recovery records' : '操作检查点 · 本地恢复记录';
+    const root = f.all().find(e => e.tag === 'summary' && e.textContent === label).parent;
+    assert.ok(!root.open); assert.equal(root.hidden, false);
+    assert.ok(f.all(root).some(e => e.textContent?.includes(lang === 'en' ? 'outcome as unknown' : '结果不确定')));
+    assert.ok(f.all(root).some(e => e.textContent?.includes(lang === 'en' ? 'another Muyu conversation' : '其他暮羽对话')));
+    const buttons = f.all(root).filter(e => e.tag === 'button'); assert.equal(buttons.length, 2);
+    await buttons[0].click(); await buttons[1].click(); assert.deepEqual(calls, ['refresh', 'apply:test']);
+    assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
+    f.state.checkpoints.enabled = false; f.emit(); assert.equal(root.hidden, true); f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) for (const action of ['rename', 'archive', 'remove']) test(`Floating narrow history row confirmation remains visible and requires explicit confirmation / ${lang}/${action}`, async () => {
     const launcher = new Element('div', {}), f = fixture(lang, true, { actionsRoot: launcher });
     f.state.history = managedHistory(); f.emit();

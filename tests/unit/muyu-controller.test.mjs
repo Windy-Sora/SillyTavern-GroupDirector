@@ -621,6 +621,46 @@ import { createTaskBundleDraftPort } from '../../muyu/host/task-bundle-draft.js'
 import { createTaskBundleWriter } from '../../muyu/host/task-bundle-write.js';
 import { createProfileWriter } from '../../muyu/host/profile-write.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
+import { openRecoveryStore } from '../../muyu/recovery/indexeddb-store.js';
+import { historyIDB } from './helpers/history-idb.mjs';
+
+test('Controller locally reviews and resumes an unexecuted config without another model call or restoring grants', async () => {
+    const store = createMemoryHistoryStore(), indexedDB = historyIDB();
+    const history = { enabled: () => true, open: async () => store, openRecovery: () => openRecoveryStore({ namespace: 'resume-controller', indexedDB }) };
+    let writer, saves = 0;
+    const f = fixture([[tool('muyu.config.preview', { changes: { autoMemoryInterval: 15 } }), done], [text('draft only'), done]], { history, configWriter: { apply: value => writer.apply(value) } });
+    writer = createConfigWriter({ getSettings: () => f.settings, saveSettings: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('draft'); f.controller.setInput('Preview interval 15');
+    f.controller.send({ consent: true, fields: ['autoMemoryInterval'] }); await settle(); await f.controller.refreshCheckpoints();
+    indexedDB.failNextPut('checkpoints');
+    const artifact = f.controller.snapshot().artifacts[0], action = f.controller.prepareConfigApply(artifact.id, artifact.revision);
+    assert.equal((await f.controller.approveConfigApply(action.id)).status, 'not_executed'); assert.equal(saves, 0);
+    const permissions = f.controller.snapshot().permissions, calls = f.model.requests.length;
+    await f.controller.prepareCheckpointRecovery(action.id); assert.equal(saves, 0); assert.equal(f.controller.snapshot().checkpoints.preview.state, 'ready');
+    const result = await f.controller.approveCheckpointRecovery(action.id);
+    assert.equal(result.status, 'applied_unconfirmed'); assert.equal(saves, 1); assert.equal(f.settings.autoMemoryInterval, 15);
+    assert.equal(f.model.requests.length, calls); assert.deepEqual(f.controller.snapshot().permissions, permissions);
+    await assert.rejects(f.controller.approveCheckpointRecovery(action.id), /RECOVERY_STALE/); await f.controller.dispose();
+});
+
+test('Controller assembly persists configuration checkpoints and reloads facts without approval or dispatch', async () => {
+    const store = createMemoryHistoryStore(), indexedDB = historyIDB();
+    const history = { enabled: () => true, open: async () => store, openRecovery: () => openRecoveryStore({ namespace: 'controller', indexedDB }) };
+    let writer, saves = 0;
+    const f = fixture([[tool('muyu.config.preview', { changes: { autoMemoryInterval: 15 } }), done], [text('draft only'), done]], { history, configWriter: { apply: value => writer.apply(value) } });
+    writer = createConfigWriter({ getSettings: () => f.settings, saveSettings: async () => { saves++; } });
+    await f.enable(); f.controller.setMode('draft'); f.controller.setInput('Preview interval 15');
+    f.controller.send({ consent: true, fields: ['autoMemoryInterval'] }); await settle();
+    const artifact = f.controller.snapshot().artifacts[0], action = f.controller.prepareConfigApply(artifact.id, artifact.revision);
+    await f.controller.approveConfigApply(action.id); await f.controller.flushHistory();
+    const rows = f.controller.snapshot().checkpoints.records; assert.equal(rows.length, 1);
+    assert.ok(rows[0].conversationId); assert.equal(rows[0].status, 'applied_unconfirmed'); assert.equal(saves, 1);
+    await f.controller.dispose();
+    const second = fixture([], { history }); await second.controller.ready; await second.controller.refreshCheckpoints();
+    assert.equal(second.controller.snapshot().checkpoints.records[0].id, action.id);
+    assert.equal(second.controller.snapshot().configActions.length, 0); assert.equal(second.model.requests.length, 0); assert.equal(saves, 1);
+    await second.controller.dispose();
+});
 import { openSettingsHistoryStore } from '../../muyu/sessions/settings-store.js';
 import { scriptedModel, text, done, deferred, flush } from './helpers/muyu-subject.mjs';
 

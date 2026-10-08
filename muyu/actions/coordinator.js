@@ -2,7 +2,7 @@ import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
 
 /** One trusted action type per coordinator. Model tools cannot invoke this API. */
-export function createApprovedActions({ contract, getArtifact, getTarget, changed = () => {} }) {
+export function createApprovedActions({ contract, getArtifact, getTarget, changed = () => {}, checkpoint = null }) {
     if (!contract || typeof contract.idPrefix !== 'string' || !contract.idPrefix ||
         ['matchesArtifact', 'validate', 'execute', 'resultStatus', 'notExecuted'].some(key => typeof contract[key] !== 'function') ||
         typeof getArtifact !== 'function' || typeof getTarget !== 'function') throw TypeError('INVALID_ACTION_CONTRACT');
@@ -40,12 +40,20 @@ export function createApprovedActions({ contract, getArtifact, getTarget, change
                 let dispatched = false;
                 try {
                     verify(record);
+                    if (checkpoint) await checkpoint(copyJson(record));
+                    // Storage may wait; repeat all freshness checks before dispatch.
+                    verify(record);
                     dispatched = true;
-                    record.result = await contract.execute(copyJson(record));
+                    record.result = await contract.execute(copyJson(record), checkpoint ? { checkpoint: steps => checkpoint(copyJson(record), steps) } : {});
                     record.status = contract.resultStatus(record.result);
                 } catch (error) {
+                    if (error?.message === 'RECOVERY_SAVE_FAILED') record.checkpointFailed = true;
                     record.status = !dispatched || contract.notExecuted(error) ? 'not_executed' : 'outcome_unknown';
-                } finally { active = null; notify(); }
+                } finally {
+                    // Never reclassify an actual write as not executed if recording its result fails.
+                    try { if (checkpoint) await checkpoint(copyJson(record)); } catch { record.checkpointFailed = true; }
+                    active = null; notify();
+                }
                 return copyJson(record);
             });
             notify(); return active;

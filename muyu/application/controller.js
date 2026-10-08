@@ -6,6 +6,8 @@ import { copyModelText } from '../core/model-message.js';
 import { jsonKey, copyJson } from '../core/json-contract.js';
 import { createApplication } from './service.js';
 import { recoverableQuestion } from './recovery.js';
+import { createRecoveryJournal } from '../recovery/journal.js';
+import { createRecoveryWorkbench } from '../recovery/workbench.js';
 import { sourcePermission } from '../modules/providers/catalog.js';
 import { checkReceiptConfig } from './config-check.js';
 import { assistantToolAccess, permissionApprovalCurrent, permissionRequestAllowed, permissionRequestAlreadyGranted, toolAvailableInMode } from './capabilities.js';
@@ -84,10 +86,15 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const skillWorkbench = createSkillWorkbench({ port: host.skills, changed: emit });
     const skillSelections = new Map(), skillRecords = new Map();
     const recordedActions = new Map(), explanations = new Map(), actionOwners = new Map(), approvedPlans = new Set(), declinedPlans = new Set(), invalidPlans = new Set();
+    const recoveryJournal = createRecoveryJournal({ port: host.history, changed: emit,
+        owner: record => actionOwners.get(record.id) || [...runtimeSessions].find(([, runtimeId]) => runtimeId === record.sessionId)?.[0] || '' });
+    void recoveryJournal.refresh();
     const autoActions = [], autoPlans = [];
     const actionChanged = () => { captureReceipts(); emit(); queueMicrotask(flushAutoActions); queueMicrotask(flushAutoConfigChecks); };
     const actionAssembly = createBuiltinActions({ host, getArtifact: id => app.getArtifact(id),
-        validate: (id, revision) => builtins.revalidate(app, id, revision), changed: actionChanged });
+        validate: (id, revision) => builtins.revalidate(app, id, revision), changed: actionChanged,
+        checkpoint: (record, steps) => recoveryJournal.checkpoint(record, steps) });
+    const recoveryWorkbench = createRecoveryWorkbench({ host, journal: recoveryJournal, changed: emit });
     const actions = actionAssembly.get('actions');
     const selectionActions = actionAssembly.get('selectionActions');
     const ledgerEditActions = actionAssembly.get('ledgerEditActions');
@@ -113,7 +120,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
     const scriptActions = actionAssembly.get('scriptActions');
     const skillActions = actionAssembly.get('skillActions');
     function flushAutoActions() {
-        if (!fullAccess || !app || resetting || disposed || checking || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actionAssembly.busy) return;
+        if (!fullAccess || !app || resetting || disposed || checking || recoveryWorkbench.busy || app.snapshot().runs.some(r => ['queued', 'running', 'cancelling'].includes(r.status)) || actionAssembly.busy) return;
         const plan = autoPlans.shift();
         if (plan) {
             try { api.approveTaskPlanReads(plan.id, plan.revision); }
@@ -189,7 +196,7 @@ export function createMuyuController({ host, createModel = createChatCompletions
         return job.promise;
     }
     function flushAutoConfigChecks() {
-        if (!autoConfigChecks.length || !app || disposed || resetting || checking || actions.busy || autoActions.length) return;
+        if (!autoConfigChecks.length || !app || disposed || resetting || checking || recoveryWorkbench.busy || actions.busy || autoActions.length) return;
         const { owner, receipt, target } = autoConfigChecks.shift();
         const record = library.get(owner);
         if (!record || record.imported || record.archived || jsonKey(target) !== jsonKey(host.globalTarget)) return queueMicrotask(flushAutoConfigChecks);
@@ -232,7 +239,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         emit();
     }
     async function manageSession(id, action, value) {
-        live(); if (resetting || checking || actionAssembly.busy || !library.meta(id)) throw Error('NOT_READY');
+        live(); if (resetting || checking || recoveryWorkbench.busy || actionAssembly.busy || !library.meta(id)) throw Error('NOT_READY');
         if (action !== 'rename') { actionAssembly.invalidate(); }
         resetting = true; selectionEpoch++; emit();
         try {
@@ -309,12 +316,13 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         const plan = planContext((record?.messages || []).slice(choice.historyStart), choice.omitHistory ? null : record?.contextSummary, contextConfig);
         const taskRuns = state?.runs.filter(r => r.taskId === latestTaskId) || [];
         const taskUsage = taskRuns.reduce((sum, run) => { const b = run.process?.budget; if (b) for (const k of ['modelCalls', 'toolCalls', 'inputTokens', 'outputTokens', 'elapsedMs']) sum[k] += b[k] || 0; return sum; }, { segments: taskRuns.length, modelCalls: 0, toolCalls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 });
-        const busy = savingPermissionConfig || !!checking || actionAssembly.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
+        const busy = savingPermissionConfig || !!checking || recoveryWorkbench.busy || actionAssembly.busy || !!compacting || !!state?.activeRunId || !!state?.runs.some(r => r.status === 'queued');
         const switchedChat = mode === 'assistant' && !!record && !record.imported && !record.archived && record.scope !== historyScope('assistant', targetFor());
         const recovery = recoverableQuestion({ record, runs: state?.runs.filter(r => r.sessionId === sessionId) || [], readOnly: isReadOnly || switchedChat, busy });
         return { viewToken: views.get(viewKey()), viewKey: viewKey(), scrollTop: scrollPositions.get(viewKey()) ?? null, readOnly: isReadOnly, switchedChat,
             webSearch: { ...(host.webSearch?.describe() || { ...WEB_DEFAULTS, provider: 'brave', hasKey: false, remembered: false, backend: 'missing' }), enabled: webSearchEnabled, saving: savingWebSearch },
             interaction: isReadOnly || switchedChat ? null : interaction, taskUsage, recovery,
+            checkpoints: { ...recoveryJournal.snapshot(selectedId()), preview: recoveryWorkbench.snapshot() },
             enabled: !!model, resetting, mode, fullAccess, permissionConfig: { ...permissionConfig }, savingPermissionConfig, targetKind: targetFor()?.kind, connection: connection && { ...connection }, input: isReadOnly ? '' : inputs.get(viewKey()) || '', hasChat: !!host.currentTarget(),
             permissions: permissions.snapshot(targetFor()), sourceGrants: permissions.sourceGrants(targetFor()), canReadConfig: configAllowed(targetFor()), canCheckReceipts: Object.fromEntries(receiptsFor(selectedId()).map(r => [r.operationId, receiptAllowed(r, host.globalTarget)])), savedConnection: host.credentials?.describe() || null,
             hostConnection: host.modelConnection?.describe() || null,
@@ -553,7 +561,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         planLanguages.clear();
         autoActions.length = 0; autoPlans.length = 0;
         if (checking) { checking.abort.abort(); await checking.promise; }
-        actionAssembly.invalidate(); await actionAssembly.drain();
+        recoveryWorkbench.invalidate(); actionAssembly.invalidate(); await Promise.all([actionAssembly.drain(), recoveryWorkbench.drain()]);
         if (!app) return;
         if (compacting) running?.cancel();
         for (const r of app.snapshot().runs) app.cancel(r.id);
@@ -572,7 +580,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         const tail = record.messages.slice(candidate.through).map(({ role, content }) => ({ role, content }));
         return { ...candidate, tail, coverage: { state: 'complete', total: record.messages.length, summarized: candidate.through, raw: tail.length, omitted: 0, excluded: 0 } };
     }
-    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
+    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); recoveryWorkbench.clear(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
     const unsubscribeConnection = host.modelConnection?.subscribe(() => {
         if (!hostConnectionCurrent || resetting || disposed) return;
@@ -1023,7 +1031,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         async setHistoryEnabled(value) {
             live(); if (resetting || snapshot().busy) throw Error('NOT_READY');
             resetting = true; emit();
-            try { await library.setEnabled(value); } finally { resetting = false; emit(); }
+            try { await library.setEnabled(value); await recoveryJournal.refresh(); } finally { resetting = false; emit(); }
         },
         async setHistoryAccountStorage(value) {
             live(); if (resetting || snapshot().busy || !host.history?.setAccountStorage) throw Error('NOT_READY');
@@ -1032,6 +1040,12 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             finally { resetting = false; emit(); }
         },
         retryHistory: () => library.retry(),
+        refreshCheckpoints: () => recoveryJournal.refresh(),
+        async prepareCheckpointRecovery(id) { live(); if (resetting || snapshot().busy) throw Error('NOT_READY'); return recoveryWorkbench.prepare(id); },
+        async prepareCheckpointUndo(id) { live(); if (resetting || snapshot().busy) throw Error('NOT_READY'); return recoveryWorkbench.prepare(id, 'undo'); },
+        async approveCheckpointRecovery(id) { live(); if (resetting || snapshot().busy) throw Error('NOT_READY'); return recoveryWorkbench.approve(id); },
+        cancelCheckpointRecovery() { live(); if (snapshot().busy) throw Error('NOT_READY'); recoveryWorkbench.invalidate(); emit(); },
+        async removeCheckpoint(id) { live(); if (resetting || snapshot().busy) throw Error('NOT_READY'); await recoveryJournal.remove(id); },
         exportHistory(format) { live(); return library.export(selectedId(), format); },
         flushHistory: () => library.flush(),
         subscribe(fn) { live(); listeners.add(fn); return { snapshot: snapshot(), unsubscribe: () => listeners.delete(fn) }; },
@@ -1117,13 +1131,13 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         },
         async disable() { live(); if (resetting) throw new Error('RESETTING'); resetting = true; emit(); try { await stopAndDrain(); if (connection?.source === 'st') await host.credentials?.saveSourcePreference?.('st', false); else await host.credentials?.setAutoConnect?.(false); clear(); hostConnectionCurrent = null; inputs.clear(); } finally { resetting = false; emit(); } },
         send({ consent, fields, artifactId, interactionId } = {}) { return send({ consent, fields, artifactId, interactionId }); },
-        stop() { live(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; checking?.abort.abort(); actionAssembly.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const task of state.tasks) taskStates.invalidateWait(task.id); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) { builtins.forgetSkillTask(t.id); permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); } for (const r of state.runs) app.cancel(r.id); } emit(); },
+        stop() { live(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; checking?.abort.abort(); recoveryWorkbench.invalidate(); actionAssembly.invalidate(); if (compacting) running?.cancel(); if (app) { const state = app.snapshot(); for (const a of state.artifacts) if (a.kind === 'task-plan') invalidPlans.add(a.id); app.invalidateInteractions(); for (const task of state.tasks) taskStates.invalidateWait(task.id); for (const taskId of continuations.keys()) releaseContinuation(taskId); for (const t of state.tasks) { builtins.forgetSkillTask(t.id); permissions.forgetTask(state.sessions.find(s => s.id === t.sessionId)?.target, t.id); } for (const r of state.runs) app.cancel(r.id); } emit(); },
         revalidate(id, revision) { live(); if (!app || resetting || snapshot().busy) throw new Error('NOT_READY');
             if (!['draft', 'assistant'].includes(mode) || !snapshot().artifacts.some(a => a.id === id && a.revision === revision)) throw new Error('INVALID_ARTIFACT');
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }
             catch { app.validateArtifact(id, revision, { status: 'stale', message: '重新生成预览 / Generate a fresh preview' }); emit(); throw new Error('STALE_DRAFT'); }
         },
-        async dispose() { if (disposed) return; disposed = true; host.stDiagnostics?.dispose(); host.stPromptSnapshots?.dispose(); unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); await library.close(); },
+        async dispose() { if (disposed) return; disposed = true; host.stDiagnostics?.dispose(); host.stPromptSnapshots?.dispose(); unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); await library.close(); await recoveryJournal.close(); },
     };
     function send({ consent, fields = [], artifactId = null, planArtifactId = null, interactionId = null, permissionDecision = null, explanation = null } = {}) {
             if (hostConnectionCurrent) { try { hostConnectionCurrent(); } catch { invalidateHostConnection(); throw Error('HOST_CONNECTION_CHANGED'); } }

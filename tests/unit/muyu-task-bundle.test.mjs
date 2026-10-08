@@ -11,12 +11,15 @@ import { createSessionLibrary } from '../../muyu/sessions/library.js';
 import { createMemoryHistoryStore } from '../../muyu/sessions/memory-store.js';
 import { importedRecord } from '../../muyu/sessions/exchange.js';
 import { requiredSources } from '../../muyu/application/capabilities.js';
+import { createRecoveryJournal } from '../../muyu/recovery/journal.js';
+import { openRecoveryStore } from '../../muyu/recovery/indexeddb-store.js';
+import { historyIDB } from './helpers/history-idb.mjs';
 
 const originalTarget = { kind: 'chat', userKey: 'page:test', chatKey: 'group:A' };
 const variable = id => ({ action: 'create', id, label: id, initialValue: 0, rule: 'Update only on explicit changes', autoUpdate: true,
     injectMode: 'always', updateMode: 'delta' });
 const request = { variables: [variable('party_gold'), variable('party_debt')], settings: { memoryEnabled: false } };
-function fixture(saveChat = async () => {}, saveSettings = async () => ({ confirmed: true })) {
+function fixture(saveChat = async () => {}, saveSettings = async () => ({ confirmed: true }), checkpoint = null) {
     let target = originalTarget, metadata = {};
     const settings = { memoryEnabled: true };
     const getTarget = () => target, getMetadata = () => metadata, getSettings = () => settings;
@@ -27,7 +30,7 @@ function fixture(saveChat = async () => {}, saveSettings = async () => ({ confir
     const bundleWriter = createTaskBundleWriter({ draftPort: bundleDraftPort, getTarget, variableWriter, configWriter });
     const content = bundleDraftPort.prepare(originalTarget, request);
     const artifact = { id: 'artifact', revision: 1, kind: 'task-bundle', sessionId: 'session', content };
-    const actions = createTaskBundleActions({ getArtifact: () => artifact, validate: () => bundleDraftPort.assertFresh(content), getTarget, writer: bundleWriter });
+    const actions = createTaskBundleActions({ getArtifact: () => artifact, validate: () => bundleDraftPort.assertFresh(content), getTarget, writer: bundleWriter, checkpoint });
     return { actions, content, bundleDraftPort, settings, get metadata() { return metadata; }, switchChat: () => { target = { ...originalTarget, chatKey: 'group:B' }; metadata = {}; } };
 }
 
@@ -46,6 +49,22 @@ test('One exact approval executes two chat variables then global settings and re
         [['party_gold', 'confirmed', 'not_started'], ['party_debt', 'confirmed', 'not_started'], ['global-settings', 'not_started', 'confirmed']]);
     assert.match(receiptContext([receipt]), /Version 4/);
     assert.throws(() => f.actions.approve(action.id), /ACTION_STALE/);
+});
+
+test('Real bundle records dispatch and result of every step, but never persists its draft tokens', async () => {
+    const indexedDB = historyIDB(), port = { enabled: () => true, openRecovery: () => openRecoveryStore({ namespace: 'test', indexedDB }) };
+    const journal = createRecoveryJournal({ port, owner: () => 'conversation' }), snapshots = [];
+    const f = fixture(undefined, undefined, async (record, steps) => { await journal.checkpoint(record, steps); snapshots.push(journal.snapshot('conversation').records[0]); });
+    const action = f.actions.prepare('artifact', 1), result = await f.actions.approve(action.id);
+    assert.equal(result.status, 'applied_confirmed'); assert.equal(result.checkpointFailed, undefined);
+    assert.equal(snapshots.length, 8);
+    assert.deepEqual(snapshots[1].steps.map(s => s.status), ['applying', 'not_started', 'not_started']);
+    assert.deepEqual(snapshots[4].steps.map(s => s.status), ['applied_confirmed', 'applied_confirmed', 'not_started']);
+    const restored = createRecoveryJournal({ port }); await restored.refresh();
+    const row = restored.snapshot('conversation').records[0];
+    assert.equal(row.status, 'applied_confirmed'); assert.equal(row.receipt.version, 4);
+    assert.deepEqual(row.receipt.steps.map(s => s.status), ['applied_confirmed', 'applied_confirmed', 'applied_confirmed']);
+    assert.doesNotMatch(JSON.stringify(row), /"token"|page:test|"apply"|"userKey"/);
 });
 
 test('Unknown first chat save stops the remaining steps without rollback or replay', async () => {

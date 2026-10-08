@@ -2,8 +2,9 @@ import { openIndexedHistoryStore } from '../sessions/indexeddb-store.js';
 import { openServerHistoryStore } from '../sessions/server-store.js';
 import { openSettingsHistoryStore } from '../sessions/settings-store.js';
 import { sha256 } from '../runtime/crypto.js';
+import { openRecoveryStore } from '../recovery/indexeddb-store.js';
 /** Only the host composition layer supplies account identity, never the model or an import. */
-export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openServer = openServerHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
+export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openRecovery = openRecoveryStore, openServer = openServerHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
     async function accountKey() {
         let account;
         try { account = await getAccount?.(); } catch { throw Error('HISTORY_IDENTITY_UNAVAILABLE'); }
@@ -14,6 +15,20 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
     }
     return {
         enabled: () => getSettings().muyuHistoryEnabled === true,
+        async openRecovery() {
+            const identity = await accountKey();
+            const digest = await sha256('gd-muyu-recovery-v1:' + identity);
+            const namespace = [...new Uint8Array(digest)].map(n => n.toString(16).padStart(2, '0')).join('');
+            const store = await openRecovery({ namespace });
+            const check = async () => { if (await accountKey() !== identity) throw Error('HISTORY_IDENTITY_UNAVAILABLE'); };
+            try { await check(); } catch (e) { store.close(); throw e; }
+            return {
+                async list() { await check(); const rows = await store.list(); await check(); return rows; },
+                async write(value, revision) { await check(); const saved = await store.write(value, revision); await check(); return saved; },
+                async remove(id, revision) { await check(); const result = await store.remove(id, revision); await check(); return result; },
+                close: () => store.close(),
+            };
+        },
         accountStorage: () => getSettings().muyuHistoryAccountStorage === true,
         async setAccountStorage(enabled) {
             if (typeof enabled !== 'boolean') throw Error('HISTORY_INVALID');
