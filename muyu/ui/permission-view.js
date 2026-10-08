@@ -6,7 +6,7 @@ export function createPermissionView({ doc, parent, settings, controller, act, l
     const t = (zh, en) => lang === 'en' ? en : zh;
     const permissionTitle = id => permissionDisplayTitle(id, lang);
     const node = (tag, text, owner) => { const e = doc.createElement(tag); e.textContent = text; owner.append(e); return e; };
-    const root = node('section', '', parent); root.className = 'gd-muyu-interaction'; root.hidden = true;
+    const root = node('section', '', parent); root.className = 'gd-muyu-interaction gd-muyu-permission'; root.hidden = true;
     root.setAttribute('role', 'group'); root.setAttribute('aria-label', t('暮羽资料授权', 'Muyu data permission'));
     const card = root;
     const title = node('strong', '', card), reason = node('p', '', card), scope = node('p', '', card);
@@ -18,6 +18,7 @@ export function createPermissionView({ doc, parent, settings, controller, act, l
     let current = null;
     const buttons = [['task', t('允许本任务', 'Allow this task')], ['chat', t('允许此聊天', 'Allow this chat')], ['deny', t('拒绝并继续', 'Deny and continue')]].map(([decision, text]) => {
         const b = node('button', text, actions); b.type = 'button'; b.className = 'menu_button';
+        b.setAttribute('data-decision', decision);
         b.onclick = () => act(() => controller.answerPermission(current.id, decision)); return b;
     });
     const cancel = node('button', t('取消任务', 'Cancel task'), actions); cancel.type = 'button'; cancel.className = 'menu_button'; cancel.onclick = () => act(() => controller.cancelInteraction(current.id));

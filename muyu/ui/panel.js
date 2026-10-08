@@ -1,6 +1,7 @@
 import { createBuiltinArtifactViews } from './artifact-views.js';
 import { createSkillView } from './skill-view.js';
 import { createDisplayPreferencesView } from './display-preferences-view.js';
+import { createThemeSwitcher } from './theme-switcher.js';
 import { createStPromptSnapshotsView } from './st-prompt-snapshots-view.js';
 import { createStDiagnosticsView } from './st-diagnostics-view.js';
 import { UI_LABELS } from './navigation-metadata.js';
@@ -28,7 +29,7 @@ import { createFormFeedback } from './form-feedback.js';
 import { bindAutoSave } from './auto-save.js';
 
 /** Safe Markdown view. The controller owns all state and execution. */
-export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen } = {}) {
+export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen, setViewExpanded = () => {} } = {}) {
     root.__gdMuyuDispose?.(); const doc = root.ownerDocument, en = lang === 'en';
     const t = (zh, english) => en ? english : zh;
     const permissionTitle = id => permissionDisplayTitle(id, lang);
@@ -39,11 +40,15 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const button = (label, parent) => { const e = node('button', label, parent); e.type = 'button'; e.className = 'menu_button'; return e; };
     const field = (label, type, parent) => { const wrapper = node('label', label, parent), input = node('input', '', wrapper); input.type = type; if (type !== 'checkbox') input.className = 'text_pole'; return input; };
     root.classList.add('gd-muyu-entry');
+    // Theme belongs to the floating host, never documentElement or Tavern settings.
+    let appearanceHost = root;
+    while (appearanceHost && !appearanceHost.classList?.contains?.('gd-floating-root')) appearanceHost = appearanceHost.parentElement || appearanceHost.parent;
     const shell = node(standalone ? 'div' : 'details', ''), title = node(standalone ? 'h3' : 'summary', t('暮羽助手 · 实验版', 'Muyu assistant · Experimental'), shell);
     title.setAttribute('aria-label', title.textContent);
     shell.className = standalone ? 'gd-muyu-chat-shell' : '';
     if (standalone) { root.classList.add('gd-muyu-floating'); title.hidden = true; }
     const body = node('div', '', shell); body.className = 'gd-muyu-panel';
+    const themeSwitcher = createThemeSwitcher({ doc, parent: actionsRoot, controller, act, lang });
     const gear = button('⚙', actionsRoot || body); gear.setAttribute('aria-label', t('暮羽配置', 'Muyu settings')); gear.title = t('暮羽配置', 'Muyu settings');
     const connection = node('section', '', body); connection.className = 'gd-muyu-settings'; connection.hidden = true;
     const back = button(t('返回聊天', 'Back to chat'), connection);
@@ -89,7 +94,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     node('small', t('开启后，本连接内的资料读取、已注册 Provider 代码执行及暮羽明确提出的配置／整单写入无需逐次确认。代码可能联网、修改数据或产生费用；保存可能部分完成且无法可靠撤销。仍受工具白名单、当前聊天范围和预算限制。更换连接或刷新即关闭。', 'While enabled, reads, registered Provider code execution, and Muyu-requested settings/bundle writes need no per-action approval. Code may access the network, change data or incur costs; saves may partially complete and cannot reliably be undone. Tool allowlists, chat scope and budgets still apply. Reconnection or reload turns it off.'), settingsLayout.pages.data);
     const permissionSettings = node('section', '', settingsLayout.pages.data);
     for (const child of Array.from(settingsLayout.pages.data.children)) {
-        if (child !== permissionSettings && child.className !== 'gd-muyu-settings-hint') permissionSettings.append(child);
+        if (child !== permissionSettings && !['gd-muyu-settings-hint', 'gd-muyu-settings-page-title'].includes(child.className)) permissionSettings.append(child);
     }
     const budgetSettings = node('details', '', settingsLayout.pages.limits); budgetSettings.className = 'gd-muyu-settings-card'; node('summary', t('运行与预算', 'Execution budgets'), budgetSettings);
     node('small', t('自动保存：完成数字编辑后保存；无效输入不生效，保存失败可重试。', 'Auto-save after finishing numeric edits. Invalid values do not apply; failed saves can be retried.'), budgetSettings);
@@ -112,7 +117,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const workspace = node('div', '', body); workspace.className = 'gd-muyu-workspace';
     const sidebarRoot = node('div', '', workspace); sidebarRoot.className = 'gd-muyu-sidebar-slot';
     const chat = node('div', '', workspace); chat.className = 'gd-muyu-chat';
-    const historyView = createHistoryView({ doc, settings: settingsLayout.pages.storage, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen });
+    const historyView = createHistoryView({ doc, settings: settingsLayout.pages.storage, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, launcherActions: actionsRoot });
     const setupBar = node('div', '', chat); setupBar.className = 'gd-muyu-connection-entry';
     const setupLabel = node('strong', t('AI 接口', 'AI connection'), setupBar);
     const setup = button(t('配置连接', 'Configure connection'), setupBar);
@@ -122,7 +127,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const transcript = node('div', '', chat); transcript.className = 'gd-muyu-transcript';
     const welcome = node('div', '', transcript); welcome.className = 'gd-muyu-welcome';
     node('h3', t('今天想一起解决什么？', 'What shall we work on today?'), welcome);
-    node('p', t('你好，我是暮羽，你的猫头鹰搭档。聊剧情、查资料、排问题，或一起调整配置、管理世界书和角色卡——直接说你想做什么就好。', 'Hi, I’m Muyu, your owl companion. We can explore the story, look things up, troubleshoot, adjust settings, or manage world books and character cards—just tell me what you have in mind.'), welcome);
+    node('p', t('你好，我是暮羽，你的猫头鹰搭档。聊剧情、查资料、排问题，或一起调整配置、管理世界书和角色卡——直接说你想做什么就好。', 'Hi, I’m Muyu, your owl companion. We can explore the story, look things up, troubleshoot, adjust settings, or manage world books and character cards—just tell me what you have in mind.'), welcome).className = 'gd-muyu-welcome-description';
+    node('p', t('聊剧情、查资料，或一起打理酒馆。', 'Explore the story, look things up, or tend the tavern together.'), welcome).className = 'gd-muyu-welcome-compact';
     const history = node('div', '', transcript); history.className = 'gd-muyu-history'; history.setAttribute('aria-label', t('对话记录', 'Conversation'));
     const cards = node('div', '', transcript);
     const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang });
@@ -151,6 +157,10 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     inputLabel.className = 'gd-muyu-input-label'; input.setAttribute('aria-label', t('给暮羽的消息', 'Message to Muyu'));
     input.placeholder = t('向暮羽提问，或描述你想排查的问题…', 'Ask Muyu a question, or describe what needs investigating…');
     const inputToolbar = node('div', '', inputBox); inputToolbar.className = 'gd-muyu-input-toolbar';
+    const toolsButton = button('⋯', inputToolbar); toolsButton.className += ' gd-muyu-mobile-tools';
+    toolsButton.setAttribute('aria-label', t('会话工具与开销', 'Conversation tools and usage'));
+    toolsButton.onclick = () => { tools.open = !tools.open; updateViewSize(); };
+    tools.addEventListener('toggle', () => { if (!disposed) updateViewSize(); });
     const webSearchView = createWebSearchView({ doc, settings: settingsLayout.pages.skills, toolbar: inputToolbar, composer, controller, act, openSettings: target => target ? showSettings(true, 'skills', target) : showSettings(true, 'connection', endpoint), lang });
     const modeLabel = node('label', t('任务', 'Task'), unified ? legacyRoot : inputToolbar), mode = node('select', '', modeLabel); mode.className = 'text_pole'; modeLabel.className = 'gd-muyu-mode';
     for (const [value, task] of Object.entries(taskCatalog)) { const option = node('option', t(...task.label), mode); option.value = value; }
@@ -188,11 +198,16 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     let historySignature = '', scrollKey = null, shownPermissionId = null, legacyReportAnchor = null;
     transcript.onscroll = () => { if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); };
     function resetAuthorization() { authorization.hidden = true; consent.checked = false; fields.forEach(([, f]) => { f.checked = false; }); }
+    function updateViewSize() {
+        const s = controller.snapshot();
+        setViewExpanded(!!(!connection.hidden || s.interaction?.status === 'pending' || !historyAuthorization.hidden || !authorization.hidden || tools.open));
+    }
     function showSettings(show, category, target) {
         if (!show) settingsLayout.setVisible(false);
         connection.hidden = !show; workspace.hidden = chat.hidden = show; gear.setAttribute('aria-expanded', String(show)); errors.textContent = '';
         historyView.setVisible(!show);
         resetAuthorization(); if (!show) { key.value = ''; webSearchView.clearKey(); }
+        updateViewSize();
         (show ? back : input).focus?.({ preventScroll: true });
         if (show) { settingsLayout.setVisible(true); if (category) settingsLayout.select(category, { target }); }
     }
@@ -241,6 +256,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (code === 'INVALID_INSTRUCTION_CONFIG' || code === 'INSTRUCTION_CONFIG_SAVE_FAILED' || code === 'INSTRUCTION_CONFIG_UNAVAILABLE') { errors.textContent = t('行为偏好超出限制或未能确认保存；原配置仍有效，请检查并重试。', 'Behavior preferences exceed limits or saving was not confirmed; previous configuration remains active. Check and retry.'); return; }
         if (notices[code]) { errors.textContent = notices[code]; return; }
         if (code === 'NOTHING_TO_SUMMARIZE') { errors.textContent = t('暂无可整理的完整旧问答；保留近期问答，单次过长的问答不会截断整理。', 'No eligible complete older turns. Recent turns are retained and oversized turns are not split.'); return; }
+        if (code === 'DISPLAY_CONFIG_SAVE_FAILED') { errors.textContent = t('主题未能保存，仍使用原配色，请重试。', 'Theme could not be saved; the previous appearance remains active. Retry.'); return; }
         if (code === 'INVALID_CONTEXT_CONFIG' || code === 'CONTEXT_CONFIG_SAVE_FAILED') { errors.textContent = t('上下文设置无效或保存失败，仍使用原配置。', 'Invalid context settings or save failed; previous configuration remains active.'); return; }
         if (code?.startsWith('HISTORY_')) { errors.textContent = code === 'HISTORY_PERMISSION_REQUIRED' ? t('旧对话含需授权的资料。可在会话工具中选择本次不带历史、在配置中授权，或新建对话。', 'Old history requires authorization. Omit history in conversation tools, authorize in settings, or start a new conversation.') : code === 'HISTORY_CAPACITY' ? t('已达到历史容量限制，请导出备份；单会话满时可新建对话。', 'History capacity reached. Export a backup; start a new conversation if this one is full.') : t('历史操作未完成，未自动覆盖或清除记录。请检查存储状态并重试。', 'History operation failed; records were not automatically overwritten or cleared. Check storage and retry.'); return; }
         if (code === 'CREDENTIAL_SAVE_FAILED') { errors.textContent = t('未能确认密钥设置已保存，请检查酒馆存储状态后重试。', 'Could not confirm credential persistence. Check ST storage and retry.'); return; }
@@ -252,6 +268,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     async function act(fn) { errors.textContent = ''; try { await fn(); } catch (e) { showError(e); } if (!disposed && (standalone || shell.open)) render(); }
     function render() {
         if (disposed) return; const s = controller.snapshot();
+        if (appearanceHost) appearanceHost.setAttribute('data-muyu-theme', ['dusk', 'light'].includes(s.displayConfig?.theme) ? s.displayConfig.theme : 'host');
+        themeSwitcher.render(s);
         const switchedView = scrollKey !== s.viewKey;
         if (switchedView && scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop);
         scrollKey = s.viewKey;
@@ -322,6 +340,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         allowHistory.disabled = omitHistory.disabled = !s.enabled || s.busy || s.resetting || s.history?.loading;
         send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
         if (s.interaction?.status === 'pending') { send.disabled = true; resetAuthorization(); }
+        status.setAttribute('data-important', String(!!s.notice || !!s.error || s.readOnly || s.occupiedElsewhere || s.interaction?.status === 'pending' || s.runs.at(-1)?.status === 'failed'));
+        updateViewSize();
         confirm.disabled = send.disabled; stop.hidden = !!s.readOnly || !s.busy && !s.resetting;
         if (s.readOnly) { stop.disabled = true; resetAuthorization(); }
         connect.disabled = disable.disabled = s.resetting; if (input.value !== s.input) input.value = s.input;
@@ -400,6 +420,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
                 settingsLayout.setVisible(false);
                 connection.hidden = true; workspace.hidden = chat.hidden = false;
                 gear.setAttribute('aria-expanded', 'false'); historyView.setVisible(true);
+                updateViewSize();
             }
             transcript.scrollTop = transcript.scrollHeight;
         }
@@ -463,6 +484,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

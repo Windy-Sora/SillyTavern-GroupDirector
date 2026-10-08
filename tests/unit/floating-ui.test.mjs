@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFloatingRegistry } from '../../ui/floating/registry.js';
 import { createFloatingShell, fitFloatingRect, fitSidebarRect } from '../../ui/floating/shell.js';
-import { visibleViewport, validBallPosition, dockedBallRect } from '../../ui/floating/geometry.js';
+import { visibleViewport, validBallPosition, dockedBallRect, mobilePanelRect } from '../../ui/floating/geometry.js';
 
 const entry = (id, overrides = {}) => ({ id, label: { zh: id, en: id }, icon: '*', order: 10, mount: () => () => {}, ...overrides });
 test('Floating ball visibility survives status updates without closing the active view', () => {
@@ -75,6 +75,64 @@ test('Single entry opens directly, repeated open focuses existing view; close te
     assert.equal(f.disposals(), 2); assert.equal(f.events.size, 0); assert.equal(f.doc.body.children.length, 0); f.registry.dispose();
 });
 
+test('Optional presentation uses closed states, isolates exceptions and keeps legacy status aggregation', () => {
+    const r = createFloatingRegistry();
+    r.register(entry('muyu', { getPresentation: () => ({ status: 'running', displayState: 'thinking', secret: 'PRIVATE' }) }));
+    r.register(entry('legacy', { getStatus: () => 'idle' }));
+    assert.equal(r.list().find(e => e.id === 'muyu').displayState, 'thinking'); assert.equal(r.status(), 'running');
+    assert.doesNotMatch(JSON.stringify(r.list()), /PRIVATE/);
+    r.register(entry('invalid', { getPresentation: () => ({ status: 'attention', displayState: 'thinking' }) }));
+    assert.equal(r.list().find(e => e.id === 'invalid').displayState, 'waiting');
+    r.register(entry('broken', { getPresentation: () => { throw Error('PRIVATE'); } }));
+    assert.equal(r.status(), 'error'); assert.equal(r.list().find(e => e.id === 'broken').displayState, 'error');
+    assert.throws(() => r.register(entry('bad', { getPresentation: 'not a function' })), /INVALID/);
+    r.dispose();
+});
+
+test('Display-state changes update the launcher without remounting the view or replacing the graphic', () => {
+    const f = surface(); let displayState = 'thinking';
+    const remove = f.registry.register(entry('activity', { getPresentation: () => ({ status: 'running', displayState }) }));
+    f.shell.open('chat'); const ball = f.find('gd-floating-ball'), mark = f.find('gd-floating-feather');
+    assert.equal(ball.dataset.displayState, 'thinking'); assert.match(ball.attrs['aria-label'], /等待模型/);
+    displayState = 'executing'; f.shell.setLanguage('en', { preserveActive: true });
+    assert.equal(ball.dataset.displayState, 'executing'); assert.match(ball.attrs['aria-label'], /Executing/);
+    assert.equal(f.mounts(), 1); assert.equal(f.find('gd-floating-feather'), mark);
+    remove(); f.shell.dispose(); f.registry.dispose();
+});
+
+test('Feather launcher keeps its decorative asset across language and status updates without changing the button contract', () => {
+    const f = surface(), ball = f.find('gd-floating-ball'), mark = f.find('gd-floating-feather');
+    assert.equal(mark.tag, 'img'); assert.equal(mark.parent, ball);
+    assert.match(mark.src, /\/assets\/muyu-floating-feather\.svg$/);
+    assert.equal(mark.alt, ''); assert.equal(mark.draggable, false); assert.equal(mark.attrs['aria-hidden'], 'true');
+    assert.match(ball.attrs['aria-label'], /插件快捷入口/);
+    f.shell.setLanguage('en');
+    const remove = f.registry.register(entry('monitor', { getStatus: () => 'attention' }));
+    assert.equal(ball.dataset.status, 'attention'); assert.equal(f.find('gd-floating-feather'), mark);
+    assert.match(ball.attrs['aria-label'], /Plugin shortcuts.*Attention/);
+    assert.equal(ball.style.width, '48px');
+    remove(); ball.onclick(); assert.equal(f.mounts(), 1);
+    assert.equal(f.find('gd-floating-feather'), mark);
+    f.shell.dispose(); f.registry.dispose();
+});
+
+test('Completion effect fires only for a new live completion, not history, repeated renders, reopening or hidden launchers', () => {
+    const f = surface(); let notify, displayState = 'completed', completionVersion = 7;
+    f.registry.register(entry('muyu', { getPresentation: () => ({ status: ['thinking', 'executing'].includes(displayState) ? 'running' : 'idle', displayState, completionVersion }), subscribe: fn => { notify = fn; return () => {}; } }));
+    const ball = f.find('gd-floating-ball');
+    assert.notEqual(ball.dataset.completing, 'true', 'initial historical result is not a completion event');
+    displayState = 'thinking'; notify();
+    completionVersion = 8; displayState = 'executing'; notify();
+    displayState = 'completed'; notify(); assert.equal(ball.dataset.completing, 'true');
+    ball.onanimationend({ animationName: 'gd-orb-complete' }); assert.equal(ball.dataset.completing, 'false');
+    notify(); f.shell.open('chat'); f.shell.close(); f.shell.setLanguage('en');
+    assert.equal(ball.dataset.completing, 'false');
+    displayState = 'thinking'; notify(); f.shell.setBallVisible(false);
+    completionVersion = 9; displayState = 'completed'; notify(); f.shell.setBallVisible(true);
+    assert.equal(ball.dataset.completing, 'false');
+    f.shell.dispose(); f.registry.dispose();
+});
+
 test('Mobile viewport respects visible offsets, safe insets and keyboard recovery without remounting', () => {
     const listeners = new Map(), visual = { width: 390, height: 760, offsetLeft: 0, offsetTop: 0,
         addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: key => listeners.delete(key) };
@@ -82,12 +140,12 @@ test('Mobile viewport respects visible offsets, safe insets and keyboard recover
         getComputedStyle: () => ({ paddingTop: '20px', paddingBottom: '10px', paddingLeft: '0px', paddingRight: '0px' }) });
     f.shell.open('chat');
     const frame = f.find('gd-floating-window'), ball = f.find('gd-floating-ball');
-    assert.equal(frame.style.width, '374px'); assert.equal(frame.style.top, '28px'); assert.equal(frame.style.height, '714px');
-    assert.equal(ball.hidden, true);
+    assert.equal(frame.style.width, '335.4px'); assert.equal(frame.style.height, '438px');
+    assert.equal(ball.hidden, false);
     visual.height = 360; visual.offsetTop = 35; listeners.get('resize')(); listeners.get('scroll')();
-    assert.equal(frame.style.top, '63px'); assert.equal(frame.style.height, '314px'); assert.equal(f.mounts(), 1);
+    assert.ok(parseFloat(frame.style.top) >= 67); assert.ok(parseFloat(frame.style.height) <= 234); assert.equal(f.mounts(), 1);
     visual.height = 760; visual.offsetTop = 0; listeners.get('resize')();
-    assert.equal(frame.style.height, '714px'); assert.equal(f.mounts(), 1);
+    assert.equal(frame.style.height, '438px'); assert.equal(f.mounts(), 1);
     f.shell.close(); assert.equal(ball.hidden, false);
     f.shell.dispose(); assert.equal(listeners.size, 0); f.registry.dispose();
 });
@@ -99,12 +157,12 @@ test('Mobile drag docks, stores a proportional position and restores it across s
     ball.onpointerdown({ button: 0, pointerId: 1, target: ball, clientX: 370, clientY: 700 });
     ball.onpointermove({ pointerId: 1, clientX: 30, clientY: 390 }); ball.onpointerup();
     assert.equal(saved.side, 'left'); assert.ok(saved.fraction >= 0 && saved.fraction <= 1);
-    assert.equal(ball.style.left, '-16px'); ball.onclick(); assert.equal(f.mounts(), 0);
-    ball.onclick(); assert.equal(f.mounts(), 1); assert.equal(ball.hidden, true);
+    assert.equal(ball.style.left, '-20px'); ball.onclick(); assert.equal(f.mounts(), 0);
+    ball.onclick(); assert.equal(f.mounts(), 1); assert.equal(ball.hidden, false);
     f.shell.close(); assert.equal(ball.hidden, false); f.shell.dispose(); f.registry.dispose();
     const restored = surface(() => {}, { innerWidth: 320, innerHeight: 500 }, { getBallPosition: () => saved });
-    assert.equal(restored.find('gd-floating-ball').style.top, 8 + 436 * saved.fraction + 'px');
-    assert.equal(restored.find('gd-floating-ball').style.left, '-16px');
+    assert.equal(restored.find('gd-floating-ball').style.top, 8 + 428 * saved.fraction + 'px');
+    assert.equal(restored.find('gd-floating-ball').style.left, '-20px');
     restored.shell.dispose(); restored.registry.dispose();
 });
 
@@ -113,11 +171,11 @@ test('Mobile layout preserves desktop geometry and rejects corrupt saved positio
     const f = surface(p => { port = p; }); f.shell.open('chat');
     const frame = f.find('gd-floating-window');
     f.win.innerWidth = 400; f.events.get('resize')(); port.setSidebarOpen(true);
-    assert.equal(frame.style.width, '384px'); assert.equal(frame.style.height, '784px');
+    assert.equal(frame.style.width, '340px'); assert.equal(frame.style.height, '440px');
     const header = f.find('gd-floating-header');
     header.onpointerdown({ button: 0, pointerId: 2, target: header, clientX: 100, clientY: 20 });
     header.onpointermove({ pointerId: 2, clientX: 300, clientY: 300 }); header.onpointerup();
-    assert.equal(frame.style.top, '8px');
+    assert.ok(parseFloat(frame.style.top) >= 12);
     port.setSidebarOpen(false); f.win.innerWidth = 1000; f.events.get('resize')();
     assert.equal(frame.style.width, '520px'); assert.equal(frame.style.height, '660px'); assert.equal(frame.style.top, '70px');
     f.shell.dispose(); f.registry.dispose();
@@ -125,6 +183,44 @@ test('Mobile layout preserves desktop geometry and rejects corrupt saved positio
         assert.deepEqual(validBallPosition(bad), { side: 'right', fraction: 0.9 });
     const area = visibleViewport({ innerWidth: 400, innerHeight: 800 });
     assert.equal(dockedBallRect({ side: 'left', fraction: 0 }, area).y, 8);
+});
+
+test('Compact geometry stays inside the visible area and never overlaps the exposed ball', () => {
+    for (const width of [320, 390, 600, 850]) for (const height of [220, 360, 800]) for (const fraction of [0, 0.3, 0.5, 0.9, 1]) {
+        const area = { x: 20, y: 30, width, height };
+        const ball = dockedBallRect({ side: 'right', fraction }, area, false, 56), panel = mobilePanelRect(ball, area);
+        assert.ok(panel.x >= area.x + 12); assert.ok(panel.x + panel.width <= area.x + width - 12);
+        assert.ok(panel.y >= area.y + 12); assert.ok(panel.y + panel.height <= area.y + height - 12);
+        assert.ok(panel.y + panel.height <= ball.y - 12 || panel.y >= ball.y + ball.height + 12);
+    }
+});
+
+test('Mobile enlargement preserves drafts and touch jitter still opens/closes the panel', () => {
+    const f = surface(() => {}, { innerWidth: 400, innerHeight: 800 });
+    const ball = f.find('gd-floating-ball');
+    ball.onpointerdown({ button: 0, pointerId: 3, pointerType: 'touch', target: ball, clientX: 390, clientY: 700 });
+    ball.onpointermove({ pointerId: 3, pointerType: 'touch', clientX: 396, clientY: 706 }); ball.onpointerup(); ball.onclick();
+    assert.equal(f.mounts(), 1);
+    const frame = f.find('gd-floating-window'), content = f.find('gd-floating-content');
+    const draft = f.doc.createElement('textarea'); draft.value = 'keep this draft'; content.append(draft);
+    f.find('gd-floating-expand').onclick(); assert.equal(frame.style.height, '704px');
+    assert.equal(f.mounts(), 1); assert.equal(content.children[0].value, 'keep this draft');
+    f.find('gd-floating-expand').onclick(); assert.equal(frame.style.height, '440px');
+    ball.onclick(); assert.equal(frame.hidden, true);
+    f.shell.dispose(); f.registry.dispose();
+});
+
+test('Temporary workbench expansion restores compact or user-enlarged geometry without remounting', () => {
+    let port;
+    const f = surface(p => { port = p; }, { innerWidth: 400, innerHeight: 800 }); f.shell.open('chat');
+    const frame = f.find('gd-floating-window'), expand = f.find('gd-floating-expand');
+    assert.equal(frame.style.width, '340px'); assert.equal(frame.style.height, '440px');
+    port.setViewExpanded(true); assert.equal(frame.style.height, '704px'); assert.equal(expand.hidden, true);
+    port.setViewExpanded(false); assert.equal(frame.style.height, '440px'); assert.equal(expand.hidden, false);
+    expand.onclick(); port.setViewExpanded(true); port.setViewExpanded(false);
+    assert.equal(frame.style.height, '704px'); assert.equal(f.mounts(), 1);
+    const previous = port; f.shell.close(); f.shell.open('chat'); previous.setViewExpanded(true);
+    assert.equal(frame.style.height, '440px'); f.shell.dispose(); f.registry.dispose();
 });
 
 test('Bubble toggles an active window closed and reopens without double-mounting', () => {
@@ -144,7 +240,7 @@ test('Additional module creates selector and unavailable/removed active module c
 test('Language remounts once; resize and dragging never create additional business views', () => {
     const f = surface(); f.shell.open('chat'); f.shell.setLanguage('zh'); assert.equal(f.mounts(), 1);
     f.shell.setLanguage('en'); assert.equal(f.mounts(), 2); assert.equal(f.disposals(), 1);
-    f.win.innerWidth = 320; f.events.get('resize')(); assert.equal(f.find('gd-floating-window').style.width, '304px');
+    f.win.innerWidth = 320; f.events.get('resize')(); assert.equal(f.find('gd-floating-window').style.width, '275.2px');
     const ball = f.find('gd-floating-ball');
     ball.onpointerdown({ button: 0, pointerId: 1, target: ball, clientX: 200, clientY: 200 });
     ball.onpointermove({ pointerId: 1, clientX: -1000, clientY: -1000 }); ball.onpointerup(); ball.onclick();
@@ -187,7 +283,7 @@ test('History rail grows left without shrinking chat, stays in viewport and rest
     const oldPort = port; f.shell.close(); f.shell.open('chat'); oldPort.setSidebarOpen(true);
     assert.equal(frame.style.width, '520px'); assert.equal(f.mounts(), 2);
     port.setSidebarOpen(true); f.win.innerWidth = 400; f.events.get('resize')();
-    assert.equal(frame.style.width, '384px'); assert.equal(frame.style.left, '8px');
+    assert.equal(frame.style.width, '340px'); assert.equal(frame.style.left, '48px');
     f.shell.dispose(); f.registry.dispose();
 });
 

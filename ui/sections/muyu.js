@@ -54,6 +54,7 @@ import { createAgentMemoryPort } from '../../muyu/host/agent-memory.js';
 import { createWebSearchPort } from '../../muyu/host/web-search.js';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
+import { muyuFloatingState } from '../../muyu/ui/floating-state.js';
 import { createFloatingRegistry } from '../floating/registry.js';
 import { createFloatingShell } from '../floating/shell.js';
 import { getQuickActions } from '../quick-actions.js';
@@ -314,12 +315,9 @@ registerSection('muyu', ctx => {
         owner.floatingRegistry.register({
             id: 'muyu', label: { zh: '暮羽助手', en: 'Muyu assistant' }, icon: '✦', order: 10,
             isAvailable: () => true,
-            getStatus: () => {
+            getPresentation: () => {
                 const s = owner.controller.snapshot();
-                if (s.busy || s.resetting || s.draining) return 'running';
-                if (s.interaction?.status === 'pending') return 'attention';
-                if (s.runs.at(-1)?.status === 'failed') return 'error';
-                return s.notice ? 'attention' : 'idle';
+                return { ...muyuFloatingState(s), completionVersion: s.completionVersion };
             },
             subscribe: notify => owner.controller.subscribe(notify).unsubscribe,
             mount: (container, options) => mountMuyuPanel(container, owner.controller, {

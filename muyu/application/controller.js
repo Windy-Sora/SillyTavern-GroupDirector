@@ -37,6 +37,7 @@ import { tracePermission, permissionTraceError } from '../core/permission-debug.
 /** Lifetime is the extension instance, not a DOM panel. Grants belong to a connection/chat. */
 export function createMuyuController({ host, createModel = createChatCompletionsModel }) {
     let app, builtins, model, connection = null, running, appUnsubscribe, disposed = false, resetting = false, hostConnectionCurrent = null;
+    let completionVersion = 0, completedSessionId = null;
     let mode = 'assistant', error = null, pinnedTarget = null, fullAccess = false;
     let webSearchEnabled = false, webEpoch = 0, savingWebSearch = false;
     let runConfig = host.runConfig?.read() || { ...RUN_DEFAULTS }, savingRunConfig = false;
@@ -325,6 +326,8 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             selectedSkill: skillSelections.get(viewKey()) || null,
             context: { turns: plan.turns, omitted: plan.omitted + choice.historyStart, summaryUsed: plan.summaryUsed, estimatedTokens: plan.estimatedTokens, coverage: { ...plan.coverage, state: choice.omitHistory ? 'omitted' : plan.coverage.state, total: (record?.messages || []).length, excluded: choice.historyStart }, omitHistory: omittedViews.has(viewKey()), permissionOmitted: choice.autoHistoryOmitted, summary: record?.contextSummary?.text || '', summaryStale: !!record?.contextSummary && !usableSummary(record.contextSummary, record.messages), compacting: !!compacting && compacting.id === id, progress: compactState?.progress || null, usage: compactState?.usage || null },
             busy, draining: !!compacting?.finished || !!state?.draining,
+            completionVersion: sessionId && sessionId === completedSessionId ? completionVersion : 0,
+            activity: state?.activeRunId ? { phase: state.runs.find(r => r.id === state.activeRunId)?.process?.phase || null } : null,
             occupiedElsewhere: !!compacting && compacting.id !== id || !!state?.activeRunId && state.runs.find(r => r.id === state.activeRunId)?.sessionId !== sessionId,
             messages: session?.messages || library.recoveryMessages(id) || record?.messages || [], runs: state?.runs.filter(r => r.sessionId === sessionId).map(r => ({ ...r, skills: skillRecords.get(r.id) || builtins?.skillUsage(r.id) || [] })) || [],
             history: { ...library.snapshot(scopeKey(), id, { ...historyFilters, chatKey: host.currentTarget()?.chatKey }), filters: { ...historyFilters }, restoredStatus: !session ? record?.status : null,
@@ -502,6 +505,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             if (['artifact.deleted', 'artifact.updated', 'session.unloaded'].includes(event.type)) builtins.retainArtifacts(app.snapshot().artifacts);
             if (event.type === 'run.settled') {
                 const intent = intentions.get(event.runId), run = app.snapshot().runs.find(r => r.id === event.runId);
+                if (run?.status === 'succeeded') { completionVersion++; completedSessionId = run.sessionId; }
                 if (run && intent?.mode === 'assistant' && !intent.explanation) taskStates.settle(run, run.status);
                 tracePermission('controller.settled', { target: run?.target, taskId: run?.taskId, runId: event.runId, decision: run?.status });
                 try {

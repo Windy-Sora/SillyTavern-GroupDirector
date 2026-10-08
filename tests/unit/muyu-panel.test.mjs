@@ -1,5 +1,108 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) test('Header theme segments precede settings, preserve detail and input, and sync settings / ' + lang, async () => {
+    const launcher = new Element('div', {}), f = fixture(lang, true, { actionsRoot: launcher });
+    f.state.displayConfig = { processDetail: 'full', theme: 'host' }; f.emit();
+    const group = launcher.children[0], gear = launcher.children[1];
+    assert.equal(group.className, 'gd-muyu-theme-switcher'); assert.equal(gear.textContent, '⚙');
+    assert.equal(group.getAttribute('role'), 'group'); assert.equal(group.children.length, 3);
+    const light = group.children[2], dusk = group.children[1];
+    assert.equal(light.getAttribute('aria-label'), lang === 'en' ? 'Morning · Light' : '晨光 · 浅色');
+    f.controller.saveDisplayConfig = async value => { f.state.displayConfig = value; f.emit(); };
+    const composer = f.find('textarea'); composer.value = 'unsent message'; composer.oninput();
+    await light.click(); assert.deepEqual(f.state.displayConfig, { processDetail: 'full', theme: 'light' });
+    assert.equal(light.getAttribute('aria-pressed'), 'true'); assert.equal(composer.value, 'unsent message');
+    const label = lang === 'en' ? 'Muyu appearance' : '暮羽界面主题';
+    const select = f.all().find(e => e.tag === 'select' && e.parent.textContent === label);
+    assert.equal(select.value, 'light'); select.value = 'dusk'; await select.onchange();
+    assert.equal(dusk.getAttribute('aria-pressed'), 'true'); assert.equal(light.getAttribute('aria-pressed'), 'false');
+    assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
+    f.root.__gdMuyuDispose(); assert.equal(launcher.children.length, 0);
+    f.mount(); assert.equal(launcher.children[0].children[1].getAttribute('aria-pressed'), 'true'); f.root.__gdMuyuDispose();
+});
+
+test('Header theme save guards concurrent clicks and failure; disposed controls cannot save', async () => {
+    const launcher = new Element('div', {}), f = fixture('en', true, { actionsRoot: launcher });
+    const group = launcher.children[0], dusk = group.children[1], light = group.children[2];
+    let reject, saves = 0;
+    f.controller.saveDisplayConfig = () => { saves++; return new Promise((_, no) => reject = no); };
+    const pending = dusk.onclick(); assert.ok(group.children.every(button => button.disabled));
+    await light.onclick(); assert.equal(saves, 1);
+    reject(Error('sensitive backend details')); await pending;
+    assert.equal(group.children[0].getAttribute('aria-pressed'), 'true'); assert.ok(group.children.every(button => !button.disabled));
+    assert.ok(f.all().some(e => /Theme could not be saved/.test(e.textContent || '')));
+    assert.ok(!f.all().some(e => /sensitive backend/.test(e.textContent || '')));
+    f.root.__gdMuyuDispose(); await dusk.onclick(); assert.equal(saves, 1);
+});
+
+test('History row actions use a separate popup; Escape keeps history open and returns focus', async () => {
+    const f = fixture('en', true); f.state.history = managedHistory(); f.emit();
+    await f.find('button', 'History').click();
+    const menu = f.all().find(e => e.className === 'gd-muyu-row-menu');
+    const list = menu.children.find(e => e.className === 'gd-muyu-row-menu-list');
+    assert.equal(list.children.filter(e => e.tag === 'button').length, 5);
+    menu.open = true;
+    let prevented = false, stopped = false;
+    menu.onkeydown({ key: 'Escape', preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
+    assert.equal(menu.open, false); assert.equal(prevented, true); assert.equal(stopped, true);
+    assert.equal(f.root.ownerDocument.activeElement, menu.children[0]);
+    assert.equal(f.find('aside').hidden, false);
+    menu.open = true;
+    await list.children.find(e => e.textContent === 'Rename').click();
+    assert.equal(menu.open, false); assert.ok(f.all().some(e => e.className === 'gd-muyu-history-confirm' && !e.hidden));
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('History date headings, metadata and selected row are display-only / ' + lang, () => {
+    const f = fixture(lang, true); f.state.history = managedHistory();
+    const now = new Date(), previous = new Date(now); previous.setDate(previous.getDate() - 1);
+    f.state.history.sessions = [
+        { ...f.state.history.sessions[0], updatedAt: now.getTime(), status: 'running' },
+        { ...f.state.history.sessions[0], id: 'previous', title: '<script>literal</script>', updatedAt: previous.getTime(), status: 'failed' },
+    ];
+    const original = JSON.stringify(f.state.history); f.emit();
+    const headings = f.all().filter(e => e.className === 'gd-muyu-history-date');
+    assert.deepEqual(headings.map(e => e.textContent), lang === 'en' ? ['Today', 'Yesterday'] : ['今天', '昨天']);
+    const selected = f.all().find(e => e.className === 'gd-muyu-session-row' && e.getAttribute('data-selected') === 'true');
+    assert.ok(selected);
+    assert.equal(f.all(selected).find(e => e.className === 'gd-muyu-session-status').getAttribute('data-state'), 'running');
+    assert.ok(f.all().some(e => e.tag === 'time' && e.getAttribute('datetime')));
+    assert.equal(f.find('script'), undefined); assert.equal(JSON.stringify(f.state.history), original);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+test('Theme projects only to the floating ancestor and never remounts the conversation', async () => {
+    const f = fixture('en', true);
+    const host = f.root.ownerDocument.createElement('div');
+    host.classList.contains = name => name === 'gd-floating-root';
+    host.append(f.root); f.mount();
+    const shell = f.root.children[0], composer = f.find('textarea');
+    assert.equal(host.getAttribute('data-muyu-theme'), 'host');
+    f.state.displayConfig = { processDetail: 'compact', theme: 'dusk' }; f.emit();
+    assert.equal(host.getAttribute('data-muyu-theme'), 'dusk');
+    assert.equal(f.root.children[0], shell); assert.equal(f.find('textarea'), composer);
+    f.state.displayConfig.theme = 'light'; f.emit();
+    assert.equal(host.getAttribute('data-muyu-theme'), 'light');
+    assert.equal(f.root.getAttribute('data-muyu-theme'), undefined);
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Appearance auto-saves without losing execution detail, composer draft or invoking a model / ' + lang, async () => {
+    const f = fixture(lang, true);
+    f.state.displayConfig = { processDetail: 'detailed', theme: 'host' }; f.emit();
+    const label = lang === 'en' ? 'Muyu appearance' : '暮羽界面主题';
+    const theme = f.all().find(e => e.tag === 'select' && e.parent.textContent === label);
+    f.controller.saveDisplayConfig = async value => { f.state.displayConfig = value; f.emit(); };
+    const input = f.find('textarea'); input.value = 'Keep my unsent message'; input.oninput();
+    theme.value = 'light'; await theme.onchange();
+    assert.deepEqual(f.state.displayConfig, { processDetail: 'detailed', theme: 'light' });
+    assert.equal(input.value, 'Keep my unsent message');
+    assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
+    f.root.__gdMuyuDispose(); f.mount();
+    assert.equal(f.all().find(e => e.tag === 'select' && e.parent.textContent === label).value, 'light');
+    f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test('Ordinary preferences auto-save without applying credentials or sending a model request / ' + lang, async () => {
     const f = fixture(lang, true), en = lang === 'en';
     const control = label => f.all().find(e => e.parent?.textContent === label && ['input', 'select'].includes(e.tag));
@@ -271,7 +374,7 @@ import { createHistoryView } from '../../muyu/ui/history-view.js';
 
 // Minimal native DOM contract; does not assert CSS geometry or browser layout.
 class Element {
-    constructor(tag, doc) { this.tag = tag; this.ownerDocument = doc; this.children = []; this.attrs = {}; this.events = {}; this.value = ''; this.checked = false; this.classList = { add() {} }; }
+    constructor(tag, doc) { this.tag = tag; this.ownerDocument = doc; this.children = []; this.attrs = {}; this.events = {}; this.style = {}; this.value = ''; this.checked = false; this.classList = { add() {} }; }
     append(el) { if (el.parent) el.remove(); this.children.push(el); el.parent = this; }
     replaceChildren() { this.children = []; }
     setAttribute(k, v) { this.attrs[k] = v; }
@@ -487,7 +590,7 @@ test('Permission request stays inside the transcript and disposes its card', () 
     const parent = doc.createElement('div'), settings = doc.createElement('div');
     const view = createPermissionView({ doc, parent, settings, controller: {}, act: fn => fn(), lang: 'en' });
     const card = parent.children[0];
-    assert.equal(card.className, 'gd-muyu-interaction');
+    assert.equal(card.className, 'gd-muyu-interaction gd-muyu-permission');
     assert.equal(card.getAttribute('role'), 'group');
     assert.equal(doc.body.children.length, 0);
     view.render({ interaction: { id: 'read-1', kind: 'permission', source: 'chatHistory', reason: 'Inspect chat', status: 'pending' }, connection: { model: 'test', endpoint: 'https://example.test' } });
@@ -1449,6 +1552,42 @@ test('View switches restore scroll position and unrelated renders do not force s
     transcript.scrollTop = 350; f.emit(); assert.equal(transcript.scrollTop, 350); f.root.__gdMuyuDispose();
 });
 
+test('Settings, tools and permissions temporarily expand the workbench without losing the composer', async () => {
+    const sizes = [], f = fixture('en', true, { initialMode: 'assistant', setViewExpanded: value => sizes.push(value) });
+    f.state.enabled = true; f.state.input = 'Unsent draft'; f.emit();
+    assert.equal(sizes.at(-1), false);
+    await f.find('button', '⚙').click(); assert.equal(sizes.at(-1), true);
+    await f.find('button', 'Back to chat').click(); assert.equal(sizes.at(-1), false);
+    const tools = f.all().find(e => e.className === 'gd-muyu-conversation-tools');
+    await f.all().find(e => e.className?.includes('gd-muyu-mobile-tools')).click();
+    assert.equal(tools.open, true); assert.equal(sizes.at(-1), true);
+    await f.all().find(e => e.className?.includes('gd-muyu-mobile-tools')).click();
+    assert.equal(sizes.at(-1), false);
+    f.state.interaction = { id: 'read-1', kind: 'permission', source: 'chatHistory', reason: 'Inspect chat', status: 'pending' };
+    f.emit(); assert.equal(sizes.at(-1), true);
+    f.state.interaction.status = 'granted'; f.emit(); assert.equal(sizes.at(-1), false);
+    assert.equal(f.find('textarea').value, 'Unsent draft'); assert.equal(f.sent.length, 0);
+    f.root.__gdMuyuDispose();
+});
+
+test('Floating history entry and session management remain reachable outside the hidden session bar', async () => {
+    const launcher = new Element('div', {}), f = fixture('en', true, { actionsRoot: launcher });
+    f.state.history = { available: true, enabled: true, sessionId: 'old', sessions: [{ id: 'old', title: 'My session' }], selected: { title: 'My session' } };
+    f.emit();
+    const toggle = launcher.children.find(e => e.getAttribute('aria-label') === 'Conversation history');
+    assert.ok(toggle); assert.equal(toggle.hidden, false);
+    await toggle.click();
+    const sidebar = f.all().find(e => e.className === 'gd-muyu-history-sidebar');
+    assert.equal(sidebar.hidden, false);
+    const menu = f.all().find(e => e.className === 'gd-muyu-session-menu');
+    assert.equal(menu.parent.parent, sidebar);
+    assert.ok(f.all(sidebar).some(e => e.textContent === 'Current conversation: My session'));
+    await f.find('button', 'Rename').click();
+    const renameInput = f.all(sidebar).find(e => e.tag === 'input' && e.value === 'My session');
+    assert.ok(renameInput, 'management editor must not remain in the hidden session bar');
+    f.root.__gdMuyuDispose(); assert.ok(!launcher.children.includes(toggle));
+});
+
 test('A new permission request scrolls to its inline card only once', () => {
     const f = fixture('en', true), transcript = f.all().find(e => e.className === 'gd-muyu-transcript');
     transcript.scrollHeight = 500; transcript.clientHeight = 100; transcript.scrollTop = 50;
@@ -1596,7 +1735,10 @@ test('Process details stay collapsed by default and preserve expansion/scroll wh
     process.rows.push({ type: 'tool.started', attemptId: 1, tool: 'muyu.memory.inspect', durationMs: null, error: null });
     process.phase = 'tool.started'; f.emit();
     assert.equal(f.all().find(e => e.className === 'gd-muyu-process'), details); assert.equal(details.open, true); assert.equal(list.scrollTop, 25);
+    assert.equal(list.children.at(-1).getAttribute('data-state'), 'running');
     process.terminal = 'cancelled'; process.phase = 'cancelled'; f.emit();
+    assert.equal(list.children.at(-1).getAttribute('data-state'), 'neutral');
+    assert.equal(details.open, true); assert.equal(list.scrollTop, 25);
     assert.match(details.children[0].textContent, /等待上游清理/);
     process.cleaned = true; f.emit(); assert.doesNotMatch(details.children[0].textContent, /等待上游清理/);
     f.state.viewToken++; f.state.runs = []; f.state.messages = []; f.emit(); assert.equal(f.all().find(e => e.className === 'gd-muyu-process'), undefined);

@@ -11,6 +11,7 @@ export function createSettingsLayout({ doc, root, lang }) {
         const button = doc.createElement('button'); button.type = 'button'; button.className = 'menu_button'; button.textContent = en ? english : zh;
         nav.append(button); buttons[id] = button;
         const page = doc.createElement('section'); page.className = 'gd-muyu-settings-page'; page.setAttribute('aria-label', button.textContent);
+        const heading = doc.createElement('h3'); heading.className = 'gd-muyu-settings-page-title'; heading.textContent = button.textContent; page.append(heading);
         const hint = doc.createElement('p'); hint.className = 'gd-muyu-settings-hint'; hint.textContent = en ? descriptionEn : descriptionZh; page.append(hint);
         content.append(page); pages[id] = page; button.onclick = () => select(id);
         page.onscroll = () => { if (visible && selected === id) positions.set(id, page.scrollTop || 0); };

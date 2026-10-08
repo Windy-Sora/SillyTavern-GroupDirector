@@ -1,8 +1,9 @@
 import { taskCatalog } from '../modules/catalog.js';
 import { createHistoryActions } from './history-actions.js';
+import { historyDatePresentation } from './history-presentation.js';
 
 /** Responsive history browser. Viewing another chat never changes the execution target. */
-export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen }) {
+export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, launcherActions = null }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, parent) => { const el = doc.createElement(tag); el.textContent = text; parent.append(el); return el; };
     const button = (text, parent) => { const el = node('button', text, parent); el.type = 'button'; el.className = 'menu_button'; return el; };
@@ -28,7 +29,11 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const menuList = node('div', '', menu); menuList.className = 'gd-muyu-session-menu-list';
     menuList.setAttribute('role', 'group'); menuList.setAttribute('aria-label', t('当前对话操作', 'Conversation actions'));
     const rename = button(t('重命名', 'Rename'), menuList), archive = button(t('归档', 'Archive'), menuList), remove = button(t('删除', 'Delete'), menuList);
-    const dismissMenu = event => { if (menu.open && !menu.contains(event.target)) menu.open = false; };
+    let rowMenus = [];
+    const dismissMenu = event => {
+        if (menu.open && !menu.contains(event.target)) menu.open = false;
+        for (const entry of rowMenus) if (entry.root.open && !entry.root.contains?.(event.target)) entry.root.open = false;
+    };
     const escapeMenu = event => {
         if (menu.open && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); menu.open = false; menuToggle.focus(); }
     };
@@ -40,13 +45,21 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const heading = node('div', '', sidebar); heading.className = 'gd-muyu-sidebar-heading';
     node('strong', t('对话', 'Conversations'), heading);
     const close = button(t('收起历史', 'Close history'), heading);
+    const currentTitle = launcherActions ? node('small', '', sidebar) : null;
+    if (launcherActions) {
+        launcherActions.append(toggle);
+        toggle.setAttribute('aria-label', t('对话历史', 'Conversation history'));
+        heading.append(menu);
+        menu.style.position = 'relative';
+    }
     const create = button(t('新对话', 'New conversation'), sidebar); create.className += ' gd-muyu-new-session';
     const actionsRoot = node('div', '', sidebar); actionsRoot.className = 'gd-muyu-sidebar-exchange';
-    const actions = createHistoryActions({ doc, importRoot: actionsRoot, exportRoot: menuList, parent: bar, controller, act, t });
+    const actions = createHistoryActions({ doc, importRoot: actionsRoot, exportRoot: menuList, parent: launcherActions ? sidebar : bar, controller, act, t });
     rename.onclick = () => { menu.open = false; actions.show('rename'); };
     archive.onclick = () => { menu.open = false; actions.show('archive'); };
     remove.onclick = () => { menu.open = false; actions.show('remove'); };
     const searchLabel = node('label', t('搜索标题', 'Search titles'), sidebar), search = node('input', '', searchLabel); search.type = 'search'; search.maxLength = 100; search.className = 'text_pole';
+    searchLabel.className = 'gd-muyu-history-search'; search.placeholder = t('搜索对话标题…', 'Search conversation titles…');
     const filtersPanel = node('details', '', sidebar); filtersPanel.className = 'gd-muyu-history-filters';
     node('summary', t('筛选对话', 'Filter conversations'), filtersPanel);
     const range = select(t('范围', 'Scope'), [['current', t('当前聊天', 'Current chat')], ['global', t('全局任务', 'Global tasks')], ['all', t('全部历史', 'All history')]], filtersPanel);
@@ -93,7 +106,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const labels = { idle: t('空闲', 'Idle'), running: t('运行中', 'Running'), succeeded: t('完成', 'Completed'), failed: t('失败', 'Failed'), cancelled: t('已取消', 'Cancelled'), interrupted: t('已中断', 'Interrupted') };
     return {
         render(s) {
-            const h = s.history; bar.hidden = section.hidden = !h;
+            const h = s.history; bar.hidden = section.hidden = !h; toggle.hidden = !h;
             if (menuSession !== h?.sessionId || !h) menu.open = false;
             menuSession = h?.sessionId;
             available = !!h; visibility();
@@ -109,31 +122,51 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             rename.disabled = archive.disabled = remove.disabled = !h.sessionId || h.loading || s.resetting;
             archive.textContent = h.selected?.archived ? t('恢复归档', 'Restore archive') : t('归档', 'Archive');
             title.textContent = h.selected?.title || t('新对话', 'New conversation');
+            if (currentTitle) currentTitle.textContent = t('当前对话：', 'Current conversation: ') + title.textContent;
             const filters = h.filters || { range: 'all', archive: 'active', task: '', query: '' };
             range.value = filters.range; archived.value = filters.archive; task.value = filters.task; if (search.value !== filters.query) search.value = filters.query;
-            const next = JSON.stringify([h.sessions, h.sessionId, s.resetting, h.loading]);
+            const now = new Date();
+            const next = JSON.stringify([h.sessions, h.sessionId, s.resetting, h.loading, now.toDateString()]);
             if (signature !== next) {
                 const focusedId = doc.activeElement?.getAttribute?.('data-session-id');
-                signature = next; list.replaceChildren();
+                signature = next; list.replaceChildren(); rowMenus = [];
                 if (!h.sessions.length) node('p', t('没有匹配的会话', 'No matching conversations'), list);
+                let previousGroup;
                 for (const item of h.sessions) {
+                    const date = historyDatePresentation(item.updatedAt, lang, now);
+                    if (date.group !== previousGroup) {
+                        node('h4', date.label, list).className = 'gd-muyu-history-date'; previousGroup = date.group;
+                    }
                     const row = node('div', '', list); row.className = 'gd-muyu-session-row';
+                    row.setAttribute('data-selected', String(item.id === h.sessionId));
                     const open = button(item.title || t('未命名对话', 'Untitled conversation'), row); open.setAttribute('aria-pressed', String(item.id === h.sessionId)); open.disabled = s.resetting || h.loading;
                     open.setAttribute('data-session-id', item.id);
                     const [kind, scopeKind, scopeKey] = JSON.parse(item.scope || '["chat"]');
                     if (scopeKind) node('small', scopeKind === 'global' ? t('全局任务', 'Global task') : t('聊天：', 'Chat: ') + String(scopeKey || '').slice(0, 80), row).className = 'gd-muyu-session-scope';
-                    node('small', [t(...(taskCatalog[kind]?.label || ['未知任务', 'Unknown task'])), labels[item.status] || '', item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '', item.imported ? t('只读备份', 'Read-only backup') : ''].filter(Boolean).join(' · '), row);
-                    const itemMenu = node('details', '', row); node('summary', '⋯', itemMenu).setAttribute('aria-label', t('会话操作：', 'Actions: ') + (item.title || t('未命名', 'Untitled')));
+                    const metadata = node('div', '', row); metadata.className = 'gd-muyu-session-metadata';
+                    node('small', t(...(taskCatalog[kind]?.label || ['未知任务', 'Unknown task'])), metadata);
+                    if (labels[item.status]) { const badge = node('small', labels[item.status], metadata); badge.className = 'gd-muyu-session-status'; badge.setAttribute('data-state', item.status); }
+                    if (date.time) { const time = node('time', date.time, metadata); time.setAttribute('title', date.full); time.setAttribute('datetime', new Date(item.updatedAt).toISOString()); }
+                    if (item.imported) node('small', t('只读备份', 'Read-only backup'), metadata);
+                    const itemMenu = node('details', '', row); itemMenu.className = 'gd-muyu-row-menu';
+                    const itemToggle = node('summary', '⋯', itemMenu); itemToggle.setAttribute('aria-label', t('会话操作：', 'Actions: ') + (item.title || t('未命名', 'Untitled')));
+                    const itemActions = node('div', '', itemMenu); itemActions.className = 'gd-muyu-row-menu-list';
+                    rowMenus.push({ root: itemMenu, toggle: itemToggle });
+                    itemMenu.onkeydown = event => {
+                        if (itemMenu.open && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); itemMenu.open = false; itemToggle.focus?.(); }
+                    };
+                    itemMenu.ontoggle = () => { if (!disposed && itemMenu.open && rowMenus.some(entry => entry.root === itemMenu)) for (const entry of rowMenus) if (entry.root !== itemMenu) entry.root.open = false; };
                     for (const [action, text] of [['rename', t('重命名', 'Rename')], ['archive', item.archived ? t('恢复归档', 'Restore archive') : t('归档', 'Archive')], ['remove', t('删除', 'Delete')]]) {
-                        const control = button(text, itemMenu); control.disabled = open.disabled;
+                        const control = button(text, itemActions); control.disabled = open.disabled;
                         control.onclick = () => act(async () => {
+                            itemMenu.open = false;
                             await controller.openSession(item.id);
                             if (disposed || controller.snapshot().history?.sessionId !== item.id) return;
                             if (!wide) setOpen(false); actions.show(action);
                         });
                     }
                     for (const [format, text] of [['json', t('导出 JSON', 'Export JSON')], ['markdown', t('导出 Markdown', 'Export Markdown')]]) {
-                        const control = button(text, itemMenu); control.disabled = open.disabled;
+                        const control = button(text, itemActions); control.disabled = open.disabled;
                         control.onclick = () => act(async () => {
                             await controller.openSession(item.id);
                             if (disposed || controller.snapshot().history?.sessionId !== item.id) return;
@@ -176,7 +209,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
                 status.textContent += notice; storageStatus.textContent += notice;
             }
         },
-        setVisible(value) { visible = value; if (!value) menu.open = false; visibility(); },
-        dispose() { disposed = true; doc.removeEventListener?.('pointerdown', dismissMenu); doc.removeEventListener?.('keydown', escapeMenu); observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); },
+        setVisible(value) { visible = value; if (!value) { menu.open = false; for (const entry of rowMenus) entry.root.open = false; } visibility(); },
+        dispose() { disposed = true; doc.removeEventListener?.('pointerdown', dismissMenu); doc.removeEventListener?.('keydown', escapeMenu); observer?.disconnect(); actions.dispose(); setSidebarOpen?.(false); if (launcherActions) toggle.remove(); },
     };
 }

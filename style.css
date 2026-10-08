@@ -1180,9 +1180,11 @@
 
 /* Chat-first Muyu: only the transcript scrolls during a normal conversation. */
 .gd-floating-root[data-mobile="true"] .gd-floating-window {
-    min-width: 0; min-height: 0; max-width: none; max-height: none; resize: none; border-radius: 14px;
+    min-width: 0; min-height: 0; max-width: none; max-height: none; resize: none; border-radius: 20px;
     background: #252530; background: rgb(from var(--SmartThemeBlurTintColor, #252530) r g b / 1); backdrop-filter: none;
 }
+.gd-floating-root[data-mobile="true"][data-dragging="false"] .gd-floating-ball { transition: left .18s ease-out, top .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .gd-floating-root[data-mobile="true"] .gd-floating-window, .gd-floating-root[data-mobile="true"] .gd-floating-ball { animation: none !important; transition: none !important; } }
 .gd-floating-root[data-mobile="true"] .gd-floating-header { flex-wrap: nowrap; padding: 6px 8px; gap: 4px; cursor: default; touch-action: auto; }
 .gd-floating-root[data-mobile="true"] .gd-floating-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gd-floating-root[data-mobile="true"] .gd-floating-header button { min-width: 40px; min-height: 40px; padding: 6px 8px; flex-shrink: 0; }
@@ -1198,6 +1200,21 @@
 .gd-floating-root[data-mobile="true"] .gd-muyu-settings-page > details,
 .gd-floating-root[data-mobile="true"] .gd-muyu-settings-page > section,
 .gd-floating-root[data-mobile="true"] .gd-muyu-settings-card { padding: 10px; }
+.gd-muyu-mobile-tools { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-mobile-tools { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; padding: 4px 8px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-session-bar { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-conversation-tools:not([open]) { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-conversation-tools[open] { max-height: 40%; overflow: auto; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-chat-status[data-important="false"] { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-welcome { margin: 8px auto; padding: 8px 4px; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-welcome h3 { font-size: 1em; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-welcome p { font-size: .8em; line-height: 1.5; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-composer .gd-muyu-input-box textarea { min-height: 36px; height: 48px; max-height: 80px; }
+.gd-muyu-welcome-compact { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-welcome-description { display: none; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-welcome-compact { display: block; }
+.gd-floating-root[data-mobile="true"] .gd-muyu-process:not([open]) > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8em; }
+.gd-floating-root[data-mobile="true"] .gd-floating-header-actions { gap: 2px; }
 .gd-floating-ball { z-index: 3103; }
 .gd-floating-menu { z-index: 3104; }
 .gd-floating-header-actions { display: flex; gap: 4px; }
@@ -1476,3 +1493,504 @@
 .gd-muyu-skill-picker > label { display: grid; gap: .35em; margin-top: .4em; }
 .gd-muyu-skill-picker > small { display: block; opacity: .8; margin-top: .35em; }
 .gd-muyu-skill-picker select { width: 100%; min-width: 0; }
+
+/* Muyu floating palette: frosted shell, readable surfaces, no whole-window opacity.
+   Scoped to the floating host so classic plugin settings retain their own theme. */
+.gd-floating-root {
+    --gd-muyu-surface: #292731;
+    --gd-muyu-accent: #b9a2d8;
+    --gd-muyu-line: color-mix(in srgb, var(--SmartThemeBodyColor, #eee) 14%, transparent);
+    --gd-muyu-soft: color-mix(in srgb, var(--SmartThemeBodyColor, #eee) 5%, var(--gd-muyu-surface));
+    --gd-muyu-selected: color-mix(in srgb, var(--gd-muyu-accent) 18%, var(--gd-muyu-surface));
+    --gd-muyu-focus: color-mix(in srgb, var(--SmartThemeBodyColor, #eee) 45%, var(--gd-muyu-accent));
+}
+@supports (background: rgb(from white r g b / 1)) {
+    .gd-floating-root {
+        /* Remove host tint alpha before deriving cards, including light themes. */
+        --gd-muyu-surface: color-mix(in srgb, rgb(from var(--SmartThemeBlurTintColor, #292731) r g b / 1) 95%, #b9a2d8);
+    }
+}
+.gd-floating-root[data-mobile] .gd-floating-window,
+.gd-floating-root .gd-floating-menu {
+    background: var(--gd-muyu-surface);
+    border: 1px solid var(--gd-muyu-line);
+    box-shadow: 0 16px 48px #0004, 0 2px 8px #0002;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .gd-floating-root[data-mobile] .gd-floating-window,
+    .gd-floating-root .gd-floating-menu {
+        background: color-mix(in srgb, var(--gd-muyu-surface) 94%, transparent);
+        -webkit-backdrop-filter: blur(18px);
+        backdrop-filter: blur(18px);
+    }
+}
+.gd-floating-root .gd-floating-header {
+    background: linear-gradient(115deg, color-mix(in srgb, var(--gd-muyu-accent) 12%, transparent), transparent 80%);
+    border-bottom-color: var(--gd-muyu-line);
+}
+.gd-floating-root .gd-floating-header button {
+    background: transparent;
+    border-color: transparent;
+    border-radius: 10px;
+}
+.gd-floating-root .gd-floating-header button:hover:not(:disabled),
+.gd-floating-root .gd-floating-menu button:hover:not(:disabled) { background: var(--gd-muyu-selected); }
+.gd-floating-root .gd-floating-ball {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: #f1e7ff;
+    background: radial-gradient(ellipse at 25% 12%, #c6a7ed26, transparent 65%), linear-gradient(145deg, #69517de8, #322b48f5);
+    border-color: #d7bdf15c;
+    box-shadow: 0 5px 18px #21172e55, inset 0 1px 0 #f5e6ff30, inset 0 -1px 0 #21172e30;
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+}
+.gd-floating-root .gd-floating-owl { display: block; width: 82%; height: 82%; object-fit: contain; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.gd-floating-root .gd-floating-ball::after { border: 2px solid #40324f; width: 9px; height: 9px; pointer-events: none; }
+.gd-floating-root .gd-floating-ball[data-status="idle"]::after { opacity: 0; }
+.gd-floating-root .gd-floating-ball[data-status="running"]::after { background: #cbb0f2; }
+.gd-floating-root .gd-floating-ball[data-status="attention"]::after { background: #f1ce83; }
+.gd-floating-root .gd-floating-ball[data-status="error"]::after { background: #ed989f; }
+.gd-floating-root .gd-floating-ball:hover { border-color: #e5cbff99; }
+.gd-floating-root .gd-muyu-composer {
+    background: linear-gradient(0deg, var(--gd-muyu-surface), transparent);
+}
+.gd-floating-root .gd-muyu-input-box {
+    background: var(--gd-muyu-soft);
+    border-color: var(--gd-muyu-line);
+    box-shadow: 0 2px 8px #0001;
+}
+.gd-floating-root .gd-muyu-input-box:focus-within { border-color: var(--gd-muyu-focus); }
+.gd-floating-root .gd-muyu-user { background: var(--gd-muyu-selected); }
+.gd-floating-root .gd-muyu-input-toolbar .menu_button {
+    background: transparent;
+    border-color: transparent;
+}
+.gd-floating-root .gd-muyu-input-toolbar .menu_button:hover:not(:disabled) { background: var(--gd-muyu-selected); }
+.gd-floating-root .gd-muyu-input-toolbar .gd-muyu-send {
+    background: #d8c9ed;
+    color: #30273e;
+    border-color: transparent;
+    box-shadow: 0 2px 6px #0002;
+}
+.gd-floating-root .gd-muyu-input-toolbar .gd-muyu-send:hover:not(:disabled) { background: #e5d9f4; }
+.gd-floating-root .gd-muyu-input-toolbar .gd-muyu-web-toggle[aria-pressed="true"] {
+    background: var(--gd-muyu-selected);
+    color: inherit;
+    border-color: var(--gd-muyu-focus);
+    opacity: 1;
+}
+.gd-floating-root .gd-muyu-connection-entry,
+.gd-floating-root .gd-muyu-connection-card,
+.gd-floating-root .gd-muyu-settings-page > details,
+.gd-floating-root .gd-muyu-settings-page > section:not(.gd-muyu-danger-confirm),
+.gd-floating-root .gd-muyu-settings-card {
+    background: var(--gd-muyu-soft);
+    border-color: var(--gd-muyu-line);
+}
+.gd-floating-root .gd-muyu-settings-nav .menu_button { border-color: var(--gd-muyu-line); background: transparent; }
+.gd-floating-root .gd-muyu-settings-nav [aria-current="page"],
+.gd-floating-root .gd-muyu-session-row [aria-pressed="true"] {
+    background: var(--gd-muyu-selected);
+    border-color: var(--gd-muyu-focus);
+}
+.gd-floating-root .gd-muyu-history-sidebar,
+.gd-floating-root .gd-muyu-session-menu-list {
+    background: var(--gd-muyu-surface);
+    border-color: var(--gd-muyu-line);
+}
+.gd-floating-root .gd-muyu-interaction,
+.gd-floating-root .gd-muyu-history-confirm {
+    background: var(--gd-muyu-soft);
+    border-color: color-mix(in srgb, var(--gd-muyu-accent) 38%, var(--gd-muyu-line));
+}
+.gd-floating-root .gd-muyu-session-bar { border-color: var(--gd-muyu-line); }
+.gd-floating-root :focus-visible { outline-color: var(--gd-muyu-focus); }
+
+/* Muyu brand surfaces. Tokens are local; geometry and orb artwork stay independent. */
+.gd-floating-root {
+    --gd-muyu-text: var(--SmartThemeBodyColor, #ecebff);
+    --gd-muyu-muted: var(--gd-muyu-text);
+    --gd-muyu-glow: #8f86ff20;
+    --gd-muyu-bottom: var(--gd-muyu-surface);
+    --gd-muyu-input: var(--gd-muyu-soft);
+    --gd-muyu-inset: var(--gd-muyu-surface);
+    --gd-muyu-warn: #f2d6aa;
+    --gd-muyu-warn-bg: var(--gd-muyu-surface);
+    --gd-muyu-button: linear-gradient(135deg, #a89ced, #d2adf0);
+    --gd-muyu-button-text: #242039;
+    --gd-muyu-user-bg: var(--gd-muyu-selected);
+    --gd-muyu-user-text: var(--gd-muyu-text);
+    color: var(--gd-muyu-text);
+    text-shadow: none;
+}
+.gd-floating-root[data-muyu-theme="dusk"] {
+    --gd-muyu-surface: #1a1a38;
+    --gd-muyu-bottom: #121228;
+    --gd-muyu-soft: #2a2a55;
+    --gd-muyu-input: #22224a;
+    --gd-muyu-inset: #17173a;
+    --gd-muyu-text: #ecebff;
+    --gd-muyu-muted: #a9a9d0;
+    --gd-muyu-accent: #b6a6f0;
+    --gd-muyu-selected: #35315d;
+    --gd-muyu-line: #8f86ff59;
+    --gd-muyu-focus: #c6b7ff;
+    --gd-muyu-glow: #8f86ff38;
+    --gd-muyu-warn-bg: #302b38;
+    --gd-muyu-user-bg: linear-gradient(135deg, #716dc3, #514e9c);
+    --gd-muyu-user-text: #fff;
+}
+.gd-floating-root[data-muyu-theme="light"] {
+    --gd-muyu-surface: #f5f4fd;
+    --gd-muyu-bottom: #eeedfa;
+    --gd-muyu-soft: #fff;
+    --gd-muyu-input: #fff;
+    --gd-muyu-inset: #f4f3fc;
+    --gd-muyu-text: #2b2b4a;
+    --gd-muyu-muted: #6a6a86;
+    --gd-muyu-accent: #6863b5;
+    --gd-muyu-selected: #efedfd;
+    --gd-muyu-line: #cfcbef;
+    --gd-muyu-focus: #7776cb;
+    --gd-muyu-glow: #b9b3f53d;
+    --gd-muyu-warn: #8a5a1a;
+    --gd-muyu-warn-bg: #fdf1dc;
+    --gd-muyu-user-bg: linear-gradient(135deg, #7972d4, #605bb9);
+    --gd-muyu-user-text: #fff;
+}
+/* Existing components still consuming Tavern variables inherit local equivalents. */
+.gd-floating-root:is([data-muyu-theme="dusk"], [data-muyu-theme="light"]) {
+    --SmartThemeBodyColor: var(--gd-muyu-text);
+    --SmartThemeBorderColor: var(--gd-muyu-line);
+    --SmartThemeBlurTintColor: var(--gd-muyu-surface);
+    --SmartThemeQuoteColor: var(--gd-muyu-accent);
+    --shadowWidth: 0;
+    --SmartThemeShadowColor: transparent;
+}
+/* Tavern applies text-shadow directly through '*', not just inheritance. */
+.gd-floating-root:is([data-muyu-theme="dusk"], [data-muyu-theme="light"]) *,
+.gd-floating-root:is([data-muyu-theme="dusk"], [data-muyu-theme="light"]) *::before,
+.gd-floating-root:is([data-muyu-theme="dusk"], [data-muyu-theme="light"]) *::after { text-shadow: none; }
+.gd-floating-root:is([data-muyu-theme="dusk"], [data-muyu-theme="light"]) .menu_button { filter: none; }
+.gd-floating-root[data-mobile] .gd-floating-window {
+    color: var(--gd-muyu-text);
+    background: radial-gradient(ellipse at 20% 0%, var(--gd-muyu-glow), transparent 45%), linear-gradient(var(--gd-muyu-surface), var(--gd-muyu-bottom));
+    border-color: var(--gd-muyu-line);
+    border-radius: 22px;
+    box-shadow: 0 16px 48px #30265d30, 0 2px 8px #0002, inset 0 1px 0 #ffffff12;
+}
+.gd-floating-root .gd-floating-header { background: transparent; }
+.gd-floating-root .gd-muyu-panel .gd-muyu-assistant {
+    background: var(--gd-muyu-soft);
+    border: 1px solid var(--gd-muyu-line);
+    border-radius: 18px;
+    padding: 12px 14px;
+    /* Long Markdown, tables and code retain full available width. */
+    width: fit-content;
+    max-width: 100%;
+}
+.gd-floating-root .gd-muyu-user {
+    background: var(--gd-muyu-user-bg);
+    color: var(--gd-muyu-user-text);
+    border-radius: 18px !important;
+}
+.gd-floating-root .gd-muyu-input-box {
+    background: var(--gd-muyu-input);
+    border-radius: 20px;
+    border-color: var(--gd-muyu-line);
+}
+.gd-floating-root .text_pole {
+    color: var(--gd-muyu-text);
+    background: var(--gd-muyu-input);
+    border-color: var(--gd-muyu-line);
+    text-shadow: none;
+}
+.gd-floating-root .text_pole::placeholder { color: var(--gd-muyu-muted); opacity: .75; }
+.gd-floating-root select option { color: var(--gd-muyu-text); background: var(--gd-muyu-surface); }
+.gd-floating-root .menu_button { background: var(--gd-muyu-soft); border-color: var(--gd-muyu-line); text-shadow: none; box-shadow: none; }
+.gd-floating-root .menu_button:hover:not(:disabled) { background: var(--gd-muyu-selected); }
+.gd-floating-root .gd-muyu-input-toolbar .gd-muyu-send,
+.gd-floating-root .gd-muyu-input-toolbar .gd-muyu-send:hover:not(:disabled) {
+    background: var(--gd-muyu-button);
+    color: var(--gd-muyu-button-text);
+    border-radius: 999px;
+}
+.gd-floating-root .gd-muyu-message .gd-muyu-author { opacity: .8; }
+.gd-floating-root .gd-muyu-markdown pre { background: var(--gd-muyu-inset); border-radius: 10px; }
+.gd-floating-root .gd-muyu-markdown a { color: var(--gd-muyu-accent); }
+.gd-floating-root .gd-muyu-user .gd-muyu-markdown a { color: inherit; }
+.gd-floating-root .gd-muyu-permission-summary {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    margin: 4px 0 8px;
+    padding: 7px 11px;
+    border-radius: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: start;
+    justify-content: flex-start;
+    line-height: 1.5;
+}
+.gd-floating-root[data-muyu-theme="light"] .gd-muyu-permission-summary {
+    background: #efedfd;
+    color: #5a58a0;
+    border-color: #e0ddf5;
+    box-shadow: none;
+}
+.gd-floating-root[data-muyu-theme="light"] .gd-muyu-permission-summary:hover:not(:disabled) { background: #e5e1f9; border-color: #b9b5ea; }
+.gd-floating-root .gd-muyu-settings-card,
+.gd-floating-root .gd-muyu-settings-page > section,
+.gd-floating-root .gd-muyu-settings-page > details { border-radius: 16px; }
+.gd-floating-root input[type="checkbox"], .gd-floating-root input[type="radio"] { accent-color: var(--gd-muyu-accent); }
+.gd-floating-root .gd-muyu-permission {
+    background: var(--gd-muyu-warn-bg);
+    border: 1px solid var(--gd-muyu-warn);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gd-muyu-warn) 10%, transparent);
+}
+.gd-floating-root .gd-muyu-permission > strong { color: var(--gd-muyu-warn); }
+.gd-floating-root .gd-muyu-permission [data-decision="task"],
+.gd-floating-root .gd-muyu-permission [data-decision="task"]:hover:not(:disabled) {
+    background: linear-gradient(135deg, #ffe9c2, #eebf80);
+    color: #3a2a10;
+    border-color: transparent;
+}
+.gd-floating-root .gd-muyu-permission [data-decision="deny"] { background: transparent; border-color: var(--gd-muyu-warn); }
+.gd-floating-root .gd-muyu-process { background: var(--gd-muyu-soft); border-color: var(--gd-muyu-line); border-radius: 12px; opacity: 1; }
+@media (forced-colors: active) {
+    .gd-floating-root .gd-muyu-permission, .gd-floating-root .gd-muyu-input-box { border-color: CanvasText; }
+}
+
+/* Phase two: history, settings and observed-event timeline share the same surfaces. */
+.gd-floating-root {
+    --gd-muyu-info: #a8d7e9;
+    --gd-muyu-danger: #f0b4c8;
+}
+.gd-floating-root[data-muyu-theme="light"] { --gd-muyu-info: #3f88b4; --gd-muyu-danger: #b6456c; }
+.gd-floating-root .gd-muyu-history-sidebar { gap: 10px; }
+.gd-floating-root .gd-muyu-sidebar-heading { flex-wrap: wrap; }
+.gd-floating-root .gd-muyu-history-search .text_pole { border-radius: 999px; padding: 8px 12px; }
+.gd-floating-root .gd-muyu-history-search { text-align: start; }
+.gd-floating-root .gd-muyu-history-filters { background: var(--gd-muyu-soft); padding: 8px 10px; border: 1px solid var(--gd-muyu-line); border-radius: 12px; }
+.gd-floating-root .gd-muyu-history-filters > summary { padding: 2px 0; }
+.gd-floating-root .gd-muyu-history-filters label { margin-top: 8px; }
+.gd-floating-root .gd-muyu-history-date { font-size: .75em; font-weight: 500; color: var(--gd-muyu-muted); letter-spacing: .05em; margin: 12px 3px 2px; }
+.gd-floating-root .gd-muyu-session-row { position: relative; border: 1px solid var(--gd-muyu-line); background: var(--gd-muyu-soft); border-radius: 14px; padding: 10px; gap: 6px; }
+.gd-floating-root .gd-muyu-session-row:has(> .gd-muyu-row-menu[open]) > .gd-muyu-row-menu { grid-column: 2; grid-row: 1; }
+.gd-floating-root .gd-muyu-row-menu > summary { list-style: none; border-radius: 8px; }
+.gd-floating-root .gd-muyu-row-menu > summary::-webkit-details-marker { display: none; }
+.gd-floating-root .gd-muyu-row-menu-list { position: absolute; z-index: 5; inset-inline-end: 4px; top: 38px; width: min(210px, calc(100% - 8px)); max-height: 180px; overflow: auto; padding: 6px; border-radius: 12px; border: 1px solid var(--gd-muyu-line); background: var(--gd-muyu-surface); box-shadow: 0 6px 18px #0003; }
+.gd-floating-root .gd-muyu-row-menu-list .menu_button { border: 0; background: transparent; padding: 8px 10px; margin: 0; border-radius: 8px; }
+.gd-floating-root .gd-muyu-row-menu-list .menu_button:hover:not(:disabled) { background: var(--gd-muyu-selected); }
+.gd-floating-root .gd-muyu-session-row[data-selected="true"] { background: var(--gd-muyu-selected); border-color: var(--gd-muyu-focus); }
+.gd-floating-root .gd-muyu-session-row > button,
+.gd-floating-root .gd-muyu-session-row > button[aria-pressed="true"] { background: transparent; border: 0; margin: 0; padding: 2px 0; font-weight: 600; }
+.gd-floating-root .gd-muyu-session-metadata { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; min-width: 0; font-size: .72em; line-height: 1.5; color: var(--gd-muyu-muted); }
+.gd-floating-root .gd-muyu-session-metadata small { font-size: inherit; opacity: 1; }
+.gd-floating-root .gd-muyu-session-metadata time { margin-inline-start: auto; }
+.gd-floating-root .gd-muyu-session-metadata .gd-muyu-session-status { padding: 1px 6px; border-radius: 999px; background: var(--gd-muyu-selected); }
+.gd-floating-root .gd-muyu-session-status[data-state="running"] { color: var(--gd-muyu-info); }
+.gd-floating-root .gd-muyu-session-status:is([data-state="failed"], [data-state="interrupted"]) { color: var(--gd-muyu-danger); }
+.gd-floating-root .gd-muyu-session-status[data-state="succeeded"] { color: var(--gd-muyu-accent); }
+.gd-floating-root .gd-muyu-settings-nav { background: var(--gd-muyu-inset); padding: 4px; border-radius: 14px; gap: 4px; margin-block: 8px 12px; }
+.gd-floating-root .gd-muyu-settings-nav .menu_button { background: transparent; border-color: transparent; border-radius: 10px; }
+.gd-floating-root .gd-muyu-settings-nav [aria-current="page"] { background: var(--gd-muyu-soft); border-color: var(--gd-muyu-line); color: var(--gd-muyu-accent); }
+.gd-floating-root .gd-muyu-settings-page > .gd-muyu-settings-page-title { margin: 6px 0; font-size: 1em; }
+.gd-floating-root .gd-muyu-settings-page > .gd-muyu-settings-hint { margin-bottom: 12px; color: var(--gd-muyu-muted); opacity: 1; }
+.gd-floating-root .gd-muyu-settings-page > details > summary { padding: 2px 0; line-height: 1.5; }
+.gd-floating-root .gd-muyu-settings-page > details[open] > summary { margin-bottom: 10px; }
+.gd-floating-root .gd-muyu-settings-page label:has(> input[type="checkbox"]) { align-items: center; gap: 10px; padding-block: 4px; }
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-block;
+    box-sizing: border-box;
+    width: 36px;
+    min-width: 36px;
+    height: 22px;
+    margin: 0;
+    border-radius: 999px;
+    border: 1px solid var(--gd-muyu-line);
+    background: radial-gradient(circle, var(--gd-muyu-muted) 0 7px, transparent 7.5px) 2px center / 16px 16px no-repeat, var(--gd-muyu-inset);
+    /* Reset Tavern's custom checkbox chrome before drawing the switch. */
+    filter: none;
+    transform: none;
+    box-shadow: none;
+    outline: none;
+    cursor: pointer;
+}
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"]::before,
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"]::after { content: none; display: none; }
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"]:focus-visible { outline: 2px solid var(--gd-muyu-focus); outline-offset: 3px; }
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"]:checked { background: radial-gradient(circle, #fff 0 7px, transparent 7.5px) calc(100% - 2px) center / 16px 16px no-repeat, #7776cb; border-color: #7776cb; }
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+.gd-floating-root .gd-muyu-process > summary { line-height: 1.5; padding: 2px; }
+.gd-floating-root .gd-muyu-process[data-state="waiting"] { border-color: var(--gd-muyu-warn); }
+.gd-floating-root .gd-muyu-process[data-state="error"] { border-color: var(--gd-muyu-danger); }
+.gd-floating-root .gd-muyu-process ol { list-style: none; padding: 0 4px; margin-block: 12px; }
+.gd-floating-root .gd-muyu-process li { position: relative; padding: 0 0 12px 22px; margin: 0; line-height: 1.6; }
+.gd-floating-root .gd-muyu-process li::before { content: ''; position: absolute; inset-inline-start: 4px; top: .5em; width: 8px; height: 8px; border: 1px solid var(--gd-muyu-line); border-radius: 50%; background: var(--gd-muyu-inset); z-index: 1; }
+.gd-floating-root .gd-muyu-process li:not(:last-child)::after { content: ''; position: absolute; inset-inline-start: 8px; top: calc(.5em + 9px); bottom: -.5em; width: 1px; background: var(--gd-muyu-line); }
+.gd-floating-root .gd-muyu-process li[data-state="done"]::before { background: var(--gd-muyu-accent); border-color: var(--gd-muyu-accent); }
+.gd-floating-root .gd-muyu-process li[data-state="running"]::before { background: var(--gd-muyu-info); border-color: var(--gd-muyu-info); }
+.gd-floating-root .gd-muyu-process li[data-state="error"]::before { background: var(--gd-muyu-danger); border-color: var(--gd-muyu-danger); }
+.gd-floating-root .gd-muyu-process li[data-state="warning"]::before { background: var(--gd-muyu-warn); border-color: var(--gd-muyu-warn); }
+.gd-floating-root .gd-muyu-process li:last-child { padding-bottom: 2px; }
+.gd-floating-root .gd-muyu-process > p { white-space: pre-line; line-height: 1.6; padding-top: 8px; border-top: 1px solid var(--gd-muyu-line); }
+@media (forced-colors: active) {
+    .gd-floating-root .gd-muyu-settings-page input[type="checkbox"] { appearance: auto; -webkit-appearance: auto; background: none; width: auto; min-width: 0; height: auto; }
+    .gd-floating-root .gd-muyu-process li::before { background: CanvasText; border-color: CanvasText; }
+}
+
+/* Surface motion is driven by the shell's visual-only transition adapter. */
+.gd-floating-root .gd-floating-window { transform-origin: center; }
+.gd-floating-root .gd-floating-avatar { width: 24px; height: 24px; flex: 0 0 auto; object-fit: contain; pointer-events: none; user-select: none; }
+.gd-floating-root[data-mobile="true"] .gd-floating-avatar { width: 20px; height: 20px; }
+.gd-floating-root[data-mobile] .gd-floating-transition-proxy {
+    pointer-events: none;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    max-height: none;
+    resize: none;
+    overflow: hidden;
+}
+@media (max-width: 360px) { .gd-floating-root[data-mobile="true"] .gd-floating-avatar { display: none; } }
+
+/* Decorative micro-motion: no text movement, layout changes or business timers. */
+.gd-floating-root .gd-muyu-theme-switcher {
+    display: inline-flex; align-items: center; gap: 1px; padding: 2px;
+    flex: 0 0 auto; border: 1px solid var(--gd-muyu-line); border-radius: 999px;
+    background: var(--gd-muyu-inset);
+}
+.gd-floating-root .gd-floating-header-actions .gd-muyu-theme-switcher .menu_button {
+    width: 24px; min-width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid transparent; border-radius: 50%; background: transparent;
+    color: var(--gd-muyu-muted); font-size: 15px; line-height: 1;
+}
+.gd-floating-root .gd-floating-header-actions .gd-muyu-theme-switcher [aria-pressed="true"] {
+    background: var(--gd-muyu-selected); color: var(--gd-muyu-text); border-color: var(--gd-muyu-focus);
+}
+.gd-floating-root .gd-muyu-theme-switcher .menu_button:focus-visible { outline: 2px solid var(--gd-muyu-focus); outline-offset: 1px; }
+.gd-floating-root .menu_button,
+.gd-floating-root .gd-muyu-session-row,
+.gd-floating-root .gd-muyu-input-box,
+.gd-floating-root .gd-muyu-session-menu > summary,
+.gd-floating-root .gd-muyu-row-menu > summary {
+    transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.gd-floating-root .menu_button:active:not(:disabled) { box-shadow: inset 0 0 0 1px var(--gd-muyu-focus); }
+@media (hover: hover) {
+    .gd-floating-root .gd-muyu-session-row:hover { border-color: var(--gd-muyu-focus); }
+}
+.gd-floating-root .gd-muyu-settings-page input[type="checkbox"] {
+    transition: background-position 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+.gd-floating-root .gd-muyu-session-menu[open] > .gd-muyu-session-menu-list,
+.gd-floating-root .gd-muyu-row-menu[open] > .gd-muyu-row-menu-list,
+.gd-floating-root .gd-floating-menu:not([hidden]) { animation: gd-muyu-menu-in 120ms ease-out; }
+.gd-floating-root .gd-muyu-permission:not([hidden]) { animation: gd-muyu-approval-glow 2.6s ease-in-out infinite; }
+.gd-floating-root .gd-muyu-process[open][data-state="running"] li[data-state="running"]::before {
+    background: transparent; border-color: var(--gd-muyu-line); border-top-color: var(--gd-muyu-info);
+    animation: gd-orb-orbit 1.2s linear infinite;
+}
+.gd-floating-root .gd-floating-ripple {
+    position: fixed; border: 1px solid var(--gd-muyu-focus); border-radius: 50%;
+    box-sizing: border-box; box-shadow: 0 0 12px var(--gd-muyu-focus);
+    pointer-events: none; opacity: 0; z-index: 1;
+}
+@keyframes gd-muyu-menu-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gd-muyu-approval-glow {
+    0%, 100% { box-shadow: 0 0 0 1px transparent; }
+    50% { box-shadow: 0 0 0 1px var(--gd-muyu-warn); }
+}
+.gd-floating-root[data-page-hidden="true"] *,
+.gd-floating-root[data-page-hidden="true"] *::before,
+.gd-floating-root[data-page-hidden="true"] *::after { animation-play-state: paused !important; }
+.gd-floating-root .gd-floating-window[hidden] *,
+.gd-floating-root .gd-floating-window[hidden] *::before { animation: none !important; }
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+    .gd-floating-root .menu_button,
+    .gd-floating-root .gd-muyu-session-row,
+    .gd-floating-root .gd-muyu-input-box,
+    .gd-floating-root .gd-muyu-settings-page input[type="checkbox"],
+    .gd-floating-root .gd-muyu-session-menu > summary,
+    .gd-floating-root .gd-muyu-row-menu > summary { transition: none; }
+    .gd-floating-root .gd-muyu-permission,
+    .gd-floating-root .gd-muyu-session-menu-list,
+    .gd-floating-root .gd-muyu-row-menu-list,
+    .gd-floating-root .gd-floating-menu,
+    .gd-floating-root .gd-muyu-process li::before { animation: none !important; }
+    .gd-floating-root .gd-muyu-process[open][data-state="running"] li[data-state="running"]::before { background: var(--gd-muyu-info); border-color: var(--gd-muyu-info); }
+    .gd-floating-root .gd-floating-ripple { display: none; }
+}
+
+/* Approved feather concept: luminous, transparent orb, not the old GD disc.
+   Animate decorations only; the drag target and viewport geometry never move. */
+.gd-floating-root .gd-floating-ball {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    overflow: visible;
+}
+.gd-floating-root .gd-floating-feather {
+    position: absolute; width: 146.67%; height: 146.67%; max-width: none;
+    inset: -23.335%; pointer-events: none; user-select: none; -webkit-user-select: none;
+    object-fit: contain; transform-origin: center;
+}
+.gd-floating-root .gd-floating-ball::after { right: 1px; top: 1px; width: 6px; height: 6px; }
+.gd-floating-root .gd-floating-ball[data-status="running"]::after,
+.gd-floating-root .gd-floating-ball[data-status="attention"]::after { opacity: 0; }
+.gd-floating-root .gd-floating-orbit,
+.gd-floating-root .gd-floating-orbit-secondary,
+.gd-floating-root .gd-floating-sparkles { position: absolute; pointer-events: none; opacity: 0; }
+.gd-floating-root .gd-floating-orbit { inset: -7%; border: 1px solid transparent; border-radius: 50%; }
+.gd-floating-root .gd-floating-orbit-secondary { inset: -13%; border: 1px dashed #c9d8ff70; border-radius: 50%; }
+.gd-floating-root .gd-floating-sparkles { inset: -10%; border-radius: 50%; }
+.gd-floating-root .gd-floating-sparkles::before,
+.gd-floating-root .gd-floating-sparkles::after { content: '✦'; position: absolute; color: #f7efff; font-size: 12px; }
+.gd-floating-root .gd-floating-sparkles::before { right: 2px; top: -2px; }
+.gd-floating-root .gd-floating-sparkles::after { left: 0; bottom: 4px; font-size: 8px; }
+.gd-floating-root .gd-floating-ball:is([data-display-state="idle"], [data-display-state="completed"]) .gd-floating-feather { animation: gd-orb-idle 4s ease-in-out infinite; }
+.gd-floating-root .gd-floating-ball[data-display-state="thinking"] .gd-floating-feather { animation: gd-orb-thinking 3s ease-in-out infinite; }
+.gd-floating-root .gd-floating-ball[data-display-state="executing"] .gd-floating-orbit {
+    opacity: .85; border-top-color: #fff3ff; border-inline-end-color: #a8d7e959; animation: gd-orb-orbit 6s linear infinite;
+}
+.gd-floating-root .gd-floating-ball[data-display-state="executing"] .gd-floating-orbit-secondary { opacity: .45; animation: gd-orb-orbit 10s linear infinite reverse; }
+.gd-floating-root .gd-floating-ball[data-display-state="waiting"] .gd-floating-orbit {
+    border-color: #f2d6aa; box-shadow: 0 0 8px #f2d6aa40; animation: gd-orb-waiting 2.6s ease-in-out infinite;
+}
+.gd-floating-root .gd-floating-ball[data-display-state="error"] .gd-floating-feather { transform: rotate(43deg) scale(.94); opacity: .65; }
+.gd-floating-root .gd-floating-ball[data-completing="true"] .gd-floating-feather { animation: gd-orb-complete 1.6s ease-out 1; }
+.gd-floating-root .gd-floating-ball[data-completing="true"] .gd-floating-sparkles { animation: gd-orb-sparkle 1.6s ease-out 1; }
+.gd-floating-root[data-dragging="true"] .gd-floating-ball * { animation-play-state: paused; }
+@keyframes gd-orb-idle { 0%, 100% { transform: translateY(0); opacity: .92; } 50% { transform: translateY(-1px); opacity: 1; } }
+@keyframes gd-orb-thinking { 0%, 100% { transform: scale(.96); opacity: .9; } 50% { transform: scale(.9); opacity: 1; } }
+@keyframes gd-orb-orbit { to { transform: rotate(360deg); } }
+@keyframes gd-orb-waiting { 0%, 100% { opacity: .45; transform: scale(.98); } 50% { opacity: .95; transform: scale(1.02); } }
+@keyframes gd-orb-complete { 0%, 100% { transform: translateY(0); } 30% { transform: translateY(-3px); } 65% { transform: translateY(-1px); } }
+@keyframes gd-orb-sparkle { 0%, 100% { opacity: 0; } 30% { opacity: .9; } }
+@media (prefers-reduced-motion: reduce) {
+    .gd-floating-root .gd-floating-ball * { animation: none !important; }
+    .gd-floating-root .gd-floating-ball[data-display-state="waiting"] .gd-floating-orbit { opacity: .8; }
+}
+@media (prefers-reduced-transparency: reduce) {
+    .gd-floating-root .gd-floating-ball {
+        background: transparent;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+    .gd-floating-root[data-mobile] .gd-floating-window,
+    .gd-floating-root .gd-floating-menu {
+        background: var(--gd-muyu-surface);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+}
