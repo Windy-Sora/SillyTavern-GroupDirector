@@ -56,6 +56,7 @@ export function createFloatingShell({ registry, doc = document, win = window, la
         transitions.settleOpening();
         const area = viewport(), mobile = isMobileViewport(win);
         root.dataset.mobile = String(mobile);
+        title.hidden = mobile && !mobileExpanded && !viewExpanded;
         root.dataset.dragging = String(ballDragging);
         if (!ballDragging && mobile) ballBounds = dockedBallRect(ballPosition, area, !activeId && menu.hidden, 56);
         else ballBounds = fitFloatingRect(mobile ? ballBounds : { ...ballBounds, width: 48, height: 48 }, area);

@@ -5,6 +5,18 @@ import { createFloatingShell, fitFloatingRect, fitSidebarRect } from '../../ui/f
 import { visibleViewport, validBallPosition, dockedBallRect, mobilePanelRect } from '../../ui/floating/geometry.js';
 
 const entry = (id, overrides = {}) => ({ id, label: { zh: id, en: id }, icon: '*', order: 10, mount: () => () => {}, ...overrides });
+test('Compact mobile title is hidden visually; expanded and desktop titles retain the dialog name', () => {
+    let port; const f = surface(options => { port = options; }, { innerWidth: 400 });
+    f.shell.open('chat');
+    const title = f.find('gd-floating-header').children.find(e => e.tag === 'strong');
+    assert.equal(title.hidden, true); assert.equal(f.find('gd-floating-window').attrs['aria-label'], 'chat');
+    f.find('gd-floating-expand').onclick(); assert.equal(title.hidden, false);
+    f.find('gd-floating-expand').onclick(); assert.equal(title.hidden, true);
+    port.setViewExpanded(true); assert.equal(title.hidden, false);
+    port.setViewExpanded(false); assert.equal(title.hidden, true);
+    f.win.innerWidth = 1000; f.events.get('resize')(); assert.equal(title.hidden, false);
+    assert.equal(f.mounts(), 1); f.shell.dispose(); f.registry.dispose();
+});
 test('Floating ball visibility survives status updates without closing the active view', () => {
     const f = surface();
     const ball = f.find('gd-floating-ball');
