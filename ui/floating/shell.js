@@ -20,7 +20,8 @@ export function fitSidebarRect(rect, viewport, opened) {
 /** Generic single-window shell. Closing a view never stops its module's business work. */
 export function createFloatingShell({ registry, doc = document, win = window, lang = 'zh', getBallPosition = () => null, saveBallPosition = () => {} }) {
     let language = lang, activeId = null, teardown = null, disposed = false, returnFocus = null, sidebarOpen = false, mountVersion = 0;
-    let ballVisible = true, mobileExpanded = false, viewExpanded = false;
+    let ballVisible = true, mobileExpanded = false, viewExpanded = false, keyboardOpen = false;
+    let viewportWidth = win.innerWidth, unobscuredHeight = Math.max(win.innerHeight, win.visualViewport?.height || 0);
     let previousDisplay = null, pendingCompletion = false;
     const completionVersions = new Map();
     const t = (zh, en) => language === 'en' ? en : zh;
@@ -55,17 +56,30 @@ export function createFloatingShell({ registry, doc = document, win = window, la
     function layout() {
         transitions.settleOpening();
         const area = viewport(), mobile = isMobileViewport(win);
+        if (Math.abs(win.innerWidth - viewportWidth) > 80) {
+            viewportWidth = win.innerWidth;
+            unobscuredHeight = Math.max(win.innerHeight, win.visualViewport?.height || 0);
+        }
+        const visibleHeight = win.visualViewport?.height || win.innerHeight;
+        unobscuredHeight = Math.max(unobscuredHeight, win.innerHeight, visibleHeight);
+        const focused = doc.activeElement, tag = (focused?.tagName || focused?.tag || '').toLowerCase();
+        let ancestor = focused;
+        while (ancestor && ancestor !== frame) ancestor = ancestor.parentElement || ancestor.parent;
+        const typing = ancestor === frame && (tag === 'textarea' || tag === 'input' && !['checkbox', 'radio', 'button', 'submit', 'range', 'color', 'file'].includes(focused.type) || focused?.isContentEditable);
+        keyboardOpen = !!(mobile && activeId && typing && (win.visualViewport?.scale || 1) <= 1.05 && unobscuredHeight - visibleHeight > Math.max(150, unobscuredHeight * .2));
         root.dataset.mobile = String(mobile);
-        title.hidden = mobile && !mobileExpanded && !viewExpanded;
+        root.dataset.keyboard = String(keyboardOpen);
+        title.hidden = mobile && !keyboardOpen && !mobileExpanded && !viewExpanded;
         root.dataset.dragging = String(ballDragging);
         if (!ballDragging && mobile) ballBounds = dockedBallRect(ballPosition, area, !activeId && menu.hidden, 56);
         else ballBounds = fitFloatingRect(mobile ? ballBounds : { ...ballBounds, width: 48, height: 48 }, area);
         if (mobile && (mobileExpanded || viewExpanded) && !ballDragging) ballBounds = dockedBallRect({ ...ballPosition, fraction: 1 }, area, false, 56);
         // Mobile geometry is temporary: keyboard/orientation changes cannot shrink desktop bounds.
-        const expanded = mobile ? { extra: 0, rect: mobilePanelRect(ballBounds, area, mobileExpanded || viewExpanded) }
+        const keyboardHeight = Math.min(Math.max(1, area.height - 16), mobileExpanded || viewExpanded ? Math.max(1, area.height - 16) : Math.max(260, (area.height - 16) * .75));
+        const expanded = mobile ? { extra: 0, rect: keyboardOpen ? { x: area.x + 8, y: area.y + area.height - 8 - keyboardHeight, width: Math.max(1, area.width - 16), height: keyboardHeight } : mobilePanelRect(ballBounds, area, mobileExpanded || viewExpanded) }
             : fitSidebarRect(bounds, area, sidebarOpen);
-        ball.hidden = !ballVisible || !registry.list().some(e => e.available);
-        expandButton.hidden = !mobile || viewExpanded;
+        ball.hidden = keyboardOpen || !ballVisible || !registry.list().some(e => e.available);
+        expandButton.hidden = !mobile || viewExpanded || keyboardOpen;
         expandButton.textContent = mobileExpanded ? '↙' : '↗';
         expandButton.setAttribute('aria-label', mobileExpanded ? t('恢复小面板', 'Restore compact panel') : t('放大窗口', 'Enlarge window'));
         expandButton.title = mobileExpanded ? t('恢复小面板', 'Restore compact panel') : t('放大窗口', 'Enlarge window');
@@ -125,7 +139,7 @@ export function createFloatingShell({ registry, doc = document, win = window, la
         if (presentation.displayState !== 'completed' || !ballVisible) ball.dataset.completing = 'false';
         previousDisplay = presentation.displayState;
         const displayLabels = { idle: t('待机', 'Idle'), thinking: t('等待模型', 'Waiting for model'), executing: t('执行中', 'Executing'), waiting: t('等待处理', 'Attention · Waiting for you'), completed: t('回答完成', 'Response completed'), error: t('任务失败', 'Error · Task failed') };
-        ball.dataset.status = presentation.status; ball.dataset.displayState = presentation.displayState; ball.hidden = !ballVisible || !entries.length;
+        ball.dataset.status = presentation.status; ball.dataset.displayState = presentation.displayState; ball.hidden = keyboardOpen || !ballVisible || !entries.length;
         ball.setAttribute('aria-label', t('插件快捷入口', 'Plugin shortcuts') + ' · ' + displayLabels[presentation.displayState]);
         ball.title = t('点击展开或收回，拖动移动；方向键调整位置', 'Click to expand or collapse, drag to move; arrow keys reposition');
         ball.setAttribute('aria-expanded', String(!menu.hidden || !!activeId));
@@ -201,6 +215,8 @@ export function createFloatingShell({ registry, doc = document, win = window, la
         layout();
     }) : null;
     const viewportChanged = () => { transitions.cancel(); layout(); };
+    const focusChanged = () => { Promise.resolve().then(() => { if (!disposed) viewportChanged(); }); };
+    frame.addEventListener('focusin', focusChanged); frame.addEventListener('focusout', focusChanged);
     observer?.observe(frame); win.addEventListener('resize', viewportChanged);
     win.visualViewport?.addEventListener('resize', viewportChanged); win.visualViewport?.addEventListener('scroll', viewportChanged);
     const unsubscribe = registry.subscribe(render); layout(); render();
@@ -218,6 +234,7 @@ export function createFloatingShell({ registry, doc = document, win = window, la
             const id = activeId; if (id) close(); language = value; render(); if (id) open(id);
         },
         dispose() { if (disposed) return; close(); transitions.dispose(); disposed = true; unsubscribe(); observer?.disconnect(); win.removeEventListener('resize', viewportChanged);
+            frame.removeEventListener('focusin', focusChanged); frame.removeEventListener('focusout', focusChanged);
             win.visualViewport?.removeEventListener('resize', viewportChanged); win.visualViewport?.removeEventListener('scroll', viewportChanged); dragCleanups.forEach(fn => fn()); root.remove(); },
     });
 }

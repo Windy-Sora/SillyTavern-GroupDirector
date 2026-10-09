@@ -67,6 +67,8 @@ class Element {
     focus() { this.ownerDocument.activeElement = this; }
     get firstElementChild() { return this.children[0]; }
     closest(tag) { return this.tag === tag ? this : this.parent?.closest(tag); }
+    addEventListener(key, fn) { (this.events ||= new Map()).set(key, fn); }
+    removeEventListener(key) { this.events?.delete(key); }
 }
 function surface(onMount = () => {}, windowOptions = {}, shellOptions = {}) {
     const doc = { createElement: tag => new Element(tag, doc) }; doc.body = new Element('body', doc);
@@ -160,6 +162,54 @@ test('Mobile viewport respects visible offsets, safe insets and keyboard recover
     assert.equal(frame.style.height, '438px'); assert.equal(f.mounts(), 1);
     f.shell.close(); assert.equal(ball.hidden, false);
     f.shell.dispose(); assert.equal(listeners.size, 0); f.registry.dispose();
+});
+
+test('Mobile keyboard temporarily fills visible space without remounting, losing drafts or scroll, and restores expanded preference', async () => {
+    const listeners = new Map(), visual = { width: 390, height: 760, offsetLeft: 0, offsetTop: 0, scale: 1,
+        addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: key => listeners.delete(key) };
+    const f = surface(() => {}, { innerWidth: 390, innerHeight: 844, visualViewport: visual }); f.shell.open('chat');
+    const root = f.find('gd-floating-root'), frame = f.find('gd-floating-window'), ball = f.find('gd-floating-ball');
+    const content = f.find('gd-floating-content'), input = f.doc.createElement('textarea'); content.append(input);
+    input.value = 'Unsent draft'; content.scrollTop = 120; input.focus();
+    frame.events.get('focusin')(); await Promise.resolve();
+    assert.equal(root.dataset.keyboard, 'false', 'Focus alone does not imply a soft keyboard');
+    visual.height = 360; visual.offsetTop = 35; listeners.get('resize')();
+    assert.equal(root.dataset.keyboard, 'true'); assert.equal(frame.style.top, '127px');
+    assert.equal(frame.style.height, '260px'); assert.equal(frame.style.width, '374px'); assert.equal(ball.hidden, true);
+    assert.equal(f.find('gd-floating-header').children.find(e => e.tag === 'strong').hidden, false);
+    assert.equal(f.find('gd-floating-expand').hidden, true);
+    f.shell.setLanguage('en', { preserveActive: true }); assert.equal(ball.hidden, true, 'Status renders cannot reveal the ball over the composer');
+    assert.equal(input.value, 'Unsent draft'); assert.equal(content.scrollTop, 120); assert.equal(f.mounts(), 1);
+    visual.height = 760; visual.offsetTop = 0; listeners.get('resize')();
+    assert.equal(root.dataset.keyboard, 'false'); assert.equal(frame.style.height, '440px'); assert.equal(ball.hidden, false);
+    f.find('gd-floating-expand').onclick(); const expandedHeight = frame.style.height;
+    visual.height = 360; listeners.get('resize')(); assert.equal(root.dataset.keyboard, 'true');
+    assert.equal(frame.style.height, '344px'); assert.equal(frame.style.top, '8px', 'User-enlarged panels keep all usable height');
+    visual.height = 760; listeners.get('resize')(); assert.equal(frame.style.height, expandedHeight);
+    f.shell.dispose(); await Promise.resolve(); assert.equal(frame.events.size, 0); assert.equal(listeners.size, 0); f.registry.dispose();
+});
+
+test('Keyboard detection handles layout viewport resizing without visualViewport and focus leaving the window', async () => {
+    const f = surface(() => {}, { innerWidth: 400, innerHeight: 800 }); f.shell.open('chat');
+    const frame = f.find('gd-floating-window'), root = f.find('gd-floating-root'), input = f.doc.createElement('input');
+    input.type = 'text'; f.find('gd-floating-content').append(input); input.focus();
+    f.win.innerHeight = 370; f.events.get('resize')();
+    assert.equal(root.dataset.keyboard, 'true'); assert.equal(frame.style.height, '265.5px');
+    f.doc.body.focus(); frame.events.get('focusout')(); await Promise.resolve();
+    assert.equal(root.dataset.keyboard, 'false'); assert.equal(f.find('gd-floating-ball').hidden, false);
+    f.win.innerHeight = 800; f.events.get('resize')(); assert.equal(frame.style.height, '440px');
+    f.shell.dispose(); f.registry.dispose();
+});
+
+test('Address bars, pinch zoom, checkboxes and desktop keyboard focus do not activate mobile input layout', () => {
+    const visual = { width: 390, height: 760, scale: 1, addEventListener() {}, removeEventListener() {} };
+    const f = surface(() => {}, { innerWidth: 390, innerHeight: 800, visualViewport: visual }); f.shell.open('chat');
+    const root = f.find('gd-floating-root'), input = f.doc.createElement('input'); f.find('gd-floating-content').append(input);
+    input.type = 'text'; input.focus(); visual.height = 680; f.events.get('resize')(); assert.equal(root.dataset.keyboard, 'false');
+    visual.height = 350; visual.scale = 2; f.events.get('resize')(); assert.equal(root.dataset.keyboard, 'false');
+    visual.scale = 1; input.type = 'checkbox'; f.events.get('resize')(); assert.equal(root.dataset.keyboard, 'false');
+    input.type = 'text'; f.win.innerWidth = 1000; f.events.get('resize')(); assert.equal(root.dataset.keyboard, 'false');
+    f.shell.dispose(); f.registry.dispose();
 });
 
 test('Mobile drag docks, stores a proportional position and restores it across surfaces', () => {

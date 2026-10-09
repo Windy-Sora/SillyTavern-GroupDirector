@@ -50,7 +50,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     if (standalone) { root.classList.add('gd-muyu-floating'); title.hidden = true; }
     const body = node('div', '', shell); body.className = 'gd-muyu-panel';
     const themeSwitcher = createThemeSwitcher({ doc, parent: actionsRoot, controller, act, lang });
-    const gear = button('⚙', actionsRoot || body); gear.setAttribute('aria-label', t('暮羽配置', 'Muyu settings')); gear.title = t('暮羽配置', 'Muyu settings');
+    const gear = button('⚙', actionsRoot || body); gear.className += ' gd-muyu-settings-toggle'; gear.setAttribute('aria-label', t('暮羽配置', 'Muyu settings')); gear.title = t('暮羽配置', 'Muyu settings');
     const connection = node('section', '', body); connection.className = 'gd-muyu-settings'; connection.hidden = true;
     const back = button(t('返回聊天', 'Back to chat'), connection);
     const settingsLayout = createSettingsLayout({ doc, root: connection, lang });
@@ -133,6 +133,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     node('h3', t('今天想一起解决什么？', 'What shall we work on today?'), welcome);
     node('p', t('你好，我是暮羽，你的猫头鹰搭档。聊剧情、查资料、排问题，或一起调整配置、管理世界书和角色卡——直接说你想做什么就好。', 'Hi, I’m Muyu, your owl companion. We can explore the story, look things up, troubleshoot, adjust settings, or manage world books and character cards—just tell me what you have in mind.'), welcome).className = 'gd-muyu-welcome-description';
     node('p', t('聊剧情、查资料，或一起打理酒馆。', 'Explore the story, look things up, or tend the tavern together.'), welcome).className = 'gd-muyu-welcome-compact';
+    node('p', t('我在，想一起处理什么？', 'I’m here. What shall we work on?'), welcome).className = 'gd-muyu-welcome-input';
     const history = node('div', '', transcript); history.className = 'gd-muyu-history'; history.setAttribute('aria-label', t('对话记录', 'Conversation'));
     const cards = node('div', '', transcript);
     const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang });

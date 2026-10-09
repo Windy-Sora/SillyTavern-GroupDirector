@@ -1211,10 +1211,35 @@
 .gd-floating-root[data-mobile="true"] .gd-muyu-welcome p { font-size: .8em; line-height: 1.5; }
 .gd-floating-root[data-mobile="true"] .gd-muyu-composer .gd-muyu-input-box textarea { min-height: 36px; height: 48px; max-height: 80px; }
 .gd-muyu-welcome-compact { display: none; }
+.gd-muyu-welcome-input { display: none; }
 .gd-floating-root[data-mobile="true"] .gd-muyu-welcome-description { display: none; }
 .gd-floating-root[data-mobile="true"] .gd-muyu-welcome-compact { display: block; }
 .gd-floating-root[data-mobile="true"] .gd-muyu-process:not([open]) > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8em; }
 .gd-floating-root[data-mobile="true"] .gd-floating-header-actions { gap: 2px; }
+
+/* Soft keyboard mode is temporary; keep the composer and message scrollport usable. */
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-floating-header { padding: 2px 8px; min-height: 36px; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-floating-header > button { min-height: 36px; padding: 3px 8px; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-floating-header > button:last-child { margin-inline-start: auto; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-floating-header-actions > :not(.gd-muyu-settings-toggle),
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-conversation-tools,
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-connection-entry,
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-skill-picker,
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-web-hint { display: none; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-floating-header strong { font-size: .8em; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-welcome { margin: 10px auto; padding: 0; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-welcome > :not(.gd-muyu-welcome-input) { display: none; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-welcome-input { display: block; margin: 0; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-transcript { flex: 1 1 0; min-height: 0; padding: 6px 10px; overflow-y: auto; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-composer { flex: 0 0 auto; padding: 4px 8px; max-height: 60%; overflow-y: auto; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-chat-status { max-height: 1.5em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin: 0 0 3px; font-size: .75em; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-composer .gd-muyu-input-box textarea { height: 48px; min-height: 36px; max-height: 80px; resize: none; overflow-y: auto; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-input-box textarea:focus,
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-input-box textarea:focus-visible { border: 0; outline: none; box-shadow: none; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-input-box:focus-within { outline: none; box-shadow: none; border-color: var(--gd-muyu-focus, #7776cb); }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-input-toolbar { flex-wrap: nowrap; gap: 4px; margin-top: 2px; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-input-toolbar .gd-muyu-actions { flex-wrap: nowrap; flex-shrink: 0; }
+.gd-floating-root[data-mobile="true"][data-keyboard="true"] .gd-muyu-full-access-warning { max-height: 2.5em; overflow-y: auto; margin: 2px 8px; }
 .gd-floating-ball { z-index: 3103; }
 .gd-floating-menu { z-index: 3104; }
 .gd-floating-header-actions { display: flex; gap: 4px; }

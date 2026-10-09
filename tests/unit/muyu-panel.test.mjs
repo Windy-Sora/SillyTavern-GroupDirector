@@ -1,5 +1,17 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) test('Keyboard presentation has a localized empty-chat cue and a stable settings control', async () => {
+    const launcher = new Element('div', {}), f = fixture(lang, true, { actionsRoot: launcher });
+    const gear = launcher.children.find(e => e.className?.includes('gd-muyu-settings-toggle'));
+    assert.equal(gear.textContent, '⚙');
+    const cue = f.all().find(e => e.className === 'gd-muyu-welcome-input');
+    assert.equal(cue.textContent, lang === 'en' ? 'I’m here. What shall we work on?' : '我在，想一起处理什么？');
+    f.state.enabled = true; f.state.messages = []; f.emit(); assert.equal(cue.parent.hidden, false);
+    f.state.messages = [{ role: 'user', content: 'Hello' }]; f.emit(); assert.equal(cue.parent.hidden, true);
+    await gear.click(); assert.equal(gear.getAttribute('aria-expanded'), 'true');
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test('Settings undo requires a separate local preview and explicit confirmation / ' + lang, async () => {
     const f = fixture(lang, true), calls = [];
     const proposal = { version: 2, operationId: 'apply:undo', artifactId: 'draft', revision: 1, at: 1, status: 'not_executed', diff: [{ field: 'autoMemoryInterval', before: '10', after: '20' }], saveError: false, changed: false };
