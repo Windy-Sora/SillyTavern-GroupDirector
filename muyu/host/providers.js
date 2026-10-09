@@ -15,7 +15,7 @@ export { providerCatalog } from '../modules/providers/catalog.js';
 const text = value => typeof value === 'string' ? value : '';
 const bounded = value => { if (value.length > 131072) throw Error('SOURCE_TOO_LARGE'); return value; };
 /** Fixed built-in identities captured by the extension, not discovered from model input. */
-export function createProviderPort({ getContext, getSettings, extensionKey, bindings = [], getProviders, worldBooks, stDirectories, stDiagnostics, stPromptSnapshots, trustedDigest = getTrustedProviderDigest }) {
+export function createProviderPort({ getContext, getSettings, extensionKey, bindings = [], getProviders, worldBooks, stDirectories, stDiagnostics, stPromptSnapshots, services, trustedDigest = getTrustedProviderDigest }) {
     const trusted = new Map(bindings.map(p => [p.id, { object: p, render: p.render, enabled: p.enabled }]));
     const exposed = new Map();
     const stableDigest = (p, requirements) => {
@@ -72,6 +72,7 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         if (source?.reader === 'stPresetContent') return typeof getContext === 'function';
         if (source?.reader === 'stPromptOverview' || source?.reader === 'stPromptText') return typeof stPromptSnapshots?.read === 'function';
         if (source?.reader === 'stDiagnostics') return typeof stDiagnostics?.read === 'function';
+        if (source?.reader === 'serviceDiagnostics') return typeof services?.readDiagnostics === 'function';
         if (source?.reader === 'stPersonas') return typeof getContext === 'function';
         if (source?.reader === 'stExtensions') return typeof stDirectories?.getExtensions === 'function';
         if (source && source.reader !== 'legacy') return typeof getSettings === 'function' && typeof getContext === 'function';
@@ -132,6 +133,7 @@ export function createProviderPort({ getContext, getSettings, extensionKey, bind
         stPromptOverview: (_id, selector) => stPromptSnapshots.read(selector, false),
         stPromptText: (_id, selector) => stPromptSnapshots.read(selector, true),
         stDiagnostics: (_id, selector) => stDiagnostics.read(selector),
+        serviceDiagnostics: (_id, selector) => services.readDiagnostics(selector),
         stPersonas: (_id, selector) => readStPersonas(selector, getContext, stDirectories?.getSelectedPersona),
         stExtensions: (_id, selector) => readStExtensions(selector, stDirectories?.getExtensions),
     });

@@ -581,7 +581,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         const tail = record.messages.slice(candidate.through).map(({ role, content }) => ({ role, content }));
         return { ...candidate, tail, coverage: { state: 'complete', total: record.messages.length, summarized: candidate.through, raw: tail.length, omitted: 0, excluded: 0 } };
     }
-    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); recoveryWorkbench.clear(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
+    function clear() { taskStates.clear(); webSearchEnabled = false; webEpoch++; host.webSearch?.cancel(); host.services?.cancel(); recoveryWorkbench.clear(); actionAssembly.clear(); autoActions.length = 0; autoPlans.length = 0; autoConfigChecks.length = 0; fullAccess = false; selectionEpoch++; viewedId = null; capture(); appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; model = null; running = null; connection = null; sessions.clear(); runtimeSessions.clear(); intentions.clear(); continuations.clear(); permissions.clear(); }
     const unsubscribeHost = host.subscribe(syncTarget);
     const unsubscribeConnection = host.modelConnection?.subscribe(() => {
         if (!hostConnectionCurrent || resetting || disposed) return;
@@ -1077,6 +1077,10 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
         async savePromptCaptureConfig(value) { live(); if(!host.stPromptSnapshots||resetting)throw Error('NOT_READY');await host.stPromptSnapshots.save(value);live();emit(); },
         clearPromptCapture() { live();host.stPromptSnapshots?.clear();emit(); },
         diagnosticsSnapshot() { live(); return host.stDiagnostics?.snapshot() || { records: [] }; },
+        async checkServices() { live(); if (resetting || snapshot().busy || !host.services) throw Error('NOT_READY'); const value = await host.services.check(); live(); return value; },
+        async checkServiceStorage() { live(); if (resetting || snapshot().busy || !host.services) throw Error('NOT_READY'); const value = await host.services.checkStorage(); live(); return value; },
+        async serviceDiagnostics() { live(); if (resetting || snapshot().busy || !host.services) throw Error('NOT_READY'); const value = await host.services.diagnostics(); live(); return value; },
+        async clearServiceDiagnostics() { live(); if (resetting || snapshot().busy || !host.services) throw Error('NOT_READY'); await host.services.clearDiagnostics(); live(); },
         async saveDiagnosticsConfig(value) { live(); if (!host.stDiagnostics || resetting) throw Error('NOT_READY'); await host.stDiagnostics.save(value); live(); emit(); },
         clearDiagnostics() { live(); host.stDiagnostics?.clear(); emit(); },
         allowHistory() {

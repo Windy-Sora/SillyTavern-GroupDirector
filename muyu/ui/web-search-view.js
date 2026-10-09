@@ -1,11 +1,12 @@
 import { WEB_DEFAULTS, WEB_RANGES } from '../web/contract.js';
 import { createFormFeedback } from './form-feedback.js';
 import { bindAutoSave } from './auto-save.js';
+import { createServiceStatusView } from './service-status-view.js';
 
 const SERVICE_REPOSITORY = 'https://github.com/Windy-Sora/SillyTavern-Muyu-Services';
 
 /** Composer switch and stable settings editor; toggling never sends the user's draft. */
-export function createWebSearchView({ doc, settings, toolbar, composer, controller, act, openSettings, lang }) {
+export function createWebSearchView({ doc, settings, serviceSettings, toolbar, composer, controller, act, openSettings, openServices, lang }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, parent) => { const el = doc.createElement(tag); if (text) el.textContent = text; parent.append(el); return el; };
     const button = (text, parent) => { const el = node('button', text, parent); el.type = 'button'; el.className = 'menu_button'; return el; };
@@ -17,7 +18,12 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
     const editor = node('details', '', settings); editor.className = 'gd-muyu-web-settings';
     node('summary', t('联网搜索', 'Web search'), editor);
     node('p', t('小地球只控制暮羽的网页搜索。开启后由暮羽按需搜索，不必逐次授权；全权限模式也遵守这个开关。切换模型连接或刷新后关闭。', 'The globe controls Muyu web search. When enabled, Muyu searches as needed without per-search approval; full access respects this switch. Reconnecting or reloading turns it off.'), editor);
-    const installation = node('section', '', editor); installation.className = 'gd-muyu-web-installation';
+    const installation = node(serviceSettings ? 'details' : 'section', '', serviceSettings || editor); installation.className = 'gd-muyu-web-installation';
+    if (serviceSettings) node('summary', t('可选服务 · 文件历史与联网', 'Optional services · File history & web'), installation);
+    const serviceView = createServiceStatusView({ doc, parent: installation, controller, lang });
+    const showServices = target => (openServices || openSettings)(target);
+    const serviceLink = button(t('服务安装与自检…', 'Service installation & checks…'), editor);
+    serviceLink.onclick = () => { installation.open = true; showServices(installation); };
     const installationState = node('p', '', installation); installationState.setAttribute('role', 'status');
     const installationActions = node('div', '', installation); installationActions.className = 'gd-muyu-actions';
     const getPlugin = button(t('获取服务插件', 'Get service plugin'), installationActions);
@@ -44,8 +50,8 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
     };
     node('li', t('在酒馆 config.yaml 中设置 enableServerPlugins: true，然后重启酒馆。此界面不会自动安装或修改该文件。', 'Set enableServerPlugins: true in ST’s config.yaml, then restart ST. This UI does not install anything or edit that file.'), steps);
     node('li', t('回到这里检查安装状态，再配置独立的 Brave 搜索密钥并开启小地球。安装检测不需要模型连接或搜索密钥，也不调用 Brave。', 'Return here to check installation, then configure a separate Brave key and enable the globe. Installation checks require neither a model connection nor a search key and do not call Brave.'), steps);
-    node('small', t('也可下载仓库 ZIP，确保 plugins/gd-muyu-history 下直接包含 index.cjs、web-search.cjs 与 package.json。已安装旧版时更新原目录，不要重复安装同名插件；更新后重启。检测成功仅代表服务已加载，不代表搜索密钥有效。', 'Alternatively download the repository ZIP: plugins/gd-muyu-history must directly contain index.cjs, web-search.cjs and package.json. Update an existing installation in place; do not install duplicate plugin IDs. Restart after updating. A successful check only confirms the service is loaded, not that the search key is valid.'), guide);
-    getPlugin.onclick = () => { editor.open = true; guide.open = true; openSettings(guide); };
+    node('small', t('也可下载仓库 ZIP，将全部 .cjs 文件与 package.json 放在 plugins/gd-muyu-history 下，包括 service-status.cjs。已安装旧版时更新原目录，不要重复安装同名插件；更新后重启。检测成功不代表搜索密钥有效。', 'Alternatively download the repository ZIP: put all .cjs files and package.json directly in plugins/gd-muyu-history, including service-status.cjs. Update in place rather than installing duplicate IDs, then restart. Successful detection does not verify the search key.'), guide);
+    getPlugin.onclick = () => { installation.open = true; guide.open = true; showServices(guide); };
     node('small', t('搜索服务：Brave Search API。需要独立的搜索密钥；与模型 API Key 无关。', 'Provider: Brave Search API. Requires a separate search key, not your model API key.'), editor);
     const key = field(t('Brave Search API 密钥', 'Brave Search API key'), 'password', editor); key.autocomplete = 'off';
     const remember = field(t('记住搜索密钥', 'Remember search key'), 'checkbox', editor);
@@ -78,7 +84,7 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
     toggle.onclick = () => act(async () => {
         const s = controller.snapshot();
         if (!s.webSearch?.enabled && s.webSearch?.backend !== 'available') {
-            editor.open = true; guide.open = true; openSettings(guide); await probe(); return;
+            installation.open = true; guide.open = true; showServices(guide); await probe(); return;
         }
         if (!s.webSearch?.enabled && (!s.enabled || !s.webSearch?.hasKey)) { editor.open = true; openSettings(s.enabled ? key : undefined); return; }
         try { await controller.setWebSearchEnabled(!s.webSearch.enabled); }
@@ -95,6 +101,7 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
     forget.onclick = () => act(() => feedback.run(async () => { await controller.forgetWebSearchKey(); key.value = ''; signature = ''; }));
     return {
         render(s) {
+            serviceView.render();
             const web = s.webSearch || { ...WEB_DEFAULTS, hasKey: false, remembered: false, backend: 'unknown' };
             toggle.hidden = s.mode !== 'assistant';
             toggle.disabled = !!s.resetting || !!web.saving || !!s.readOnly || !web.enabled && !!s.busy;
@@ -115,5 +122,7 @@ export function createWebSearchView({ doc, settings, toolbar, composer, controll
             stateText.textContent = web.hasKey ? t('已提供搜索密钥', 'Search key provided') : t('尚未配置搜索密钥', 'Search key not configured');
         },
         clearKey() { key.value = ''; },
+        openServices() { installation.open = true; showServices(installation); },
+        dispose() { serviceView.dispose(); },
     };
 }

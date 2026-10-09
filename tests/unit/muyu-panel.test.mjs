@@ -1,5 +1,67 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) test('Service errors stay local, exports are sanitized and clear does not touch conversations / ' + lang, async () => {
+    const f = fixture(lang, true), t = (zh, en) => lang === 'en' ? en : zh; let reads = 0, clears = 0;
+    f.state.input = 'UNSENT';
+    f.controller.checkServices = async () => ({ status: 'available', serviceVersion: '0.3.0', capabilities: { history: true, search: true, storageCheck: true, diagnostics: true }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
+    f.controller.serviceDiagnostics = async () => { reads++; return { version: 1, capacity: 200, retentionMinutes: 30, path: 'SECRET', records: [{ id: 1, time: 10000, operation: 'history.write', stage: 'request', code: 'HISTORY_CONFLICT', durationMs: 10, key: 'SECRET' }] }; };
+    f.controller.clearServiceDiagnostics = async () => { clears++; };
+    const view = f.find('button', t('查看／刷新错误记录', 'View / refresh service errors'));
+    assert.equal(view.disabled, true); assert.equal(reads, 0);
+    await f.find('button', t('检查服务能力', 'Check service capabilities')).click(); assert.equal(view.disabled, false);
+    await view.click(); assert.equal(reads, 1); assert.ok(!f.all().some(e => e.textContent?.includes('SECRET')));
+    await f.find('button', t('导出服务日志 JSON', 'Export service log JSON')).click();
+    const output = f.all().find(e => e.getAttribute?.('aria-label') === t('脱敏服务日志 JSON', 'Sanitized service log JSON'));
+    assert.match(output.value, /HISTORY_CONFLICT/); assert.ok(!output.value.includes('SECRET'));
+    await f.find('button', t('清空服务错误记录', 'Clear service errors')).click(); assert.equal(clears, 1); assert.equal(output.value, '');
+    assert.equal(f.state.input, 'UNSENT'); assert.equal(f.sent.length, 0);
+    const stale = view.onclick; f.root.__gdMuyuDispose(); await stale(); assert.equal(reads, 1);
+});
+test('Late service errors cannot populate a disposed view and old services have no log buttons enabled', async () => {
+    const f = fixture('en', true); let release;
+    f.controller.checkServices = async () => ({ status: 'available', serviceVersion: '0.3.0', capabilities: { diagnostics: true }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
+    await f.find('button', 'Check service capabilities').click();
+    f.controller.serviceDiagnostics = () => new Promise(resolve => { release = resolve; });
+    const pending = f.find('button', 'View / refresh service errors').click(); f.root.__gdMuyuDispose();
+    release({ version: 1, capacity: 200, retentionMinutes: 30, records: [] }); await pending;
+    const old = fixture('en', true); old.controller.checkServices = async () => ({ status: 'legacy' }); await old.find('button', 'Check service capabilities').click();
+    assert.equal(old.find('button', 'View / refresh service errors').disabled, true); old.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Optional service entry shares storage settings, preserves draft and requires a click for writes / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }); f.state.input = 'UNSENT'; let reads = 0, writes = 0;
+    f.controller.checkServices = async () => { reads++; return { status: 'available', serviceVersion: '0.2.0', capabilities: { history: true, search: true, storageCheck: true }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } }; };
+    f.controller.checkServiceStorage = async () => { writes++; return { status: 'ok', stage: 'complete', cleanup: 'complete' }; };
+    const t = (zh, en) => lang === 'en' ? en : zh;
+    assert.equal(reads, 0); assert.equal(writes, 0);
+    const testWrite = f.find('button', t('测试历史存储（写入临时文件）', 'Test history storage (writes a temporary file)'));
+    assert.equal(testWrite.disabled, true);
+    await f.find('button', t('服务安装与自检…', 'Service installation & checks…')).click();
+    const installation = f.find('summary', t('可选服务 · 文件历史与联网', 'Optional services · File history & web')).parent;
+    assert.equal(installation.open, true); let page = installation;
+    while (page && page.className !== 'gd-muyu-settings-page') page = page.parent;
+    assert.equal(page.hidden, false); assert.equal(page.getAttribute('aria-label'), t('存储与记忆', 'Storage & memory'));
+    await f.find('button', t('检查服务能力', 'Check service capabilities')).click();
+    assert.equal(reads, 1); assert.equal(writes, 0); assert.equal(testWrite.disabled, false);
+    await testWrite.click(); assert.equal(writes, 1); assert.equal(f.state.input, 'UNSENT'); assert.equal(f.sent.length, 0);
+    const stale = testWrite.onclick; f.root.__gdMuyuDispose(); await stale(); assert.equal(writes, 1);
+});
+test('Legacy service cannot run storage check and failed recheck clears previous capability', async () => {
+    const f = fixture('en', true), check = f.find('button', 'Check service capabilities'), storage = f.find('button', 'Test history storage (writes a temporary file)');
+    f.controller.checkServices = async () => ({ status: 'legacy' }); await check.click(); assert.equal(storage.disabled, true);
+    f.controller.checkServices = async () => ({ status: 'available', serviceVersion: '0.2.0', capabilities: { history: true, search: true, storageCheck: true }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
+    await check.click(); assert.equal(storage.disabled, false);
+    f.controller.checkServices = async () => { throw Error('SECRET_SERVER_PATH'); }; await check.click(); assert.equal(storage.disabled, true);
+    assert.ok(!f.all().some(e => e.textContent?.includes('SECRET_SERVER_PATH'))); f.root.__gdMuyuDispose();
+});
+test('Late service status results cannot update a disposed panel', async () => {
+    const f = fixture('en', true); let release;
+    f.controller.checkServices = () => new Promise(resolve => { release = resolve; });
+    const pending = f.find('button', 'Check service capabilities').click();
+    const output = f.all().find(e => e.textContent === 'Checking…'); f.root.__gdMuyuDispose();
+    release({ status: 'legacy' }); await pending; assert.equal(output.textContent, 'Checking…');
+});
+
 for (const lang of ['zh', 'en']) test('Ctrl+Enter does not submit during IME composition, repeat or plain Enter / ' + lang, async () => {
     const f = fixture(lang, true, { initialMode: 'assistant' }); f.state.enabled = true; f.state.permissions = { diagnostics: true }; f.state.input = 'draft'; f.emit();
     const input = f.find('textarea'); let prevented = 0;

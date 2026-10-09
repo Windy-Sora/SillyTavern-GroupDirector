@@ -356,6 +356,16 @@ for(const operation of ['capture','apply'])for(const access of ['normal','deny',
  await f.controller.dispose();
 });
 import test from 'node:test';
+
+test('Service checks work without model setup or permissions and dispose cancels transport', async () => {
+    let reads = 0, writes = 0, cancels = 0;
+    const f = fixture([], { services: { check: async () => { reads++; return { status: 'legacy' }; }, checkStorage: async () => { writes++; return { status: 'ok' }; }, cancel: () => { cancels++; } } });
+    f.controller.setInput('UNSENT');
+    assert.deepEqual(await f.controller.checkServices(), { status: 'legacy' });
+    assert.deepEqual(await f.controller.checkServiceStorage(), { status: 'ok' });
+    assert.equal(reads, 1); assert.equal(writes, 1); assert.equal(f.controller.snapshot().input, 'UNSENT'); assert.equal(f.model.requests.length, 0);
+    await f.controller.dispose(); assert.ok(cancels >= 1); await assert.rejects(f.controller.checkServices(), /DISPOSED/);
+});
 for(const kind of ['profile','npc'])for(const access of ['normal','deny','full','preview'])test('Manual '+kind+' creation controller / '+access,async()=>{
  const {createProfileEditorPort}=await import('../../muyu/host/profile-editor.js');const {createNpcEditorPort}=await import('../../muyu/host/npc-editor.js');const {createNpcSystem}=await import('../../systems/npc-system.js');
  let f,saves=0;const metadata={},deps={getTarget:()=>f.host.currentTarget(),getMetadata:()=>metadata,extensionKey:'gd',saveChatConfirmed:async()=>{saves++;}};

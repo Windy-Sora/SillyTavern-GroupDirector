@@ -52,6 +52,7 @@ import { createContextConfigStore } from '../../muyu/host/context-config.js';
 import { createInstructionConfigStore } from '../../muyu/host/instruction-config.js';
 import { createHistoryPort } from '../../muyu/host/history.js';
 import { createAgentMemoryPort } from '../../muyu/host/agent-memory.js';
+import { createServicesPort } from '../../muyu/host/services.js';
 import { createWebSearchPort } from '../../muyu/host/web-search.js';
 import { createMuyuController } from '../../muyu/application/controller.js';
 import { mountMuyuPanel } from '../../muyu/ui/panel.js';
@@ -72,8 +73,9 @@ registerSection('muyu', ctx => {
         let host;
         const stPromptSnapshots = createStPromptSnapshots({getContext:ctx.getContext,getTarget:()=>host?.currentTarget(),getSettings:()=>ctx.settings,saveSettings:ctx.saveMuyuCredentials});
         const stDiagnostics = createStDiagnostics({ getContext: ctx.getContext, getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
+        const services = createServicesPort({ fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
         const providerPort = createProviderPort({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, bindings: ctx.muyuProviderBindings, getProviders: ctx.getMuyuProviders,
-            stDiagnostics, stPromptSnapshots,
+            stDiagnostics, stPromptSnapshots, services,
             worldBooks: { getState: ctx.getMuyuWorldBookState, load: ctx.loadWorldInfo },
             stDirectories: { getSelectedPersona: ctx.getMuyuSelectedPersona, getExtensions: ctx.getMuyuExtensionDirectory } });
         const credentials = createCredentialStore({ getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
@@ -311,7 +313,7 @@ registerSection('muyu', ctx => {
                 return !!ctx.npcSystem?.isGenerating?.() || !!guards.roundActive || !!guards.manualGenerating || !!guards.takeoverPending;
             },
         }) : null;
-        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, permissionConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
+        host = createHostBridge({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, getGuards: ctx.getMuyuGuards, providerPort, stDiagnostics, stPromptSnapshots, providerAssets, scriptExecutors, customAgents, memoryGeneration, profileGeneration, npcGeneration, generationBatch, skills, customPrompts, profileLibraries, npcLibraries, blueprintLibraries, blueprintLibraryChat, profileLibraryChat, npcLibraryChat, credentials, runConfig, permissionConfig, contextConfig, instructionConfig, displayConfig, history, agentMemory, webSearch, services, configWriter, variableDraftPort, variableEditor, memoryEditor, profileEditor, npcEditor, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, variableWriter, bundleDraftPort, bundleWriter, profileWriter, memoryLimitPort, completionVariablePort, blueprintTogglePort });
         owner.controller = createMuyuController({ host });
         owner.floatingRegistry = createFloatingRegistry();
         owner.floatingRegistry.register({

@@ -4,7 +4,7 @@ import { historyDatePresentation } from './history-presentation.js';
 import { historyErrorLabel } from './history-error.js';
 
 /** Responsive history browser. Viewing another chat never changes the execution target. */
-export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, launcherActions = null }) {
+export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, openServices, launcherActions = null }) {
     const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, parent) => { const el = doc.createElement(tag); el.textContent = text; parent.append(el); return el; };
     const button = (text, parent) => { const el = node('button', text, parent); el.type = 'button'; el.className = 'menu_button'; return el; };
@@ -14,6 +14,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
         return el;
     };
     const section = node('section', '', settings); node('h3', t('对话历史', 'Conversation history'), section);
+    if (openServices) { const services = node('button', t('服务安装与自检…', 'Service installation & checks…'), section); services.type = 'button'; services.className = 'menu_button'; services.onclick = openServices; }
     const storageLocation = node('p', '', section); storageLocation.className = 'gd-muyu-storage-location';
     const storageStatus = node('p', '', section); storageStatus.className = 'gd-muyu-storage-status'; storageStatus.setAttribute('role', 'status');
     const label = node('label', t('自动保存暮羽对话（默认开启）', 'Automatically save Muyu conversations (on by default)'), section);

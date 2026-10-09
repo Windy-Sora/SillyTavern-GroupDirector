@@ -125,7 +125,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const workspace = node('div', '', body); workspace.className = 'gd-muyu-workspace';
     const sidebarRoot = node('div', '', workspace); sidebarRoot.className = 'gd-muyu-sidebar-slot';
     const chat = node('div', '', workspace); chat.className = 'gd-muyu-chat';
-    const historyView = createHistoryView({ doc, settings: settingsLayout.pages.storage, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, launcherActions: actionsRoot });
+    const historyView = createHistoryView({ doc, settings: settingsLayout.pages.storage, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, openServices: () => webSearchView.openServices(), launcherActions: actionsRoot });
     const setupBar = node('div', '', chat); setupBar.className = 'gd-muyu-connection-entry';
     const setupLabel = node('strong', t('AI 接口', 'AI connection'), setupBar);
     const setup = button(t('配置连接', 'Configure connection'), setupBar);
@@ -172,7 +172,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     toolsButton.setAttribute('aria-label', t('会话工具与开销', 'Conversation tools and usage'));
     toolsButton.onclick = () => { tools.open = !tools.open; updateViewSize(); };
     tools.addEventListener('toggle', () => { if (!disposed) updateViewSize(); });
-    const webSearchView = createWebSearchView({ doc, settings: settingsLayout.pages.skills, toolbar: inputToolbar, composer, controller, act, openSettings: target => target ? showSettings(true, 'skills', target) : showSettings(true, 'connection', endpoint), lang });
+    const webSearchView = createWebSearchView({ doc, settings: settingsLayout.pages.skills, serviceSettings: settingsLayout.pages.storage, openServices: target => showSettings(true, 'storage', target), toolbar: inputToolbar, composer, controller, act, openSettings: target => target ? showSettings(true, 'skills', target) : showSettings(true, 'connection', endpoint), lang });
     const modeLabel = node('label', t('任务', 'Task'), unified ? legacyRoot : inputToolbar), mode = node('select', '', modeLabel); mode.className = 'text_pole'; modeLabel.className = 'gd-muyu-mode';
     for (const [value, task] of Object.entries(taskCatalog)) { const option = node('option', t(...task.label), mode); option.value = value; }
     const authorization = node('section', '', unified ? legacyRoot : composer); authorization.className = 'gd-muyu-authorization'; authorization.hidden = true;
@@ -482,6 +482,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (!event.isComposing && event.keyCode !== 229 && !event.repeat && event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; diagnosticExportView.dispose(); hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); interactionView.dispose(); scrollFollow.dispose(); unsubscribe?.(); historyView.dispose(); transcriptView.dispose(); receiptView.dispose(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; diagnosticExportView.dispose(); hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); interactionView.dispose(); scrollFollow.dispose(); unsubscribe?.(); historyView.dispose(); transcriptView.dispose(); receiptView.dispose(); key.value = ''; webSearchView.clearKey(); webSearchView.dispose(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }
