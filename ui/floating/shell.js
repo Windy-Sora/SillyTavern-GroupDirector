@@ -53,9 +53,7 @@ export function createFloatingShell({ registry, doc = document, win = window, la
     let bounds = fitFloatingRect({ x: win.innerWidth - 540, y: 70, width: 520, height: 660 }, viewport());
     let ballBounds = dockedBallRect(ballPosition, viewport());
     function paint(el, rect) { Object.assign(el.style, { left: rect.x + 'px', top: rect.y + 'px', width: rect.width + 'px', height: rect.height + 'px' }); }
-    function layout() {
-        transitions.settleOpening();
-        const area = viewport(), mobile = isMobileViewport(win);
+    function keyboardVisible() {
         if (Math.abs(win.innerWidth - viewportWidth) > 80) {
             viewportWidth = win.innerWidth;
             unobscuredHeight = Math.max(win.innerHeight, win.visualViewport?.height || 0);
@@ -66,7 +64,12 @@ export function createFloatingShell({ registry, doc = document, win = window, la
         let ancestor = focused;
         while (ancestor && ancestor !== frame) ancestor = ancestor.parentElement || ancestor.parent;
         const typing = ancestor === frame && (tag === 'textarea' || tag === 'input' && !['checkbox', 'radio', 'button', 'submit', 'range', 'color', 'file'].includes(focused.type) || focused?.isContentEditable);
-        keyboardOpen = !!(mobile && activeId && typing && (win.visualViewport?.scale || 1) <= 1.05 && unobscuredHeight - visibleHeight > Math.max(150, unobscuredHeight * .2));
+        return !!(isMobileViewport(win) && activeId && typing && (win.visualViewport?.scale || 1) <= 1.05 && unobscuredHeight - visibleHeight > Math.max(150, unobscuredHeight * .2));
+    }
+    function layout() {
+        transitions.settleOpening();
+        const area = viewport(), mobile = isMobileViewport(win);
+        keyboardOpen = keyboardVisible();
         root.dataset.mobile = String(mobile);
         root.dataset.keyboard = String(keyboardOpen);
         title.hidden = mobile && !keyboardOpen && !mobileExpanded && !viewExpanded;
@@ -215,7 +218,7 @@ export function createFloatingShell({ registry, doc = document, win = window, la
         layout();
     }) : null;
     const viewportChanged = () => { transitions.cancel(); layout(); };
-    const focusChanged = () => { Promise.resolve().then(() => { if (!disposed) viewportChanged(); }); };
+    const focusChanged = () => { Promise.resolve().then(() => { if (!disposed && keyboardVisible() !== keyboardOpen) viewportChanged(); }); };
     frame.addEventListener('focusin', focusChanged); frame.addEventListener('focusout', focusChanged);
     observer?.observe(frame); win.addEventListener('resize', viewportChanged);
     win.visualViewport?.addEventListener('resize', viewportChanged); win.visualViewport?.addEventListener('scroll', viewportChanged);

@@ -59,19 +59,33 @@ test('Window geometry stays reachable at 320/400/600/800px and after viewport sh
 });
 
 class Element {
-    constructor(tag, doc) { this.tag = tag; this.ownerDocument = doc; this.children = []; this.style = {}; this.dataset = {}; this.attrs = {}; this.isConnected = true; }
+    constructor(tag, doc) {
+        this.tag = tag; this.ownerDocument = doc; this.children = []; this.style = {}; this.dataset = {}; this.attrs = {}; this.isConnected = true;
+        if (doc.animations) this.animate = (frames, options) => {
+            let reject;
+            const row = { frames, options, cancelled: false, finished: new Promise((_, no) => { reject = no; }),
+                cancel() { this.cancelled = true; reject(Error('cancelled')); } };
+            doc.animations.push(row); return row;
+        };
+    }
     append(...nodes) { for (const n of nodes) { this.children.push(n); n.parent = this; } }
     replaceChildren() { this.children = []; }
     setAttribute(k, v) { this.attrs[k] = v; }
     remove() { this.parent.children = this.parent.children.filter(e => e !== this); this.isConnected = false; }
-    focus() { this.ownerDocument.activeElement = this; }
+    focus() {
+        if (this.ownerDocument.activeElement === this) return;
+        const previous = this.ownerDocument.activeElement; this.ownerDocument.activeElement = this;
+        for (let e = previous; e; e = e.parent) e.events?.get('focusout')?.({ target: previous });
+        for (let e = this; e; e = e.parent) e.events?.get('focusin')?.({ target: this });
+    }
+    getBoundingClientRect() { return { left: parseFloat(this.style.left) || 0, top: parseFloat(this.style.top) || 0, width: parseFloat(this.style.width) || 100, height: parseFloat(this.style.height) || 100 }; }
     get firstElementChild() { return this.children[0]; }
     closest(tag) { return this.tag === tag ? this : this.parent?.closest(tag); }
     addEventListener(key, fn) { (this.events ||= new Map()).set(key, fn); }
     removeEventListener(key) { this.events?.delete(key); }
 }
 function surface(onMount = () => {}, windowOptions = {}, shellOptions = {}) {
-    const doc = { createElement: tag => new Element(tag, doc) }; doc.body = new Element('body', doc);
+    const doc = { animations: windowOptions.testAnimations, createElement: tag => new Element(tag, doc) }; doc.body = new Element('body', doc);
     const events = new Map(), win = { innerWidth: 1000, innerHeight: 800, addEventListener(k, fn) { events.set(k, fn); }, removeEventListener(k) { events.delete(k); } };
     Object.assign(win, windowOptions);
     const registry = createFloatingRegistry(); let mounts = 0, disposals = 0;
@@ -81,6 +95,29 @@ function surface(onMount = () => {}, windowOptions = {}, shellOptions = {}) {
     const find = cls => all().find(e => e.className === cls);
     return { doc, win, events, registry, shell, find, mounts: () => mounts, disposals: () => disposals };
 }
+
+for (const width of [1000, 390]) test('BUG-EC60-01: ordinary focus preserves real shell opening transitions / width=' + width, async () => {
+    const animations = [], f = surface(() => {}, { innerWidth: width, testAnimations: animations });
+    f.shell.open('chat'); assert.equal(animations.length, 3);
+    await Promise.resolve(); assert.ok(animations.every(row => !row.cancelled), 'Window focus must not settle or cancel opening');
+    const input = f.doc.createElement('textarea'); input.value = 'Keep draft'; f.find('gd-floating-content').append(input); input.focus();
+    await Promise.resolve(); assert.ok(animations.every(row => !row.cancelled), 'Text focus without a keyboard must also preserve opening');
+    assert.equal(input.value, 'Keep draft'); assert.equal(f.mounts(), 1);
+    f.shell.close(); const closing = animations.slice(3); assert.equal(closing.length, 2);
+    await Promise.resolve(); assert.ok(closing.every(row => !row.cancelled), 'Focus restoration must not cancel closing motion');
+    f.shell.dispose(); assert.ok(animations.every(row => row.cancelled)); f.registry.dispose(); await Promise.resolve();
+});
+
+test('Focus-induced keyboard state changes still settle motion and restore geometry without remounting', async () => {
+    const animations = [], f = surface(() => {}, { innerWidth: 390, testAnimations: animations });
+    f.shell.open('chat'); await Promise.resolve(); assert.ok(animations.every(row => !row.cancelled));
+    f.win.innerHeight = 350;
+    const input = f.doc.createElement('textarea'); f.find('gd-floating-content').append(input); input.focus();
+    await Promise.resolve(); assert.ok(animations.every(row => row.cancelled));
+    assert.equal(f.find('gd-floating-root').dataset.keyboard, 'true'); assert.equal(f.find('gd-floating-window').style.height, '260px');
+    f.doc.body.focus(); await Promise.resolve(); assert.equal(f.find('gd-floating-root').dataset.keyboard, 'false');
+    assert.equal(f.mounts(), 1); f.shell.dispose(); f.registry.dispose(); await Promise.resolve();
+});
 test('Single entry opens directly, repeated open focuses existing view; close tears down view only', () => {
     const f = surface(), ball = f.find('gd-floating-ball'); ball.focus(); ball.onclick(); f.shell.open('chat');
     assert.equal(f.mounts(), 1); assert.equal(f.find('gd-floating-window').hidden, false);
