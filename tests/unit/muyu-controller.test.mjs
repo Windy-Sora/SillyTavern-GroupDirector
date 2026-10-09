@@ -1110,7 +1110,7 @@ test('Turning long-term memory off before a returned tool call prevents any note
 test('Storage preference saves without switching the active backend or dropping the composer draft', async () => {
     const store = createMemoryHistoryStore(); store.kind = 'browser';
     const saving = deferred(); let selected = false, opened = 0;
-    const history = { enabled: () => true, accountStorage: () => selected, open: async () => { opened++; return store; },
+    const history = { enabled: () => true, accountStorage: () => selected, activeAccountStorage: () => false, open: async () => { opened++; return store; },
         setAccountStorage: async value => { await saving.promise; selected = value; } };
     const f = fixture([], { history }); await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
     f.controller.newSession(); f.controller.setInput('unsent message');
@@ -1121,6 +1121,7 @@ test('Storage preference saves without switching the active backend or dropping 
     saving.resolve(); await choice;
     const state = f.controller.snapshot();
     assert.equal(state.history.accountStorage, true); assert.equal(state.history.backend, 'browser');
+    assert.equal(state.history.storageChangePending, true);
     assert.equal(state.history.canChooseStorage, true); assert.equal(state.input, 'unsent message');
     assert.equal(opened, 1); assert.equal(f.model.requests.length, 0);
     await f.controller.dispose();

@@ -211,7 +211,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             if (h.enabled && h.backend === 'private-files') status.textContent += t(' · ST 私有文件', ' · Private ST files');
             else if (h.enabled && h.backend === 'browser') status.textContent += t(' · 浏览器 IndexedDB', ' · Browser IndexedDB');
             else if (h.enabled && h.backend === 'account-settings') status.textContent += t(' · 酒馆账户设置', ' · ST account settings');
-            if (h.canChooseStorage && h.backend !== 'memory' && (h.backend === 'account-settings') !== h.accountStorage) {
+            if (h.canChooseStorage && (h.storageChangePending || h.backend !== 'memory' && (h.backend === 'account-settings') !== h.accountStorage)) {
                 const notice = t(' · 存储选项已保存，刷新后生效；当前仍使用原位置', ' · Storage preference saved; reload to switch. Current storage is unchanged');
                 status.textContent += notice; storageStatus.textContent += notice;
             }

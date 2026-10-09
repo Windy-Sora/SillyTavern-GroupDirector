@@ -43,15 +43,18 @@ test('Account admission enforces total capacity including unloaded and unsaved c
     assert.equal((await f.store.list()).length, 4); await library.close();
 });
 
-test('History host wrapper preserves backend admission; selection only changes on reopening', async () => {
+test('History host wrapper preserves backend admission; selection changes only after recreating the port', async () => {
     const settings = { muyuHistoryEnabled: true, muyuHistoryAccountStorage: true };
-    const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {},
-        openServer: async () => null, openStore: async () => ({ kind: 'browser', list: async () => [], close() {} }) });
+    const options = { getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {},
+        openServer: async () => null, openStore: async () => ({ kind: 'browser', list: async () => [], close() {} }) };
+    const port = createHistoryPort(options);
     const account = await port.open(); assert.equal(typeof account.assertCapacity, 'function');
     assert.throws(() => account.assertCapacity(record(), SETTINGS_HISTORY_LIMITS.recordBytes), /HISTORY_CAPACITY/);
     await port.setAccountStorage(false); assert.equal(typeof account.assertCapacity, 'function');
-    const browser = await port.open(); assert.equal(browser.assertCapacity, undefined);
-    account.close(); browser.close();
+    const unchanged = await port.open(); assert.equal(typeof unchanged.assertCapacity, 'function');
+    assert.equal(port.activeAccountStorage(), true); assert.equal(port.accountStorage(), false);
+    const browser = await createHistoryPort(options).open(); assert.equal(browser.assertCapacity, undefined);
+    account.close(); unchanged.close(); browser.close();
 });
 
 test('Account settings history persists and restores independent conversation DTOs', async () => {
@@ -133,8 +136,26 @@ test('Account settings mode bypasses companion plugin and IndexedDB entirely', a
     const store = await port.open(); await store.create(record());
     assert.equal(store.kind, 'account-settings'); assert.equal(calls, 1);
     await port.setAccountStorage(false); assert.equal(port.accountStorage(), false);
-    assert.equal(store.kind, 'account-settings', 'selection changes only the next opened backend');
+    assert.equal(store.kind, 'account-settings', 'selection changes only after page reload');
     assert.equal(settings.muyuHistoryData.records.length, 1, 'old data retained');
+});
+
+test('Failed initialization cannot switch backends through an account-settings toggle cycle before reload', async () => {
+    const settings = { muyuHistoryEnabled: false, muyuHistoryAccountStorage: false };
+    let serverCalls = 0, browserCalls = 0;
+    const options = { getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {},
+        openServer: async () => { serverCalls++; throw Error('HISTORY_UNAVAILABLE'); },
+        openStore: async () => { browserCalls++; throw Error('unexpected fallback'); } };
+    const port = createHistoryPort(options);
+    await assert.rejects(port.open(), /HISTORY_UNAVAILABLE/);
+    await port.setAccountStorage(true);
+    await assert.rejects(port.open(), /HISTORY_UNAVAILABLE/, 'switch takes effect only after reload, even if the initial open failed');
+    await port.setAccountStorage(false); await assert.rejects(port.open(), /HISTORY_UNAVAILABLE/);
+    assert.equal(serverCalls, 3); assert.equal(browserCalls, 0); assert.equal(settings.muyuHistoryData, undefined);
+    await port.setAccountStorage(true);
+    const reloaded = createHistoryPort(options), store = await reloaded.open();
+    assert.equal(store.kind, 'account-settings'); assert.equal(serverCalls, 3);
+    store.close();
 });
 
 test('Account selection save failures preserve choice and account switches block access', async () => {

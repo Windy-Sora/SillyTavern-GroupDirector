@@ -10,7 +10,7 @@ export async function openServerHistoryStore({ namespace, fetcher = globalThis.f
         catch { throw Error('HISTORY_UNAVAILABLE'); }
         if (route === '/health' && response.status === 404) return null;
         let value; try { value = await response.json(); } catch { throw Error('HISTORY_UNAVAILABLE'); }
-        if (!response.ok) throw Error(['HISTORY_CONFLICT', 'HISTORY_DELETED', 'HISTORY_CAPACITY', 'HISTORY_INVALID'].includes(value?.error) ? value.error : 'HISTORY_UNAVAILABLE');
+        if (!response.ok) throw Error(['HISTORY_CONFLICT', 'HISTORY_DELETED', 'HISTORY_CAPACITY', 'HISTORY_INVALID', 'HISTORY_IDENTITY_UNAVAILABLE'].includes(value?.error) ? value.error : 'HISTORY_UNAVAILABLE');
         return value;
     }
     const health = await request('GET', '/health');

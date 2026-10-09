@@ -5,6 +5,7 @@ import { sha256 } from '../runtime/crypto.js';
 import { openRecoveryStore } from '../recovery/indexeddb-store.js';
 /** Only the host composition layer supplies account identity, never the model or an import. */
 export function createHistoryPort({ getAccount, getSettings, saveSettings, openStore = openIndexedHistoryStore, openRecovery = openRecoveryStore, openServer = openServerHistoryStore, fetcher = null, getHeaders = () => ({}) }) {
+    const useSettings = getSettings().muyuHistoryAccountStorage === true;
     async function accountKey() {
         let account;
         try { account = await getAccount?.(); } catch { throw Error('HISTORY_IDENTITY_UNAVAILABLE'); }
@@ -30,6 +31,7 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
             };
         },
         accountStorage: () => getSettings().muyuHistoryAccountStorage === true,
+        activeAccountStorage: () => useSettings,
         async setAccountStorage(enabled) {
             if (typeof enabled !== 'boolean') throw Error('HISTORY_INVALID');
             const settings = getSettings(), previous = settings.muyuHistoryAccountStorage;
@@ -50,7 +52,6 @@ export function createHistoryPort({ getAccount, getSettings, saveSettings, openS
             const digest = await sha256('gd-muyu-history-v1:' + identity);
             const hex = [...new Uint8Array(digest)].slice(0, 16).map(n => n.toString(16).padStart(2, '0')).join('');
             const namespace = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-            const useSettings = getSettings().muyuHistoryAccountStorage === true;
             const server = useSettings ? null : await openServer({ namespace, fetcher, headers: getHeaders });
             const store = useSettings ? openSettingsHistoryStore({ namespace, getSettings, saveSettings: async () => {
                 if (await accountKey() !== identity) throw Error('HISTORY_IDENTITY_UNAVAILABLE');

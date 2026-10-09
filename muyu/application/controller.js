@@ -343,6 +343,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             history: { ...library.snapshot(scopeKey(), id, { ...historyFilters, chatKey: host.currentTarget()?.chatKey }), filters: { ...historyFilters }, restoredStatus: !session ? record?.status : null,
                 missingPermissions: choice.missing,
                 accountStorage: host.history?.accountStorage?.() === true,
+                storageChangePending: typeof host.history?.activeAccountStorage === 'function' && host.history.activeAccountStorage() !== (host.history.accountStorage?.() === true),
                 canChooseStorage: typeof host.history?.setAccountStorage === 'function',
                 omitted: plan.omitted },
             artifacts: isReadOnly || switchedChat ? [] : state?.artifacts.filter(a => a.sessionId === sessionId) || [],

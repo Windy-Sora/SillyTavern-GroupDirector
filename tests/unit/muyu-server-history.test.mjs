@@ -128,7 +128,7 @@ test('Two tabs migrating the same browser history both open without overwriting 
     assert.equal((await backing.list()).length, 1);
 });
 
-test('HTTP adapter writes and restores a private account file without exposing an arbitrary path', async () => {
+for (const relative of [false, true]) test(`HTTP adapter writes and restores a private account file with a ${relative ? 'relative' : 'absolute'} host root`, async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-http-'));
     try {
         const routes = new Map(), router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (route, handler) => routes.set(`${method.toUpperCase()} ${route}`, handler)]));
@@ -139,7 +139,7 @@ test('HTTP adapter writes and restores a private account file without exposing a
             const handler = routes.get(`${options.method} ${route}`);
             if (!handler) return resolve({ status: 404 });
             const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { resolve({ status: this.statusCode, ok: this.statusCode < 400, json: async () => value }); } };
-            handler({ user: { directories: { root } }, query: { namespace: parsed.searchParams.get('namespace') }, params: { id }, body: options.body ? JSON.parse(options.body) : undefined }, res);
+            handler({ user: { directories: { root: relative ? path.relative(process.cwd(), root) : root } }, query: { namespace: parsed.searchParams.get('namespace'), root: 'IGNORED_REQUEST_PATH' }, params: { id }, body: options.body ? JSON.parse(options.body) : undefined }, res);
         });
         const namespace = crypto.randomUUID(), store = await openServerHistoryStore({ namespace, fetcher });
         const input = record(), saved = await store.create(input);
@@ -150,4 +150,30 @@ test('HTTP adapter writes and restores a private account file without exposing a
         await store.remove(input.id, 1);
         assert.equal(await store.read(input.id), null);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('Missing or invalid host account roots remain rejected and cannot be supplied by request data', async () => {
+    const routes = new Map(), router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (route, handler) => routes.set(`${method.toUpperCase()} ${route}`, handler)]));
+    init(router);
+    for (const root of [undefined, null, '', '   ', 42, '\0invalid']) {
+        const response = await new Promise(resolve => {
+            const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { resolve({ status: this.statusCode, value }); } };
+            routes.get('GET /records')({ user: { directories: { root } }, query: { namespace: crypto.randomUUID(), root: process.cwd() }, body: { root: process.cwd() } }, res);
+        });
+        assert.equal(response.status, 500); assert.deepEqual(response.value, { error: 'HISTORY_IDENTITY_UNAVAILABLE' });
+    }
+    const response = await new Promise(resolve => {
+        const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { resolve({ status: this.statusCode, value }); } };
+        routes.get('GET /records')({ user: { directories: { root: process.cwd() } }, query: { namespace: '../escape' } }, res);
+    });
+    assert.equal(response.status, 400); assert.deepEqual(response.value, { error: 'HISTORY_INVALID' });
+});
+
+test('HTTP adapter retains the safe account error but never exposes unknown server details or falls back', async () => {
+    for (const code of ['HISTORY_IDENTITY_UNAVAILABLE', 'SECRET_RAW_BACKEND_DETAIL']) {
+        const fetcher = async url => ({ ok: url.endsWith('/health'), status: url.endsWith('/health') ? 200 : 500,
+            json: async () => url.endsWith('/health') ? { version: 1 } : { error: code, detail: 'PRIVATE_SERVER_PATH' } });
+        const store = await openServerHistoryStore({ namespace: crypto.randomUUID(), fetcher });
+        await assert.rejects(store.list(), error => error.message === (code === 'HISTORY_IDENTITY_UNAVAILABLE' ? code : 'HISTORY_UNAVAILABLE'));
+    }
 });

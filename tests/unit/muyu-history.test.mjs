@@ -15,6 +15,41 @@ function fixture(store = createMemoryHistoryStore(), initiallyEnabled = false) {
 }
 const pair = (runId = 'r', body = 'answer') => [{ role: 'user', content: 'question', runId }, { role: 'assistant', content: body, runId }];
 
+test('Unavailable storage does not prevent saving the auto-save preference or later disabling it', async () => {
+    const backing = createMemoryHistoryStore(); let requested = false, fail = true, writes = 0;
+    const library = createSessionLibrary({ port: { enabled: () => requested,
+        setEnabled: async value => { requested = value; writes++; },
+        open: async () => { if (fail) throw Error('HISTORY_UNAVAILABLE'); return backing; },
+    } });
+    await library.ready;
+    const id = library.create(scope); library.update(id, { messages: pair() });
+    await assert.rejects(library.setEnabled(true), /HISTORY_UNAVAILABLE/);
+    assert.equal(requested, true, 'the requested preference is saved independently of backend availability');
+    assert.equal(library.snapshot(scope, id).enabled, false, 'no false claim of working storage');
+    assert.equal(library.snapshot(scope, id).autoSaveRequested, true);
+    assert.equal(library.snapshot(scope, id).error, 'HISTORY_UNAVAILABLE');
+    assert.deepEqual(library.get(id).messages, pair());
+    await library.setEnabled(false); assert.equal(requested, false);
+    assert.equal(library.snapshot(scope, id).error, null);
+    await assert.rejects(library.setEnabled(true), /HISTORY_UNAVAILABLE/);
+    fail = false; await library.retry();
+    assert.deepEqual((await backing.read(id)).messages, pair());
+    assert.equal(library.snapshot(scope, id).enabled, true); assert.equal(writes, 3);
+    await library.close();
+});
+
+test('Failed preference save does not connect or enable a history backend', async () => {
+    let opens = 0;
+    const library = createSessionLibrary({ port: { enabled: () => false,
+        setEnabled: async () => { throw Error('HISTORY_SETTINGS_FAILED'); },
+        open: async () => { opens++; return createMemoryHistoryStore(); },
+    } });
+    await library.ready; const id = library.create(scope);
+    await assert.rejects(library.setEnabled(true), /HISTORY_SETTINGS_FAILED/);
+    assert.equal(opens, 0); assert.equal(library.snapshot(scope, id).enabled, false);
+    await library.close();
+});
+
 test('Retry reopens a failed default-on history store and persists the retained conversation', async () => {
     const store = createMemoryHistoryStore(); let fail = true, opens = 0, preferenceWrites = 0, requested = true;
     const library = createSessionLibrary({ port: { enabled: () => requested,

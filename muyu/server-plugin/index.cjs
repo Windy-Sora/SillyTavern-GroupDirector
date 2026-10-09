@@ -12,10 +12,10 @@ const fields = new Set(['version', 'id', 'revision', 'scope', 'title', 'createdA
 const queues = new Map();
 function directory(req) {
     const root = req.user?.directories?.root;
-    if (typeof root !== 'string' || !path.isAbsolute(root)) throw Error('HISTORY_IDENTITY_UNAVAILABLE');
+    if (typeof root !== 'string' || !root.trim() || root.includes('\0')) throw Error('HISTORY_IDENTITY_UNAVAILABLE');
     const namespace = req.query?.namespace;
     if (typeof namespace !== 'string' || !uuid.test(namespace)) throw Error('HISTORY_INVALID');
-    return path.join(root, '.group-director', 'muyu', 'history', namespace);
+    return path.join(path.resolve(root), '.group-director', 'muyu', 'history', namespace);
 }
 function file(dir, id) {
     if (typeof id !== 'string' || !uuid.test(id)) throw Error('HISTORY_INVALID');

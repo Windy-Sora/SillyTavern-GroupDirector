@@ -1685,6 +1685,9 @@ for (const lang of ['zh', 'en']) test(`History settings report actual storage, f
     f.state.history.recovery = true; f.emit(); assert.match(status.textContent, en ? /recovery backup/ : /恢复备份/);
     f.state.history = { ...f.state.history, backend: 'memory', recovery: false, error: null, persisted: true }; f.emit();
     assert.match(location.textContent, en ? /page only/ : /临时保留/); assert.match(status.textContent, en ? /may be lost/ : /可能丢失/); assert.doesNotMatch(status.textContent, /Saved locally|已保存在本地/);
+    f.state.history = { ...f.state.history, enabled: false, autoSaveRequested: true, storageChangePending: true, error: 'HISTORY_UNAVAILABLE' }; f.emit();
+    assert.match(status.textContent, /HISTORY_UNAVAILABLE/); assert.match(status.textContent, en ? /reload to switch/ : /刷新后生效/);
+    assert.match(location.textContent, en ? /page only/ : /临时保留/);
     f.root.__gdMuyuDispose();
 });
 

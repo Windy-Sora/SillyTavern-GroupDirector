@@ -192,8 +192,9 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
             loading = true; error = null; notify();
             try {
                 await tail;
+                await port.setEnabled(value);
                 if (value && !store) await connect();
-                await port.setEnabled(value); enabled = value;
+                enabled = value;
                 if (enabled) { failures.clear(); for (const id of dirty) schedule(id); }
                 // Keep opened read access: disabling automatic saves does not hide/delete old records.
             } catch (e) { error = e.message; throw e; }
