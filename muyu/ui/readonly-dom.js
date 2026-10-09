@@ -8,7 +8,9 @@ const identity = element => tag(element) + ':' + (tag(element) === 'details'
 export function patchReadonly(target, source, defaults) {
     target.className = source.className || ''; target.hidden = !!source.hidden; target.disabled = !!source.disabled;
     if (source.type) target.type = source.type;
-    const attributes = element => Array.from(element.attributes || [], attr => [attr.name, attr.value]);
+    // details.open reflects its attribute; preserve manual choices until the default changes.
+    const attributes = element => Array.from(element.attributes || [], attr => [attr.name, attr.value])
+        .filter(([name]) => tag(element) !== 'details' || name !== 'open');
     const nextAttributes = new Map(attributes(source));
     for (const [name] of attributes(target)) if (!nextAttributes.has(name)) target.removeAttribute(name);
     for (const [name, value] of nextAttributes) if (target.getAttribute(name) !== value) target.setAttribute(name, value);

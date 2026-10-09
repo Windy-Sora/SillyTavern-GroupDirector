@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createReceiptView } from '../../muyu/ui/receipt-view.js';
 import { createTranscriptView } from '../../muyu/ui/transcript-view.js';
 import { receiptNeedsReview, receiptSummary } from '../../muyu/ui/receipt-presentation.js';
+import { createArtifactCards } from '../../muyu/ui/artifact-cards.js';
+import { initializeDetails, patchReadonly } from '../../muyu/ui/readonly-dom.js';
 
 class Element {
     constructor(tag, doc) { this.tagName = tag; this.ownerDocument = doc; this.children = []; this.textContent = ''; this.attrs = {}; }
@@ -13,10 +15,40 @@ class Element {
     setAttribute(name, value) { this.attrs[name] = value; }
     getAttribute(name) { return this.attrs[name]; }
     removeAttribute(name) { delete this.attrs[name]; }
+    get open() { return Object.hasOwn(this.attrs, 'open'); }
+    set open(value) { if (value) this.setAttribute('open', ''); else this.removeAttribute('open'); }
     get attributes() { return Object.entries(this.attrs).map(([name, value]) => ({ name, value })); }
 }
 const descendants = root => [root, ...root.children.flatMap(descendants)];
 const result = status => ({ operationId: 'op', artifactId: 'draft', revision: 1, at: 1, status, diff: [], saveError: false, changed: false });
+
+for (const initial of [false, true]) test('Nested artifact disclosure keeps reflected manual state / ' + initial, () => {
+    const doc = { createElement: tag => new Element(tag, doc) }, owner = doc.createElement('div');
+    const artifact = { id: 'draft', kind: 'inline', revision: 1, content: {} };
+    const state = { viewKey: 'a', viewToken: 1, busy: false, artifacts: [artifact] };
+    const views = { layout: () => 'inline', title: () => 'Draft', render: (_, { doc, card }) => {
+        const detail = doc.createElement('details'), summary = doc.createElement('summary');
+        detail.open = initial; summary.textContent = 'Full source'; detail.append(summary); card.append(detail); return true;
+    } };
+    const cards = createArtifactCards({ doc, views, controller: { snapshot: () => state }, act: fn => fn(), lang: 'en' });
+    const root = cards.update(artifact, state, owner, 0), detail = root.children.find(el => el.tagName === 'details');
+    detail.open = !initial; state.busy = true; cards.update(artifact, state, owner, 0);
+    assert.equal(root.children.find(el => el.tagName === 'details'), detail);
+    assert.equal(detail.open, !initial);
+    assert.equal(Object.hasOwn(detail.attrs, 'open'), !initial);
+    cards.dispose();
+});
+
+test('Reflected disclosure defaults still follow meaningful stage changes in both directions', () => {
+    const target = new Element('details'), source = new Element('details'), defaults = new WeakMap();
+    initializeDetails(target, defaults); target.open = true;
+    source.setAttribute('data-state', 'idle'); patchReadonly(target, source, defaults);
+    assert.equal(target.open, true); assert.equal(target.getAttribute('data-state'), 'idle');
+    target.open = false; source.open = true; patchReadonly(target, source, defaults); assert.equal(target.open, true);
+    target.open = false; patchReadonly(target, source, defaults); assert.equal(target.open, false);
+    target.open = true; source.open = false; patchReadonly(target, source, defaults); assert.equal(target.open, false);
+    target.open = true; patchReadonly(target, source, defaults); assert.equal(target.open, true);
+});
 function fixture(lang = 'en') {
     const doc = { createElement: tag => new Element(tag, doc) }, root = doc.createElement('div'), history = doc.createElement('div'), cards = doc.createElement('div'), calls = [];
     const state = { viewKey: 'a', viewToken: 1, connection: { model: 'synthetic' }, enabled: true, busy: false, canReadConfig: true, canCheckReceipts: { op: true }, receipts: [result('applied_confirmed')], artifacts: [{ id: 'draft', revision: 1, kind: 'config-draft', content: {} }], messages: [], runs: [], mode: 'assistant' };
