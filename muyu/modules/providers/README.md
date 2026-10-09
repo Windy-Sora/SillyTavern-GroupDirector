@@ -149,11 +149,11 @@ Agent → ToolBroker → modules/providers → host/providers → 既有业务�
 - 首次 selector/revision 为空、offset=0；档案/记忆先返回 character:N 目录。
 - 角色详情携带目录 revision 和 character:N；身份只用本地引用，头像路径不外发。
 - 续页携带返回的 revision/nextOffset。每个 Run 独立，不能跨 Run 复用。
-- 返回 source/status/revision/text/nextOffset/truncated/readAt，不返回宿主聊天 ID。
+- 返回 source/status/revision/text/nextOffset/truncated/readAt，不返回宿主聊天 ID。文本成功结果另给 `sourceLimited`，仅说明来源投影确实省略内容；`truncated` 保持兼容，仍表示“还有分页或来源省略”。执行过程区分正常分页与来源限制，分页只在详情作中性提示，不宣称已读齐全来源。
 - 每页至多 2000 UTF-16 单元（不切断代理对）；生产每 Run 默认2 MiB UTF-8 字节正文，可在运行预算设置中调整为6000–16777216字节，发送时固定；最多16个资料快照。最近消息窗口之外需使用历史范围入口，不一次注入全部历史。
 - 单资料最多 131072 字符、角色最多 256、单角色记忆最多 2048；超过限制明确 SOURCE_TOO_LARGE，不静默宣称完整。
 - 分页按完整受支持投影核对版本，不用弱哈希；目标变化/取消不发布。SOURCE_DISABLED、SOURCE_UNAVAILABLE、STALE_SOURCE、empty、预算耗尽分别处理。
-- 执行过程只存来源枚举、状态、字符数与截断标志，不复制正文、角色引用或 revision。正文不自动持久化，但模型回答可能引用它。
+- 执行过程只存来源枚举、状态、字符数与截断／来源限制／分页布尔标志，不复制正文、角色引用、续读 token 或 revision。旧结果缺少区分信息时保留保守提示；真实读取错误仍显示异常记录。正文不自动持久化，但模型回答可能引用它。
 
 ## 授权生命周期
 

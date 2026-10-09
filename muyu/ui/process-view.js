@@ -42,7 +42,9 @@ const errors = {
     MODEL_RATE_LIMIT: ['服务限流', 'Service rate limit'], MODEL_SERVICE_ERROR: ['模型服务失败', 'Model service failure'],
 };
 const local = (pair, lang) => pair[lang === 'en' ? 1 : 0];
-const readWarning = row => row.read && (row.read.truncated || !['ok', 'empty'].includes(row.read.status));
+const readError = row => row.read && !['ok', 'empty'].includes(row.read.status);
+const readLimited = row => row.read && (row.read.limited === true || row.read.truncated && !row.read.paged);
+const readWarning = row => readError(row) || readLimited(row);
 /** Event markers describe observed events, never a percentage or inferred write success. */
 export function processEventState(row, active = false) {
     if (row.error || row.type.endsWith('.failed')) return 'error';
@@ -57,12 +59,25 @@ export function processLabel(process, lang = 'zh') {
     return text + (process.terminal && !process.cleaned ? local([' · 等待上游清理', ' · Waiting for cleanup'], lang) : '');
 }
 
+export function processHasIssue(process) {
+    return !!process && (!!process.error || process.phase === 'failed' || !!process.toolFailures || process.rows.some(readWarning));
+}
+
+export function processSummary(process, lang = 'zh') {
+    let text = processLabel(process, lang);
+    if (process.error) text += ' · ' + local(errors[process.error] || ['任务发生错误', 'Run error'], lang);
+    else if (process.toolFailures) text += local([' · 含失败或拒绝记录', ' · Includes failures or rejections'], lang);
+    else if (process.rows.some(readError)) text += local([' · 存在资料读取异常记录', ' · Includes read error records'], lang);
+    else if (process.rows.some(readLimited)) text += local([' · 资料范围有限或未完整返回', ' · Limited scope or partial content'], lang);
+    return text;
+}
+
 /** Stable details nodes preserve expansion/focus and scroll across progress notifications. */
 export function createProcessView({ doc, lang = 'zh' }) {
     const nodes = new Map();
     const node = (tag, text, parent) => { const el = doc.createElement(tag); el.textContent = text; if (parent) parent.append(el); return el; };
     return {
-        update(run, artifactPresent, expectsArtifact = true, detail = 'verbose') {
+        update(run, artifactPresent, expectsArtifact = true, detail = 'verbose', segment = null) {
             const p = run.process; if (!p) return null;
             if (!PROCESS_DETAILS.includes(detail)) detail = 'compact';
             let view = nodes.get(run.id);
@@ -71,11 +86,8 @@ export function createProcessView({ doc, lang = 'zh' }) {
                 view = { root, summary: node('summary', '', root), list: node('ol', '', root), note: node('p', '', root), signature: '' };
                 nodes.set(run.id, view);
             }
-            view.summary.textContent = local(['执行过程', 'Execution process'], lang) + ' · ' + processLabel(p, lang);
+            view.summary.textContent = (segment === null ? local(['执行过程', 'Execution process'], lang) : local(['执行段 ', 'Segment '], lang) + segment) + ' · ' + processSummary(p, lang);
             view.root.setAttribute('data-state', p.error || p.phase === 'failed' ? 'error' : p.phase === 'yielded' ? 'waiting' : p.terminal ? 'ended' : 'running');
-            if (p.error) view.summary.textContent += ' · ' + local(errors[p.error] || ['任务发生错误', 'Run error'], lang);
-            else if (p.toolFailures) view.summary.textContent += local([' · 含失败或拒绝记录', ' · Includes failures or rejections'], lang);
-            else if (p.rows.some(readWarning)) view.summary.textContent += local([' · 资料读取异常或不完整', ' · Read error or incomplete data'], lang);
             const signature = JSON.stringify([p.rows, detail, p.phase, p.terminal]);
             if (signature !== view.signature) {
                 const scrollTop = view.list.scrollTop;
@@ -87,7 +99,7 @@ export function createProcessView({ doc, lang = 'zh' }) {
                     const error = row.error ? ' · ' + row.error + ' · ' + local(errors[row.error] || ['安全错误（无原始详情）', 'Safe error (no raw details)'], lang) : '';
                     const stage = modelDiagnosticStage(row.diagnosticStage);
                     const diagnostic = stage ? ' · ' + local(['失败阶段：', 'Failure stage: '], lang) + local(MODEL_STAGE_LABELS[stage], lang) : '';
-                    if (row.read && (detail === 'verbose' || readWarning(row))) { const read = node('li', `${row.read.source} · ${row.read.status} · ${row.read.characters}` + local([' 字符', ' characters'], lang) + (row.read.truncated ? local([' · 内容未完整返回', ' · Partial content'], lang) : ''), view.list); read.setAttribute('data-state', readWarning(row) ? 'warning' : 'neutral'); }
+                    if (row.read && (detail === 'verbose' || readWarning(row))) { const read = node('li', `${row.read.source} · ${row.read.status} · ${row.read.characters}` + local([' 字符', ' characters'], lang) + (row.read.paged ? local([' · 分段读取（还有后续页）', ' · Paged read (more pages available)'], lang) : '') + (readLimited(row) ? local([' · 资料范围有限或未完整返回', ' · Limited scope or partial content'], lang) : ''), view.list); read.setAttribute('data-state', readWarning(row) ? 'warning' : 'neutral'); }
                     const technical = ['detailed', 'verbose'].includes(detail) ? ` #${row.attemptId}` + (row.durationMs === null ? '' : ` · ${row.durationMs} ms`) + diagnostic : '';
                     const event = node('li', tool + local(labels[row.type] || ['处理中', 'Processing'], lang) + technical + error, view.list);
                     event.setAttribute('data-state', processEventState(row, row === p.rows.at(-1) && !p.terminal && p.phase !== 'yielded'));
@@ -104,6 +116,6 @@ export function createProcessView({ doc, lang = 'zh' }) {
             return view.root;
         },
         retain(ids) { for (const [id, view] of nodes) if (!ids.has(id)) { view.root.remove(); nodes.delete(id); } },
-        clear() { nodes.clear(); },
+        clear() { for (const view of nodes.values()) view.root.remove?.(); nodes.clear(); },
     };
 }

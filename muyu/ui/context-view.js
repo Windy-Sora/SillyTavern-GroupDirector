@@ -71,7 +71,7 @@ export function createContextView({ doc, settings, parent, controller, act, lang
     confirm.onclick = () => { confirm.hidden = cancel.hidden = true; return act(() => controller.compactHistory()); };
     clear.onclick = () => act(() => controller.clearContextSummary());
     let configKey = '', view = null, savedHistoryPolicy = CONTEXT_DEFAULTS.historyAuthorization;
-    return { render(s) {
+    return { settingsTarget: config, budgetTarget: tokens, historyTarget: historyPolicy, render(s) {
         const c = s.contextConfig || CONTEXT_DEFAULTS, key = JSON.stringify(c), ctx = s.context || {};
         savedHistoryPolicy = c.historyAuthorization ?? CONTEXT_DEFAULTS.historyAuthorization;
         if (key !== configKey && !feedback.dirty && !feedback.busy) { fill(c); feedback.rebase(); configKey = key; }

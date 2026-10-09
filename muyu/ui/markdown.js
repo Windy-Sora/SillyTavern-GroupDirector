@@ -1,6 +1,14 @@
+import { createCopyControl } from './copy-control.js';
+
+const lifetimes = new WeakMap();
 /** Bounded Markdown subset rendered exclusively with DOM/textContent. Never parses HTML. */
 export function renderMarkdown(root, source, { lang } = {}) {
     const doc = root.ownerDocument;
+    lifetimes.get(root)?.();
+    const controls = []; let disposed = false;
+    const dispose = () => { if (disposed) return; disposed = true; controls.forEach(control => control.dispose()); if (lifetimes.get(root) === dispose) lifetimes.delete(root); };
+    lifetimes.set(root, dispose);
+    const t = (zh, en) => lang === 'en' ? en : zh;
     const node = (tag, text, parent) => { const el = doc.createElement(tag); if (text) el.textContent = text; parent.append(el); return el; };
     function inline(parent, text, depth = 0) {
         if (depth > 3) { node('span', text, parent); return; }
@@ -36,11 +44,15 @@ export function renderMarkdown(root, source, { lang } = {}) {
         if (fence) {
             flush(); const code = [], marker = fence[1][0], length = fence[1].length;
             while (++i < limit) { if (new RegExp('^\\s*' + marker + '{' + length + ',}\\s*$').test(lines[i])) break; code.push(lines[i]); }
-            node('code', code.join('\n'), node('pre', '', root)); continue;
+            const block = node('div', '', root); block.className = 'gd-muyu-code-block';
+            controls.push(createCopyControl({ doc, parent: block, text: code.join('\n'), lang, label: t('复制所示代码', 'Copy displayed code') }));
+            const pre = node('pre', '', block); pre.setAttribute('tabindex', '0'); pre.setAttribute('role', 'region'); pre.setAttribute('aria-label', t('代码，可横向滚动', 'Code; horizontally scrollable'));
+            node('code', code.join('\n'), pre); continue;
         }
         if (!line.trim()) { flush(); continue; }
         if (i + 1 < limit && line.includes('|') && tableRule(lines[i + 1])) {
-            flush(); const table = node('table', '', node('div', '', root)), head = node('tr', '', node('thead', '', table));
+            flush(); const wrapper = node('div', '', root); wrapper.className = 'gd-muyu-table-scroll'; wrapper.setAttribute('tabindex', '0'); wrapper.setAttribute('role', 'region'); wrapper.setAttribute('aria-label', t('表格，可横向滚动', 'Table; horizontally scrollable'));
+            const table = node('table', '', wrapper), head = node('tr', '', node('thead', '', table));
             cells(line).forEach(c => inline(node('th', '', head), c)); i++;
             const body = node('tbody', '', table);
             while (i + 1 < limit && lines[i + 1].includes('|') && lines[i + 1].trim()) { const row = node('tr', '', body); cells(lines[++i]).forEach(c => inline(node('td', '', row), c)); }
@@ -63,4 +75,5 @@ export function renderMarkdown(root, source, { lang } = {}) {
     }
     flush();
     if (raw.length > 32768 || lines.length > 2000) node('small', lang === 'en' ? 'Display truncated' : lang === 'zh' ? '显示已截断' : '显示已截断 / Display truncated', root);
+    return dispose;
 }

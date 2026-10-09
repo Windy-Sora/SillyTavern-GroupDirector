@@ -42,5 +42,5 @@ for (const lang of ['zh', 'en']) test('Process detail modes preserve errors, nod
     run.process.toolFailures = 0;
     const warning = view.update(run, true, false, 'compact');
     assert.equal(warning.children[1].children.length, 4);
-    assert.match(warning.children[0].textContent, lang === 'en' ? /Read error or incomplete/ : /资料读取异常或不完整/);
+    assert.match(warning.children[0].textContent, lang === 'en' ? /Includes read error records/ : /存在资料读取异常记录/);
 });

@@ -8,9 +8,8 @@ import { UI_LABELS } from './navigation-metadata.js';
 import { createSkillPicker } from './skill-picker.js';
 import { MAX_MESSAGE_BYTES } from '../context/policy.js';
 import { memoryFields } from '../modules/config-draft/contracts.js';
-import { createProcessView, processLabel } from './process-view.js';
+import { processLabel } from './process-view.js';
 import { taskCatalog } from '../modules/catalog.js';
-import { renderMarkdown } from './markdown.js';
 import { RUN_DEFAULTS, RUN_RANGES } from '../core/budget.js';
 import { formatBudget, budgetReasonLabel } from './budget-view.js';
 import { createHistoryView } from './history-view.js';
@@ -28,6 +27,9 @@ import { createConnectionTools } from './connection-tools.js';
 import { createConnectionForm, validateConnectionFields } from './connection-form.js';
 import { createFormFeedback } from './form-feedback.js';
 import { bindAutoSave } from './auto-save.js';
+import { createTranscriptView } from './transcript-view.js';
+import { createScrollFollow } from './scroll-follow.js';
+import { errorDestination } from './error-navigation.js';
 
 /** Safe Markdown view. The controller owns all state and execution. */
 export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory = () => {}, navigateDirector = () => {}, standalone = false, actionsRoot = null, resetLayout = () => {}, setSidebarOpen, setViewExpanded = () => {} } = {}) {
@@ -136,10 +138,11 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     node('p', t('我在，想一起处理什么？', 'I’m here. What shall we work on?'), welcome).className = 'gd-muyu-welcome-input';
     const history = node('div', '', transcript); history.className = 'gd-muyu-history'; history.setAttribute('aria-label', t('对话记录', 'Conversation'));
     const cards = node('div', '', transcript);
-    const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang });
+    const receiptView = createReceiptView({ doc, parent: transcript, controller, act, lang, locateArtifact: (id, revision) => { const element = transcriptView.findArtifact(id, revision); if (element) scrollFollow.locate(element); } });
     const checkpointView = createCheckpointView({ doc, parent: transcript, controller, act, lang });
     const interactionView = createInteractionView({ doc, parent: transcript, controller, act, lang });
     const permissionView = createPermissionView({ doc, parent: transcript, settings: settingsLayout.pages.data, controller, act, lang });
+    const latest = button(t('返回最新内容', 'Return to latest'), chat); latest.className += ' gd-muyu-return-latest'; latest.hidden = true;
     const fullAccessBanner = node('small', t('⚠ 全权限模式已开启：暮羽可读取资料、执行 Provider 并直接应用其请求的修改；请留意任务和操作回执。', '⚠ Full-access mode: Muyu may read data, execute Providers and apply requested changes without further confirmation. Watch task progress and receipts.'), chat);
     fullAccessBanner.className = 'gd-muyu-full-access-warning'; fullAccessBanner.hidden = true;
     const composer = node('div', '', chat); composer.className = 'gd-muyu-composer';
@@ -159,7 +162,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const recoveryBar = node('div', '', inputBox); recoveryBar.className = 'gd-muyu-recovery'; recoveryBar.hidden = true;
     const recoveryNote = node('small', '', recoveryBar), restoreInput = button(t('恢复失败问题到输入框', 'Restore failed question to composer'), recoveryBar);
     let recoveryRunId = null;
-    restoreInput.onclick = () => act(() => { controller.restoreFailedInput(recoveryRunId); input.focus?.(); });
     inputLabel.className = 'gd-muyu-input-label'; input.setAttribute('aria-label', t('给暮羽的消息', 'Message to Muyu'));
     input.placeholder = t('向暮羽提问，或描述你想排查的问题…', 'Ask Muyu a question, or describe what needs investigating…');
     const inputToolbar = node('div', '', inputBox); inputToolbar.className = 'gd-muyu-input-toolbar';
@@ -199,10 +201,18 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     allowHistory.onclick = () => act(() => controller.allowHistory());
     omitHistory.onclick = () => act(() => controller.setOmitHistory(true));
     const errors = node('p', '', body); errors.setAttribute('role', 'alert');
+    const errorActions = node('div', '', body); errorActions.className = 'gd-muyu-error-actions'; errorActions.hidden = true;
+    const errorEntry = button('', errorActions);
+    let localErrorCode = null, localErrorIdentity = '', localErrorRun = null;
+    const errorIdentity = s => JSON.stringify([s.viewKey, s.viewToken, s.connection]);
+    function clearError() { errors.textContent = ''; localErrorCode = null; errorActions.hidden = true; }
     let unsubscribe, disposed = false, lastView = '', lastConnection = null, lastRunConfig = '';
-    const processView = createProcessView({ doc, lang }), processAnchors = new Map(), artifactAnchors = new Map(), planExpansion = new Map();
-    let historySignature = '', scrollKey = null, shownPermissionId = null, legacyReportAnchor = null;
-    transcript.onscroll = () => { if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); };
+    const transcriptView = createTranscriptView({ doc, history, cards, controller, act, lang, views: artifactViews, navigateDirector, navigateMemory, locateReceipt: id => { const element = receiptView.find(id); if (element) scrollFollow.locate(element); } });
+    const scrollFollow = createScrollFollow({ viewport: transcript, onPosition: (key, top) => controller.setScrollPosition?.(key, top), onState: state => {
+        latest.hidden = state.following;
+        latest.textContent = state.unread ? t('有新内容 · 返回最新内容', 'New content · Return to latest') : t('返回最新内容', 'Return to latest');
+    } });
+    latest.onclick = () => scrollFollow.latest();
     function resetAuthorization() { authorization.hidden = true; consent.checked = false; fields.forEach(([, f]) => { f.checked = false; }); }
     function updateViewSize() {
         const s = controller.snapshot();
@@ -210,7 +220,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     }
     function showSettings(show, category, target) {
         if (!show) settingsLayout.setVisible(false);
-        connection.hidden = !show; workspace.hidden = chat.hidden = show; gear.setAttribute('aria-expanded', String(show)); errors.textContent = '';
+        connection.hidden = !show; workspace.hidden = chat.hidden = show; gear.setAttribute('aria-expanded', String(show)); clearError();
         historyView.setVisible(!show);
         resetAuthorization(); if (!show) { key.value = ''; webSearchView.clearKey(); }
         updateViewSize();
@@ -247,6 +257,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     };
     function showError(error) {
         const code = error?.message;
+        const state = controller.snapshot(); localErrorCode = code; localErrorIdentity = errorIdentity(state); localErrorRun = state.runs.at(-1)?.id;
         if (notices[code]) { errors.textContent = notices[code]; return; }
         const webErrors = {
             WEB_KEY_REQUIRED: t('请配置独立的 Brave Search API 密钥；模型密钥不能用于搜索。', 'Configure a separate Brave Search API key; your model key cannot be used for search.'),
@@ -275,14 +286,12 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         const known = { CONSENT_REQUIRED: t('请确认本次数据外发范围。', 'Confirm data sharing for this request.'), FIELD_SCOPE_REQUIRED: t('请选择本次可修改的字段。', 'Choose fields for this draft.'), CHAT_REQUIRED: t('请先打开聊天。', 'Open a chat first.'), EMPTY_INPUT: t('请输入问题。', 'Enter a question.'), NOT_READY: t('请先启用连接，或等待任务清理结束。', 'Enable a connection or wait for cleanup.'), STALE_DRAFT: t('草稿或配置已变化，请重新生成预览。', 'Draft/settings changed; generate a fresh preview.') };
         errors.textContent = known[code] || t('操作未完成，请检查连接配置、状态和输入。网络失败也可能是 CORS，禁止据此断言密钥错误。', 'Operation failed. Check connection, state and input. Network failure may be CORS, not necessarily invalid credentials.');
     }
-    async function act(fn) { errors.textContent = ''; try { await fn(); } catch (e) { showError(e); } if (!disposed && (standalone || shell.open)) render(); }
+    async function act(fn) { clearError(); try { await fn(); } catch (e) { showError(e); } if (!disposed && (standalone || shell.open)) render(); }
     function render() {
         if (disposed) return; const s = controller.snapshot();
         if (appearanceHost) appearanceHost.setAttribute('data-muyu-theme', ['dusk', 'light'].includes(s.displayConfig?.theme) ? s.displayConfig.theme : 'host');
         themeSwitcher.render(s);
-        const switchedView = scrollKey !== s.viewKey;
-        if (switchedView && scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop);
-        scrollKey = s.viewKey;
+        const newInteraction = scrollFollow.begin(s);
         historyView.render(s);
         webSearchView.render(s);
         contextView.render(s);
@@ -294,9 +303,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         agentMemoryView.render(s); skillView.render(s); skillPicker.render(s);
         interactionView.render(s);
         permissionView.render(s);
-        const pendingPermissionId = s.interaction?.kind === 'permission' && s.interaction.status === 'pending' ? s.interaction.id : null;
-        const newPermission = pendingPermissionId !== null && pendingPermissionId !== shownPermissionId;
-        shownPermissionId = pendingPermissionId;
         fullAccessToggle.value = s.fullAccess ? 'full' : s.permissionConfig?.readAccess || 'ask'; fullAccessToggle.disabled = s.resetting || s.busy || s.savingPermissionConfig || s.interaction?.status === 'pending';
         acceptFullAccess.disabled = !s.enabled || s.resetting || s.busy;
         if (!s.enabled || s.resetting || s.fullAccess) fullAccessConfirm.hidden = true;
@@ -330,6 +336,33 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (!lastConnection && s.savedConnection && !s.connection) { endpoint.value = s.savedConnection.endpoint; model.value = s.savedConnection.model; profile.value = s.savedConnection.profile || 'deepseek'; thinking.checked = s.savedConnection.thinking; effort.value = s.savedConnection.reasoningEffort || 'high'; connectionForm.refreshOptions(); rememberKey.checked = true; autoConnect.checked = s.savedConnection.autoConnect === true; lastConnection = 'saved'; }
         status.textContent = [s.enabled ? t('已启用', 'Enabled') : t('未启用', 'Disabled'), (unified ? s.targetKind === 'chat' : task.scope === 'chat') ? t('绑定：当前聊天', 'Bound to current chat') : t('绑定：全局会话', 'Bound to global conversation'), s.resetting || s.draining ? t('等待上游清理…', 'Waiting for cleanup…') : s.busy ? t('运行中…', 'Running…') : t('空闲', 'Idle'), notices[s.notice] || ''].filter(Boolean).join(' · ');
         const latestProcess = s.runs.at(-1)?.process;
+        if (localErrorCode && (localErrorIdentity !== errorIdentity(s) || localErrorRun !== s.runs.at(-1)?.id)) clearError();
+        const errorCode = localErrorCode || s.notice || (s.runs.at(-1)?.status === 'failed' ? latestProcess?.error : null);
+        const destination = errorDestination(errorCode, latestProcess?.budget?.reason);
+        const historyAccessLabel = ['查看历史外发设置', 'Review history sending settings'];
+        const labels = { context: ['调整输入上下文预算', 'Adjust input context budget'], output: ['调整单次输出上限', 'Adjust output limit'], time: ['查看单轮超时', 'Review run timeout'], dataBudget: ['调整资料读取预算', 'Adjust data read budget'], run: ['查看运行预算', 'Review execution budgets'], connection: ['检查模型连接', 'Check model connection'], permission: ['查看当前授权或问题', 'Review access or question'], storage: ['检查对话存储', 'Check conversation storage'], results: ['核对回执与检查点', 'Review receipts and checkpoints'] };
+        errorActions.hidden = !destination || !connection.hidden || !!s.readOnly;
+        errorEntry.disabled = destination === 'results' && receiptView.reviewTarget.hidden && checkpointView.reviewTarget.hidden;
+        errorEntry.textContent = destination ? t(...(destination === 'historyAccess' ? historyAccessLabel : labels[destination])) : '';
+        const routeIdentity = errorIdentity(s), routeRun = s.runs.at(-1)?.id;
+        errorEntry.onclick = () => {
+            const now = controller.snapshot();
+            if (disposed || errorActions.hidden || now.readOnly || errorIdentity(now) !== routeIdentity || now.runs.at(-1)?.id !== routeRun) return;
+            if (destination === 'permission') {
+                if (now.interaction?.status === 'pending') { scrollFollow.locate(now.interaction.kind === 'permission' ? permissionView.operationTarget : interactionView.operationTarget); return; }
+                showSettings(true, 'data', permissionView.settingsTarget); return;
+            }
+            if (destination === 'results') {
+                const target = !receiptView.reviewTarget.hidden ? receiptView.reviewTarget : !checkpointView.reviewTarget.hidden ? checkpointView.reviewTarget : null;
+                if (target) scrollFollow.locate(target);
+                return;
+            }
+            if (destination === 'historyAccess') showSettings(true, 'limits', contextView.historyTarget);
+            else if (destination === 'context') showSettings(true, 'limits', contextView.budgetTarget);
+            else if (destination === 'connection') showSettings(true, 'connection', endpoint);
+            else if (destination === 'storage') showSettings(true, 'storage');
+            else showSettings(true, 'limits', budgetFields.find(f => f.name === ({ output: 'maxTokens', time: 'timeMs', dataBudget: 'providerBytes' })[destination])?.input || budgetSettings);
+        };
         usageText.textContent = formatBudget(latestProcess?.budget, lang);
         if (s.taskUsage?.segments > 1) usageText.textContent += ` · ${t('任务累计模型/工具调用', 'Task total model/tool calls')}: ${s.taskUsage.modelCalls}/${s.taskUsage.toolCalls} · ${t('执行段', 'Segments')}: ${s.taskUsage.segments}`;
         if (latestProcess?.budget?.reason) status.textContent += ' · ' + budgetReasonLabel(latestProcess.budget.reason, lang);
@@ -343,6 +376,12 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         recoveryRunId = s.recovery?.runId || null;
         recoveryBar.hidden = !recoveryRunId;
         restoreInput.disabled = !recoveryRunId || !!s.input?.trim() || !!s.busy || !!s.resetting;
+        const recoverId = recoveryRunId, recoverIdentity = errorIdentity(s);
+        restoreInput.onclick = () => {
+            const now = controller.snapshot();
+            if (disposed || restoreInput.disabled || now.input?.trim() || now.busy || now.resetting || errorIdentity(now) !== recoverIdentity || now.recovery?.runId !== recoverId) return;
+            return act(() => { controller.restoreFailedInput(recoverId); input.focus?.(); });
+        };
         recoveryNote.textContent = s.recovery?.possibleEffects
             ? t('仅复制原问题，不自动重试。此前操作结果可能不明；重新发送前请核对实际状态。', 'Copies the question only; no automatic retry. Earlier effects may be unknown, so verify actual state before sending again.')
             : t('仅复制原问题，不自动重试或恢复旧授权。可先修改，再自行发送。', 'Copies the question only; no automatic retry or restored grants. Edit it before sending if needed.');
@@ -364,81 +403,21 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         // Probe state is transient: do not cache it as the form's original disabled state.
         hostTest.disabled = !!hostProbe || !!s.resetting || connectionFeedback.busy;
         connectionTools.setLocked(s.resetting || connectionFeedback.busy);
-        const nearBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 60;
-        const nextHistory = JSON.stringify([s.viewToken, s.messages]);
-        const historyChanged = historySignature !== nextHistory;
-        processView.retain(new Set(s.runs.map(r => r.id)));
-        if (historySignature !== nextHistory) {
-            historySignature = nextHistory; history.replaceChildren(); processAnchors.clear(); artifactAnchors.clear();
-            legacyReportAnchor = node('div', '', history);
-            let permissionRecord = null;
-            for (const [index, message] of s.messages.entries()) {
-                const next = s.messages[index + 1];
-                const requestPrefix = ['读取授权申请 / Read permission request: ', '代码执行申请 / Code execution request: '].find(prefix => message.role === 'assistant' && message.content.startsWith(prefix));
-                const requestTitle = requestPrefix ? message.content.split('\n')[0].slice(requestPrefix.length) : null;
-                const paired = requestTitle && next?.role === 'user' && ['拒绝读取 / Read denied', '允许本任务 / Allow task', '允许此聊天 / Allow chat'].some(label => next.content === `${label}: ${requestTitle}`);
-                if (paired) {
-                    permissionRecord = node('details', '', history);
-                    node('summary', t('资料授权记录（展开查看）', 'Data access record (expand)'), permissionRecord);
-                }
-                const p = node('div', '', permissionRecord || history); p.className = message.role === 'user' ? 'gd-muyu-message gd-muyu-user' : 'gd-muyu-message gd-muyu-assistant';
-                const author = node('strong', message.role === 'user' ? t('你：', 'You: ') : t('暮羽：', 'Muyu: '), p); author.className = 'gd-muyu-author';
-                const content = node('div', '', p); content.className = 'gd-muyu-markdown'; renderMarkdown(content, message.content, { lang });
-                if (message.role === 'user' && message.runId) processAnchors.set(message.runId, { root: node('div', '', history), child: null });
-                if (message.role === 'assistant' && message.runId && !requestPrefix) artifactAnchors.set(message.runId, node('div', '', history));
-                if (!paired) permissionRecord = null;
-            }
-        }
-        for (const run of s.runs) {
-            const anchor = processAnchors.get(run.id); if (!anchor) continue;
-            const detail = processView.update(run, s.artifacts.some(a => a.sourceRunId === run.id || a.content?.producedByRunId === run.id), s.mode !== 'chat', s.displayConfig?.processDetail || 'compact');
-            if (detail && anchor.child !== detail) { anchor.root.append(detail); anchor.child = detail; }
-        }
-        cards.replaceChildren();
-        legacyReportAnchor?.replaceChildren();
-        for (const anchor of artifactAnchors.values()) anchor.replaceChildren();
-        const planKeys = new Set(s.artifacts.filter(a => artifactViews.layout(a.kind) === 'anchored-details').map(a => `${s.viewToken}:${a.id}`));
-        for (const key of planExpansion.keys()) if (!planKeys.has(key)) planExpansion.delete(key);
+        const historyChanged = transcriptView.update(s);
         const selected = follow.value; follow.replaceChildren(); const none = node('option', t('新任务', 'New task'), follow); none.value = '';
         for (const artifact of s.artifacts) {
-            const isPlan = artifact.kind === 'task-plan';
-            const isReport = artifact.kind === 'report';
-            const anchored = artifactViews.layout(artifact.kind) === 'anchored-details';
-            const owner = anchored ? artifactAnchors.get(artifact.sourceRunId || artifact.content?.producedByRunId) || (isReport ? legacyReportAnchor || history : cards) : cards;
-            const wrapper = node(anchored ? 'details' : 'section', '', owner); wrapper.className = 'gd-muyu-card' + (isPlan ? ' gd-muyu-plan' : isReport ? ' gd-muyu-report' : '');
-            let card = wrapper;
-            if (anchored) {
-                const settled = s.approvedPlans?.includes(artifact.id) || s.declinedPlans?.includes(artifact.id) || s.invalidPlans?.includes(artifact.id);
-                const key = `${s.viewToken}:${artifact.id}`, stage = `${artifact.revision}:${!!settled}`;
-                const expansion = planExpansion.get(key);
-                wrapper.open = expansion?.stage === stage ? expansion.open : isPlan && !settled;
-                const currentExpansion = { stage, open: wrapper.open };
-                planExpansion.set(key, currentExpansion);
-                wrapper.addEventListener('toggle', () => {
-                    // Queued toggle events from removed cards must not overwrite the current view.
-                    if (planExpansion.get(key) === currentExpansion) currentExpansion.open = wrapper.open;
-                });
-                const summary = node('summary', '', wrapper);
-                node('strong', artifactViews.title(artifact.kind, lang) + ' · v' + artifact.revision, summary);
-                node('span', isPlan ? artifact.content.plan.goal : t('生成时的证据快照 · 展开查看', 'Evidence snapshot · expand to view'), summary);
-                card = node('div', '', wrapper); card.className = 'gd-muyu-plan-body';
-            } else node('strong', artifactViews.title(artifact.kind, lang) + ' · v' + artifact.revision, card);
-            if (!artifactViews.render(artifact.kind, { doc, card, artifact, state: s, controller, act, lang, node, button, t, navigateDirector, navigateMemory, follow })) {
-                node('small', t('暂不支持显示此类型的产物；不会提供应用入口。', 'This artifact type is not supported here; no apply action is offered.'), card);
-            }
+            if (artifact.kind === 'config-draft') { const option = node('option', `${artifact.id} · v${artifact.revision}`, follow); option.value = artifact.id; }
         }
         if ([...follow.options].some(o => o.value === selected)) follow.value = selected;
-        if (newPermission) {
+        if (newInteraction) {
             if (!connection.hidden) {
                 settingsLayout.setVisible(false);
                 connection.hidden = true; workspace.hidden = chat.hidden = false;
                 gear.setAttribute('aria-expanded', 'false'); historyView.setVisible(true);
                 updateViewSize();
             }
-            transcript.scrollTop = transcript.scrollHeight;
         }
-        else if (switchedView) transcript.scrollTop = s.scrollTop ?? transcript.scrollHeight;
-        else if (nearBottom && historyChanged) transcript.scrollTop = transcript.scrollHeight;
+        scrollFollow.end(historyChanged);
     }
     const subscribe = () => { if (!unsubscribe) unsubscribe = controller.subscribe(render).unsubscribe; render(); };
     shell.addEventListener('toggle', () => { if (disposed) return; if (shell.open) subscribe(); else { unsubscribe?.(); unsubscribe = null; key.value = ''; webSearchView.clearKey(); } });
@@ -496,8 +475,8 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         finally { if (hostProbe === probe) { hostProbe = null; hostTest.disabled = !!controller.snapshot().resetting || connectionFeedback.busy; } }
     });
     disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
-    input.onkeydown = event => { if (event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
+    input.onkeydown = event => { if (!event.isComposing && event.keyCode !== 229 && !event.repeat && event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); if (scrollKey) controller.setScrollPosition?.(scrollKey, transcript.scrollTop); unsubscribe?.(); historyView.dispose(); processView.clear(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); interactionView.dispose(); scrollFollow.dispose(); unsubscribe?.(); historyView.dispose(); transcriptView.dispose(); receiptView.dispose(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

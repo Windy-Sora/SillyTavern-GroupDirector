@@ -17,6 +17,15 @@ function fake(options = {}) {
 }
 async function finish(item, status = 'succeeded') { item.completion.resolve({ state: { status }, answer: 'answer' }); item.drained.resolve(); await flush(); }
 
+test('Answer completion records display time on the live run, not the persisted message contract', async () => {
+    const { app, started } = fake(), sessionId = app.createSession(A), before = Date.now();
+    const submission = app.submit(sessionId, 'question'); await flush();
+    assert.equal(app.snapshot().runs[0].answeredAt, undefined);
+    await finish(started[0]); const snapshot = app.snapshot(), run = snapshot.runs.find(row => row.id === submission.runId);
+    assert.ok(Number.isSafeInteger(run.answeredAt)); assert.ok(run.answeredAt >= before && run.answeredAt <= Date.now());
+    assert.deepEqual(Object.keys(snapshot.sessions[0].messages.at(-1)).sort(), ['content', 'role', 'runId']); app.dispose();
+});
+
 test('Application serializes sessions and does not automatically complete tasks', async () => {
     const { app, started } = fake(); const a = app.createSession(A), g = app.createSession(G);
     const first = app.submit(a, 'goal', ['do not write']); app.submit(g, 'next');

@@ -6,7 +6,7 @@ export function createCheckpointView({ doc, parent, controller, act, lang }) {
     const root = doc.createElement('details'); root.className = 'gd-muyu-artifact'; parent.append(root);
     const t = (zh, en) => lang === 'en' ? en : zh;
     let signature = '';
-    return { render(state) {
+    return { reviewTarget: root, render(state) {
         const data = state.checkpoints;
         root.hidden = !data?.enabled || (!data.error && !data.records.length);
         if (root.hidden) return;

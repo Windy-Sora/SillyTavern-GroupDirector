@@ -47,7 +47,7 @@ export function createApplication({ startRun, currentTarget, maxQueue = 8, maxSe
         if (active?.id !== record.id) processes.lifecycle(record.id, 'cleaned');
         const s = sessions.get(record.sessionId);
         if (!s.closed) {
-            if (answer !== null) s.messages.push({ role: 'assistant', runId: record.id, content: answer });
+            if (answer !== null) { record.answeredAt = Date.now(); s.messages.push({ role: 'assistant', runId: record.id, content: answer }); }
             const t = tasks.get(record.taskId); t.status = status === 'yielded' ? 'awaiting_input' : status === 'succeeded' ? 'awaiting_acceptance' : 'open';
         }
         emit('run.settled', { runId: record.id });

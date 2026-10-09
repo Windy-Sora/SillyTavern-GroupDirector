@@ -1,5 +1,62 @@
 import test from 'node:test';
 
+for (const lang of ['zh', 'en']) test('Ctrl+Enter does not submit during IME composition, repeat or plain Enter / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }); f.state.enabled = true; f.state.permissions = { diagnostics: true }; f.state.input = 'draft'; f.emit();
+    const input = f.find('textarea'); let prevented = 0;
+    for (const extra of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }, { ctrlKey: false }]) input.onkeydown({ key: 'Enter', ctrlKey: true, preventDefault() { prevented++; }, ...extra });
+    assert.equal(prevented, 0); assert.equal(f.sent.length, 0); assert.equal(f.state.input, 'draft');
+    input.onkeydown({ key: 'Enter', ctrlKey: true, preventDefault() { prevented++; } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(prevented, 1); assert.equal(f.sent.length, 1); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) for (const [code, reason, label, field] of [
+    ['CONTEXT_LIMIT', null, ['调整输入上下文预算', 'Adjust input context budget'], ['手动输入预算（估算 Token）', 'Manual input budget (estimated tokens)']],
+    ['MODEL_OUTPUT_TRUNCATED', null, ['调整单次输出上限', 'Adjust output limit'], ['单次模型输出上限（Token）', 'Output tokens per model call']],
+    ['BUDGET_EXCEEDED', 'provider_bytes', ['调整资料读取预算', 'Adjust data read budget'], ['资料读取预算（UTF-8字节）', 'Provider data budget (UTF-8 bytes)']],
+    ['MODEL_AUTH_ERROR', null, ['检查模型连接', 'Check model connection'], ['模型接口地址', 'Model endpoint']],
+]) test(`Error navigation preserves composer and only opens the correct editor / ${lang}/${code}`, async () => {
+    const f = fixture(lang, true), pick = values => values[lang === 'en' ? 1 : 0];
+    f.state.input = 'unsent text'; f.state.notice = code;
+    f.state.runs = [{ id: 'failed', status: 'failed', process: { phase: 'failed', error: code, rows: [], budget: { reason } } }]; f.emit();
+    const action = f.find('button', pick(label)); assert.equal(action.parent.hidden, false);
+    await action.click(); assert.equal(f.state.input, 'unsent text'); assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
+    if (code !== 'MODEL_AUTH_ERROR') {
+        const target = f.all().find(el => el.tag === 'input' && el.parent.textContent === pick(field));
+        assert.equal(f.root.ownerDocument.activeElement, target);
+        for (let el = target; el; el = el.parent) assert.notEqual(el.hidden, true);
+    }
+    f.root.__gdMuyuDispose();
+});
+
+test('Error shortcut captured in an earlier conversation cannot open settings or retry', () => {
+    const f = fixture('en', true); f.state.notice = 'MODEL_AUTH_ERROR'; f.emit();
+    const action = f.find('button', 'Check model connection'), stale = action.onclick;
+    f.state.viewToken++; stale(); assert.equal(f.all().find(el => el.className === 'gd-muyu-settings').hidden, true);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose(); stale(); assert.equal(f.sent.length, 0);
+});
+
+test('Unknown writes offer receipt review, never a general replay; recovery preserves an existing draft', async () => {
+    const f = fixture('en', true), calls = [];
+    f.state.notice = 'RECOVERY_UNCERTAIN'; f.emit();
+    const review = f.find('button', 'Review receipts and checkpoints'); assert.equal(review.disabled, true);
+    f.state.receipts = [{ version: 2, operationId: 'apply:unknown', artifactId: 'draft', revision: 1, at: 1, status: 'outcome_unknown', diff: [], saveError: false, changed: false }]; f.emit();
+    assert.equal(review.disabled, false); await review.click(); assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
+    f.state.recovery = { runId: 'old', possibleEffects: true };
+    f.controller.restoreFailedInput = id => calls.push(id); f.emit();
+    const copy = f.find('button', 'Restore failed question to composer'), old = copy.onclick;
+    f.state.input = 'do not replace'; old(); assert.equal(calls.length, 0);
+    f.state.input = ''; f.state.recovery.runId = 'new'; old(); assert.equal(calls.length, 0);
+    f.emit(); await copy.click(); assert.deepEqual(calls, ['new']); assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+test('History external-send access opens its own setting, not fresh host-read grants', async () => {
+    const f = fixture('en', true); f.state.notice = 'HISTORY_PERMISSION_REQUIRED'; f.emit();
+    await f.find('button', 'Review history sending settings').click();
+    assert.equal(f.root.ownerDocument.activeElement.parent.textContent, 'Sending existing conversation history');
+    assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0); f.root.__gdMuyuDispose();
+});
+
 for (const lang of ['zh', 'en']) test('Keyboard presentation has a localized empty-chat cue and a stable settings control', async () => {
     const launcher = new Element('div', {}), f = fixture(lang, true, { actionsRoot: launcher });
     const gear = launcher.children.find(e => e.className?.includes('gd-muyu-settings-toggle'));
@@ -271,7 +328,7 @@ for (const lang of ['zh', 'en']) test('Builtin Skill labels localize in picker, 
 
 for (const lang of ['zh', 'en']) test('Permission GUI title follows language while source identity and user purpose stay unchanged / ' + lang, () => {
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div'), answers = [];
-    const view = createPermissionView({ doc, parent, settings, lang, act: fn => fn(), controller: { answerPermission: (...args) => answers.push(args) } });
+    const view = permissionTestView({ doc, parent, settings, lang, act: fn => fn(), controller: { answerPermission: (...args) => answers.push(args) } });
     const request = { id: 'read', kind: 'permission', source: 'memoryConfig', status: 'pending', reason: '用户原话不翻译' };
     view.render({ interaction: request, sourceGrants: ['source:memoryConfig'] });
     const all = root => { const nodes = []; const walk = el => { nodes.push(el); el.children.forEach(walk); }; walk(root); return nodes; };
@@ -392,10 +449,10 @@ for (const lang of ['zh', 'en']) test('Generation batch card shows the exact ord
     const decisions = [], controller = { generationBatchExecutionDetails: () => ({ maximumModelCalls: 3, steps: [
         { kind: 'memory', name: '<script>Alice</script>', mode: 'save' }, { kind: 'profile', name: 'Bob', mode: 'trial' }, { kind: 'npc', requested: 5, effectiveCount: 2, mode: 'save' },
     ] }), answerPermission: (id, decision) => decisions.push([id, decision]) };
-    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    const view = permissionTestView({ doc, parent, settings, controller, act: fn => fn(), lang });
     view.render({ interaction: { id: 'request', kind: 'permission', source: 'generationBatchExecution', executionId: 'ticket', status: 'pending', reason: 'Generate list' } });
     const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
-    assert.equal(actions[1].hidden, true); const summary = card.children.find(row => row.className === 'gd-muyu-generation-summary');
+    assert.equal(actions[1].hidden, true); const summary = card.children.find(row => row.className === 'gd-muyu-interaction-body').children.find(row => row.className === 'gd-muyu-generation-summary');
     assert.match(summary.textContent, /1\. .*Alice[\s\S]*2\. .*Bob[\s\S]*3\. .*5\/2/);
     assert.match(summary.textContent, /Trial, no save|试跑，不保存/); assert.match(summary.textContent, /may be pruned|可能裁剪/);
     assert.match(summary.textContent, /Non-atomic|不是原子事务/); assert.match(summary.textContent, /No character-card import|no character-card import|不导入角色卡/);
@@ -406,17 +463,17 @@ for (const lang of ['zh', 'en']) test('Expired batch definition is explicit with
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
     const view = createPermissionView({ doc, parent, settings, controller: { generationBatchExecutionDetails: () => null }, act: fn => fn(), lang });
     view.render({ interaction: { id: 'request', kind: 'permission', source: 'generationBatchExecution', executionId: 'ticket', status: 'pending', reason: 'Generate' } });
-    assert.match(parent.children[0].children.find(row => row.className === 'gd-muyu-generation-summary').textContent, /expired|失效/); view.dispose();
+    assert.match(parent.children[0].children.find(row => row.className === 'gd-muyu-interaction-body').children.find(row => row.className === 'gd-muyu-generation-summary').textContent, /expired|失效/); view.dispose();
 });
 for (const lang of ['zh', 'en']) for (const mode of ['trial', 'save']) test(`NPC generation consent ${mode} / ${lang} displays count, capacity and card-import boundary`, async () => {
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
     const decisions = [], controller = { npcExecutionDetails: () => ({ mode, requested: 5, effectiveCount: 2, existingCount: 8, limit: 10 }),
         answerPermission: (id, decision) => decisions.push([id, decision]) };
-    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    const view = permissionTestView({ doc, parent, settings, controller, act: fn => fn(), lang });
     view.render({ interaction: { id: 'request', kind: 'permission', source: 'npcExecution', executionId: 'ticket', status: 'pending', reason: '<script>Generate</script>' } });
     const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
     assert.equal(actions[1].hidden, true);
-    const content = card.children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
+    const content = card.children.find(row => row.className === 'gd-muyu-interaction-body').children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
     assert.match(content, /5\/2/); assert.match(content, /8\/10/); assert.match(content, /No character-card import|不导入角色卡/);
     assert.match(content, lang === 'en' ? /extra costs/ : /额外产生费用/);
     assert.match(content, mode === 'trial' ? /Trial, no save|试生成，不保存/ : /Generate and save|生成并保存/);
@@ -428,11 +485,11 @@ for (const lang of ['zh', 'en']) for (const mode of ['trial', 'save']) test(`Pro
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
     const decisions = [], controller = { profileExecutionDetails: () => ({ name: '<script>Alice</script>', mode, existing: false }),
         answerPermission: (id, decision) => decisions.push([id, decision]) };
-    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    const view = permissionTestView({ doc, parent, settings, controller, act: fn => fn(), lang });
     view.render({ interaction: { id: 'request', kind: 'permission', source: 'profileExecution', executionId: 'ticket', status: 'pending', reason: 'Generate profile' } });
     const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
     assert.equal(actions[1].hidden, true);
-    const content = card.children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
+    const content = card.children.find(row => row.className === 'gd-muyu-interaction-body').children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
     assert.match(content, /<script>Alice<\/script>/); assert.match(content, /No existing profile|尚无档案/);
     assert.match(content, lang === 'en' ? /extra costs/ : /额外产生费用/);
     assert.match(content, mode === 'trial' ? /Trial, no save|试生成，不保存/ : /Generate and save|生成并保存/);
@@ -444,11 +501,11 @@ for (const lang of ['zh', 'en']) for (const mode of ['trial', 'save']) test(`Mem
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('div'), settings = doc.createElement('div');
     const decisions = [], controller = { memoryExecutionDetails: () => ({ name: '<script>Alice</script>', mode, existingCount: 2, limit: 3 }),
         answerPermission: (id, decision) => decisions.push([id, decision]) };
-    const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang });
+    const view = permissionTestView({ doc, parent, settings, controller, act: fn => fn(), lang });
     view.render({ interaction: { id: 'request', kind: 'permission', source: 'memoryExecution', executionId: 'ticket', status: 'pending', reason: 'Extract memories' } });
     const card = parent.children[0], actions = card.children.find(row => row.className === 'gd-muyu-actions').children;
     assert.equal(actions[1].hidden, true);
-    const content = card.children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
+    const content = card.children.find(row => row.className === 'gd-muyu-interaction-body').children.filter(row => row.tag === 'p').map(row => row.textContent).join('\n');
     assert.match(content, /<script>Alice<\/script>/); assert.match(content, /2\/3/);
     assert.match(content, lang === 'en' ? /extra costs/ : /额外产生费用/);
     assert.match(content, mode === 'trial' ? /Trial, no save|试跑，不保存/ : /Generate and save|生成并保存/);
@@ -460,9 +517,20 @@ import { importPreview } from '../../muyu/sessions/exchange.js';
 import { createHistoryView } from '../../muyu/ui/history-view.js';
 
 // Minimal native DOM contract; does not assert CSS geometry or browser layout.
+function permissionTestView(options) {
+    let state;
+    options.controller.snapshot = () => state;
+    const view = createPermissionView(options), render = view.render;
+    view.render = value => { state = value; render(value); };
+    return view;
+}
+
 class Element {
     constructor(tag, doc) { this.tag = tag; this.ownerDocument = doc; this.children = []; this.attrs = {}; this.events = {}; this.style = {}; this.value = ''; this.checked = false; this.classList = { add() {} }; }
     append(el) { if (el.parent) el.remove(); this.children.push(el); el.parent = this; }
+    insertBefore(el, reference) { if (el === reference) return; if (el.parent) el.remove(); const index = reference ? this.children.indexOf(reference) : this.children.length; this.children.splice(index, 0, el); el.parent = this; }
+    get attributes() { return Object.entries(this.attrs).map(([name, value]) => ({ name, value })); }
+    removeAttribute(name) { delete this.attrs[name]; }
     replaceChildren() { this.children = []; }
     setAttribute(k, v) { this.attrs[k] = v; }
     getAttribute(k) { return this.attrs[k]; }
@@ -473,6 +541,159 @@ class Element {
     click() { if (!this.disabled) return this.onclick?.(); }
     toggle(open) { this.open = open; this.events.toggle?.(); }
 }
+
+for (const lang of ['zh', 'en']) test('Appending answers preserves the old message subtree, focus, process and artifact anchors / ' + lang, () => {
+    const f = fixture(lang, true);
+    f.state.messages = [{ role: 'user', runId: 'first', content: 'Question' }, { role: 'assistant', runId: 'first', content: '**Answer**\n\n```text\nkeep this\n```' }];
+    f.state.runs = [{ id: 'first', process: { phase: 'succeeded', terminal: 'succeeded', cleaned: true, rows: [], toolFailures: 0 } }];
+    f.state.artifacts = [{ id: 'report', kind: 'report', revision: 1, sourceRunId: 'first', content: { module: 'director', findings: [] } }];
+    f.emit();
+    const history = f.all().find(e => e.className === 'gd-muyu-history'), children = [...history.children];
+    const message = f.all().find(e => e.className === 'gd-muyu-message gd-muyu-assistant');
+    const markdown = message.children[1], oldContent = [...markdown.children];
+    const code = f.all(markdown).find(e => e.tag === 'code'); code.focus(); code.scrollTop = 24;
+    const process = f.all().find(e => e.className === 'gd-muyu-process'), report = f.all().find(e => e.className === 'gd-muyu-card gd-muyu-report');
+    process.open = report.open = true;
+    let replacements = 0; const replace = history.replaceChildren.bind(history); history.replaceChildren = (...args) => { replacements++; replace(...args); };
+    for (const content of ['New question', 'New answer']) { f.state.messages.push({ role: content === 'New question' ? 'user' : 'assistant', runId: 'second', content }); f.emit(); }
+    assert.equal(replacements, 0); assert.deepEqual(history.children.slice(0, children.length), children);
+    assert.deepEqual(markdown.children, oldContent); assert.equal(f.root.ownerDocument.activeElement, code); assert.equal(code.scrollTop, 24);
+    assert.equal(process.open, true); assert.equal(report.open, true);
+    assert.ok(f.all().includes(code)); assert.ok(f.all().includes(process)); assert.ok(f.all().includes(report));
+    f.state.input = 'draft'; f.state.notice = 'BUDGET_EXCEEDED'; f.emit(); assert.equal(replacements, 0);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Batch append keeps completed permission disclosures and orders new records / ' + lang, () => {
+    const f = fixture(lang, true);
+    const request = { role: 'assistant', content: '读取授权申请 / Read permission request: Source\nPurpose' };
+    const answer = { role: 'user', content: '允许本任务 / Allow task: Source' };
+    f.state.messages = [request, answer]; f.emit();
+    const summary = f.find('summary', lang === 'en' ? 'Data access record (expand)' : '资料授权记录（展开查看）');
+    const disclosure = summary.parent; disclosure.open = true;
+    const oldChildren = [...disclosure.children];
+    f.state.messages.push({ role: 'assistant', content: 'Done' }, { ...request, content: request.content.replace('Source', 'Other') }, { ...answer, content: answer.content.replace('Source', 'Other') }, { role: 'assistant', content: 'Finished' });
+    f.emit(); assert.ok(f.all().includes(disclosure)); assert.equal(disclosure.open, true); assert.deepEqual(disclosure.children, oldChildren);
+    const records = f.all().filter(e => e.tag === 'summary' && e.textContent === summary.textContent);
+    assert.equal(records.length, 2); assert.equal(records[1].parent.children.length, 3);
+    const history = f.all().find(e => e.className === 'gd-muyu-history');
+    assert.deepEqual(history.children.slice(1).map(e => e.tag === 'details' ? 'record' : e.children[1].children[0].children[0].textContent), ['record', 'Done', 'record', 'Finished']);
+    f.root.__gdMuyuDispose();
+});
+
+test('A newly paired permission response rebuilds its changed grouping without duplicating messages', () => {
+    const f = fixture('en', true);
+    f.state.messages = [{ role: 'assistant', content: '读取授权申请 / Read permission request: Source\nPurpose' }]; f.emit();
+    const old = f.all().find(e => e.className === 'gd-muyu-message gd-muyu-assistant');
+    f.state.messages.push({ role: 'user', content: '允许此聊天 / Allow chat: Source' }); f.emit();
+    assert.ok(!f.all().includes(old));
+    const disclosure = f.find('summary', 'Data access record (expand)').parent;
+    assert.equal(disclosure.children.length, 3);
+    assert.equal(f.all().filter(e => e.className?.startsWith('gd-muyu-message ')).length, 2);
+    f.root.__gdMuyuDispose();
+});
+
+for (const operation of ['edit', 'delete', 'insert', 'reorder']) test('Structural message changes safely rebuild instead of reusing index identities / ' + operation, () => {
+    const f = fixture('en', true);
+    f.state.messages = [{ role: 'user', content: 'Question' }, { role: 'assistant', content: 'Answer' }]; f.emit();
+    const old = f.all().find(e => e.className === 'gd-muyu-message gd-muyu-assistant');
+    if (operation === 'edit') f.state.messages[1].content = 'Changed';
+    if (operation === 'delete') f.state.messages.pop();
+    if (operation === 'insert') f.state.messages.unshift({ role: 'user', content: 'Inserted' });
+    if (operation === 'reorder') f.state.messages.reverse();
+    f.emit(); assert.ok(!f.all().includes(old));
+    const nodes = f.all().filter(e => e.className?.startsWith('gd-muyu-message '));
+    assert.equal(nodes.length, f.state.messages.length);
+    assert.deepEqual(nodes.map(e => e.children[1].children[0].children[0].textContent), f.state.messages.map(m => m.content));
+    f.root.__gdMuyuDispose();
+});
+
+for (const boundary of ['viewToken', 'viewKey']) test('View identity changes replace even identical message content / ' + boundary, () => {
+    const f = fixture('en', true);
+    f.state.messages = [{ role: 'assistant', runId: 'same', content: 'Same text' }];
+    f.state.artifacts = [{ id: 'report', kind: 'report', revision: 1, sourceRunId: 'same', content: { module: 'director', findings: [] } }];
+    f.emit(); const old = f.all().find(e => e.className === 'gd-muyu-message gd-muyu-assistant');
+    const anchor = f.all().find(e => e.className === 'gd-muyu-card gd-muyu-report').parent;
+    f.state[boundary] = boundary === 'viewToken' ? 2 : 'new-view'; f.emit();
+    assert.ok(!f.all().includes(old)); assert.ok(!f.all().includes(anchor));
+    assert.equal(f.all().filter(e => e.className === 'gd-muyu-message gd-muyu-assistant').length, 1);
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Artifact approval controls and nested details survive ordinary notifications / ' + lang, async () => {
+    const f = fixture(lang, true), calls = [];
+    f.state.artifacts = [{ id: 'stable', kind: 'config-draft', revision: 1, content: { preview: { diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], notice: 'Preview only', warnings: [] } } }];
+    f.state.canApplyConfig = true;
+    f.controller.prepareConfigApply = (...args) => calls.push(args);
+    f.emit();
+    const root = f.all().find(e => e.className === 'gd-muyu-card');
+    const detail = f.all(root).find(e => e.tag === 'details'); detail.toggle(true);
+    const button = f.find('button', lang === 'en' ? 'Review and apply' : '查看并应用'); button.focus();
+    f.state.input = 'Unsent text'; f.state.notice = 'notification'; f.emit();
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-card'), root);
+    assert.equal(f.all(root).find(e => e.tag === 'details'), detail); assert.equal(detail.open, true);
+    assert.equal(f.find('button', button.textContent), button); assert.equal(f.root.ownerDocument.activeElement, button);
+    f.state.busy = true; f.emit(); assert.equal(button.disabled, true); assert.equal(detail.open, true);
+    f.state.busy = false; f.emit(); assert.equal(button.disabled, false);
+    assert.equal(f.find('button', button.textContent), button); assert.equal(f.root.ownerDocument.activeElement, button);
+    await button.click(); assert.deepEqual(calls, [['stable', 1]]);
+    assert.equal(f.all().filter(e => e.tag === 'option' && e.value === 'stable').length, 1);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const change of ['permission', 'grant', 'readOnly', 'switchedChat', 'connection', 'revision', 'view', 'removed', 'dispose']) test('Captured artifact handlers cannot outlive their review context / ' + change, async () => {
+    const f = fixture('en', true); let calls = 0;
+    f.state.canApplyConfig = true; f.state.connection = { model: 'original', endpoint: 'https://test.invalid' };
+    f.state.artifacts = [{ id: 'stale', kind: 'config-draft', revision: 1, content: { preview: { diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], notice: 'Preview', warnings: [] } } }];
+    f.controller.prepareConfigApply = () => { calls++; };
+    f.emit(); const button = f.find('button', 'Review and apply'), captured = button.onclick;
+    if (change === 'permission') f.state.canApplyConfig = false;
+    if (change === 'grant') f.state.sourceGrants = [];
+    if (change === 'readOnly') f.state.readOnly = true;
+    if (change === 'switchedChat') f.state.switchedChat = true;
+    if (change === 'connection') f.state.connection.model = 'different';
+    if (change === 'revision') f.state.artifacts[0].revision++;
+    if (change === 'view') f.state.viewToken++;
+    if (change === 'removed') f.state.artifacts = [];
+    if (change === 'dispose') f.root.__gdMuyuDispose();
+    // Guards also cover the interval before the next UI notification.
+    await captured(); assert.equal(calls, 0);
+    if (change !== 'dispose') { f.emit(); await captured(); assert.equal(calls, 0); f.root.__gdMuyuDispose(); }
+});
+
+test('Artifact action transitions patch the outer card and keep reviewed details and message anchors', async () => {
+    const f = fixture('en', true); let approvals = 0;
+    f.state.canApplyConfig = true;
+    f.state.artifacts = [{ id: 'reviewed', kind: 'config-draft', revision: 1, content: { preview: { diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], notice: 'Preview', warnings: [] } } }];
+    f.controller.approveConfigApply = () => { approvals++; };
+    f.emit(); const card = f.all().find(e => e.className === 'gd-muyu-card');
+    const detail = f.all(card).find(e => e.tag === 'details'); detail.toggle(true);
+    const old = f.find('button', 'Review and apply').onclick;
+    f.state.configActions = [{ id: 'operation', artifactId: 'reviewed', revision: 1, status: 'pending' }]; f.emit();
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-card'), card);
+    assert.equal(f.all(card).find(e => e.tag === 'details'), detail); assert.equal(detail.open, true);
+    await old(); assert.equal(approvals, 0);
+    await f.find('button', 'Apply these changes').click(); assert.equal(approvals, 1);
+    f.state.configActions[0].status = 'applied_unconfirmed'; f.emit();
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-card'), card);
+    assert.equal(f.find('button', 'Apply these changes'), undefined);
+    assert.ok(f.all(card).some(e => e.textContent?.includes('persistence unconfirmed')));
+    f.root.__gdMuyuDispose();
+});
+
+test('Artifact occurrences reorder, remove and survive history rebuilding without duplicate containers', () => {
+    const f = fixture('en', true);
+    const report = id => ({ id, kind: 'report', revision: 1, sourceRunId: 'original', content: { module: 'director', findings: [{ kind: 'fact', text: id }] } });
+    f.state.messages = [{ role: 'assistant', runId: 'original', content: 'Evidence' }];
+    f.state.artifacts = [report('one'), report('two')]; f.emit();
+    const cards = f.all().filter(e => e.className === 'gd-muyu-card gd-muyu-report'); const anchor = cards[0].parent;
+    cards[0].toggle(true); f.state.artifacts.reverse(); f.emit();
+    assert.deepEqual(anchor.children, [cards[1], cards[0]]);
+    f.state.messages.push({ role: 'user', content: 'Another question' }); f.emit();
+    assert.equal(cards[0].parent, anchor); assert.equal(cards[0].open, true);
+    f.state.artifacts = [f.state.artifacts[1]]; f.emit(); assert.deepEqual(anchor.children, [cards[0]]);
+    f.root.__gdMuyuDispose();
+});
 
 for (const lang of ['zh', 'en']) for (const operation of ['create', 'update', 'delete', 'enable', 'copy', 'feature']) test(`Skill ${operation} receipt renders across idle/busy/read-only without configuration actions / ${lang}`, () => {
     const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('section');
@@ -490,7 +711,7 @@ for (const lang of ['zh', 'en']) for (const operation of ['create', 'update', 'd
 for (const lang of ['zh', 'en']) test('Legacy and v2 configuration receipts keep exact diffs and guarded actions / ' + lang, async () => {
     for (const version of [undefined, 2]) {
         const doc = { createElement: tag => new Element(tag, doc) }, parent = doc.createElement('section'), calls = [];
-        const view = createReceiptView({ doc, parent, lang, act: fn => fn(), controller: { explainReceipt: id => calls.push(['explain', id]), checkReceipt: id => calls.push(['check', id]) } });
+        const view = createReceiptView({ doc, parent, lang, act: fn => fn(), controller: { snapshot: () => state, explainReceipt: id => calls.push(['explain', id]), checkReceipt: id => calls.push(['check', id]) } });
         const receipt = { ...(version ? { version } : {}), operationId: 'config-op', artifactId: 'a', revision: 1, at: 1, status: 'applied_unconfirmed', diff: [{ field: 'autoMemoryInterval', before: '10', after: '15' }], saveError: false, changed: false };
         const nodes = () => { const result = []; const visit = el => { result.push(el); el.children.forEach(visit); }; visit(parent); return result; };
         const state = { receipts: [receipt], enabled: true, canReadConfig: true, canCheckReceipts: { 'config-op': true } };
@@ -693,7 +914,7 @@ test('Real script consent shows host-bound source as text and offers no persiste
     const controller = { scriptExecutionDetails: () => ({ name: 'user script', stage: 'message', messageIndex: 2, definition: { code: '<script>not HTML</script>' } }) };
     const view = createPermissionView({ doc, parent, settings, controller, act: fn => fn(), lang: 'en' });
     view.render({ interaction: { id: 'r', kind: 'permission', source: 'scriptExecution', executionId: 'ticket', status: 'pending', reason: 'run' } });
-    const card = parent.children[0], details = card.children.find(row => row.tag === 'details'), buttons = card.children.find(row => row.className === 'gd-muyu-actions').children;
+    const card = parent.children[0], details = card.children.find(row => row.className === 'gd-muyu-interaction-body').children.find(row => row.tag === 'details'), buttons = card.children.find(row => row.className === 'gd-muyu-actions').children;
     assert.equal(details.hidden, false); assert.match(details.children.find(row => row.tag === 'pre').textContent, /<script>not HTML<\/script>/);
     assert.match(details.children.find(row => row.tag === 'pre').textContent, /messageIndex/); assert.equal(buttons[1].hidden, true);
     view.render({ interaction: null }); assert.equal(details.hidden, true);
@@ -1121,10 +1342,12 @@ for (const lang of ['zh', 'en']) test(`Diagnostic reports stay beside the origin
     const anchor = report().parent; const later = history.children.find(e => e.className === 'gd-muyu-message gd-muyu-user');
     assert.ok(history.children.indexOf(anchor) < history.children.indexOf(later));
     report().toggle(true); const old = report(); f.emit(); assert.equal(report().open, true);
-    old.toggle(false); f.emit(); assert.equal(report().open, true); // detached toggle cannot change the new card
+    assert.equal(report(), old); old.toggle(false); f.emit(); assert.equal(report().open, false);
+    old.toggle(true);
     f.state.messages.push({ role: 'assistant', content: 'Later response', runId: 'later' }); f.emit();
     assert.equal(report().open, true); assert.equal(report().parent.parent, history);
     f.state.artifacts[0].revision = 2; f.emit(); assert.equal(report().open, false);
+    old.toggle(true); f.emit(); assert.equal(report().open, false); // old revision cannot change the new occurrence
     f.state.artifacts[0].sourceRunId = 'missing'; f.emit();
     assert.equal(report().parent, history.children[0]); assert.equal(report().open, false);
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
@@ -1148,8 +1371,9 @@ test('Task plans stay with their originating reply, collapse after review and re
     first.toggle(false); f.emit(); assert.equal(plan().open, false);
     f.state.approvedPlans = ['plan-position']; f.emit(); assert.equal(plan().open, false);
     plan().toggle(true); f.emit(); assert.equal(plan().open, true);
-    // A removed card can receive a queued native toggle; it cannot change the new card.
-    first.toggle(false); f.emit(); assert.equal(plan().open, true);
+    assert.equal(plan(), first); // review-state updates patch the existing card
+    f.state.artifacts[0].revision = 2; f.emit(); const revised = plan();
+    first.toggle(false); f.emit(); assert.equal(plan(), revised); assert.equal(plan().open, false);
     assert.equal(f.all().filter(e => e.className === 'gd-muyu-card gd-muyu-plan').length, 1);
     assert.ok(f.all().some(e => e.textContent?.includes('proposal at planning time')));
     f.root.__gdMuyuDispose();
@@ -1666,7 +1890,7 @@ test('View switches restore scroll position and unrelated renders do not force s
     const f = fixture('en', true), saved = [];
     f.controller.setScrollPosition = (key, top) => saved.push([key, top]); f.state.viewKey = 'A'; f.state.scrollTop = 40; f.emit();
     const transcript = f.all().find(e => e.className === 'gd-muyu-transcript'); transcript.scrollHeight = 500; transcript.clientHeight = 100; transcript.scrollTop = 350;
-    f.state.viewKey = 'B'; f.state.viewToken++; f.state.scrollTop = 25; f.emit(); assert.equal(transcript.scrollTop, 25); assert.deepEqual(saved.at(-1), ['A', 350]);
+    f.state.viewKey = 'B'; f.state.viewToken++; f.state.scrollTop = 25; f.emit(); assert.equal(transcript.scrollTop, 25); assert.ok(saved.some(([key, top]) => key === 'A' && top === 350)); assert.deepEqual(saved.at(-1), ['B', 25]);
     transcript.scrollTop = 350; f.emit(); assert.equal(transcript.scrollTop, 350); f.root.__gdMuyuDispose();
 });
 
@@ -1704,6 +1928,32 @@ test('Floating history entry and session management remain reachable outside the
     const renameInput = f.all(sidebar).find(e => e.tag === 'input' && e.value === 'My session');
     assert.ok(renameInput, 'management editor must not remain in the hidden session bar');
     f.root.__gdMuyuDispose(); assert.ok(!launcher.children.includes(toggle));
+});
+
+for (const lang of ['zh', 'en']) test('Return-to-latest shows new content without moving the reader or sending messages / ' + lang, async () => {
+    const f = fixture(lang, true), transcript = f.all().find(e => e.className === 'gd-muyu-transcript');
+    transcript.scrollHeight = 600; transcript.clientHeight = 200;
+    f.state.viewKey = 'reading'; f.state.scrollTop = 100; f.state.messages = [{ role: 'assistant', content: 'Old answer' }]; f.emit();
+    assert.equal(transcript.scrollTop, 100);
+    const latest = f.all().find(e => e.className?.includes('gd-muyu-return-latest')); assert.equal(latest.hidden, false);
+    f.state.messages.push({ role: 'assistant', content: 'New answer' }); f.emit();
+    assert.equal(transcript.scrollTop, 100); assert.equal(latest.textContent, lang === 'en' ? 'New content · Return to latest' : '有新内容 · 返回最新内容');
+    await latest.click(); assert.equal(transcript.scrollTop, 600); assert.equal(latest.hidden, true);
+    f.state.messages.push({ role: 'assistant', content: 'Another answer' }); f.emit(); assert.equal(latest.hidden, true);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose(); const top = transcript.scrollTop; await latest.onclick(); assert.equal(transcript.scrollTop, top);
+});
+
+for (const lang of ['zh', 'en']) test('New clarification returns from settings once without focusing or clearing the composer / ' + lang, async () => {
+    const f = fixture(lang, true), transcript = f.all().find(e => e.className === 'gd-muyu-transcript');
+    transcript.scrollHeight = 600; transcript.clientHeight = 200; f.state.input = 'Keep draft'; f.emit();
+    await f.find('button', '⚙').click();
+    const focused = f.root.ownerDocument.activeElement;
+    f.state.interaction = { id: 'clarify', kind: 'clarification', status: 'pending', question: 'Which?', options: ['A', 'B'], draft: '' }; f.emit();
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-settings').hidden, true); assert.equal(transcript.scrollTop, 600);
+    assert.equal(f.find('textarea').value, 'Keep draft'); assert.equal(f.root.ownerDocument.activeElement, focused);
+    transcript.events.wheel?.({ target: transcript }); transcript.scrollTop = 100; transcript.events.scroll?.({ target: transcript });
+    f.state.interaction.question = 'Updated'; f.emit(); assert.equal(transcript.scrollTop, 100);
+    f.root.__gdMuyuDispose();
 });
 
 test('A new permission request scrolls to its inline card only once', () => {

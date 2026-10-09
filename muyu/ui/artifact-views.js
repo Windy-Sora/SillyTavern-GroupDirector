@@ -225,7 +225,7 @@ function render_config_draft({ doc, card, artifact, state: s, controller, act, l
     renderConfigDiff({ doc, parent: card, diff: artifact.content.preview.diff, lang });
     const operation = s.configActions?.find(r => r.artifactId === artifact.id && r.revision === artifact.revision);
     const attempted = operation && !['pending', 'cancelled', 'expired', 'not_executed'].includes(operation.status);
-    node('p', attempted ? t('上方为本次操作的原始差异；实际结果见下方。', 'Original operation diff above; see actual result below.') : artifact.content.preview.notice, card); node('p', artifact.content.preview.warnings.join(' · '), card);
+    node('p', attempted ? t('上方为本次操作的原始差异；实际结果见操作回执。', 'Original operation diff above; see the operation receipt for the result.') : artifact.content.preview.notice, card); node('p', artifact.content.preview.warnings.join(' · '), card);
     if (Array.isArray(artifact.content.preview.impact?.characters)) {
         node('small', t('当前聊天记忆仓库中的角色序号；不向模型发送角色标识或记忆正文。', 'Character slots in this chat memory store; identities and memory text are not sent to the model.'), card);
         for (const row of artifact.content.preview.impact.characters) node('p', t(`角色序号 ${row.slot}：${row.before} → ${row.before - row.remove}（裁剪 ${row.remove}）`, `Character slot ${row.slot}: ${row.before} → ${row.before - row.remove} (prune ${row.remove})`), card);
@@ -238,7 +238,6 @@ function render_config_draft({ doc, card, artifact, state: s, controller, act, l
     if (!attempted) node('p', artifact.validation?.status === 'stale' ? t('过期，需重新生成', 'Stale; regenerate') : artifact.validation ? t('已校验当时基线；使用前需复核，未应用', 'Validated against saved baseline; recheck before use. Not applied.') : t('未校验，未应用', 'Not validated; not applied'), card);
     const recheck = button(t('重新校验', 'Revalidate'), card); recheck.disabled = s.busy || s.resetting; recheck.onclick = () => act(() => controller.revalidate(artifact.id, artifact.revision));
     renderConfigApply({ doc, card, artifact, state: s, controller, act, lang });
-    const option = node('option', `${artifact.id} · v${artifact.revision}`, follow); option.value = artifact.id;
 }
 
 const definitions = [
