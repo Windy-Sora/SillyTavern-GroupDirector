@@ -73,7 +73,14 @@ registerSection('muyu', ctx => {
         let host;
         const stPromptSnapshots = createStPromptSnapshots({getContext:ctx.getContext,getTarget:()=>host?.currentTarget(),getSettings:()=>ctx.settings,saveSettings:ctx.saveMuyuCredentials});
         const stDiagnostics = createStDiagnostics({ getContext: ctx.getContext, getTarget: () => host?.currentTarget(), getSettings: () => ctx.settings, saveSettings: ctx.saveMuyuCredentials });
-        const services = createServicesPort({ fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders });
+        const services = createServicesPort({ fetcher: globalThis.fetch?.bind(globalThis), getHeaders: ctx.getRequestHeaders,
+            getEnabled: () => ctx.settings.muyuServiceTools,
+            saveEnabled: async value => {
+                const settings = ctx.settings, previous = settings.muyuServiceTools;
+                settings.muyuServiceTools = value;
+                try { await ctx.saveMuyuCredentials(); }
+                catch (error) { if (settings.muyuServiceTools === value) { if (previous === undefined) delete settings.muyuServiceTools; else settings.muyuServiceTools = previous; } throw error; }
+            } });
         const providerPort = createProviderPort({ getContext: ctx.getContext, getSettings: () => ctx.settings, extensionKey: ctx.EXT_KEY, bindings: ctx.muyuProviderBindings, getProviders: ctx.getMuyuProviders,
             stDiagnostics, stPromptSnapshots, services,
             worldBooks: { getState: ctx.getMuyuWorldBookState, load: ctx.loadWorldInfo },

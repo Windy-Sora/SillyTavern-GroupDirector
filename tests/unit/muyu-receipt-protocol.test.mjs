@@ -31,8 +31,8 @@ const action = (c, status = 'outcome_unknown') => ({ id: 'op', artifactId: 'a', 
 
 test('Receipt registry covers every action kind and GUI version with isolated metadata', () => {
     const actions = builtinActionDescriptors(), rows = receiptProtocolDescriptors();
-    validateReceiptOwners(actions); assert.equal(rows.length, 34);
-    assert.deepEqual(rows.map(r => r.version), [undefined, ...Array.from({ length: 33 }, (_, i) => i + 2)]);
+    validateReceiptOwners(actions); assert.equal(rows.length, 35);
+    assert.deepEqual(rows.map(r => r.version), [undefined, ...Array.from({ length: 34 }, (_, i) => i + 2)]);
     assert.deepEqual(receiptPresentationDescriptors(), rows.map(({ version, config, technical }) => ({ version, config, technical })));
     rows[0].owners[0].id = 'wrong'; rows[0].modules.push('unknown'); rows[0].sources = 'none';
     assert.equal(receiptProtocol(undefined).owners[0].id, 'actions'); assert.equal(receiptProtocol(undefined).sources, 'config');
@@ -70,7 +70,7 @@ test('Shared and historical action variants have exact routing without guessing 
 
 test('Unknown wire versions fail before schema, permission projection or model explanation fallback', () => {
     const receipt = actionReceipt(action(content(undefined)));
-    for (const version of [0, 1, 35, '2', null, '__proto__']) {
+    for (const version of [0, 1, 36, '2', null, '__proto__']) {
         assert.equal(receiptProtocol(version), undefined);
         for (const call of [validateReceipt, receiptSources, receiptText, r => receiptContext([r])]) {
             assert.throws(() => call({ ...receipt, version }), /UNKNOWN_RECEIPT_VERSION/);

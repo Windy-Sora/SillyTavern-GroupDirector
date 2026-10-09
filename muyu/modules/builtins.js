@@ -41,6 +41,9 @@ import { createScriptExecutorModule } from './script-executors/index.js';
 import { createProviderAssetModule } from './provider-assets/index.js';
 import { createHistoryModule } from './history/index.js';
 import { createWebSearchModule } from './web/index.js';
+import { createServiceDocumentModule } from './service-documents/index.js';
+import { createServicePageModule } from './service-pages/index.js';
+import { createServiceWorkspaceModule } from './service-workspace/index.js';
 import { createAgentMemoryModule } from './agent-memory/index.js';
 import { createVariableDraftPort } from '../host/variable-draft.js';
 import { createTaskBundleDraftPort } from '../host/task-bundle-draft.js';
@@ -67,6 +70,9 @@ export function createBuiltins(host) {
     const variables = createVariableDraftModule({ port: variablePort });
     const bundle = createTaskBundleModule({ port: host.bundleDraftPort || createTaskBundleDraftPort({ getTarget: host.currentTarget, getSettings: host.getSettings, variableDraftPort: variablePort, scriptPort: host.scriptExecutors }) });
     const profiles = createProfileDraftModule(), web = createWebSearchModule();
+    const documents = createServiceDocumentModule({ port: host.services, usage: id => providers.usage(id), charge: (id, bytes) => providers.charge(id, bytes) });
+    const pages = createServicePageModule({ port: host.services, usage: id => providers.usage(id), charge: (id, bytes) => providers.charge(id, bytes) });
+    const workspace = createServiceWorkspaceModule({port:host.services,charge:(id,bytes)=>providers.charge(id,bytes),usage:id=>providers.usage(id)});
     const notes = createAgentMemoryModule({ port: host.agentMemory, budget: id => providers.usage(id).limit, used: id => providers.usage(id).used, charge: (id, bytes) => providers.charge(id, bytes) });
     const providerAssets = createProviderAssetModule({ port: host.providerAssets, charge: (id, bytes) => providers.charge(id, bytes) });
     const scripts = createScriptExecutorModule({ port: host.scriptExecutors, charge: (id, bytes) => providers.charge(id, bytes) });
@@ -97,6 +103,7 @@ export function createBuiltins(host) {
     const modules = [toolbox, generationBatch, npcGeneration, profileGeneration, memoryGeneration, selectionEditor, ledgerEditor, characterCards, stPresetEditor, worldBookEditor, blueprintNodeEditor, npcEditor, profileEditor, memoryEditor, variableEditor, blueprintLibraries, npcLibraryChat, blueprintLibraryChat, npcLibraries, profileLibraryChat, profileLibraries, skills, customPrompts, customAgents, scripts, memory, draft, director, context, history, providers, interaction, permission, settings, taskPlan, variables, bundle, profiles, web, notes, providerAssets];
     const unified = new Map();
     modules.push(skillRuntime);
+    modules.push(documents, pages, workspace);
     const legacyPreview = (args, ctx) => {
         const run = unified.get(ctx.runId);
         if (run && !run.bound) {
@@ -113,7 +120,7 @@ export function createBuiltins(host) {
             ...assetDescriptors(host, { customPrompts, skills, profileLibraries, npcLibraries, blueprintLibraries, profileLibraryChat, npcLibraryChat, blueprintLibraryChat }),
             ...executionDescriptors(host, { scriptExecutors: scripts, customAgents, generationBatch, memoryGeneration, profileGeneration, npcGeneration }),
             ...readDescriptors(host, { toolbox, memory, director, context, history, interaction, permission, skillRuntime }),
-            ...supportDescriptors(host, { providers, taskPlan, profiles, web, notes }),
+            ...supportDescriptors(host, { providers, taskPlan, profiles, web, notes, documents, pages, workspace }),
         ] });
     const draftEntry = id => draftAssembly.toolEntries.find(row => row.id === id);
     const entries = [
@@ -152,6 +159,9 @@ export function createBuiltins(host) {
         ...(host.scriptExecutors ? [{ id: 'script-executors', module: scripts }] : []),
         ...(host.providerAssets ? [{ id: 'provider-assets', module: providerAssets }] : []),
         { id: 'web', module: web },
+        { id: 'service-documents', module: documents },
+        { id: 'service-pages', module: pages },
+        { id: 'service-workspace', module: workspace },
         { id: 'agent-memory', module: notes },
     ];
     const labels = Object.fromEntries(Object.entries(toolLabels).filter(([id]) => (host.generationBatch || !generationBatch.registry.list().some(tool => tool.id === id)) && (host.npcGeneration || !npcGeneration.registry.list().some(tool => tool.id === id)) && (host.profileGeneration || !profileGeneration.registry.list().some(tool => tool.id === id)) && (host.memoryGeneration || !memoryGeneration.registry.list().some(tool => tool.id === id)) && (host.selectionEditor || !selectionEditor.registry.list().some(tool=>tool.id===id)) && (host.stPresetEditor || !stPresetEditor.registry.list().some(tool=>tool.id===id)) && (host.characterCards || !characterCards.registry.list().some(tool=>tool.id===id)) && (host.worldBookEditor || !worldBookEditor.registry.list().some(tool=>tool.id===id)) && (host.ledgerEditor || !ledgerEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintNodeEditor || !blueprintNodeEditor.registry.list().some(tool=>tool.id===id)) && (host.npcEditor || !npcEditor.registry.list().some(tool=>tool.id===id)) && (host.profileEditor || !profileEditor.registry.list().some(tool=>tool.id===id)) && (host.memoryEditor || !memoryEditor.registry.list().some(tool=>tool.id===id)) && (host.variableEditor || !variableEditor.registry.list().some(tool=>tool.id===id)) && (host.blueprintLibraryChat || !blueprintLibraryChat.registry.list().some(tool => tool.id === id)) && (host.blueprintLibraries || !blueprintLibraries.registry.list().some(tool => tool.id === id)) && (host.npcLibraryChat || !npcLibraryChat.registry.list().some(tool => tool.id === id)) && (host.npcLibraries || !npcLibraries.registry.list().some(tool => tool.id === id)) && (host.profileLibraryChat || !profileLibraryChat.registry.list().some(tool => tool.id === id)) && (host.profileLibraries || !profileLibraries.registry.list().some(tool => tool.id === id)) && (host.skills || !skills.registry.list().some(tool => tool.id === id)) && (host.customPrompts || !customPrompts.registry.list().some(tool => tool.id === id)) && (host.customAgents || !customAgents.registry.list().some(tool => tool.id === id)) && (host.providerAssets || !providerAssets.registry.list().some(tool => tool.id === id)) && (host.scriptExecutors || !scripts.registry.list().some(tool => tool.id === id))));

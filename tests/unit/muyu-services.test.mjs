@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createServicesPort } from '../../muyu/host/services.js';
 const { registerServiceStatus, checkStorage } = createRequire(import.meta.url)('../../muyu/server-plugin/service-status.cjs');
 const reply = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
-const status = () => ({ version: 1, serviceVersion: '0.3.0', capabilities: { history: 1, search: 1, storageCheck: 1, diagnostics: 1 }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
+const status = () => ({ version: 1, serviceVersion: '0.6.0', capabilities: { history: 1, search: 1, storageCheck: 1, diagnostics: 1 }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
 
 test('Service checks send only fixed local routes and sanitize the status projection', async () => {
     const calls = [], port = createServicesPort({ getHeaders: () => ({ 'X-CSRF-Token': 'csrf' }), fetcher: async (url, options) => {
@@ -65,7 +65,7 @@ test('Status uses host identity and storage route rejects missing confirmation o
     registerServiceStatus(router, status().limits);
     const invoke = (route, req) => new Promise(resolve => { const res = { code: 200, status(code) { this.code = code; return this; }, json(value) { resolve({ code: this.code, value }); } }; routes.get(route)(req, res); });
     const missing = await invoke('GET /service/status', { query: { root: process.cwd() } }); assert.equal(missing.code, 500); assert.equal(missing.value.error, 'HISTORY_IDENTITY_UNAVAILABLE');
-    const loaded = await invoke('GET /service/status', { user: { directories: { root: process.cwd() } } }); assert.deepEqual(loaded.value, status());
+    const loaded = await invoke('GET /service/status', { user: { directories: { root: process.cwd() } } }); assert.deepEqual(loaded.value, { ...status(), toolProtocols: { documentSearch: 1, webFetch: 1, workspaceWrite: 1, jsonValidate: 1 } });
     for (const body of [undefined, {}, { confirm: false }, { confirm: true, root: process.cwd() }]) assert.equal((await invoke('POST /service/storage-check', { body })).code, 400);
 });
 

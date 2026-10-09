@@ -13,6 +13,23 @@ function broker(options = {}) {
     const controller = new AbortController(), clock = createClock();
     return { controller, clock, value: createToolBroker({ registry: registry(), handlers: { [toolId]: a => a.n }, runId: 'r1', target: identity.target, allowedTools: [toolId], signal: controller.signal, policy: () => true, clock, ...options }) };
 }
+
+test('Tool visibility removes unavailable definitions between model calls without granting execution', async () => {
+    let visible = true, calls = 0;
+    const s = subject([[request(call('a')), done], [text('complete'), done]], {
+        toolVisibility: () => visible,
+        handlers: { [toolId]: args => { calls++; visible = false; return args.n; } },
+    });
+    assert.equal((await s.handle.completion).state.status, 'succeeded');
+    assert.equal(calls, 1); assert.equal(s.model.requests[0].tools.length, 1); assert.equal(s.model.requests[1].tools.length, 0);
+    for (const visibility of [() => false, () => { throw Error('PRIVATE'); }]) {
+        const hidden = subject([[text('normal conversation'), done]], { toolVisibility: visibility });
+        assert.equal((await hidden.handle.completion).state.status, 'succeeded'); assert.equal(hidden.model.requests[0].tools.length, 0);
+    }
+    const denied = subject([[request(call('a')), done], [text('denied'), done]], { toolVisibility: () => true, policy: () => false,
+        handlers: { [toolId]: () => { throw Error('must not execute'); } } });
+    await denied.handle.completion; assert.equal(denied.model.requests[1].messages.find(m => m.role === 'tool').result.error.code, 'PERMISSION_DENIED');
+});
 test('Muyu offline loop pairs multiple serial calls and final response', async () => {
     const order = [];
     const s = subject([[request(call('a')), request(call('b', { n: 3 })), done], [text('complete'), done]], { handlers: { [toolId]: async a => { order.push(a.n); return a.n * 2; } } });

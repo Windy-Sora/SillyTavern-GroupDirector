@@ -92,7 +92,7 @@ test('Server plugin registers only its private authenticated API routes', () => 
     const routes = [];
     const router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (route) => routes.push(`${method} ${route}`)]));
     init(router);
-    assert.deepEqual(routes, ['get /web/health', 'post /web/search', 'get /service/status', 'post /service/storage-check', 'get /service/diagnostics', 'post /service/diagnostics/clear', 'get /health', 'get /records', 'get /records/:id', 'put /records/:id', 'delete /records/:id']);
+    assert.deepEqual(routes, ['get /web/health', 'post /web/search', ...['roots', 'list', 'search', 'read'].map(operation => 'post /documents/' + operation), 'post /web/page', ...['preview', 'apply', 'validate'].map(operation => 'post /workspace/' + operation), 'get /service/status', 'post /service/storage-check', 'get /service/diagnostics', 'post /service/diagnostics/clear', 'get /health', 'get /records', 'get /records/:id', 'put /records/:id', 'delete /records/:id']);
 });
 
 test('Deleting migrated history survives reopening and does not retain private text on the server', async () => {

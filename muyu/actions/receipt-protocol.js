@@ -38,6 +38,7 @@ const definitions = [
     row(32, 'worldbook-editor', 'worldBookEditActions', 'worldbook-edit-draft'),
     row(33, 'character-card', 'characterCardActions', 'character-card-draft'),
     row(34, 'st-preset-editor', 'stPresetActions', 'st-preset-draft'),
+    row(35,'service-workspace','workspaceActions','workspace-draft'),
 ].map(value => Object.freeze({ ...value, modules: Object.freeze([...value.modules]),
     owners: Object.freeze(value.owners.map(owner => Object.freeze({ ...owner }))) }));
 const versions = new Map(definitions.map(value => [value.version, value]));

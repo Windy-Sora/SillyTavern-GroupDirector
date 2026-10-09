@@ -71,10 +71,10 @@ test('Invalidation expires pending approvals but cannot cancel or forget an alre
     assembly.clear(); assert.deepEqual(assembly.list(), []);
 });
 
-test('Builtin assembly maps all 24 legacy coordinators explicitly and rejects unknown kinds rather than falling back to bundles', () => {
+test('Builtin assembly maps all 25 coordinators explicitly and rejects unknown kinds rather than falling back to bundles', () => {
     const assembly = createBuiltinActions({ host: { globalTarget: { kind: 'global' }, currentTarget: () => ({ kind: 'chat', chatKey: 'A' }) }, getArtifact: () => null, validate() {} });
-    assert.equal(assembly.describe().length, 24);
-    assert.equal(new Set(assembly.describe().flatMap(row => row.artifactKinds)).size, 25);
+    assert.equal(assembly.describe().length, 25);
+    assert.equal(new Set(assembly.describe().flatMap(row => row.artifactKinds)).size, 26);
     assert.equal(assembly.forKind('variable-draft'), assembly.forKind('variable-editor-draft'));
     assert.equal(assembly.forKind('task-bundle'), assembly.get('bundleActions'));
     assert.equal(assembly.describe().find(row => row.id === 'stPresetActions').scope, 'global');

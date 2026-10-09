@@ -1,5 +1,6 @@
 import { renderSkillSave } from './skill-save-view.js';
 import { renderSelectionEditor } from './selection-editor-view.js';
+import { renderWorkspace } from './workspace-view.js';
 import { renderLedgerEditor } from './ledger-editor-view.js';
 import { renderStPreset } from './st-preset-view.js';
 import { renderCharacterCard } from './character-card-view.js';
@@ -241,6 +242,7 @@ function render_config_draft({ doc, card, artifact, state: s, controller, act, l
 }
 
 const definitions = [
+    {kind:'workspace-draft',title:['工作区文档草稿','Workspace document draft'],role:'action',layout:'inline',render:renderWorkspace},
     { kind: 'report', title: ["排查报告","Diagnostic report"], role: 'report', layout: 'anchored-details', render: render_report },
     { kind: 'task-plan', title: ["任务方案","Task plan"], role: 'read-review', layout: 'anchored-details', render: render_task_plan },
     { kind: 'task-bundle', title: ["整单草稿","Operation bundle"], role: 'action', layout: 'inline', render: render_task_bundle },

@@ -1,4 +1,65 @@
 import test from 'node:test';
+for(const lang of ['zh','en'])test('Workspace and JSON preferences are independent, off by default and protocol gated / '+lang,async()=>{
+    const f=fixture(lang,true),t=(zh,en)=>lang==='en'?en:zh;let enabled=false,json=false;
+    const status=()=>({status:'available',serviceVersion:'0.6.0',capabilities:{history:true,search:true,storageCheck:true},toolProtocols:{workspaceWrite:1,jsonValidate:1},limits:{records:64,recordBytes:33554432,totalBytes:268435456,messages:4096}});
+    f.controller.workspaceEnabled=()=>enabled;f.controller.jsonEnabled=()=>json;
+    f.controller.setWorkspaceEnabled=async v=>{enabled=v;return status();};f.controller.setJsonEnabled=async v=>{json=v;return status();};f.controller.checkServices=async()=>status();
+    f.state.input='KEEP_DRAFT';
+    const input=label=>f.all().find(el=>el.tag==='label'&&el.children.some(child=>child.textContent===label)).children.find(el=>el.tag==='input');
+    const work=input(t('启用工作区文档草稿（默认关闭）','Enable workspace document drafts (off by default)')),check=input(t('启用JSON语法校验（默认关闭）','Enable JSON syntax validation (off by default)'));
+    const groups=f.all().filter(e=>e.className==='gd-muyu-service-group');
+    assert.equal(groups.length,3);assert.ok(groups.every(e=>e.tag==='details'&&!e.open));
+    groups[0].open=true;
+    const capabilityState=el=>el.parent.children.find(e=>e.className==='gd-muyu-service-capability-state').textContent;
+    assert.equal(work.disabled,true);assert.equal(check.disabled,true);
+    assert.match(capabilityState(work),lang==='en'?/Not checked/:/尚未检查/);
+    await f.find('button',t('检查服务能力','Check service capabilities')).click();
+    work.checked=true;await work.onchange();assert.equal(enabled,true);assert.equal(json,false);assert.equal(f.state.input,'KEEP_DRAFT');
+    assert.match(capabilityState(work),lang==='en'?/Supported.*enabled/:/支持.*已开启/);
+    check.checked=true;await check.onchange();assert.equal(json,true);
+    f.controller.checkServices=async()=>({status:'missing'});await f.find('button',t('检查服务能力','Check service capabilities')).click();assert.equal(work.disabled,false);
+    assert.match(capabilityState(work),lang==='en'?/preference retained, tool not offered/:/偏好保留，工具不会提供/);
+    assert.equal(groups[0].open,true);assert.equal(groups[0],f.all().find(e=>e.className==='gd-muyu-service-group'));
+    work.checked=false;await work.onchange();assert.equal(work.disabled,true);f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Public page switch is protocol gated, preserves draft and can turn off legacy service / ' + lang, async () => {
+    const f = fixture(lang, true), t = (zh, en) => lang === 'en' ? en : zh; let enabled = false, saves = 0;
+    const status = () => ({ status: 'available', serviceVersion: '0.5.0', capabilities: { history: true, search: true, storageCheck: true }, toolProtocols: { webFetch: 1 }, limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
+    f.controller.pagesEnabled = () => enabled;
+    f.controller.setPagesEnabled = async value => { saves++; enabled = value; return status(); };
+    f.controller.checkServices = async () => status(); f.state.input = 'UNSENT';
+    const label = f.all().find(el => el.tag === 'label' && el.children?.some(child => child.textContent === t('允许读取公开网页正文（默认关闭）', 'Allow public web page reading (off by default)')));
+    const checkbox = label.children.find(el => el.tag === 'input');
+    assert.equal(checkbox.checked, false); assert.equal(checkbox.disabled, true);
+    await f.find('button', t('检查服务能力', 'Check service capabilities')).click(); assert.equal(checkbox.disabled, false);
+    checkbox.checked = true; await checkbox.onchange(); assert.equal(saves, 1); assert.equal(enabled, true); assert.equal(f.state.input, 'UNSENT');
+    f.controller.checkServices = async () => ({ status: 'legacy' });
+    await f.find('button', t('检查服务能力', 'Check service capabilities')).click(); assert.equal(checkbox.disabled, false);
+    checkbox.checked = false; await checkbox.onchange(); assert.equal(saves, 2); assert.equal(checkbox.disabled, true);
+    const late = checkbox.onchange; f.root.__gdMuyuDispose(); await late(); assert.equal(saves, 2);
+});
+
+for (const lang of ['zh', 'en']) test('Local document switch is default-off, protocol gated and preserves unsent input / ' + lang, async () => {
+    const f = fixture(lang, true), t = (zh, en) => lang === 'en' ? en : zh;
+    let enabled = false, saved = 0;
+    const status = () => ({ status: 'available', serviceVersion: '0.4.0', capabilities: { history: true, search: true, storageCheck: true }, toolProtocols: { documentSearch: 1 },
+        limits: { records: 64, recordBytes: 33554432, totalBytes: 268435456, messages: 4096 } });
+    f.controller.documentsEnabled = () => enabled;
+    f.controller.setDocumentsEnabled = async value => { saved++; enabled = value; return status(); };
+    f.controller.checkServices = async () => status();
+    f.state.input = 'UNSENT';
+    const label = f.all().find(el => el.tag === 'label' && el.children?.some(child => child.textContent === t('启用本地资料检索（默认关闭）', 'Enable local document search (off by default)')));
+    const checkbox = label.children.find(el => el.tag === 'input');
+    assert.equal(checkbox.checked, false); assert.equal(checkbox.disabled, true);
+    await f.find('button', t('检查服务能力', 'Check service capabilities')).click(); assert.equal(checkbox.disabled, false);
+    checkbox.checked = true; await checkbox.onchange(); assert.equal(saved, 1); assert.equal(enabled, true); assert.equal(f.state.input, 'UNSENT');
+    f.controller.checkServices = async () => ({ status: 'legacy' });
+    await f.find('button', t('检查服务能力', 'Check service capabilities')).click();
+    assert.equal(checkbox.disabled, false); // Always allow disabling an enabled preference.
+    checkbox.checked = false; await checkbox.onchange(); assert.equal(saved, 2); assert.equal(checkbox.disabled, true);
+    const late = checkbox.onchange; f.root.__gdMuyuDispose(); await late(); assert.equal(saved, 2);
+});
 
 for (const lang of ['zh', 'en']) test('Service errors stay local, exports are sanitized and clear does not touch conversations / ' + lang, async () => {
     const f = fixture(lang, true), t = (zh, en) => lang === 'en' ? en : zh; let reads = 0, clears = 0;

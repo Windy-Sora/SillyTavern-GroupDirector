@@ -1,6 +1,8 @@
 # 动作回执协议（D第十轮，2026-10-06）
 
-`receipt-protocol.js` 是可信静态登记，不是用户或模型可注册的执行接口。旧无version及v2–v34共34种格式，描述动作content.module、精确动作所有者／产物kind、来源政策、模型投影和GUI技术详情；无writer、批准闭包或业务值。
+`receipt-protocol.js` 是可信静态登记，不是用户或模型可注册的执行接口。旧无version及v2–v35共35种格式，描述动作content.module、精确动作所有者／产物kind、来源政策、模型投影和GUI技术详情；无writer、批准闭包或业务值。
+
+v35为service-workspace／workspaceActions／workspace-draft，只保留操作类型、终态与文件同步状态；不包含文件名、正文、服务票据或备份ID，不授予读取或写入权限。file_synced为执行时同步文件并核验内容，非当前状态或断电目录持久化保证；结果未知不自动重试。
 
 ## 接线与兼容
 

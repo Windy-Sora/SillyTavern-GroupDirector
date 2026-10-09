@@ -1,5 +1,6 @@
 import { createConfigActions } from './config-apply.js';
 import { createSelectionActions } from './selection-edit.js';
+import { createWorkspaceActions } from './workspace.js';
 import { createLedgerEditActions } from './ledger-edit.js';
 import { createCharacterCardActions } from './character-card.js';
 import { createStPresetActions } from './st-preset.js';
@@ -27,6 +28,7 @@ import { validateReceiptOwners } from './receipt-protocol.js';
 
 // Explicit legacy owners: scopes, artifact kinds and writer ports are not inferred.
 const definitions = Object.freeze([
+    { id:'workspaceActions',artifactKinds:['workspace-draft'],scope:'global',writer:'services',create:createWorkspaceActions },
     { id: 'actions', artifactKinds: ["config-draft"], scope: 'global', writer: 'configWriter', create: createConfigActions },
     { id: 'selectionActions', artifactKinds: ["selection-draft"], scope: 'global', writer: 'selectionEditor', create: createSelectionActions },
     { id: 'ledgerEditActions', artifactKinds: ["ledger-edit-draft"], scope: 'chat', writer: 'ledgerEditor', create: createLedgerEditActions },

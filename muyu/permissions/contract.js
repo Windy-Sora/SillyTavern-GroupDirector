@@ -23,6 +23,7 @@ export function parseExecutionSource(value) {
     return match ? { providerId: match[1], providerRevision: match[2] } : null;
 }
 export const requestableSources = Object.freeze([...providerCatalog,
+    { id: 'serviceDocuments', title: '本地资料白名单目录与文本（将发送给模型） / Approved local document roots and text (sent to model)', scope: 'global', permission: 'source-only' },
     { id: 'stCharacterCardState', title: '酒馆角色卡正文与保存资料 / ST saved character-card details', scope: 'global', permission: 'extended' },
     { id: 'stCharacterCardReferences', title: '角色卡删除保护：已加载群组、标签、绑定与当前使用引用计数 / Loaded character-card reference counts for deletion safeguards', scope: 'global', permission: 'extended' },
     { id: 'npcLibraryChat', title: '当前聊天 NPC 正文、角色卡关联及有效提示词 / Current chat NPCs, character-card links and effective Prompt', scope: 'chat', permission: 'extended' },

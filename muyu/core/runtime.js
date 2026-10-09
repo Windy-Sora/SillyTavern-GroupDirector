@@ -7,7 +7,7 @@ import { MAX_REQUEST_BYTES, MAX_CONTEXT_MESSAGES } from './context-limits.js';
 import { modelDiagnosticStage } from './model-diagnostics.js';
 
 /** Start one isolated run. Application-level queues, user waits and real model adapters are not provided. */
-export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolObservation = null, taskEvidencePort = null, interactionPort = null, toolHandoffPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
+export function startAgentRun({ identity, input, taskContext = null, previousMessages = [], historyCoverage = null, protectedHistory = false, historyBlocked = false, applicationContext = '', resume = null, model, createBroker, registry, handlers = {}, allowedTools = [], trimRecoveryTools = [], trimRecoveryNote = '', policy, clock = systemClock, limits = {}, maxTokens = 8192, finalizeOnLimit = false, toolVisibility = () => true, toolObservation = null, taskEvidencePort = null, interactionPort = null, toolHandoffPort = null, interactionAdmission = () => null, instructionPort = null, instructions = null, contextPort = null, contextConfig = null, toolSelectionPort = null, taskGuidePort = null, compaction = null, prepareCompaction = null, autoCompactionBlocked = false, summaryOnly = false, onSummary = () => {}, resourceUsage = () => ({ used: 0, limit: 0, exhausted: false }), onEvent = () => {} }) {
     if (typeof createBroker !== 'function' || typeof model?.run !== 'function') throw new TypeError('Missing execution ports');
     if (toolHandoffPort !== null && (typeof toolHandoffPort.isControl !== 'function' || typeof toolHandoffPort.read !== 'function')) throw new TypeError('Invalid tool handoff port');
     if (taskGuidePort !== null && (typeof taskGuidePort.prepare !== 'function' || typeof taskGuidePort.project !== 'function')) throw new TypeError('Invalid task guide port');
@@ -104,6 +104,11 @@ export function startAgentRun({ identity, input, taskContext = null, previousMes
             if (selectedTools.length + keep.length > 64) throw new ExecutionError('MODEL_PROTOCOL_ERROR');
             pinned.splice(0, pinned.length, ...selectedTools, ...keep); selectedTools = null;
             activeTools.clear(); pinned.forEach(d => activeTools.add(d.id));
+        }
+        // Visibility only removes tools; execution still requires the broker's independent policy.
+        for (let i = pinned.length - 1; i >= 0; i--) {
+            let visible = false; try { visible = toolVisibility(pinned[i].id) === true; } catch { /* fail closed */ }
+            if (!visible) { activeTools.delete(pinned[i].id); pinned.splice(i, 1); }
         }
         return { messages: history(), taskGuides: projectedGuides(), tools: pinned.map(d => copyJson(d)), maxTokens, finalize: finalizing, ...(instructions ? { instructions } : {}), ...(contextConfig?.inputTokens != null ? { inputTokenLimit: contextConfig.inputTokens } : {}) };
     };

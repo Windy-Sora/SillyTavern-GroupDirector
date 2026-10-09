@@ -356,6 +356,30 @@ for(const operation of ['capture','apply'])for(const access of ['normal','deny',
  await f.controller.dispose();
 });
 import test from 'node:test';
+for(const access of ['normal','deny','full','preview'])test('Workspace controller exact write consent / '+access,async()=>{
+    const {createServiceToolGate}=await import('../../muyu/services/tool-gate.js');
+    const {createWorkspaceWriter}=await import('../../muyu/services/workspace.js');
+    let writes=0;
+    const gate=createServiceToolGate({check:async()=>({status:'available',toolProtocols:{workspaceWrite:1,jsonValidate:1}}),getEnabled:()=>({workspaceWrite:true,jsonValidate:true})});
+    const workspaceWriter=createWorkspaceWriter({request:async(operation,args)=>{
+        if(operation==='preview')return{version:1,status:'preview',previewId:'11111111-1111-4111-8111-111111111111',path:args.path,expectedRevision:args.expectedRevision,revision:'1'.repeat(64),bytes:new TextEncoder().encode(args.text).length,expiresAt:Date.now()+300000,operation:'create',beforeText:''};
+        if(operation==='apply'){writes++;return{version:1,status:'written',path:'notes.md',revision:'1'.repeat(64),backupId:null,persistence:'file_synced'};}
+        throw Error('unexpected');
+    }});
+    const services={workspaceWriter,captureTools:()=>gate.capture(),cancel:()=>{gate.reset();workspaceWriter.clear();}};
+    const args={path:'notes.md',expectedRevision:'',text:'PRIVATE_WORKSPACE_CONTENT',...(access==='full'?{apply:true}:{})};
+    const f=fixture([[tool('muyu.tools.select',{groups:['service-workspace']}),done],[tool('muyu.service.write_file',args,'preview'),done],[text('Draft only'),done]],{services});
+    await f.enable();f.controller.setMode('assistant');await gate.detect();
+    if(['full','preview'].includes(access))f.controller.setFullAccess(true,{confirmed:true});
+    f.controller.setInput(access==='full'?'Write notes.md now':'Only preview notes.md');f.controller.send();await settle();
+    if(['normal','deny'].includes(access)){const request=f.controller.snapshot().interaction;assert.equal(request.source,'serviceDocuments');assert.equal(writes,0);f.controller.answerPermission(request.id,access==='deny'?'deny':'task');await settle();}
+    const artifact=f.controller.snapshot().artifacts.find(a=>a.kind==='workspace-draft');
+    if(access==='normal'){assert.ok(artifact,JSON.stringify(f.controller.snapshot().runs));assert.equal(writes,0);const action=f.controller.prepareWorkspaceApply(artifact.id,artifact.revision);await f.controller.approveWorkspaceApply(action.id);assert.throws(()=>f.controller.approveWorkspaceApply(action.id),/STALE/);}
+    assert.equal(writes,['normal','full'].includes(access)?1:0,JSON.stringify(f.controller.snapshot().runs));
+    if(['normal','full'].includes(access)){const receipts=JSON.parse(f.controller.exportHistory()).receipts;assert.equal(receipts.at(-1).version,35);assert.doesNotMatch(JSON.stringify(receipts),/PRIVATE_WORKSPACE_CONTENT|notes.md|11111111/);}
+    if(access==='deny')assert.equal(artifact,undefined);
+    await f.controller.dispose();
+});
 
 test('Service checks work without model setup or permissions and dispose cancels transport', async () => {
     let reads = 0, writes = 0, cancels = 0;
@@ -2189,6 +2213,78 @@ function fixture(steps = [[text('answer'), done]], extraHost = {}) {
         switchChat: id => { ctx.chatId = id; events.emit('chat'); } };
 }
 const settle = async () => { for (let i = 0; i < 12; i++) await flush(); };
+
+for (const enabled of [false, true]) test('Public page fetch requires an enabled detected capability but no Brave key / ' + enabled, async () => {
+    const { createServiceToolGate } = await import('../../muyu/services/tool-gate.js');
+    const gate = createServiceToolGate({ check: async () => ({ status: 'available', toolProtocols: { webFetch: 1 } }), getEnabled: () => ({ webFetch: enabled }) });
+    let requests = 0;
+    const services = { captureTools: () => gate.capture(), cancel: () => gate.reset(), page: async () => {
+        requests++; return { version: 1, status: 'ok', url: 'https://example.com/', fetchedAt: '2026-10-09T00:00:00.000Z', title: 'Example', text: 'Public evidence', limited: false };
+    } };
+    const f = fixture(enabled ? [[tool('muyu.service.fetch_page', { url: 'https://example.com/', maxChars: 1000 }), done], [text('Public evidence'), done]] : [[text('Normal chat'), done]], { services });
+    await f.enable(); f.controller.setMode('assistant'); await gate.detect();
+    f.controller.setInput('Read this public web page'); f.controller.send(); await settle();
+    assert.equal(requests, enabled ? 1 : 0); assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.equal(f.model.requests[0].tools.some(tool => tool.id === 'muyu.service.fetch_page'), enabled);
+    assert.equal(f.controller.snapshot().interaction, null);
+    assert.equal(f.controller.snapshot().runs.at(-1).process.toolFailures, 0);
+    await f.controller.dispose();
+});
+
+for (const decision of ['task', 'deny', 'all']) test('Local document tools use one source handoff and preserve normal chat / ' + decision, async () => {
+    const { createServiceToolGate } = await import('../../muyu/services/tool-gate.js');
+    const gate = createServiceToolGate({ check: async () => ({ status: 'available', toolProtocols: { documentSearch: 1 } }), getEnabled: () => ({ documentSearch: true }) });
+    await gate.detect(); let reads = 0;
+    const services = { captureTools: () => gate.capture(), cancel: () => gate.reset(), document: async () => {
+        reads++; return { version: 1, status: 'ok', roots: [{ id: 'workspace', title: 'Workspace', revision: '1'.repeat(64) }] };
+    } };
+    const f = fixture([[tool('muyu.tools.select', { groups: ['service-documents'] }), done],
+        [tool('muyu.service.list_roots', {}, 'roots'), done], [text('Only approved roots'), done]], { services });
+    await f.enable(); f.controller.setMode('assistant'); await gate.detect();
+    if (decision === 'all') f.controller.setFullAccess(true, { confirmed: true });
+    f.controller.setInput('Find my local plugin documentation'); f.controller.send(); await settle();
+    if (decision !== 'all') {
+        const interaction = f.controller.snapshot().interaction; assert.equal(interaction.source, 'serviceDocuments'); assert.equal(reads, 0);
+        f.controller.answerPermission(interaction.id, decision); await settle();
+    }
+    assert.equal(reads, decision === 'deny' ? 0 : 1);
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    assert.notEqual(f.controller.snapshot().interaction?.status, 'pending');
+    assert.equal(f.model.requests.at(-1).tools.some(tool => tool.id === 'muyu.service.list_roots'), true);
+    await f.controller.dispose();
+});
+
+test('Optional service absence never blocks normal conversation and disabled capabilities never probe', async () => {
+    const { createServicesPort } = await import('../../muyu/host/services.js');
+    for (const enabled of [false, true]) {
+        let network = 0;
+        const services = createServicesPort({ getEnabled: () => ({ webFetch: enabled }), fetcher: async () => {
+            network++; return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+        } });
+        const f = fixture([[text('normal reply'), done], [text('another reply'), done]], { services });
+        await f.enable(); f.controller.setMode('assistant');
+        for (const input of ['hello', 'continue']) {
+            f.controller.setInput(input); f.controller.send(); await settle();
+            assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+            assert.equal(f.controller.snapshot().interaction, null);
+        }
+        assert.equal(network, enabled ? 2 : 0); // status and legacy health only, cached across turns.
+        assert.ok(f.model.requests.every(request => !request.tools.some(tool => tool.id.startsWith('muyu.service.'))));
+        await f.controller.dispose();
+    }
+});
+
+test('An opted-in service check still in flight cannot delay sending and is aborted on disposal', async () => {
+    const { createServicesPort } = await import('../../muyu/host/services.js'); let cancelled = 0;
+    const services = createServicesPort({ getEnabled: () => ({ webFetch: true }), fetcher: (_url, { signal }) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => { cancelled++; reject(Error('PRIVATE')); }, { once: true });
+    }) });
+    const f = fixture([[text('No service required'), done]], { services });
+    await f.enable(); f.controller.setMode('assistant'); f.controller.setInput('hello'); f.controller.send(); await settle();
+    assert.equal(services.toolStatus().status, 'checking');
+    assert.equal(f.controller.snapshot().runs.at(-1).status, 'succeeded');
+    await f.controller.dispose(); await settle(); assert.equal(cancelled, 1); assert.equal(services.toolStatus().status, 'unchecked');
+});
 
 test('Provider source draft requires separate import approval, saves once, and exports a v6 receipt', async () => {
     let installs = 0;

@@ -15,7 +15,7 @@ test('Presentation rejects duplicated, incomplete, missing or incorrectly owned 
     assert.throws(() => createArtifactViews([descriptor()], [...actions, { id: 'missing', artifactKinds: ['missing-draft'] }]), /MISSING/);
 });
 test('All production action kinds have explicit bilingual rendering and non-writing cards remain separate', () => {
-    const views = createBuiltinArtifactViews(), rows = views.describe(); assert.equal(rows.length, 27);
+    const views = createBuiltinArtifactViews(), rows = views.describe(); assert.equal(rows.length, 28);
     for (const action of builtinActionDescriptors()) for (const kind of action.artifactKinds) {
         const row = rows.find(r => r.kind === kind); assert.equal(row.actionOwner, action.id); assert.equal(row.role, 'action');
         assert.equal(views.layout(kind), 'inline'); assert.equal(views.title(kind, 'zh'), row.title[0]); assert.equal(views.title(kind, 'en'), row.title[1]);
@@ -45,8 +45,8 @@ test('Report and read-review layouts cannot be assigned to writing kinds', () =>
     }
 });
 test('Every supported receipt version has explicit technical rendering and only config receipts have shortcuts', () => {
-    const rows = receiptPresentationDescriptors(); assert.equal(rows.length, 34);
-    assert.deepEqual(rows.map(r => r.version), [undefined, ...Array.from({ length: 33 }, (_, i) => i + 2)]);
+    const rows = receiptPresentationDescriptors(); assert.equal(rows.length, 35);
+    assert.deepEqual(rows.map(r => r.version), [undefined, ...Array.from({ length: 34 }, (_, i) => i + 2)]);
     for (const version of [undefined, 2]) {
         const diff = [{ field: 'autoMemoryInterval' }], p = receiptPresentation({ version, diff });
         assert.equal(p.supported, true); assert.equal(p.config, true); assert.deepEqual(p.diffs, [diff]);
@@ -64,5 +64,5 @@ test('Bundle receipt technical diffs exclude variable/script steps; saved profil
     assert.deepEqual(receiptPresentation({ version: 5, fields: ['mode'] }), { supported: true, config: false, diffs: [], fields: ['mode'] });
 });
 test('Unknown receipt versions cannot reach diff formatting or enable explanation/check actions', () => {
-    for (const version of [0, 1, 35, '2', '__proto__', null]) assert.deepEqual(receiptPresentation({ version }), { supported: false, config: false, diffs: [], fields: null });
+    for (const version of [0, 1, 36, '2', '__proto__', null]) assert.deepEqual(receiptPresentation({ version }), { supported: false, config: false, diffs: [], fields: null });
 });

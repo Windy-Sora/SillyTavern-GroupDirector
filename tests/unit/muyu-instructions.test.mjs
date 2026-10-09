@@ -12,6 +12,13 @@ import { readFile } from 'node:fs/promises';
 import { validateInstructions } from '../../muyu/instructions/contract.js';
 import { RESPONSE_CHECKS } from '../../muyu/instructions/behavior.js';
 
+test('Assistant distinguishes optional server enhancements from independent GD core features', () => {
+    const instructions=composeInstructions('assistant');
+    assert.match(instructions.base,/未装服务仍可用GD记忆／导演／摘要／蓝图，勿说缺席/);
+    assert.match(instructions.base,/缺工具≠未安装/);
+    assert.doesNotMatch(composeReceiptInstructions().base,/未装服务仍可用GD/);
+});
+
 test('Every answer mode and receipt renders shared language and evidence checks without changing the instruction DTO', () => {
     const cases = ['assistant', 'chat', 'draft', 'memory', 'director'].map(mode => composeInstructions(mode));
     cases.push(composeReceiptInstructions());

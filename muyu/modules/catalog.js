@@ -8,6 +8,13 @@ export const taskCatalog = Object.freeze({
     director: { label: ['排查导演', 'Diagnose director'], scope: 'chat', consent: ['本次允许发送导演白名单配置、匿名成员数量、运行状态和历史结构概况；不含角色身份、原因原文或正文', 'Allow director whitelist settings, anonymous counts, runtime state and history structure; no identities, reason text or bodies'], instructions: '先读取导演资料，再检查当前导演状态和历史概况。当前配置不是历史原因，历史记录可编辑且不证明实际执行成功。没有证据就明确无法确定。不读取正文、不重新评分、不写配置。' },
 });
 export const toolLabels = Object.freeze({
+    'muyu.service.list_roots': ['查询本地资料目录', 'List local document roots'],
+    'muyu.service.fetch_page': ['读取公开网页正文', 'Read public web page text'],
+    'muyu.service.write_file': ['预览工作区文档写入', 'Preview workspace document write'],
+    'muyu.service.validate_json': ['校验JSON语法', 'Validate JSON syntax'],
+    'muyu.service.list_files': ['浏览本地资料文件', 'List local document files'],
+    'muyu.service.search_documents': ['搜索本地资料', 'Search local documents'],
+    'muyu.service.read_document': ['读取本地资料片段', 'Read local document excerpt'],
     'muyu.skills.list': ['查询技能目录', 'List Skills'],
     'muyu.skills.read': ['读取技能文档', 'Read Skill document'],
     'muyu.skills.preview': ['预览技能管理', 'Preview Skill management'],
