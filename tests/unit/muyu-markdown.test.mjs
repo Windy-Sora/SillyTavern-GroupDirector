@@ -1,11 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { renderMarkdown } from '../../muyu/ui/markdown.js';
 function dom() {
     const doc = { createElement(tag) { return { tag, ownerDocument: doc, children: [], attrs: {}, append(e) { this.children.push(e); }, replaceChildren() { this.children = []; }, setAttribute(k, v) { this.attrs[k] = v; } }; } };
     const root = doc.createElement('div'), all = (el = root) => [el, ...el.children.flatMap(all)];
     return { root, all };
 }
+
+test('Muyu code uses its own theme palette instead of the host pale code color', () => {
+    const css = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+    const rule = selector => {
+        const start = css.indexOf(selector + ' {');
+        assert.ok(start >= 0, selector);
+        return css.slice(start, css.indexOf('}', start));
+    };
+    const inline = rule('.gd-floating-root .gd-muyu-panel .gd-muyu-markdown :not(pre) > code');
+    assert.match(inline, /color: var\(--gd-muyu-text\)/);
+    assert.match(inline, /background: var\(--gd-muyu-inset\)/);
+    const block = rule('.gd-floating-root .gd-muyu-panel .gd-muyu-markdown pre > code');
+    assert.match(block, /color: var\(--gd-muyu-text\)/);
+    assert.match(block, /background: transparent/);
+    const user = rule('.gd-floating-root .gd-muyu-panel .gd-muyu-user .gd-muyu-markdown :not(pre) > code');
+    assert.match(user, /color: inherit/);
+    const f = dom(); renderMarkdown(f.root, '`{{getvar}}`');
+    assert.equal(f.all().find(e => e.tag === 'code').textContent, '{{getvar}}');
+});
 test('Markdown supports headings, bold, emphasis, lists, quotes, tables, code and explicit safe links', () => {
     const f = dom(); renderMarkdown(f.root, '# 标题\n\n**重点**和*强调*，`inline`\n\n- 一\n- 二\n\n1. first\n\n> 引用\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```js\nconst x = "<tag>";\n```\n\n[文档](https://example.com/doc)');
     for (const tag of ['h1', 'strong', 'em', 'ul', 'ol', 'blockquote', 'table', 'pre', 'code', 'a']) assert.ok(f.all().some(e => e.tag === tag), tag);

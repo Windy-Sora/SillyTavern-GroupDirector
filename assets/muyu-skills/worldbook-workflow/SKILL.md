@@ -2,7 +2,7 @@
 name: worldbook-workflow
 display-name: 世界书与酒馆资料核对
 description: 用户询问世界书绑定、条目内容、GD世界书选择，或ST预设正文、保存与运行配置差异、Persona、扩展目录时使用；不把绑定和配置启用等同于实际注入或运行。
-version: "1.5"
+version: "1.6"
 ---
 
 # 世界书与酒馆资料核对

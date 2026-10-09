@@ -3,6 +3,8 @@ export const readHintSchema = { type: 'object', properties: {
     kind: { type: 'string', enum: ['directory', 'content', 'structured', 'unavailable'] },
     selectorFormat: str(64), exampleSelector: str(32),
     recovery: { type: 'string', enum: ['none', 'correct_selector', 'read_directory', 'stop'] },
+    pageState: { type: 'string', enum: ['more', 'last'] },
+    readingAdvice: str(800),
     continuation: { type: 'object', properties: { id: str(64), token: str(40) }, required: ['id', 'token'], additionalProperties: false },
     error: { type: 'object', properties: { field: str(32), expected: str(320), retryable: { type: 'boolean' } }, required: ['field', 'expected', 'retryable'], additionalProperties: false },
     nextRead: { type: 'object', properties: { id: str(64), selector: str(32), revision: str(40), offset: { type: 'integer', minimum: 0, maximum: 131072 } }, required: ['id', 'selector', 'revision', 'offset'], additionalProperties: false },
@@ -18,6 +20,13 @@ export function readHint(source, args, response, fresh = null) {
     const hint = { kind: !ok ? 'unavailable' : source.format === 'structured' ? 'structured' : directory ? 'directory' : 'content',
         selectorFormat: source.selector, exampleSelector: examples[source.id] || '',
         recovery: response.status === 'INVALID_SELECTOR' || response.status === 'INVALID_READ_ARGUMENTS' ? 'correct_selector' : response.status === 'STALE_SOURCE' || response.status === 'INVALID_CONTINUATION' ? 'read_directory' : ok ? 'none' : 'stop' };
+    if (ok && source.format === 'text') {
+        hint.pageState = response.nextOffset >= 0 ? 'more' : 'last';
+        if (hint.pageState === 'more') hint.readingAdvice = 'More text remains in this projection. A page boundary is not budget exhaustion or task completion. Continue with the issued continuation while relevant to the user request and permitted by the actual run budget. Do not parse a partial JSON page as a complete object. Report budget exhaustion only with an explicit budget error; without that evidence the stopping cause is unknown.';
+        if (directory && source.id === 'stPresetContent' && /^(current|saved:\d+)$/.test(args.selector)) {
+            hint.readingAdvice = (hint.readingAdvice ? hint.readingAdvice + ' ' : '') + 'This overview contains Prompt metadata, NOT Prompt bodies. For content analysis, finish the relevant directory and read relevant indexed Prompt bodies using its revision; do not require the user to pick a name when their goal is clear. Same-source permission is checked by the host; body reads do not inherently require another approval. Never bypass denial or claim final injection.';
+        }
+    }
     if (response.status === 'INVALID_SELECTOR') hint.error = { field: 'selector', expected: source.format === 'structured' ? 'Use empty selector/revision and offset=0 for this structured source.' : `Use ${source.selector}; example ${examples[source.id] || '(see directory)'}. Read the directory first; examples do not prove an item exists.`, retryable: true };
     if (response.status === 'INVALID_READ_ARGUMENTS') hint.error = { field: 'arguments', expected: 'Use {id} for the directory, {id,continuationToken} for a host-issued continuation, or all of {id,selector,revision,offset}. Do not mix these forms.', retryable: true };
     if (response.status === 'INVALID_CONTINUATION') hint.error = { field: 'continuationToken', expected: 'Use an issued token from this run and source, or reread the directory with {id}. Tokens do not survive new tasks or reconnects.', retryable: true };

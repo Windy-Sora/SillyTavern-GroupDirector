@@ -1,6 +1,12 @@
 # 安全过程记录合同
 
-运行内核提供事实，application/process-store.js只保存闭合的展示投影，GUI只读快照。不是原始事件日志、审计导出或模型思考展示。
+运行内核提供事实，application/process-store.js只保存闭合的展示投影，GUI只读快照。不是原始事件日志、完整审计或模型思考展示。
+
+## 本地排错导出（2026-10-09）
+
+会话工具→排错日志→导出排错日志JSON。`diagnostic-export.js`重新构造闭合投影，不序列化controller快照：仅当前对话尚保留的最多128个执行段、每段末48行、错误码、失败阶段、数值预算／上下文计数及资料分页偏移。真实run/session/task标识用导出内局部别名替换，保留关联不输出身份。记录已裁剪时标明droppedRows／exportOmittedRows；刷新／清理后无法恢复旧记录，旧UNKNOWN_ERROR无法反推原错误。
+
+不含用户输入、聊天／Prompt／Skill正文、思考文本、来源版本和续读令牌、角色名称、连接URL或密钥、权限票据、异常正文。仅用户点击本地下载，不外发给模型、不联网、不改变任务／授权／存储；没有下载接口或下载失败时展开只读文字供手动复制。下载URL延时释放、重复导出及卸载清理。MODEL_HISTORY_LIMIT、MODEL_RESPONSE_TOO_LARGE、MODEL_REQUEST_TOO_LARGE保留安全错误码而非退化UNKNOWN_ERROR；不改变这些容量保护。
 
 ## 事件与语义
 

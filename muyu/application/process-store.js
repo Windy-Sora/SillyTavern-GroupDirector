@@ -6,13 +6,15 @@ import { projectBudget } from '../core/budget.js';
 import { modelDiagnosticStage } from '../core/model-diagnostics.js';
 import { MAX_MANUAL_INPUT_TOKENS, MAX_CONTEXT_MESSAGES, projectContext, projectCoverage } from '../context/policy.js';
 const codes = new Set(['PERMISSION_DENIED', 'INVALID_ARGUMENT', 'CALL_ID_CONFLICT', 'UNSUPPORTED_CAPABILITY', 'TARGET_UNAVAILABLE', 'UPSTREAM_PENDING', 'OUTPUT_INVALID', 'TIMEOUT', 'TOOL_FAILED', 'CANCELLED', 'BUDGET_EXCEEDED', 'MODEL_NETWORK_ERROR', 'MODEL_AUTH_ERROR', 'MODEL_RATE_LIMIT', 'MODEL_SERVICE_ERROR', 'MODEL_HTTP_ERROR', 'MODEL_PROTOCOL_ERROR', 'MODEL_HISTORY_UNAVAILABLE', 'MODEL_OUTPUT_TRUNCATED', 'MODEL_FAILED', 'START_FAILED', 'SUMMARY_TOO_LARGE', 'SUMMARY_NOT_SMALLER']);
-const safeCode = value => codes.has(value) ? value : value ? 'UNKNOWN_ERROR' : null;
+export const safeProcessCode = value => codes.has(value) ? value : value ? 'UNKNOWN_ERROR' : null;
+const safeCode = safeProcessCode;
 codes.add('CONTEXT_LIMIT');
 codes.add('CONTEXT_INCOMPLETE');
 codes.add('AUTO_COMPACTION_BLOCKED');
 codes.add('PERMISSION_REQUIRED');
 codes.add('PERMISSION_REQUEST_INVALID');
 for (const code of ['PERMISSION_LIMIT', 'CLARIFICATION_LIMIT', 'INVALID_CONTINUATION']) codes.add(code);
+for (const code of ['MODEL_HISTORY_LIMIT', 'MODEL_RESPONSE_TOO_LARGE', 'MODEL_REQUEST_TOO_LARGE']) codes.add(code);
 const elapsed = (end, start) => Math.min(86_400_000, Math.max(0, Math.round(end - start)));
 const types = new Set(['run.usage', 'model.started', 'model.completed', 'model.failed', 'tool.requested', 'tool.started', 'tool.reused', 'tool.completed', 'tool.failed', 'run.finished']);
 
@@ -70,6 +72,7 @@ export function createProcessStore({ maxRuns = 128, maxRows = 48, maxTotalRows =
                         row.read.limited = d.sourceLimited;
                         row.read.paged = Number.isSafeInteger(d.nextOffset) && d.nextOffset >= 0 && d.nextOffset <= 131072;
                     }
+                    if (Number.isSafeInteger(d.nextOffset) && d.nextOffset >= -1 && d.nextOffset <= 131072) row.read.nextOffset = d.nextOffset;
                 }
             }
             if (type === 'model.started' || type === 'tool.requested') r.active = { kind: type.split('.')[0], attemptId: p.attemptId, at };

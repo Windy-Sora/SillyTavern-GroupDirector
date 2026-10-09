@@ -15,6 +15,44 @@ function fixture(store = createMemoryHistoryStore(), initiallyEnabled = false) {
 }
 const pair = (runId = 'r', body = 'answer') => [{ role: 'user', content: 'question', runId }, { role: 'assistant', content: body, runId }];
 
+test('Retry reopens a failed default-on history store and persists the retained conversation', async () => {
+    const store = createMemoryHistoryStore(); let fail = true, opens = 0, preferenceWrites = 0, requested = true;
+    const library = createSessionLibrary({ port: { enabled: () => requested,
+        open: async () => { opens++; if (fail) throw Error('HISTORY_UNAVAILABLE'); return store; },
+        setEnabled: async value => { requested = value; preferenceWrites++; },
+    } });
+    await library.ready;
+    const id = library.create(scope); library.update(id, { messages: pair() });
+    assert.equal(library.snapshot(scope, id).autoSaveRequested, true);
+    assert.equal(library.snapshot(scope, id).enabled, false);
+    await assert.rejects(library.retry(), /HISTORY_UNAVAILABLE/);
+    assert.deepEqual(library.get(id).messages, pair());
+    assert.equal(library.snapshot(scope, id).loading, false);
+    fail = false; await library.retry();
+    assert.deepEqual((await store.read(id)).messages, pair());
+    assert.equal(library.snapshot(scope, id).enabled, true);
+    assert.equal(library.snapshot(scope, id).error, null);
+    assert.equal(preferenceWrites, 0); assert.equal(opens, 3);
+    await library.setEnabled(false);
+    await assert.rejects(library.retry(), /NOT_READY/);
+    await library.close();
+});
+
+test('Refreshing after failed default-on initialization resumes saves, but does not opt in disabled storage', async () => {
+    for (const requested of [true, false]) {
+        const store = createMemoryHistoryStore(); let fail = true;
+        const library = createSessionLibrary({ port: { enabled: () => requested,
+            open: async () => { if (fail) throw Error('HISTORY_UNAVAILABLE'); return store; }, setEnabled: async () => {},
+        } });
+        await library.ready;
+        const id = library.create(scope); library.update(id, { messages: pair() });
+        fail = false; await library.refresh(); await library.flush();
+        assert.equal(library.snapshot(scope, id).enabled, requested);
+        assert.equal((await store.read(id))?.messages.length || 0, requested ? 2 : 0);
+        await library.close();
+    }
+});
+
 test('Archive admission reserves serialized input plus a maximum answer, not a fixed small turn', async () => {
     const f = fixture(), id = f.library.create(scope);
     const messages = Array.from({ length: 29 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', runId: String(i), content: 'x'.repeat(1024 * 1024 - 100) }));

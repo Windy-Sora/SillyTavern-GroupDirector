@@ -2,7 +2,7 @@
 name: prompt-template-workbench
 display-name: Prompt与模板设计
 description: 用户希望修改GD功能Prompt、创建自定义Prompt数据源、调整输出示例或GD模板引用时使用；区别提示词、Schema和可执行Provider，第三方EJS转专项技能。
-version: "1.5"
+version: "1.6"
 ---
 
 # Prompt 与模板设计

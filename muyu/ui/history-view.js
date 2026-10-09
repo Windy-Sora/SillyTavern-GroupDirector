@@ -1,6 +1,7 @@
 import { taskCatalog } from '../modules/catalog.js';
 import { createHistoryActions } from './history-actions.js';
 import { historyDatePresentation } from './history-presentation.js';
+import { historyErrorLabel } from './history-error.js';
 
 /** Responsive history browser. Viewing another chat never changes the execution target. */
 export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot, controller, act, lang, setSidebarOpen, launcherActions = null }) {
@@ -46,6 +47,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const heading = node('div', '', sidebar); heading.className = 'gd-muyu-sidebar-heading';
     node('strong', t('对话', 'Conversations'), heading);
     const close = button(t('收起历史', 'Close history'), heading);
+    close.className += ' gd-muyu-history-close';
     const currentTitle = launcherActions ? node('small', '', sidebar) : null;
     if (launcherActions) {
         launcherActions.append(toggle);
@@ -66,7 +68,8 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     const range = select(t('范围', 'Scope'), [['current', t('当前聊天', 'Current chat')], ['global', t('全局任务', 'Global tasks')], ['all', t('全部历史', 'All history')]], filtersPanel);
     const archived = select(t('记录', 'Records'), [['active', t('未归档', 'Active')], ['archived', t('已归档', 'Archived')], ['all', t('全部', 'All')]], filtersPanel);
     const task = select(t('任务类型', 'Task type'), [['', t('全部任务', 'All tasks')], ...Object.entries(taskCatalog).map(([id, item]) => [id, t(...item.label)])], filtersPanel);
-    const refresh = button(t('加载／刷新本地历史', 'Load / refresh local history'), sidebar);
+    const refresh = button(t('刷新历史', 'Refresh history'), sidebar); refresh.className += ' gd-muyu-history-refresh';
+    refresh.setAttribute('title', t('重新加载当前存储中的暮羽对话记录', 'Reload Muyu conversations from the current storage'));
     const list = node('div', '', sidebar); list.className = 'gd-muyu-session-list';
     const count = node('small', '', sidebar);
     let opened = false, wide = false, manual = !!setSidebarOpen, signature = '', disposed = false, visible = true, available = false, menuSession;
@@ -76,9 +79,11 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
         if (workspace) workspace.className = 'gd-muyu-workspace' + (showing ? ' is-history-open' : '');
         toggle.setAttribute('aria-expanded', String(showing));
         close.textContent = wide ? t('收起历史', 'Close history') : t('返回聊天', 'Back to chat');
+        close.setAttribute('aria-label', close.textContent); close.setAttribute('title', close.textContent);
+        close.setAttribute('data-action', wide ? 'collapse' : 'back');
         setSidebarOpen?.(showing && visible);
     }
-    function setOpen(value) { manual = true; opened = value; visibility(); (opened ? search : toggle).focus?.(); }
+    function setOpen(value) { manual = true; opened = value; visibility(); (opened ? close : toggle).focus?.({ preventScroll: true }); }
     toggle.onclick = () => setOpen(!opened); close.onclick = () => setOpen(false);
     sidebar.onkeydown = event => {
         if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); setOpen(false); }
@@ -90,7 +95,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
     };
     const resize = width => {
         wide = width >= 680; if (!manual) opened = wide; visibility();
-        if (!wide && opened && available && visible && chat.contains?.(doc.activeElement)) search.focus?.();
+        if (!wide && opened && available && visible && chat.contains?.(doc.activeElement)) close.focus?.({ preventScroll: true });
     };
     const Resize = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
     const observer = Resize && workspace ? new Resize(entries => resize(entries[0]?.contentRect.width || 0)) : null;
@@ -114,11 +119,11 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             if (!h) return;
             (task.parentElement || task.parent).hidden = s.mode === 'assistant';
             actions.render(s);
-            enabled.checked = h.enabled; enabled.disabled = !h.available || h.loading || s.resetting || s.busy;
+            enabled.checked = h.autoSaveRequested ?? h.enabled; enabled.disabled = !h.available || h.loading || s.resetting || s.busy;
             storageLabel.hidden = storageNotice.hidden = !h.canChooseStorage;
             accountStorage.checked = h.accountStorage === true;
             accountStorage.disabled = !h.canChooseStorage || h.loading || s.resetting || s.busy;
-            retry.disabled = !h.enabled || h.loading || !!h.pending || !h.error && !h.dirty; refresh.disabled = !h.available || h.loading || s.resetting;
+            retry.disabled = !h.available || !h.enabled && !h.autoSaveRequested || h.loading || !!h.pending || s.resetting || s.busy || !h.error && !h.dirty; refresh.disabled = !h.available || h.loading || s.resetting;
             create.disabled = h.loading || s.resetting || !s.hasChat && !['draft', 'assistant'].includes(s.mode);
             rename.disabled = archive.disabled = remove.disabled = !h.sessionId || h.loading || s.resetting;
             archive.textContent = h.selected?.archived ? t('恢复归档', 'Restore archive') : t('归档', 'Archive');
@@ -187,6 +192,7 @@ export function createHistoryView({ doc, settings, chat, workspace, sidebarRoot,
             count.textContent = `${h.sessions.length} / ${h.total ?? h.sessions.length} · ${t('归档仍占容量', 'Archives retain storage')}`;
             status.textContent = h.loading ? t('正在加载历史…', 'Loading history…') : h.error ? t('历史操作或保存失败；请先导出备份。', 'History operation/save failed; export a backup first.') : h.pending ? t('正在保存到本地…', 'Saving locally…') : !h.enabled ? h.dirty ? t('仅保留在本页；新内容未保存', 'This page only; new content is unsaved') : h.persisted ? t('本机有旧记录；新内容不会自动保存', 'An older local record exists; new content will not auto-save') : t('仅保留在本页；自动保存关闭', 'This page only; automatic saving is off') : h.dirty ? t('有未保存内容', 'Unsaved changes') : h.persisted ? t('已保存在本地', 'Saved locally') : t('自动保存已开启；发送后保存新对话', 'Automatic saving is on; new conversations save after sending');
             if (h.error === 'HISTORY_CONFLICT' || h.error === 'HISTORY_DELETED') status.textContent = t('另一标签页已更新或删除此记录；未覆盖。请先导出本页内容，再刷新页面核对。', 'Another tab updated or deleted this record; not overwritten. Export this version before reloading the page.');
+            if (h.error && historyErrorLabel(h.error, lang)) status.textContent = historyErrorLabel(h.error, lang);
             if (h.recovery) status.textContent = t('回答仍在本页，但已超过存档容量，未保存。请立即导出恢复备份，再新建对话；恢复 JSON 仅作备份，不能直接导入。', 'The answer remains on this page but exceeds archive capacity and is unsaved. Export a recovery backup now, then start a new conversation. Recovery JSON is a backup, not an importable session.');
             if (h.backend === 'memory' && !h.loading && !h.error && !h.recovery) status.textContent = t('仅保留在本页，刷新后可能丢失；请导出需要保留的对话。', 'Held in this page only and may be lost on reload; export conversations you want to keep.');
             if (h.migration?.pending) status.textContent += t(` · ${h.migration.pending} 份浏览器记录因容量不足待迁移；原件保留。可先导出／删除服务端旧记录，再刷新历史重试。`, ` · ${h.migration.pending} browser records await migration due to capacity; originals remain. Export/delete old server records, then refresh history to retry.`);

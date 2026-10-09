@@ -4,6 +4,7 @@ import { createDisplayPreferencesView } from './display-preferences-view.js';
 import { createThemeSwitcher } from './theme-switcher.js';
 import { createStPromptSnapshotsView } from './st-prompt-snapshots-view.js';
 import { createStDiagnosticsView } from './st-diagnostics-view.js';
+import { createDiagnosticExportView } from './diagnostic-export-view.js';
 import { UI_LABELS } from './navigation-metadata.js';
 import { createSkillPicker } from './skill-picker.js';
 import { MAX_MESSAGE_BYTES } from '../context/policy.js';
@@ -13,6 +14,7 @@ import { taskCatalog } from '../modules/catalog.js';
 import { RUN_DEFAULTS, RUN_RANGES } from '../core/budget.js';
 import { formatBudget, budgetReasonLabel } from './budget-view.js';
 import { createHistoryView } from './history-view.js';
+import { historyErrorLabel } from './history-error.js';
 import { createContextView } from './context-view.js';
 import { createInstructionView } from './instruction-view.js';
 import { createAgentMemoryView } from './agent-memory-view.js';
@@ -130,6 +132,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const tools = node('details', '', chat); tools.className = 'gd-muyu-conversation-tools';
     node('summary', t('会话工具 · 上下文与开销', 'Conversation tools · Context & usage'), tools);
     const toolContent = node('div', '', tools); toolContent.className = 'gd-muyu-conversation-tools-content';
+    const diagnosticExportView = createDiagnosticExportView({ doc, parent: toolContent, controller, lang });
     const transcript = node('div', '', chat); transcript.className = 'gd-muyu-transcript';
     const welcome = node('div', '', transcript); welcome.className = 'gd-muyu-welcome';
     node('h3', t('今天想一起解决什么？', 'What shall we work on today?'), welcome);
@@ -210,6 +213,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     const transcriptView = createTranscriptView({ doc, history, cards, controller, act, lang, views: artifactViews, navigateDirector, navigateMemory, locateReceipt: id => { const element = receiptView.find(id); if (element) scrollFollow.locate(element); } });
     const scrollFollow = createScrollFollow({ viewport: transcript, onPosition: (key, top) => controller.setScrollPosition?.(key, top), onState: state => {
         latest.hidden = state.following;
+        latest.setAttribute('data-unread', String(state.unread));
         latest.textContent = state.unread ? t('有新内容 · 返回最新内容', 'New content · Return to latest') : t('返回最新内容', 'Return to latest');
     } });
     latest.onclick = () => scrollFollow.latest();
@@ -276,6 +280,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         if (code === 'NOTHING_TO_SUMMARIZE') { errors.textContent = t('暂无可整理的完整旧问答；保留近期问答，单次过长的问答不会截断整理。', 'No eligible complete older turns. Recent turns are retained and oversized turns are not split.'); return; }
         if (code === 'DISPLAY_CONFIG_SAVE_FAILED') { errors.textContent = t('主题未能保存，仍使用原配色，请重试。', 'Theme could not be saved; the previous appearance remains active. Retry.'); return; }
         if (code === 'INVALID_CONTEXT_CONFIG' || code === 'CONTEXT_CONFIG_SAVE_FAILED') { errors.textContent = t('上下文设置无效或保存失败，仍使用原配置。', 'Invalid context settings or save failed; previous configuration remains active.'); return; }
+        if (historyErrorLabel(code, lang)) { errors.textContent = historyErrorLabel(code, lang); return; }
         if (code?.startsWith('HISTORY_')) { errors.textContent = code === 'HISTORY_PERMISSION_REQUIRED' ? t('旧对话含需授权的资料。可在会话工具中选择本次不带历史、在配置中授权，或新建对话。', 'Old history requires authorization. Omit history in conversation tools, authorize in settings, or start a new conversation.') : code === 'HISTORY_CAPACITY' ? t('已达到历史容量限制，请导出备份；单会话满时可新建对话。', 'History capacity reached. Export a backup; start a new conversation if this one is full.') : t('历史操作未完成，未自动覆盖或清除记录。请检查存储状态并重试。', 'History operation failed; records were not automatically overwritten or cleared. Check storage and retry.'); return; }
         if (code === 'CREDENTIAL_SAVE_FAILED') { errors.textContent = t('未能确认密钥设置已保存，请检查酒馆存储状态后重试。', 'Could not confirm credential persistence. Check ST storage and retry.'); return; }
         if (code === 'INVALID_RUN_CONFIG' || code === 'RUN_CONFIG_SAVE_FAILED') { errors.textContent = code === 'INVALID_RUN_CONFIG' ? t('预算必须是标注范围内的整数，未保存。', 'Budgets must be integers within the displayed bounds; not saved.') : t('未能确认预算保存，仍使用原配置。', 'Budget save was not confirmed; previous configuration remains active.'); return; }
@@ -477,6 +482,6 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
     disable.onclick = () => act(async () => { hostProbe?.abort(); await controller.disable(); autoConnect.checked = false; lastConnection = null; });
     input.onkeydown = event => { if (!event.isComposing && event.keyCode !== 229 && !event.repeat && event.ctrlKey && event.key === 'Enter' && !send.disabled) { event.preventDefault(); send.click(); } };
     render();
-    const dispose = () => { if (disposed) return; disposed = true; hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); interactionView.dispose(); scrollFollow.dispose(); unsubscribe?.(); historyView.dispose(); transcriptView.dispose(); receiptView.dispose(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
+    const dispose = () => { if (disposed) return; disposed = true; diagnosticExportView.dispose(); hostProbe?.abort(); themeSwitcher.dispose(); instructionView.dispose(); connectionTools.dispose(); permissionView.dispose(); interactionView.dispose(); scrollFollow.dispose(); unsubscribe?.(); historyView.dispose(); transcriptView.dispose(); receiptView.dispose(); key.value = ''; webSearchView.clearKey(); gear.remove(); shell.remove(); root.classList.remove?.('gd-muyu-floating'); if (root.__gdMuyuDispose === dispose) delete root.__gdMuyuDispose; };
     root.__gdMuyuDispose = dispose; return dispose;
 }

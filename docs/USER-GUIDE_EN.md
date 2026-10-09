@@ -984,4 +984,12 @@ A: Start from the dashboard stats—profile count wrong → Characters drawer. L
 
 ---
 
+## Muyu troubleshooting log
+
+For auto-save errors, check the safe error code and advice under Settings → Storage & memory. If storage is unavailable, restore connectivity/browser storage access and click “Retry saving.” If a preference save fails, check the ST connection and change that option again. Do not clear records first; export this conversation before reloading. An enabled auto-save preference does not confirm every save succeeded.
+
+When a Muyu task fails, open **Conversation tools → Troubleshooting log → Export diagnostic log JSON** and share the file with the developer. Export before reloading or clearing runtime records. It contains retained execution segments, safe error codes, failure stages, budgets and read progress for this conversation—not complete history or server/CMD logs.
+
+Export is local, needs no data permission and makes no model calls. It excludes conversation/Prompt bodies, thinking text, character names, endpoint URLs, keys and real session IDs. If downloading is unavailable, expand the read-only log text and copy it manually. Previously recorded `UNKNOWN_ERROR` values cannot be reconstructed.
+
 > Architecture doc: [DESIGN.md](DESIGN.md) | Template syntax: [TEMPLATE-SYNTAX.md](TEMPLATE-SYNTAX.md)

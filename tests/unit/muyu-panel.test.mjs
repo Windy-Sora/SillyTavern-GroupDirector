@@ -1024,6 +1024,59 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
     mount(); return { root, state, controller, listeners, sent, configs, emit, find, all, mount, stops: () => stops };
 }
 
+for (const lang of ['zh', 'en']) test('Storage startup failure offers a safe retry without changing the auto-save preference / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.history = { available: true, enabled: false, autoSaveRequested: true, error: 'HISTORY_UNAVAILABLE', sessions: [] };
+    f.emit();
+    const checkbox = f.all().find(e => e.tag === 'input' && e.parent?.textContent === (lang === 'en' ? 'Automatically save Muyu conversations (on by default)' : '自动保存暮羽对话（默认开启）'));
+    assert.equal(checkbox.checked, true);
+    const retry = f.find('button', lang === 'en' ? 'Retry saving' : '重试保存');
+    assert.equal(retry.disabled, false);
+    const status = f.all().find(e => e.className === 'gd-muyu-storage-status');
+    assert.match(status.textContent, /HISTORY_UNAVAILABLE/);
+    let calls = 0; f.controller.retryHistory = () => { calls++; };
+    await retry.click(); assert.equal(calls, 1); assert.equal(f.sent.length, 0);
+    f.state.history.autoSaveRequested = false; f.emit(); assert.equal(retry.disabled, true);
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Compact history refresh reloads only on click and preserves the conversation draft / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.history = { available: true, enabled: true, sessions: [] }; f.state.input = 'unsent draft'; f.emit();
+    let refreshed = 0; f.controller.refreshHistory = () => { refreshed++; };
+    const refresh = f.find('button', lang === 'en' ? 'Refresh history' : '刷新历史');
+    assert.match(refresh.className, /gd-muyu-history-refresh/); assert.ok(refresh.getAttribute('title'));
+    assert.equal(refreshed, 0); await refresh.click(); assert.equal(refreshed, 1);
+    assert.equal(f.state.input, 'unsent draft'); assert.equal(f.sent.length, 0);
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Storage setting errors display a safe actionable code, not server text / ' + lang, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' });
+    f.state.history = { available: true, enabled: true, autoSaveRequested: true, sessions: [] }; f.emit();
+    const checkbox = f.all().find(e => e.tag === 'input' && e.parent?.textContent === (lang === 'en' ? 'Automatically save Muyu conversations (on by default)' : '自动保存暮羽对话（默认开启）'));
+    f.controller.setHistoryEnabled = async () => { throw Error('HISTORY_SETTINGS_FAILED'); };
+    checkbox.checked = false; await checkbox.onchange();
+    assert.ok(f.all().some(e => e.textContent?.includes('HISTORY_SETTINGS_FAILED')));
+    assert.equal(checkbox.checked, true); assert.equal(f.state.history.enabled, true);
+    f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test('Conversation diagnostic export works offline without model consent or input changes / ' + lang, () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }); f.state.input = 'PRIVATE_INPUT'; f.emit();
+    const exportButton = f.find('button', lang === 'en' ? 'Export diagnostic log JSON' : '导出排错日志 JSON');
+    assert.ok(exportButton);
+    assert.equal(exportButton.parent.tag, 'details');
+    assert.equal(exportButton.parent.parent.className, 'gd-muyu-conversation-tools-content');
+    assert.equal(exportButton.parent.children[0].textContent, lang === 'en' ? 'Troubleshooting log' : '排错日志');
+    assert.equal(f.find('button', lang === 'en' ? 'Troubleshooting log and export' : '排错日志与导出'), undefined);
+    exportButton.onclick();
+    const log = f.all().find(e => e.tag === 'textarea' && e.getAttribute('aria-label') === (lang === 'en' ? 'Diagnostic log text (copy manually)' : '排错日志原文（可手动复制）'));
+    assert.equal(JSON.parse(log.value).format, 'muyu-diagnostics'); assert.doesNotMatch(log.value, /PRIVATE_INPUT/);
+    assert.equal(f.state.input, 'PRIVATE_INPUT'); assert.equal(f.sent.length, 0); assert.equal(f.configs.length, 0);
+    const captured = exportButton.onclick; f.root.__gdMuyuDispose(); captured(); assert.equal(log.value, '');
+});
+
 for (const failed of [false, true]) test('ST probe cancelled by connection save unlocks after success or failure / ' + failed, async () => {
     const f = fixture('en', true, { initialMode: 'assistant' });
     const source = f.all().find(e => e.tag === 'select' && e.parent.textContent === 'Connection source');
@@ -1846,9 +1899,23 @@ test('Sidebar responds to container width, preserves manual choice and traps onl
     const f = fixture('en', true); f.state.history = managedHistory(); f.emit();
     const sidebar = f.all().find(e => e.tag === 'aside'), toggle = f.find('button', 'History');
     resize([{ contentRect: { width: 800 } }]); assert.equal(sidebar.hidden, false);
+    const collapse = f.find('button', 'Close history');
+    assert.match(collapse.className, /gd-muyu-history-close/);
+    assert.equal(collapse.getAttribute('data-action'), 'collapse');
+    assert.equal(collapse.getAttribute('aria-label'), 'Close history');
     f.find('button', 'Close history').click(); resize([{ contentRect: { width: 900 } }]); assert.equal(sidebar.hidden, true);
-    toggle.click(); resize([{ contentRect: { width: 400 } }]); assert.equal(sidebar.hidden, false);
+    toggle.click(); assert.equal(collapse.ownerDocument.activeElement, collapse);
+    const historySearch = f.all(sidebar).find(e => e.type === 'search');
+    let searchFocusCalls = 0; historySearch.focus = () => { searchFocusCalls++; };
+    resize([{ contentRect: { width: 400 } }]); assert.equal(sidebar.hidden, false);
     const first = f.all(sidebar).find(e => e.tag === 'button' && e.textContent === 'Back to chat'), last = f.find('button', 'Title'), hidden = f.find('button', 'Delete');
+    assert.equal(first.getAttribute('data-action'), 'back');
+    assert.equal(first.getAttribute('aria-label'), 'Back to chat');
+    const chat = f.all().find(e => e.className === 'gd-muyu-chat');
+    chat.contains = el => el === f.find('textarea'); f.find('textarea').focus();
+    resize([{ contentRect: { width: 400 } }]);
+    assert.equal(first.ownerDocument.activeElement, first); assert.equal(searchFocusCalls, 0);
+    first.click(); toggle.click(); assert.equal(first.ownerDocument.activeElement, first); assert.equal(searchFocusCalls, 0);
     hidden.getClientRects = () => []; sidebar.querySelectorAll = () => [first, last, hidden];
     let prevented = 0; sidebar.onkeydown({ key: 'Tab', target: last, shiftKey: false, preventDefault() { prevented++; } });
     assert.equal(first.ownerDocument.activeElement, first); assert.equal(prevented, 1);
@@ -1938,7 +2005,9 @@ for (const lang of ['zh', 'en']) test('Return-to-latest shows new content withou
     const latest = f.all().find(e => e.className?.includes('gd-muyu-return-latest')); assert.equal(latest.hidden, false);
     f.state.messages.push({ role: 'assistant', content: 'New answer' }); f.emit();
     assert.equal(transcript.scrollTop, 100); assert.equal(latest.textContent, lang === 'en' ? 'New content · Return to latest' : '有新内容 · 返回最新内容');
+    assert.equal(latest.getAttribute('data-unread'), 'true');
     await latest.click(); assert.equal(transcript.scrollTop, 600); assert.equal(latest.hidden, true);
+    assert.equal(latest.getAttribute('data-unread'), 'false');
     f.state.messages.push({ role: 'assistant', content: 'Another answer' }); f.emit(); assert.equal(latest.hidden, true);
     assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose(); const top = transcript.scrollTop; await latest.onclick(); assert.equal(transcript.scrollTop, top);
 });

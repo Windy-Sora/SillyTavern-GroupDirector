@@ -94,9 +94,9 @@ test('Revised guides retain live-test boundaries and publish new content revisio
         'skill-workbench': [/muyu.tools.list/, /select/, /显式传新版 load.*SKILL_STALE/, /下一新任务/],
     };
     for (const [name, checks] of Object.entries(patterns)) {
-        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'prompt-template-workbench' ? 6 : name === 'variable-workbench' ? 3 : name==='muyu-troubleshooting' ? 5 : ['resource-library-workflow','character-npc-workbench'].includes(name) ? 4 : 2);
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, name === 'prompt-template-workbench' ? 7 : name === 'variable-workbench' ? 3 : name==='muyu-troubleshooting' ? 5 : ['resource-library-workflow','character-npc-workbench'].includes(name) ? 4 : 2);
         const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
-        assert.match(pack.package.files[0].text, name === 'prompt-template-workbench' ? /version: "1.5"/ : name === 'variable-workbench' ? /version: "1.2"/ : name==='muyu-troubleshooting' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
+        assert.match(pack.package.files[0].text, name === 'prompt-template-workbench' ? /version: "1.6"/ : name === 'variable-workbench' ? /version: "1.2"/ : name==='muyu-troubleshooting' ? /version: "1.4"/ : ['resource-library-workflow','character-npc-workbench'].includes(name) ? /version: "1.3"/ : /version: "1.1"/);
         for (const pattern of checks) assert.match(pack.package.files[1].text, pattern);
     }
 });
@@ -141,6 +141,17 @@ test('Builtin skills remain discoverable through bounded catalog pages without p
     } while (offset !== -1);
     assert.equal(rows.length, BUILTIN_SKILL_MANIFEST.length); assert.equal(new Set(rows.map(row => row.id)).size, BUILTIN_SKILL_MANIFEST.length);
     assert.equal(rows.at(-1).id, `builtin:${BUILTIN_SKILL_MANIFEST.at(-1).name}`);
+});
+
+test('Preset reading guides distinguish paging, body coverage and source authorization', async () => {
+    const packs = await readBuiltins();
+    for (const name of ['worldbook-workflow', 'prompt-template-workbench']) {
+        assert.equal(BUILTIN_SKILL_MANIFEST.find(row => row.name === name).revision, 7);
+        const pack = packs.find(row => row.package.files[0].text.includes(`name: ${name}\n`));
+        assert.match(pack.package.files[0].text, /version: "1.6"/);
+        const text = pack.package.files[1].text;
+        for (const pattern of [/continuation/, /SOURCE_TOO_LARGE/, /stPresetContent/, /正文/, /主动/, /页尾/, /宿主核验/]) assert.match(text, pattern);
+    }
 });
 
 test('Card stack guide loads references independently and projects only loaded documents without saving or granting permission', async () => {

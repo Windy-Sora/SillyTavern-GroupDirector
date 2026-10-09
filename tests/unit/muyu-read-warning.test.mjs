@@ -79,5 +79,6 @@ test('Legacy results without pagination metadata keep conservative partial warni
     f.record({ source: 'charMemory', status: 'ok', text: 'PRIVATE', revision: 'PRIVATE', truncated: true, nextOffset: 2000 });
     assert.equal(processEventState(f.store.snapshot('r').rows[0]), 'warning');
     assert.match(f.view().children[0].textContent, /资料范围有限或未完整返回/);
-    assert.doesNotMatch(JSON.stringify(f.store.snapshot('r')), /PRIVATE|nextOffset/);
+    assert.equal(f.store.snapshot('r').rows[0].read.nextOffset, 2000);
+    assert.doesNotMatch(JSON.stringify(f.store.snapshot('r')), /PRIVATE/);
 });

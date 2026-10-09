@@ -122,7 +122,7 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
                     && (!filters.task || JSON.parse(r.scope)[0] === filters.task)
                     && r.title.toLocaleLowerCase().includes((filters.query || '').trim().toLocaleLowerCase());
             }).sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-            return { available: !!port, enabled, backend: store?.kind || 'memory', loading, pending, error: recoveries.has(id) ? 'HISTORY_CAPACITY' : failures.get(id) || error,
+            return { available: !!port, enabled, autoSaveRequested: !!port?.enabled(), backend: store?.kind || 'memory', loading, pending, error: recoveries.has(id) ? 'HISTORY_CAPACITY' : failures.get(id) || error,
                 dirty: dirty.has(id) || recoveries.has(id), recovery: recoveries.has(id), migration: store?.migration || null, sessionId: id || '', persisted: (revisions.get(id) || 0) > 0, managing: managing.has(id),
                 total: summaries.size, scopeMode: current[0], selected: id ? this.meta(id) : null,
                 sessions: items.map(r => ({ id: r.id, title: r.title, scope: r.scope, updatedAt: r.updatedAt, archived: r.archived, imported: r.imported,
@@ -181,7 +181,10 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
         async refresh() {
             await ready; if (loading || closed || !port) throw Error('NOT_READY');
             loading = true; error = null; notify();
-            try { await tail; await connect(); } catch (e) { error = e.message; throw e; }
+            try {
+                await tail; await connect();
+                if (!enabled && port.enabled()) { enabled = true; for (const id of dirty) schedule(id); }
+            } catch (e) { error = e.message; throw e; }
             finally { loading = false; notify(); }
         },
         async setEnabled(value) {
@@ -198,8 +201,15 @@ export function createSessionLibrary({ port, changed = () => {}, now = Date.now 
         },
         async retry() {
             await ready;
-            if (!enabled || !store || loading) throw Error('NOT_READY');
-            failures.clear(); error = null; for (const id of dirty) schedule(id); await tail;
+            if (closed || loading || !port || !enabled && !port.enabled()) throw Error('NOT_READY');
+            loading = true; error = null; notify();
+            try {
+                await tail;
+                if (!store) await connect();
+                enabled = true;
+                failures.clear(); for (const id of dirty) schedule(id); await tail;
+            } catch (e) { error = e.message; throw e; }
+            finally { loading = false; notify(); }
         },
         export(id, format) { const r = records.get(id); if (!r) throw Error('HISTORY_SCOPE'); const recovery = recoveries.get(id); return recovery ? exportHistoryRecovery(r, recovery.messages, recovery.status, format) : exportHistoryRecord(r, format); },
         async flush() { await ready; await tail; },

@@ -51,6 +51,8 @@ host 适配独立在 `muyu/host/st-preset-content.js`。禁止使用 `getPresetS
 
 `readHint.error` 只给静态字段、预期格式与可否纠正，不包含原始宿主异常或私有资料。INVALID_CONTINUATION 指引重新读取目录；STALE_SOURCE 指引刷新版本；BUDGET_EXCEEDED 指明停止读取。字节预算一旦因页面无法容纳而耗尽，不能跳后续较小页面绕过。容量上限不影响旧参数兼容读取，模型可使用 nextRead。
 
+文本成功结果另有可选 `readHint.pageState=more/last`，指当前投影的分页状态，不证明完整原始资源／最终注入。`readingAdvice` 是静态第一方提示：页尾不是预算耗尽；部分JSON不得当完整对象解释；预设概况不含Prompt正文，内容分析应主动续读相关目录与索引正文。同来源已有授权由宿主核验，不因目录转正文天然增加一次批准。该提示不授予权限、不自动读取、不改变页大小／运行预算或错误恢复策略。
+
 ## 通用已注册 Provider 执行（2026-09-25，当前）
 
 `muyu.provider.discover({offset?})` 分页列出当前注册表中的内置与用户 Provider 的 ID、占位符、来源、版本和可选上下文需求；只取元数据，不执行 `render`。用户导入资产的版本由加载器私有保存的源码摘要与上下文声明决定，可跨刷新识别；没有可信源码摘要的其他注册 Provider 仍使用连接内版本。`muyu.provider.execute` v2 直接调用原有 `render(context, signal)`，默认取 `content`，也可选择 `data` 的有界 JSON 文本。发现目录不会授予执行权。

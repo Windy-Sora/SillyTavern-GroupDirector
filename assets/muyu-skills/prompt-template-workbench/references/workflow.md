@@ -14,6 +14,8 @@
 
 ## 酒馆聊天补全预设
 
+只读分析优先用stPresetContent：概况是参数、提示词元数据和排序，不含正文；按返回continuation读完相关目录，再主动读与目标相关的current:prompt:M／saved:N:prompt:M正文。用户已要求整体检查，不再让其逐条选名字。页尾可续读，不等于预算耗尽；没有明确预算错误不能这样归因，SOURCE_TOO_LARGE是拒绝而不是静默保留前若干项。目录与正文同属stPresetContent，已有许可由宿主核验，不声称切正文必需再次审批。只看名字不能证明语义冲突，未读正文应明确覆盖缺口，不把概况当内容分析。
+
 先区分 GD 功能设置、自定义提示词数据源和酒馆原生聊天补全预设。原生预设用按需工具组 st-preset-editor：muyu.st_preset.list/read/preview，目录许可 stPresets 不等于正文许可 stPresetContent。名称目录20项分页；preset:N 是已加载保存资源，current 是当前运行内存，不含尚未提交的 DOM 草稿。首次目录版本 + offset=0，读到资源版本后才能预览；读取分页文本须按 nextOffset 读齐，不以缺失字段猜默认。
 
 copy（保存资源）和 save_current（current）均要求新名称与空 changesJson，不覆盖已加载名称、不激活；未知及连接字段仅本地完整保留，不让模型补写、回显秘密或重建原资源。update 仅允许 six parameters：temperature（温度）、top_p（Top P）、frequency_penalty（频率惩罚）、presence_penalty（存在惩罚）、openai_max_tokens（最大回复长度）、openai_max_context（上下文上限），具体范围从 list 查证。这是工具输入范围，不证明模型上下文窗口／滑块范围。单条 prompt={identifier,content} 仅已有非 marker 正文，不改角色、顺序、连接或开关；未指定字段保持不变。

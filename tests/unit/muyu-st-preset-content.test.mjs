@@ -125,6 +125,40 @@ test('Long prompt paging preserves Unicode, charges shared budget and does not r
     while (small.status === 'ok' && small.nextOffset >= 0) small = f.read('saved:0:prompt:0', small.revision, small.nextOffset, 'small');
     assert.equal(small.status, 'BUDGET_EXCEEDED'); f.module.dispose();
 });
+
+test('Large preset overview continues beyond 91 entries and explicitly separates metadata from bodies', () => {
+    const f = fixture();
+    f.saved.Default.prompts = Array.from({ length: 120 }, (_, index) => ({ identifier: 'synthetic-' + index,
+        name: 'Synthetic instruction ' + index, role: 'system', injection_depth: 2, content: 'BODY_' + index }));
+    const root = f.read(); let page = f.read('saved:0', root.revision), text = page.text, pages = 1;
+    assert.equal(page.readHint.pageState, 'more');
+    assert.match(page.readHint.readingAdvice, /page boundary is not budget exhaustion/);
+    assert.match(page.readHint.readingAdvice, /NOT Prompt bodies/);
+    while (page.nextOffset >= 0) {
+        validateJson(f.module.registry.get('muyu.provider.read').outputSchema, page);
+        page = f.module.handlers['muyu.provider.read']({ id: 'stPresetContent', continuationToken: page.readHint.continuation.token }, { runId: 'r', target: f.target });
+        assert.equal(page.status, 'ok'); text += page.text; pages++;
+    }
+    validateJson(f.module.registry.get('muyu.provider.read').outputSchema, page);
+    assert.equal(page.readHint.pageState, 'last'); assert.ok(pages > 1);
+    const data = JSON.parse(text); assert.equal(data.prompts.length, 120);
+    assert.equal(data.prompts[119].index, 119); assert.doesNotMatch(text, /BODY_/);
+    const body = f.read('saved:0:prompt:119', page.revision);
+    assert.equal(body.status, 'ok'); assert.equal(body.readHint.kind, 'content');
+    assert.equal(JSON.parse(body.text).prompt.content, 'BODY_119');
+    assert.equal(f.writes(), 0); f.module.dispose();
+});
+
+test('Budget rejection is explicit and never presented as another readable page', () => {
+    const f = fixture(); f.saved.Default.prompts[0].content = '猫'.repeat(8000);
+    f.module.bindRun('small', 6000);
+    const root = f.read('', '', 0, 'small'), overview = f.read('saved:0', root.revision, 0, 'small');
+    let page = f.read('saved:0:prompt:0', overview.revision, 0, 'small');
+    while (page.status === 'ok' && page.nextOffset >= 0) page = f.module.handlers['muyu.provider.read']({ id: 'stPresetContent', continuationToken: page.readHint.continuation.token }, { runId: 'small', target: f.target });
+    assert.equal(page.status, 'BUDGET_EXCEEDED'); assert.equal(page.readHint.recovery, 'stop');
+    assert.equal(page.readHint.pageState, undefined); assert.equal(page.readHint.continuation, undefined);
+    assert.equal(page.readHint.error.field, 'budget'); f.module.dispose();
+});
 test('Unsupported host does not fall back to selecting/exporting a preset; unavailable is not empty', () => {
     const f = fixture(), root = f.read(); delete f.manager.getCompletionPresetByName;
     assert.equal(f.read('saved:1', root.revision).status, 'SOURCE_UNAVAILABLE'); assert.equal(f.writes(), 0);
