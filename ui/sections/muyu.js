@@ -382,15 +382,19 @@ registerSection('muyu', ctx => {
         const hint = document.createElement('small');
         const hintText = en ? 'Hide only the launcher; ongoing tasks are not stopped. Enable here to show it again.' : '仅隐藏入口，不停止正在执行的任务；可在这里重新开启。';
         hint.textContent = hintText;
+        label.title = hintText;
+        hint.hidden = true;
+        hint.setAttribute('role', 'status');
         toggle.onchange = async () => {
             const previous = ctx.settings.muyuFloatingBallVisible;
             ctx.settings.muyuFloatingBallVisible = toggle.checked;
             owner.floating.setBallVisible(toggle.checked); toggle.disabled = true;
-            try { await ctx.saveMuyuCredentials(); hint.textContent = hintText; }
+            try { await ctx.saveMuyuCredentials(); hint.textContent = hintText; hint.hidden = true; }
             catch {
                 ctx.settings.muyuFloatingBallVisible = previous;
                 toggle.checked = previous !== false; owner.floating.setBallVisible(toggle.checked);
                 hint.textContent = en ? 'Could not save; previous visibility restored.' : '保存失败，已恢复原显示设置。';
+                hint.hidden = false;
             } finally { toggle.disabled = false; }
         };
         root.append(label, hint);
