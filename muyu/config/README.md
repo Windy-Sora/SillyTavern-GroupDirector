@@ -2,22 +2,20 @@
 
 本目录管理可编辑配置的登记、选择性读取、纯预览与写入前条件。业务值仍存放于插件 settings；没有新增配置仓库，也不使用配置档导入作为通用写入器。
 
-## 普通设置第三轮：有业务效果的开关（2026-10-03）
+## 有业务效果的开关
 
-当前13领域、96叶字段；115个默认顶层键中91 supported、12 pending、7 special-editor-pending、2 special-editor-supported、3 internal。supported 含部分接入对象：`profileLibraryAutoLoad` 仅三项叶字段已接入，目录用 partial/pendingFields 明示剩余子字段，不表示整个对象任意可改。
+当前字段与覆盖分类以 registry.js 和 coverage.js 为准；新增默认键须通过覆盖断言。supported 含部分接入对象：`profileLibraryAutoLoad` 仅三项叶字段已接入，目录用 partial/pendingFields 明示剩余子字段，不表示整个对象任意可改。
 
 - 开放 `profileLibraryAutoLoad.enabled / overwriteExisting / importTemplate`，保留整个既有策略作为前置基线，但不把资源正文放进上下文。这三个布尔选项可共同预览，不可与其他设置混合；缺失或不支持的旧策略拒绝，不在暮羽路径静默补默认值。
 - 调用原 `updateAutoLoadSettings` 队列保存，不执行 autoLoadForCurrentGroup、不导入包、不生成。自动补缺影响后续启动或聊天切换；覆盖已有、应用模板也影响原手动导入所用默认选项。预览显示现有匹配模式及风险开关；不宣称当前存在可用包或匹配角色。
-- 模式、固定包 ID、匹配规则本轮只读作依赖，不写入。自动加载路径强制 matchNameOnly=false；GUI 的该选项仍可能用于手动导入。固定模式但空 fixedId 在现有运行时退回最佳匹配；不在本轮擅自改为选书／选包。
+- 模式、固定包 ID 与匹配规则在普通开关草稿中只读作依赖，修改走 [选择策略模块](../modules/selection-editor/README.md)。自动加载路径强制 matchNameOnly=false；GUI 的该选项仍可能用于手动导入。固定模式但空 fixedId 在现有运行时退回最佳匹配；普通开关草稿不隐含选书／选包。
 - 开放单字段 `customPromptsEnabled`，调用原 `setMasterEnabled` 业务队列注册／注销自定义 Prompt Provider，不删除条目、不改正文、不执行 render 或模型请求。启用只注册当前有效且单项启用的条目；后续 Prompt 引用可能将内容送入模型或参与递归解析。此开关不授予独立 Provider 执行权限。
 - `muyu/host/settings-switches.js` 负责窄适配；两个业务 API 新增可选同步 beforeApply 钩子，在队列实际轮到操作时复核基线及忙碌状态，旧 GUI 调用不变。自动加载正在执行时拒绝暮羽修改加载策略。不要将注册等业务效果放在可忽略异常的 UI 回调里。
 - 保存失败沿用各业务系统原有的字段级条件恢复及注册状态重建，保留无关并发修改；writer 报 outcome_unknown，不宣称落盘成功或绝对未执行，不自动重试。成功无本操作持久化凭据则 applied_unconfirmed。复用 v2 回执和 configSettings 来源权限。
 - 暂不进入混合整单或生成配置档，避免对象合并或遗漏业务注册。UI 仅同步开关与摘要，保留编辑器和输入草稿。
 - 回归入口：`muyu-settings-switches.test.mjs`；控制器分别覆盖普通审批、全权限及仅预览。未做真实模型或真实宿主 UI 验收。
 
-## 普通设置第二轮：蓝图总开关（2026-10-03）
-
-当轮共13领域、92叶字段，覆盖115个默认顶层键中的89个 supported；14 pending、7 special-editor-pending、2 special-editor-supported、3 internal。
+## 蓝图总开关
 
 - `storyBlueprintEnabled` 必须单独成草稿。读取开关只需 configSettings；预览还需当前聊天 variables 读取授权，绑定当前聊天、完成变量定义与存储值、开关及自动续写设置基线。
 - 启用：完成变量不存在时创建插件所有的布尔 global 变量；已有兼容变量按现有蓝图语义设为自动更新、手动注入，保留规则等其他字段。启用和禁用都重置当前聊天完成值为 false；禁用且变量不存在则不创建、不保存聊天。
@@ -28,27 +26,27 @@
 - 当前不允许放入 task-bundle 或 generated-profile；全权限仅在用户明确要求应用且模型设置 apply=true 后经原协调器执行，单纯预览仍不写入。
 - 回归：`muyu-blueprint-toggle.test.mjs`，控制器普通审批/全权限/仅预览，以及中英文卡片渲染。
 
-## 普通设置第一轮（2026-10-03，历史记录）
+## 语言与调试
 
-新增 general 领域：`lang`（仅 zh/en）与 `debugLogging`（严格布尔）。共13领域、91叶字段，覆盖115个默认顶层键中的88个 supported；15 pending、7 special-editor-pending、2 special-editor-supported、3 internal。
+general 领域：`lang`（仅 zh/en）与 `debugLogging`（严格布尔）。
 
 - 复用 settings 的读取、合同、纯预览、精确批准及全权限显式 apply；读权限沿用 configSettings。可进入现有 settings-only 或混合整单，不创建新的工具。未指定字段保持不变。
 - 语言只影响插件界面及后续语言相关内置文本，不翻译历史、自定义 Prompt，不修改 ST 全局语言。`ui/general-settings-view.js` 只更新普通标签和控件，不把已保存历史文本覆盖到编辑器；悬浮框以 preserveActive 更新外壳语言，当前业务视图保持挂载，完整翻译下次打开生效。保留未发送消息、当前窗口编辑内容；部分旧动态内容仍遵循原刷新时机。
 - 调试开关控制后续插件调试输出及相关追踪；开启提示可能记录业务输入／输出等隐私资料。关闭不清除旧日志，不停止已开始的采集，不授予终端、日志正文或密钥读取权。
 - 这两项是用户个人偏好，不加入暮羽生成的剧情配置档；profile.preview 明确提示使用 settings.preview。已有外部配置档导入契约不在本轮扩展范围。
 - 保存沿用普通配置写入结果：异常不声称落盘成功，内存可能已变化；不整仓回滚或覆盖并发编辑。UI 刷新失败不改变保存结果。
-- 当轮蓝图总开关、档案库自动加载及 Prompt 总开关尚未开放（蓝图开关现已按上述第二轮接入）；memoryTokenBudget 和 llmJsonSchemaHint 无运行消费者，本轮不开放无效写入。
+- memoryTokenBudget 和 llmJsonSchemaHint 无运行消费者，不开放无效写入；蓝图与业务开关使用上方专用合同。
 - 回归：`muyu-general-settings.test.mjs`、控制器全权限实际保存／仅预览、floating-ui 保留挂载测试，并检查整单和生成配置档边界。
 
 ## 用户可读展示
 
-2026-10-06 推断边界：`read-evidence.js` 只计算单次读取的 requestedCount／returnedCount／missingFields，null、false、空串是返回值，不视为缺失；数量不证明值类型合法、执行成功或持久化。标注coverage=this-read-only、runtime=not-observed、persistence=unknown。整任务覆盖应合并成功读取的原字段ID，不数合同查询、目录条目或尝试调用。catalog补代码计算的fieldCount/domainCount，仅是目录规模，不是已读数量。
+推断边界：`read-evidence.js` 只计算单次读取的 requestedCount／returnedCount／missingFields，null、false、空串是返回值，不视为缺失；数量不证明值类型合法、执行成功或持久化。标注coverage=this-read-only、runtime=not-observed、persistence=unknown。整任务覆盖应合并成功读取的原字段ID，不数合同查询、目录条目或尝试调用。catalog补代码计算的fieldCount/domainCount，仅是目录规模，不是已读数量。
 
 自动提取间隔的字段合同及readCaution由memory-rules所有者维护，settings.read按本次请求附上，不自动扩读开关或运行状态。间隔是新增消息阈值，不能从单值读推出“每N条必触发”。账本开关不证明决策产生、历史写入或落盘；导演世界书注入不控制worldBooks/worldBookImportance等独立Provider，开启也不证明激活或注入。空串按各字段合同解释：提取/压缩Prompt回退内置、Schema保留宽松解析、渲染模板保留旧版格式，不统一称默认。所有修改仅用于读取表达/合同，原值、schema、依赖、权限和写入不变。
 
-2026-10-06 范围承接：目录只负责发现，不要求后续全量读取。局部问题选择目标及必要依赖；判断当前生效的选人人数须读取判断模式，不能从人数值猜模式。只读取人数且本响应没有模式值时，工具补充 applicability 证据缺口说明；不自动增读模式，不改变返回的 fields/values 或读取授权。单独问一个开关或间隔仍可只读那一项；模型不可把有条件机制解释成已启用或已执行。
+范围承接：目录只负责发现，不要求后续全量读取。局部问题选择目标及必要依赖；判断当前生效的选人人数须读取判断模式，不能从人数值猜模式。只读取人数且本响应没有模式值时，工具补充 applicability 证据缺口说明；不自动增读模式，不改变返回的 fields/values 或读取授权。单独问一个开关或间隔仍可只读那一项；模型不可把有条件机制解释成已启用或已执行。
 
-2026-10-06 表达合同补充：设置目录明确区分 supported／pending／专用 writer／动态来源；目录不是 GUI 清单，出现键或 writer 不证明可读写、有界面入口或已授权。设置读取新增本次内存观察的时效说明；最多8个字段时提供复用原 GUI 名称与单位的 `answerView`，只含开关、数值及已映射枚举，不重复 Prompt 正文。大批读取返回 null，继续使用完整原值和已有 labels/displayValues，不截掉原证据。
+表达合同补充：设置目录明确区分 supported／pending／专用 writer／动态来源；目录不是 GUI 清单，出现键或 writer 不证明可读写、有界面入口或已授权。设置读取新增本次内存观察的时效说明；最多8个字段时提供复用原 GUI 名称与单位的 `answerView`，只含开关、数值及已映射枚举，不重复 Prompt 正文。大批读取返回 null，继续使用完整原值和已有 labels/displayValues，不截掉原证据。
 
 预览工具给模型的响应增加草稿解释：before 是当时捕获的比较基线，after 是提案，不证明当前值、执行或持久化。解释只加入工具响应，不写入私有草稿、批准内容或保存结构；全权限 apply 仍需运行成功及宿主新鲜度校验，以操作回执为准。不得从展示说明反向创建执行权限。
 
@@ -91,11 +89,11 @@
 | worldBook | worldBookSourceMode、worldBookMaxEntries | st 跟随 ST 激活书、manual 使用现有手动勾选；不会替用户勾选书。条目上限只作用于后续 worldBookImportance Provider 的结果，本工具支持 1–200 |
 | postSpeech | traceMaxEntries、postSpeechMessageEnabled、postSpeechMessagePrompt、postSpeechRoundEnabled、postSpeechRoundPrompt、postSpeechBlocking、postSpeechDecisionLimit | 两个启用开关分别在后续角色消息／合格轮次触发额外模型调用，并可能执行已注册 Capability；Prompt 为原始文本，空串用内置值；blocking 只控制动作等待；两个记录上限分别支持 1–200、1–500 |
 
-当前可编辑字段由 `registry.js` 的闭合白名单登记。导演和公式规则定义集中于 `speaker-rules.js`，自动总结、自动点评、档案、蓝图、NPC、世界书、PostSpeech 与记忆参数分别定义于对应领域规则文件，复用原有注册表与保存端口。消息条数、描述长度、档案预算/并发数与 NPC 数量上限是本工具支持范围，不代表旧 UI 或运行时的强制上限。`coverage.js` 显式登记全部默认顶层键，以及 configProfiles/userProviders/userCapabilities/uiState 四个动态键。尚未接入或明确暂缓的字段分别标为 pending、special-editor-pending 或 deferred，均不提供写入；未来字段的细粒度校验、生效时机和业务保存适配需在接入时确认。覆盖测试拒绝遗漏或重复的默认键，以及未登记的新评分权重。
+当前可编辑字段由 `registry.js` 的闭合白名单登记。导演和公式规则定义集中于 `speaker-rules.js`，自动总结、自动点评、档案、蓝图、NPC、世界书、PostSpeech 与记忆参数分别定义于对应领域规则文件，复用原有注册表与保存端口。消息条数、描述长度、档案预算/并发数与 NPC 数量上限是本工具支持范围，不代表旧 UI 或运行时的强制上限。`coverage.js` 显式登记全部默认顶层键，以及 configProfiles/userProviders/userCapabilities/uiState 四个动态键。尚未接入或明确暂缓的字段分别标为 pending、special-editor-pending 或 deferred，均不提供通用配置写入；未来字段的细粒度校验、生效时机和业务保存适配需在接入时确认。覆盖测试拒绝遗漏或重复的默认键，以及未登记的新评分权重。
 
 ## 运行接口
 
-PostSpeech／执行追踪的七项普通配置已开放暮羽写入，均需预览及逐次批准，不开放 Capability 或脚本源码写入。消息级启用后每条合格角色消息、轮次级启用后每个合格轮次各可能增加一次策略模型调用；两项同时开启时都可能调用。模型结果可执行已注册 Capability，用户扩展实现可能有外部副作用或费用。两个 Prompt 仅影响后续策略分析，渲染时会调用已注册 Provider。`postSpeechBlocking` 在每个执行批次开始时读取当前设置：开启逐个等待 Capability 动作，关闭可并发后台完成并追踪结果；它不取消或跳过前面的模型分析。执行器将每次策略最多处理 8 个意图及 8 个动作、把延迟限制在 30 秒内，并执行 Capability 的每批次数和冷却约束。记录上限的写入仅调整当前页面内存保留量或显示条数，不裁剪聊天中已保存的决策记录。
+PostSpeech／执行追踪的七项普通配置已开放暮羽写入，普通模式需预览及精确批准；本配置通道不开放 Capability 或脚本源码写入。消息级启用后每条合格角色消息、轮次级启用后每个合格轮次各可能增加一次策略模型调用；两项同时开启时都可能调用。模型结果可执行已注册 Capability，用户扩展实现可能有外部副作用或费用。两个 Prompt 仅影响后续策略分析，渲染时会调用已注册 Provider。`postSpeechBlocking` 在每个执行批次开始时读取当前设置：开启逐个等待 Capability 动作，关闭可并发后台完成并追踪结果；它不取消或跳过前面的模型分析。执行器将每次策略最多处理 8 个意图及 8 个动作、把延迟限制在 30 秒内，并执行 Capability 的每批次数和冷却约束。记录上限的写入仅调整当前页面内存保留量或显示条数，不裁剪聊天中已保存的决策记录。
 
 导演历史与世界书两个普通开关只影响后续导演及强制发言流程，不自动重跑旧轮次。关闭历史记录不会由本次写入清空已存记录；消息删除后的常规历史清理仍可能发生。开启世界书会在后续流程查询 ST 激活条目，可能增加上下文并把世界书正文发给已配置的模型，预览必须提示这一点；不修改世界书本体。两项写入只改各自全局叶字段，忙碌时拒绝，成功后同步经典界面复选框。
 
