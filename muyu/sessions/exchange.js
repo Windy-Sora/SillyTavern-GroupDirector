@@ -1,4 +1,4 @@
-import { randomUUID } from '../runtime/crypto.js';
+import { randomUUID, sha256 } from '../runtime/crypto.js';
 import { HISTORY_LIMITS, validateRecord, historyBytes } from './contract.js';
 import { receiptText, receiptSources } from '../actions/receipts.js';
 import { MAX_MESSAGE_BYTES } from '../core/context-limits.js';
@@ -17,6 +17,23 @@ export function importedRecord(source, now = Date.now()) {
         imported: true, archived: false, status: record.status === 'running' ? 'interrupted' : record.status,
         // Not grants, and not trusted as a claim about the original data's provenance.
         required: [...new Set(['diagnostics', 'chat', 'extended', ...(record.receipts || []).filter(r => r.version >= 2).flatMap(receiptSources)])] });
+}
+/** Content identity for read-only imports, not a grant, signature or storage revision.
+ * Importing rewrites IDs/times and adds conservative source dependencies. Normalize
+ * those local bookkeeping fields so exported imports and legacy imports also match.
+ * Keep the title, scope, messages, summary and receipts: edits create another version.
+ */
+export async function historyImportFingerprint(source) {
+    const r = validateRecord(source);
+    const value = { scope: r.scope, title: r.title, messages: r.messages,
+        status: r.status === 'running' ? 'interrupted' : r.status,
+        required: [...new Set(['diagnostics', 'chat', 'extended',
+            ...(r.receipts || []).filter(receipt => receipt.version >= 2).flatMap(receiptSources)])].sort(),
+        contextSummary: r.contextSummary, receipts: r.receipts || [], scopeChanges: r.scopeChanges || [] };
+    const canonical = input => Array.isArray(input) ? input.map(canonical) : input && typeof input === 'object'
+        ? Object.fromEntries(Object.keys(input).sort().map(key => [key, canonical(input[key])])) : input;
+    const bytes = await sha256(JSON.stringify(canonical(value)));
+    return [...new Uint8Array(bytes)].map(n => n.toString(16).padStart(2, '0')).join('');
 }
 export function exportHistoryRecord(record, format = 'json') {
     const r = validateRecord(record);

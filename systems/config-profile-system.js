@@ -23,6 +23,9 @@ const INTENTIONALLY_UNCOVERED_KEYS = new Set([
     'muyuDisplayConfig', 'muyuDisplayConfigVersion', // Local presentation, not a story profile.
     'muyuHistoryEnabled', // Local history privacy choice, never imported with story settings.
     'muyuHistoryAccountStorage',
+    'muyuHistoryStorage',
+    'muyuHistoryReadSource', 'muyuHistoryWriteTargets',
+    'muyuHistoryVolumeMiB',
     'muyuHistoryData', // Private conversations must never be shared through a story profile.
     'muyuAgentMemoryEnabled',
     'muyuAgentMemoryData', // Assistant notes are private, not transferable story settings.
@@ -112,7 +115,7 @@ function snapshotSettings(settings, drawers) {
 function applySnapshot(settings, snap, options = {}) {
     const changed = [];
     for (const [k, v] of Object.entries(snap)) {
-        if (['muyuHistoryAccountStorage', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData', 'muyuSkillData'].includes(k)) continue;
+        if (['muyuHistoryAccountStorage', 'muyuHistoryStorage', 'muyuHistoryReadSource', 'muyuHistoryWriteTargets', 'muyuHistoryVolumeMiB', 'muyuHistoryData', 'muyuAgentMemoryEnabled', 'muyuAgentMemoryData', 'muyuSkillData'].includes(k)) continue;
         if (['muyuInstructionConfig', 'muyuPermissionConfig'].includes(k)) continue; // Personal instructions and authorization never come from story profiles.
         if (k === 'userProviders' || k === 'userCapabilities') continue;
         if (k === 'customPrompts') continue;  // handled by applyProfile merge
@@ -384,6 +387,9 @@ export function createConfigProfileSystem(deps) {
         delete expSettings.muyuInstructionConfig;
         delete expSettings.muyuPermissionConfig;
         delete expSettings.muyuHistoryAccountStorage;
+        delete expSettings.muyuHistoryStorage;
+        delete expSettings.muyuHistoryReadSource; delete expSettings.muyuHistoryWriteTargets;
+        delete expSettings.muyuHistoryVolumeMiB;
         delete expSettings.muyuHistoryData;
         delete expSettings.muyuAgentMemoryEnabled;
         delete expSettings.muyuAgentMemoryData;
@@ -453,6 +459,9 @@ export function createConfigProfileSystem(deps) {
         delete snap.muyuInstructionConfig;
         delete snap.muyuPermissionConfig;
         delete snap.muyuHistoryAccountStorage;
+        delete snap.muyuHistoryStorage;
+        delete snap.muyuHistoryReadSource; delete snap.muyuHistoryWriteTargets;
+        delete snap.muyuHistoryVolumeMiB;
         delete snap.muyuHistoryData;
         delete snap.muyuAgentMemoryEnabled;
         delete snap.muyuAgentMemoryData;

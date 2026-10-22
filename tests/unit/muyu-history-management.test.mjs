@@ -88,7 +88,7 @@ test('Import is a new read-only record, rejects authority/unknown fields and exp
     assert.throws(() => parseHistoryImport(JSON.stringify({ ...source, apiKey: 'secret' })), /HISTORY_INVALID/);
     assert.throws(() => parseHistoryImport('{"__proto__":{}}'), /HISTORY_INVALID/);
     assert.throws(() => parseHistoryImport('x'.repeat(33554433)), /HISTORY_CAPACITY/);
-    const f = fixture(); await f.library.ready; const id = f.library.import(JSON.stringify(source));
+    const f = fixture(); await f.library.ready; const id = await f.library.import(JSON.stringify(source));
     assert.throws(() => f.library.assertRoom(id), /HISTORY_READ_ONLY/); assert.equal(f.library.get(id).revision, 0); await f.library.close();
 });
 test('Markdown export keeps arbitrary HTML/images and backticks in literal blocks', () => {

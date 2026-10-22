@@ -15,6 +15,10 @@ export const DEFAULT_SETTINGS = {
     muyuDisplayConfig: { processDetail: 'compact' },
     muyuHistoryEnabled: true,
     muyuHistoryAccountStorage: false,
+    muyuHistoryStorage: null, // null preserves the existing legacy storage preference.
+    muyuHistoryReadSource: null,
+    muyuHistoryWriteTargets: null,
+    muyuHistoryVolumeMiB: 8,
     muyuHistoryData: null,
     muyuAgentMemoryEnabled: false,
     muyuAgentMemoryData: null,

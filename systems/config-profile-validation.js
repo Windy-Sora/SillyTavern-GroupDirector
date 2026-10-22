@@ -92,6 +92,9 @@ export function sanitizeImportedSettings(settings, { source = 'json' } = {}) {
     delete sanitized.muyuInstructionConfig;
     delete sanitized.muyuPermissionConfig;
     delete sanitized.muyuHistoryAccountStorage;
+    delete sanitized.muyuHistoryStorage;
+    delete sanitized.muyuHistoryReadSource; delete sanitized.muyuHistoryWriteTargets;
+    delete sanitized.muyuHistoryVolumeMiB;
     delete sanitized.muyuHistoryData;
     delete sanitized.muyuAgentMemoryEnabled;
     delete sanitized.muyuAgentMemoryData;

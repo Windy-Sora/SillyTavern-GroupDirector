@@ -1,5 +1,6 @@
 // Read-only SillyTavern world-book projections. Binding labels are not proof
 // that a book, much less an entry, was injected into a particular prompt.
+import { visibleWorldBookState, isInternalWorldBook } from '../../systems/internal-world-books.js';
 const MAX_BOOKS = 512;
 const MAX_ENTRIES = 1024;
 const MAX_BOOK_CONTENT = 1048576;
@@ -9,15 +10,16 @@ const validIndex = value => /^(0|[1-9]\d{0,3})$/.test(value) ? Number(value) : -
 
 function snapshot(getState) {
     if (typeof getState !== 'function') throw Error('SOURCE_UNAVAILABLE');
-    const state = getState();
+    const state = visibleWorldBookState(getState());
     if (!state || !Array.isArray(state.names)) throw Error('SOURCE_UNAVAILABLE');
     if (state.names.length > MAX_BOOKS) throw Error('SOURCE_TOO_LARGE');
     const names = state.names;
     if (names.some(name => typeof name !== 'string' || !name.trim() || name.length > 200) || new Set(names).size !== names.length) throw Error('SOURCE_UNSUPPORTED');
     const selected = value => {
         if (!Array.isArray(value)) return [];
-        if (value.length > MAX_BOOKS) throw Error('SOURCE_TOO_LARGE');
-        return value.filter(name => typeof name === 'string' && names.includes(name));
+        const selectedNames = value.filter(name => typeof name === 'string' && names.includes(name));
+        if (selectedNames.length > MAX_BOOKS) throw Error('SOURCE_TOO_LARGE');
+        return selectedNames;
     };
     return {
         names: [...names],
@@ -111,6 +113,7 @@ export function readWorldBookEntries(selector, getState, load) {
     return Promise.resolve().then(() => load(name)).then(data => {
         // A delayed load must not silently become a result for a different book.
         if (snapshot(getState).names[bookIndex] !== name) throw Error('STALE_SOURCE');
+        if (isInternalWorldBook(name, data)) throw Error('SOURCE_UNAVAILABLE');
         const entries = bookEntries(data);
         const identity = entries.map(entry => [entry.uid, entry.comment, entry.keys, entry.secondary, entry.content, entry.disabled, entry.constant]);
         if (selector.startsWith('book:') || selector.startsWith('entries:')) {

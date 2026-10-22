@@ -1160,6 +1160,24 @@ test('Storage preference saves without switching the active backend or dropping 
     assert.equal(opened, 1); assert.equal(f.model.requests.length, 0);
     await f.controller.dispose();
 });
+for (const nextStorage of ['world-book', 'account-settings']) test('Storage selector preserves the current backend and draft until reload / ' + nextStorage, async () => {
+    const store = createMemoryHistoryStore(); store.kind = 'browser';
+    let selected = 'auto', opened = 0; const saving = deferred();
+    const history = { enabled: () => true, storageChoice: () => selected, activeStorage: () => 'auto',
+        open: async () => { opened++; return store; }, setStorage: async choice => { await saving.promise; selected = choice; } };
+    const f = fixture([], { history }); await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.newSession(); f.controller.setInput('Keep my unsent draft');
+    const change = f.controller.setHistoryStorage(nextStorage); await flush();
+    assert.equal(f.controller.snapshot().resetting, true);
+    await assert.rejects(f.controller.setHistoryStorage('auto'), /NOT_READY/);
+    saving.resolve(); await change;
+    const state = f.controller.snapshot();
+    assert.equal(state.history.storageChoice, nextStorage); assert.equal(state.history.backend, 'browser');
+    assert.equal(state.history.storageChangePending, true); assert.equal(state.input, 'Keep my unsent draft');
+    assert.equal(opened, 1); assert.equal(f.model.requests.length, 0);
+    await f.controller.dispose();
+});
+
 test('Globe is opt-in even in full access; enabled searches reach the model and reconnect turns it off', async () => {
     let calls = 0, checks = 0;
     const capture = { limits: { maxSearches: 3, maxResults: 5, resultBytes: 12000 }, search: async args => { calls++; return { status: 'ok', provider: 'brave', query: args.query, fetchedAt: '2026-09-30T00:00:00Z', truncated: false, results: [{ title: 'Docs', url: 'https://docs.example.test/', snippet: 'Untrusted public evidence' }] }; } };
@@ -1944,6 +1962,17 @@ test('Imported backups cannot grant authority or enter model history, even with 
     const imported = await f.controller.importHistory(exported); assert.notEqual(imported, previous);
     assert.equal(f.controller.snapshot().readOnly, true); assert.equal(f.controller.snapshot().history.selected.imported, true);
     assert.throws(() => f.controller.send({ consent: true }), /HISTORY_READ_ONLY/);
+    await f.controller.archiveSession(imported, true);
+    assert.equal(await f.controller.importHistory(exported), imported);
+    assert.equal(f.controller.snapshot().history.importReport.status, 'identical');
+    assert.equal(f.controller.snapshot().history.selected.archived, true);
+    assert.ok(f.controller.snapshot().history.sessions.some(row => row.id === imported));
+    const changed = JSON.parse(exported); changed.messages[1].content = 'Changed backup';
+    const another = await f.controller.importHistory(JSON.stringify(changed));
+    assert.notEqual(another, imported); assert.equal(f.controller.snapshot().readOnly, true);
+    assert.equal(f.controller.snapshot().history.importReport.status, 'created');
+    await f.controller.openSession(previous); assert.equal(f.controller.snapshot().readOnly, false);
+    await f.controller.openSession(another);
     assert.equal(f.model.requests.length, 1); assert.match(f.controller.exportHistory('markdown'), /# Muyu conversation/); await f.controller.dispose();
 });
 
@@ -2188,6 +2217,110 @@ test('Read policy cannot change while a source permission continuation is pendin
     await assert.rejects(f.controller.savePermissionConfig({readAccess:'all'}),/NOT_READY/);
     assert.equal(f.controller.snapshot().permissionConfig.readAccess,'ask');
     await f.controller.dispose();
+});
+
+test('Reloading changed history detaches old runtime messages, preserves composer text and sends the new stored history', async () => {
+    const store = createMemoryHistoryStore(); store.kind = 'browser';
+    const f = fixture([[text('old answer'), done], [text('new answer'), done]], { history: { enabled: () => true, open: async () => store, setEnabled: async () => {} } });
+    await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('first question'); f.controller.send(); await settle(); await f.controller.flushHistory();
+    const id = f.controller.snapshot().history.sessionId, old = await store.read(id);
+    await store.update({ ...old, messages: old.messages.map(row => row.role === 'assistant' ? { ...row, content: 'updated externally' } : row) }, old.revision);
+    f.controller.setInput('unsent draft'); await f.controller.refreshHistory();
+    assert.equal(f.controller.snapshot().history.external, 'changed');
+    assert.equal(f.controller.snapshot().messages.at(-1).content, 'old answer');
+    assert.throws(() => f.controller.send(), /HISTORY_CONFLICT/);
+    await f.controller.reloadHistory();
+    assert.equal(f.controller.snapshot().input, 'unsent draft');
+    assert.equal(f.controller.snapshot().messages.at(-1).content, 'updated externally');
+    assert.equal(f.controller.snapshot().runs.length, 0);
+    f.controller.send(); await settle(); await f.controller.flushHistory();
+    assert.match(JSON.stringify(f.model.requests.at(-1).messages), /updated externally/);
+    assert.doesNotMatch(JSON.stringify(f.model.requests.at(-1).messages), /old answer/);
+    assert.equal((await store.read(id)).messages.at(-1).content, 'new answer');
+    await f.controller.dispose();
+});
+
+test('Reloading an externally deleted conversation preserves the unsent draft without resurrecting its ID', async () => {
+    const store = createMemoryHistoryStore();
+    const f = fixture([[text('answer'), done], [text('fresh'), done]], { history: { enabled: () => true, open: async () => store, setEnabled: async () => {} } });
+    await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('question'); f.controller.send(); await settle(); await f.controller.flushHistory();
+    const id = f.controller.snapshot().history.sessionId, saved = await store.read(id);
+    await store.remove(id, saved.revision); f.controller.setInput('keep draft'); await f.controller.refreshHistory();
+    assert.equal(f.controller.snapshot().history.external, 'deleted'); await f.controller.reloadHistory();
+    assert.equal(f.controller.snapshot().input, 'keep draft'); assert.deepEqual(f.controller.snapshot().messages, []);
+    f.controller.send(); await settle(); await f.controller.flushHistory();
+    assert.notEqual(f.controller.snapshot().history.sessionId, id); assert.equal(await store.read(id), null);
+    await f.controller.dispose();
+});
+
+test('Dirty history reload requires explicit discard approval, without dropping the unsent draft', async () => {
+    const store = createMemoryHistoryStore(); let enabled = true;
+    const history = { enabled: () => enabled, open: async () => store, setEnabled: async value => { enabled = value; } };
+    const f = fixture([[text('saved answer'), done], [text('unsaved answer'), done]], { history });
+    await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('saved question'); f.controller.send(); await settle(); await f.controller.flushHistory();
+    const id = f.controller.snapshot().history.sessionId, saved = await store.read(id);
+    await f.controller.setHistoryEnabled(false);
+    f.controller.setInput('unsaved question'); f.controller.send(); await settle();
+    await store.update({ ...saved, title: 'external branch' }, saved.revision);
+    f.controller.setInput('composer survives'); await f.controller.setHistoryEnabled(true); await f.controller.flushHistory();
+    assert.equal(f.controller.snapshot().history.external, 'changed');
+    await assert.rejects(f.controller.reloadHistory(), /HISTORY_UNSAVED/);
+    assert.equal(f.controller.snapshot().messages.at(-1).content, 'unsaved answer');
+    await f.controller.reloadHistory({ discardLocal: true });
+    assert.equal(f.controller.snapshot().messages.at(-1).content, 'saved answer');
+    assert.equal(f.controller.snapshot().input, 'composer survives');
+    assert.equal(f.model.requests.length, 2); assert.equal((await store.read(id)).title, 'external branch');
+    await f.controller.dispose();
+});
+
+test('A chat switch while history reload is waiting cannot replace records or overwrite the new chat draft', async () => {
+    const store = createMemoryHistoryStore();
+    const f = fixture([[text('old answer'), done]], { history: { enabled: () => true, open: async () => store, setEnabled: async () => {} } });
+    await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    f.controller.setInput('question'); f.controller.send(); await settle(); await f.controller.flushHistory();
+    const id = f.controller.snapshot().history.sessionId, saved = await store.read(id);
+    await store.update({ ...saved, title: 'external version' }, saved.revision); await f.controller.refreshHistory();
+    const gate = deferred(), read = store.read.bind(store); let waiting = false;
+    store.read = async key => { const result = await read(key); waiting = true; await gate.promise; return result; };
+    f.controller.setInput('old chat draft'); const pending = f.controller.reloadHistory();
+    await settle(); assert.equal(waiting, true);
+    f.switchChat('B'); f.controller.setInput('new chat draft'); gate.resolve();
+    await assert.rejects(pending, /NOT_READY/);
+    assert.equal(f.controller.snapshot().input, 'new chat draft');
+    assert.equal(f.controller.snapshot().messages.at(-1).content, 'old answer');
+    assert.equal(f.controller.snapshot().history.external, 'changed'); assert.equal(f.model.requests.length, 1);
+    await f.controller.dispose();
+});
+
+test('Read-source switching isolates same-ID histories, composer drafts and scroll positions without model calls', async () => {
+    const { createHistoryPort } = await import('../../muyu/host/history.js');
+    const browser = createMemoryHistoryStore(), books = createMemoryHistoryStore(); browser.kind = 'browser'; books.kind = 'world-book';
+    const settings = { muyuHistoryEnabled: true, muyuHistoryReadSource: 'browser', muyuHistoryWriteTargets: [] };
+    const history = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => settings, saveSettings: async () => {}, openStore: async () => browser, openWorldBook: async () => books, openServer: async () => null });
+    const f = fixture([], { history }); await f.controller.ready; await f.enable(); f.controller.setMode('assistant');
+    const value = { version: 5, id: crypto.randomUUID(), revision: 0, scope: historyScope('assistant', f.host.currentTarget()), title: 'same ID', createdAt: 1, updatedAt: 1,
+        messages: [{ role: 'user', content: 'browser history', runId: 'r' }], required: [], status: 'succeeded', archived: false, imported: false, receipts: [], contextSummary: null };
+    await browser.create(value); await books.create({ ...value, messages: [{ role: 'user', content: 'world-book history', runId: 'r' }] });
+    await f.controller.refreshHistory(); await f.controller.openSession(value.id);
+    f.controller.setInput('browser draft'); const browserKey = f.controller.snapshot().viewKey; f.controller.setScrollPosition(browserKey, 120);
+    await f.controller.setHistoryReadSource('world-book'); await f.controller.openSession(value.id);
+    assert.equal(f.controller.snapshot().messages[0].content, 'world-book history'); assert.equal(f.controller.snapshot().input, '');
+    f.controller.setInput('book draft'); const bookKey = f.controller.snapshot().viewKey; assert.notEqual(bookKey, browserKey);
+    await f.controller.setHistoryReadSource('browser');
+    assert.equal(f.controller.snapshot().messages[0].content, 'browser history'); assert.equal(f.controller.snapshot().input, 'browser draft');
+    assert.equal(f.controller.snapshot().scrollTop, 120);
+    await f.controller.setHistoryReadSource('world-book');
+    assert.equal(f.controller.snapshot().input, 'book draft'); assert.equal(f.controller.snapshot().viewKey, bookKey);
+    await f.controller.setHistoryEnabled(false); await f.controller.setHistoryReadSource('browser');
+    assert.equal(f.controller.snapshot().history.enabled, false, 'cached source obeys the shared auto-save preference');
+    assert.equal(f.controller.snapshot().input, 'browser draft'); await f.controller.setHistoryReadSource('world-book');
+    assert.deepEqual(settings.muyuHistoryWriteTargets, []); assert.equal(f.model.requests.length, 0);
+    await assert.rejects(f.controller.setHistoryReadSource('server'), /HISTORY_UNAVAILABLE/);
+    assert.equal(f.controller.snapshot().history.readSource, 'world-book'); assert.equal(settings.muyuHistoryReadSource, 'world-book');
+    assert.equal(f.controller.snapshot().input, 'book draft'); await f.controller.dispose();
 });
 
 function fixture(steps = [[text('answer'), done]], extraHost = {}) {

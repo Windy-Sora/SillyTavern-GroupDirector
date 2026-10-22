@@ -395,7 +395,7 @@ export function mountMuyuPanel(root, controller, { lang = 'zh', navigateMemory =
         historyAuthorization.hidden = s.mode !== 'assistant' || !missingHistory.length || !!s.context?.omitHistory || s.readOnly || s.interaction?.status === 'pending';
         historySources.textContent = missingHistory.map(source => source.startsWith('source:') ? permissionTitle(source.startsWith('source:providerExecution:') ? 'providerExecution' : source.startsWith('source:agentExecution:') ? 'agentExecution' : source.startsWith('source:npcExecution:') ? 'npcExecution' : source.startsWith('source:profileExecution:') ? 'profileExecution' : source.startsWith('source:memoryExecution:') ? 'memoryExecution' : source.startsWith('source:scriptExecution:') ? 'scriptExecution' : source.slice(7)) : source).join('、');
         allowHistory.disabled = omitHistory.disabled = !s.enabled || s.busy || s.resetting || s.history?.loading;
-        send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
+        send.disabled = s.readOnly || s.busy || s.resetting || s.history?.loading || !!s.history?.external || s.enabled && task.scope === 'chat' && !s.hasChat; stop.disabled = !s.busy || s.resetting;
         if (s.interaction?.status === 'pending') { send.disabled = true; resetAuthorization(); }
         status.setAttribute('data-important', String(!!s.notice || !!s.error || s.readOnly || s.occupiedElsewhere || s.interaction?.status === 'pending' || s.runs.at(-1)?.status === 'failed'));
         updateViewSize();

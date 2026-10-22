@@ -1098,20 +1098,122 @@ for (const lang of ['zh', 'en']) test(`Coverage UI distinguishes a blocked plan 
     assert.ok(f.all().some(e => e.getAttribute('aria-live') === 'polite'));
     f.root.__gdMuyuDispose();
 });
-for (const lang of ['zh', 'en']) test(`Account history storage option explains limits and defers backend switching (${lang})`, () => {
+for (const lang of ['zh', 'en']) test(`History storage selector explains limits and defers backend switching (${lang})`, () => {
     const f = fixture(lang, true, { initialMode: 'assistant' });
     f.state.history = { available: true, enabled: true, canChooseStorage: true, accountStorage: false, backend: 'browser', sessions: [] };
     f.emit();
-    const option = f.all().find(e => e.type === 'checkbox' && /账户设置|account settings/.test(e.parent.textContent || ''));
-    assert.ok(option); assert.equal(option.checked, false); assert.equal(!!option.disabled, false);
+    const option = f.all().find(e => e.tag === 'select' && e.children.some(child => child.value === 'world-book'));
+    assert.ok(option); assert.equal(option.value, 'auto'); assert.equal(!!option.disabled, false);
     const content = () => f.all().map(e => e.textContent || '').join('\n');
+    option.value = 'account-settings'; option.onchange();
     assert.match(content(), /settings.json/); assert.match(content(), /32 MiB/);
-    assert.match(content(), lang === 'en' ? /another tab.*overwrite/ : /其他标签页.*覆盖/);
-    option.checked = true; option.onchange();
+    assert.match(content(), lang === 'en' ? /Other tabs.*overwrite/ : /其他标签页.*覆盖/);
     assert.equal(f.state.history.accountStorage, true); assert.equal(f.state.history.backend, 'browser');
     assert.match(content(), lang === 'en' ? /reload to switch/ : /刷新后生效/);
+    option.value = 'world-book'; option.onchange();
+    assert.equal(f.state.history.storageChoice, 'world-book'); assert.equal(f.state.history.backend, 'browser');
+    assert.match(content(), /64 MiB/); assert.match(content(), lang === 'en' ? /checkpoints remain/ : /检查点仍保存在当前浏览器/);
+    f.state.history.backend = 'world-book'; f.emit();
+    assert.match(f.all().find(e => e.className === 'gd-muyu-storage-location').textContent, lang === 'en' ? /world books/ : /专用世界书/);
+    assert.doesNotMatch(f.all().find(e => e.className === 'gd-muyu-storage-status').textContent, /reload to switch|刷新后生效/);
+    f.state.history.persisted = true; f.emit();
+    assert.match(f.all().find(e => e.className === 'gd-muyu-storage-status').textContent, lang === 'en' ? /Saved in ST world books/ : /已保存到酒馆世界书/);
+    f.state.history.error = 'HISTORY_CONFLICT'; f.emit();
+    assert.match(f.all().find(e => e.className === 'gd-muyu-storage-status').textContent, lang === 'en' ? /save is unconfirmed/ : /保存结果未确认/);
     f.state.busy = true; f.emit(); assert.equal(option.disabled, true);
     f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`World-book history copy is explicit, guarded and reports partial results (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }); let calls = 0;
+    f.controller.copyHistoryFrom = source => {
+        calls++; assert.equal(source, 'browser');
+        f.state.history.copyReport = { source, copied: 2, identical: 1, conflicts: 1, remaining: 3, error: 'HISTORY_CAPACITY' }; f.emit();
+    };
+    f.state.history = { available: true, enabled: true, canCopyHistory: true, backend: 'world-book', sessions: [] }; f.emit();
+    const button = f.find('button', lang === 'en' ? 'Confirm copy to world books (keep originals)' : '确认复制到世界书（保留原件）');
+    assert.ok(button); assert.equal(calls, 0);
+    await button.click(); assert.equal(calls, 1);
+    const content = f.all().map(e => e.textContent || '').join('\n');
+    assert.match(content, /HISTORY_CAPACITY/); assert.match(content, lang === 'en' ? /unconfirmed: 3/ : /未确认 3/);
+    f.state.history.storageChangePending = true; f.emit(); assert.equal(button.disabled, true);
+    f.state.history.canCopyHistory = false; f.emit(); assert.equal(button.parent.hidden, true);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`External history changes require explicit reload consent and preserve composer state (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), t = (zh, en) => lang === 'en' ? en : zh; let reloaded = 0;
+    f.state.history = { available: true, enabled: true, sessionId: 'one', sourceKey: 'A:browser', external: 'changed', error: 'HISTORY_CONFLICT', sessions: [] };
+    f.state.input = 'keep unsent';
+    f.controller.reloadHistory = async options => { assert.deepEqual(options, { discardLocal: true }); reloaded++; f.state.history.external = null; f.state.history.error = null; f.emit(); };
+    f.emit();
+    const reload = f.find('button', t('重新载入存储版本…', 'Reload stored version…'));
+    const confirm = f.find('button', t('确认重新载入（放弃本页记录修改）', 'Confirm reload (discard page record changes)'));
+    assert.equal(confirm.hidden, true); assert.equal(f.find('button', t('发送', 'Send')).disabled, true);
+    await reload.click(); assert.equal(confirm.hidden, false); assert.equal(reloaded, 0);
+    await confirm.click(); assert.equal(reloaded, 1); assert.equal(f.state.input, 'keep unsent'); assert.equal(confirm.hidden, true);
+    f.state.history.external = 'deleted'; f.emit(); await reload.click();
+    f.state.history.sourceKey = 'A:world-book'; f.emit();
+    assert.equal(confirm.hidden, true); await confirm.onclick(); assert.equal(reloaded, 1, 'old consent cannot apply to a different source with the same conversation ID');
+    f.state.busy = true; f.emit(); assert.equal(reload.disabled, true);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`History routing separates selected reader from write switches and displays partial outcomes (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), t = (zh, en) => lang === 'en' ? en : zh;
+    f.state.history = { available: true, enabled: true, backend: 'browser', readSource: 'browser', routed: true, canManage: false,
+        routing: { readSource: 'browser', writeTargets: ['world-book'] }, writeTargets: ['world-book'], sessions: [],
+        writeReport: { complete: false, readSaved: false, targets: [{ source: 'world-book', state: 'failed', error: 'HISTORY_CONFLICT' }] } };
+    let selected, writes;
+    f.controller.setHistoryReadSource = value => { selected = value; };
+    f.controller.setHistoryWriteTargets = value => { writes = value; };
+    f.emit();
+    const selector = f.all().find(e => e.tag === 'select' && e.parent?.textContent === t('读取历史来源', 'Read history from'));
+    assert.equal(selector.value, 'browser'); selector.value = 'world-book'; selector.onchange(); assert.equal(selected, 'world-book');
+    const browser = f.all().find(e => e.tag === 'input' && e.type === 'checkbox' && e.parent?.textContent === t('当前浏览器', 'This browser'));
+    assert.equal(browser.checked, false); browser.checked = true; await browser.onchange(); assert.deepEqual(writes, ['world-book', 'browser']);
+    const content = f.all().map(e => e.textContent || '').join('\n');
+    assert.match(content, /HISTORY_CONFLICT/); assert.match(content, lang === 'en' ? /read location was not updated/ : /当前读取位置未更新/);
+    assert.equal(f.all().find(e => e.className === 'gd-muyu-storage-location').textContent.startsWith(t('当前读取：', 'Currently reading: ')), true);
+    f.state.busy = true; f.emit(); assert.equal(selector.disabled, true); assert.equal(browser.disabled, true);
+    assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`World-book volume target is bilingual, autosaved and disabled during execution (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), t = (zh, en) => lang === 'en' ? en : zh;
+    f.state.history = { available: true, enabled: true, sessions: [], canSetWorldBookTarget: true, worldBookTargetMiB: 8 };
+    f.state.input = 'KEEP UNSENT'; let calls = 0;
+    f.controller.setHistoryVolumeMiB = async value => { calls++; f.state.history.worldBookTargetMiB = value; f.emit(); };
+    f.emit();
+    const label = t('新会话分卷目标大小（MiB）', 'New-conversation volume target (MiB)');
+    const input = f.all().find(el => el.tag === 'input' && el.parent?.textContent === label);
+    assert.equal(input.value, '8'); assert.equal(input.min, '1'); assert.equal(input.max, '16');
+    input.value = '4'; await input.onchange(); assert.equal(calls, 1); assert.equal(f.state.history.worldBookTargetMiB, 4);
+    assert.equal(f.state.input, 'KEEP UNSENT'); assert.equal(f.sent.length, 0);
+    f.state.busy = true; f.emit(); assert.equal(input.disabled, true);
+    f.state.busy = false; f.state.interaction = { id: 'question', status: 'pending', question: 'Continue?', draft: '', options: [] }; f.emit(); assert.equal(input.disabled, true);
+    f.root.__gdMuyuDispose(); await input.onchange(); assert.equal(calls, 1);
+});
+
+for (const lang of ['zh', 'en']) test(`Legacy consolidation keeps backups by default; cleanup requires fresh source-bound confirmation (${lang})`, async () => {
+    const f = fixture(lang, true, { initialMode: 'assistant' }), t = (zh, en) => lang === 'en' ? en : zh;
+    f.state.history = { available: true, enabled: true, backend: 'world-book', readSource: 'world-book', sourceKey: 'account-A', writeTargets: ['world-book'], canManage: true, sessions: [], canMergeLegacyHistory: true };
+    f.state.input = 'KEEP DRAFT'; const calls = [];
+    f.controller.mergeLegacyHistory = async cleanup => { calls.push(cleanup); };
+    f.emit();
+    const merge = f.find('button', t('确认合并（保留旧书）', 'Confirm consolidation (keep old books)'));
+    const remove = f.find('button', t('清理已合并的旧书…', 'Remove consolidated old books…'));
+    const confirm = f.find('button', t('确认清理旧书（不可撤销）', 'Confirm removal of old books (irreversible)'));
+    assert.equal(confirm.hidden, true); await confirm.onclick(); assert.deepEqual(calls, []);
+    await merge.click(); assert.deepEqual(calls, [false]); assert.equal(f.state.input, 'KEEP DRAFT');
+    await remove.click(); assert.equal(confirm.hidden, false); assert.deepEqual(calls, [false]);
+    f.state.history.sourceKey = 'account-B'; f.emit(); assert.equal(confirm.hidden, true);
+    await confirm.onclick(); assert.deepEqual(calls, [false]);
+    await remove.click(); await confirm.click(); assert.deepEqual(calls, [false, true]); assert.equal(confirm.hidden, true);
+    await confirm.onclick(); assert.deepEqual(calls, [false, true]);
+    f.state.busy = true; f.emit(); assert.equal(merge.disabled, true); assert.equal(remove.disabled, true);
+    f.root.__gdMuyuDispose(); await merge.onclick(); await confirm.onclick(); assert.deepEqual(calls, [false, true]);
+    assert.equal(f.sent.length, 0);
 });
 
 function fixture(lang = 'zh', standalone = false, options = {}) {
@@ -1136,6 +1238,7 @@ function fixture(lang = 'zh', standalone = false, options = {}) {
         deleteSession(id) { state.history.sessions = state.history.sessions.filter(s => s.id !== id); state.history.sessionId = ''; emit(); },
         setHistoryEnabled(value) { state.history.enabled = value; emit(); }, retryHistory() { state.history.error = null; emit(); },
         setHistoryAccountStorage(value) { state.history.accountStorage = value; emit(); },
+        setHistoryStorage(value) { state.history.storageChoice = value; state.history.accountStorage = value === 'account-settings'; emit(); },
         configure(config) { configs.push(config); state.enabled = true; emit(); }, disable() { state.enabled = false; emit(); }, stop() { stops++; state.busy = false; emit(); },
         setFullAccess(enabled) { state.fullAccess = enabled; emit(); },
         savePermissionConfig(value) { state.permissionConfig = value; state.fullAccess = false; emit(); },
@@ -2085,6 +2188,24 @@ test('View switches restore scroll position and unrelated renders do not force s
     const transcript = f.all().find(e => e.className === 'gd-muyu-transcript'); transcript.scrollHeight = 500; transcript.clientHeight = 100; transcript.scrollTop = 350;
     f.state.viewKey = 'B'; f.state.viewToken++; f.state.scrollTop = 25; f.emit(); assert.equal(transcript.scrollTop, 25); assert.ok(saved.some(([key, top]) => key === 'A' && top === 350)); assert.deepEqual(saved.at(-1), ['B', 25]);
     transcript.scrollTop = 350; f.emit(); assert.equal(transcript.scrollTop, 350); f.root.__gdMuyuDispose();
+});
+
+for (const lang of ['zh', 'en']) test(`Import result distinguishes skipped duplicates from new page-only backups / ${lang}`, async () => {
+    const f = fixture(lang, true); f.state.history = managedHistory(); f.emit();
+    f.controller.previewHistoryImport = importPreview;
+    let imports = 0;
+    f.controller.importHistory = async () => { imports++; f.state.history.importReport = { id: 'backup', status: imports === 1 ? 'identical' : 'created' }; };
+    const file = f.all().find(e => e.type === 'file');
+    const text = JSON.stringify({ version: 1, id: crypto.randomUUID(), revision: 0, scope: '["chat","chat","A"]', title: 'Backup', createdAt: 1, updatedAt: 1, messages: [], required: [], status: 'idle' });
+    const accept = f.find('button', lang === 'en' ? 'Confirm read-only import' : '确认导入只读备份');
+    for (let index = 0; index < 2; index++) {
+        file.files = [{ size: text.length, text: async () => text }]; await file.onchange(); await accept.click();
+        const result = f.all().find(e => e.tag === 'p' && e.textContent.includes(lang === 'en'
+            ? index === 0 ? 'No duplicate created' : 'Check storage status for persistence'
+            : index === 0 ? '未新增' : '是否保存请查看存储状态'));
+        assert.ok(result);
+    }
+    assert.equal(imports, 2); assert.equal(f.sent.length, 0); f.root.__gdMuyuDispose();
 });
 
 test('Settings, tools and permissions temporarily expand the workbench without losing the composer', async () => {

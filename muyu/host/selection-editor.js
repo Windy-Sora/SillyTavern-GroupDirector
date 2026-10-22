@@ -2,6 +2,7 @@ import { randomUUID } from '../runtime/crypto.js';
 import {configPresentation} from '../config/presentation.js';
 import {copyJson,jsonKey} from '../core/json-contract.js';
 import {applyWorldBookSelection} from '../../systems/world-book-selection.js';
+import {visibleWorldBookNames,isInternalWorldBookName} from '../../systems/internal-world-books.js';
 const record=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const keys=['enabled','mode','fixedId','matchHash','matchAvatarName','overwriteExisting','importTemplate'];
 export function createSelectionEditorPort({getTarget,getSettings,getWorldNames,worldBookScanner,profileLibrarySystem,saveSettings,isBusy=()=>false,changed}) {
@@ -12,9 +13,10 @@ export function createSelectionEditorPort({getTarget,getSettings,getWorldNames,w
   const settings=getSettings();if(!record(settings))throw Error('UNSUPPORTED_SELECTION_STORE');
   let before,options,refs=[],fingerprints=[];
   if(kind==='worldbooks'){
-   options=copyJson(getWorldNames());
+   options=copyJson(visibleWorldBookNames(getWorldNames()));
    if(!Array.isArray(options)||options.length>256||new Set(options).size!==options.length||options.some(n=>typeof n!=='string'||!n.trim()||n.length>256))throw Error('UNSUPPORTED_SELECTION_STORE');
-   const selection=copyJson(settings.worldBookSelection??{});
+   const rawSelection=settings.worldBookSelection??{};
+   const selection=copyJson(record(rawSelection)?Object.fromEntries(Object.entries(rawSelection).filter(([name])=>!isInternalWorldBookName(name))):rawSelection);
    if(!record(selection)||Object.values(selection).some(v=>typeof v!=='boolean')||!['st','manual'].includes(settings.worldBookSourceMode))throw Error('UNSUPPORTED_SELECTION_STORE');
    before={sourceMode:settings.worldBookSourceMode,selection};
   }else if(kind==='profile-autoload'){

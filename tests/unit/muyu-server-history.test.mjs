@@ -16,7 +16,7 @@ const { createFileStore, init } = require('../../muyu/server-plugin/index.cjs');
 const scope = JSON.stringify(['assistant', 'chat', 'A']);
 const record = () => validateRecord({ version: 5, id: crypto.randomUUID(), revision: 0, scope, title: 'Hello', createdAt: 1, updatedAt: 1, messages: [{ role: 'user', content: 'Hello', runId: 'r' }], required: [], status: 'succeeded', archived: false, imported: false, contextSummary: null, receipts: [] });
 
-test('Full server history remains manageable while browser migration waits; refresh retries after deletion', async () => {
+test('Full server history remains manageable without silently reading or importing browser history', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gd-muyu-migration-full-'));
     const browser = createMemoryHistoryStore(); const old = record(); await browser.create(old);
     const server = { ...createFileStore(root), close() {} }, ids = [];
@@ -26,22 +26,22 @@ test('Full server history remains manageable while browser migration waits; refr
         const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({ muyuHistoryEnabled: true }), saveSettings: async () => {}, openStore: async () => browser, openServer: async () => server });
         library = createSessionLibrary({ port }); await library.ready;
         const s = library.snapshot(scope); assert.equal(s.enabled, true); assert.equal(s.error, null);
-        assert.equal(s.sessions.length, 64); assert.deepEqual(s.migration, { pending: 1, reason: 'HISTORY_CAPACITY' });
+        assert.equal(s.sessions.length, 64); assert.equal(s.migration, null);
         await library.load(ids[0]); assert.match(library.export(ids[0]), /Hello/);
-        await library.refresh(); assert.equal(library.snapshot(scope).migration.pending, 1);
+        await library.refresh(); assert.equal(library.snapshot(scope).migration, null);
         assert.ok(await browser.read(old.id)); assert.equal(await server.read(old.id), null);
         await library.remove(ids[0]); await library.refresh();
-        assert.equal(library.snapshot(scope).migration, null); assert.equal(library.snapshot(scope).sessions.length, 64);
-        assert.ok(await server.read(old.id)); assert.ok(await browser.read(old.id));
+        assert.equal(library.snapshot(scope).migration, null); assert.equal(library.snapshot(scope).sessions.length, 63);
+        assert.equal(await server.read(old.id), null); assert.ok(await browser.read(old.id));
     } finally { await library?.close(); await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('Optional migration capacity fallback does not mask storage or account errors', async () => {
+test('Selected server read errors are not masked by fallback or browser migration', async () => {
     const browser = createMemoryHistoryStore(); await browser.create(record());
     let closed = 0;
     const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({}), saveSettings: async () => {}, openStore: async () => browser,
-        openServer: async () => ({ list: async () => [], create: async () => { throw Error('HISTORY_SAVE_FAILED'); }, close() { closed++; } }) });
-    await assert.rejects(port.open(), /HISTORY_SAVE_FAILED/); assert.equal(closed, 1);
+        openServer: async () => ({ list: async () => { throw Error('HISTORY_SAVE_FAILED'); }, close() { closed++; } }) });
+    const opened = await port.open(); await assert.rejects(opened.list(), /HISTORY_SAVE_FAILED/); opened.close(); await Promise.resolve(); assert.equal(closed, 1);
 });
 
 test('Private file store agrees with the large-context archive contract', async () => {
@@ -74,15 +74,15 @@ test('Private file store persists, reloads, rejects stale writes and confines ID
     } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('Server-store adapter falls back only for a missing plugin and migrates old browser records without deleting them', async () => {
+test('Server-store adapter detects a missing plugin but does not import browser records on open', async () => {
     const browser = createMemoryHistoryStore(), old = record();
     await browser.create(old);
     const server = createMemoryHistoryStore();
     const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({ muyuHistoryEnabled: true }), saveSettings: async () => {},
         openStore: async () => browser, openServer: async () => server });
     const opened = await port.open();
-    assert.equal((await opened.list()).length, 1);
-    assert.equal((await server.read(old.id)).messages[0].content, 'Hello');
+    assert.equal((await opened.list()).length, 0);
+    assert.equal(await server.read(old.id), null);
     assert.equal((await browser.read(old.id)).messages[0].content, 'Hello');
     const absent = await openServerHistoryStore({ namespace: crypto.randomUUID(), fetcher: async () => ({ status: 404 }) });
     assert.equal(absent, null);
@@ -104,6 +104,7 @@ test('Deleting migrated history survives reopening and does not retain private t
         const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({ muyuHistoryEnabled: true }), saveSettings: async () => {},
             openStore: async () => browser, openServer: async () => ({ ...createFileStore(dir), close() {} }) });
         const opened = await port.open();
+        await opened.create(old);
         await opened.remove(old.id, (await opened.read(old.id)).revision);
         opened.close();
         const reopened = await port.open();
@@ -112,20 +113,18 @@ test('Deleting migrated history survives reopening and does not retain private t
         assert.ok(await browser.read(old.id), 'migration backup stays intact');
         for (const name of await fs.readdir(dir)) assert.ok(!(await fs.readFile(path.join(dir, name), 'utf8')).includes('Hello'), 'deletion marker contains no conversation');
         const fresh = record(); await browser.create(fresh);
-        assert.deepEqual((await (await port.open()).list()).map(row => row.id), [fresh.id], 'new browser histories can still migrate');
+        assert.deepEqual(await (await port.open()).list(), [], 'opening a reader cannot silently migrate new browser histories');
     } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('Two tabs migrating the same browser history both open without overwriting the winner', async () => {
+test('Two tabs opening server history do not silently import the same browser backup', async () => {
     const browser = createMemoryHistoryStore(), old = record(); await browser.create(old);
-    const backing = createMemoryHistoryStore(); let listings = 0, release;
-    const barrier = new Promise(resolve => { release = resolve; });
-    const server = { ...backing, async list() { const rows = await backing.list(); if (++listings <= 2) { if (listings === 2) release(); await barrier; } return rows; } };
+    const backing = createMemoryHistoryStore(), server = backing;
     const port = createHistoryPort({ getAccount: async () => ({ enabled: false }), getSettings: () => ({}), saveSettings: async () => {},
         openStore: async () => browser, openServer: async () => server });
     const opened = await Promise.all([port.open(), port.open()]);
-    assert.equal(opened.length, 2); assert.equal((await backing.read(old.id)).revision, 1);
-    assert.equal((await backing.list()).length, 1);
+    assert.equal(opened.length, 2); assert.equal(await backing.read(old.id), null);
+    assert.equal((await backing.list()).length, 0); assert.ok(await browser.read(old.id));
 });
 
 for (const relative of [false, true]) test(`HTTP adapter writes and restores a private account file with a ${relative ? 'relative' : 'absolute'} host root`, async () => {

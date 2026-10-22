@@ -1,5 +1,6 @@
 import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
+import { visibleWorldBookState, isInternalWorldBook, isInternalWorldBookName } from '../../systems/internal-world-books.js';
 const editable = ['comment', 'content', 'key', 'keysecondary', 'disable', 'constant'];
 const object = v => v && typeof v === 'object' && !Array.isArray(v);
 export function createWorldBookEditorPort({ getTarget, getState, load, save, createEntry, refresh, controls, isBusy = () => false }) {
@@ -8,7 +9,7 @@ export function createWorldBookEditorPort({ getTarget, getState, load, save, cre
         const actual = getTarget();
         if (!actual || target?.userKey !== actual.userKey || !['chat', 'global'].includes(target.kind)) throw Error('TARGET_UNAVAILABLE');
         if (isBusy() || applying) throw Error('WORLD_BOOK_BUSY');
-        const names = getState()?.names;
+        const names = visibleWorldBookState(getState())?.names;
         if (!Array.isArray(names) || names.length > 512 || new Set(names).size !== names.length || names.some(n => typeof n !== 'string' || !n.trim() || n.length > 200)) throw Error('UNSUPPORTED_WORLD_BOOK');
         return { names: [...names], target: copyJson(actual) };
     }
@@ -21,6 +22,7 @@ export function createWorldBookEditorPort({ getTarget, getState, load, save, cre
         if (!/^book:(0|[1-9]\d{0,2})$/.test(book) || index >= before.names.length || typeof load !== 'function') throw Error('INVALID_WORLD_BOOK_EDIT');
         const name = before.names[index], raw = await load(name), after = context(target);
         if (expectedEpoch !== epoch || jsonKey(before) !== jsonKey(after)) throw Error('STALE_WORLD_BOOK_EDIT');
+        if (isInternalWorldBook(name, raw)) throw Error('INVALID_WORLD_BOOK_EDIT');
         const serialized = JSON.stringify(raw);
         if (typeof serialized !== 'string' || serialized.length > 1048576) throw Error('WORLD_BOOK_TOO_LARGE');
         const data = JSON.parse(serialized);
@@ -41,6 +43,7 @@ export function createWorldBookEditorPort({ getTarget, getState, load, save, cre
     function directoryVersion(state) { const fingerprint = jsonKey(state); if (directory?.fingerprint !== fingerprint) directory = { fingerprint, revision: randomUUID() }; return directory.revision; }
     const normalizedName = name => name.normalize('NFKC').toLocaleLowerCase();
     function newName(name, state) {
+        if (isInternalWorldBookName(name)) throw Error('INVALID_WORLD_BOOK_EDIT');
         if (typeof name !== 'string' || name !== name.trim() || !/^[\p{L}\p{N} _-]{1,120}$/u.test(name) || new TextEncoder().encode(name).length > 180 || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i.test(name)) throw Error('INVALID_WORLD_BOOK_EDIT');
         if (state.names.length >= 512 || state.names.some(n => normalizedName(n) === normalizedName(name))) throw Error('WORLD_BOOK_NAME_CONFLICT');
         return name;

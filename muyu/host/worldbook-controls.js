@@ -1,12 +1,13 @@
 import { randomUUID } from '../runtime/crypto.js';
 import { copyJson, jsonKey } from '../core/json-contract.js';
+import { visibleWorldBookState, isInternalWorldBook } from '../../systems/internal-world-books.js';
 
 /** Native binding/delete workflows; never delegates to arbitrary Slash commands. */
 export function createWorldBookControls({ getTarget, getChatTarget, getState, getReferences, load, refresh, setGlobal, setChat, remove, isBusy = () => false }) {
     const plans = new Map(); let version = null, busy = false, epoch = 0;
     function snapshot(target) {
         if (busy || isBusy()) throw Error('WORLD_BOOK_BUSY');
-        const actual = getTarget(), state = getState();
+        const actual = getTarget(), state = visibleWorldBookState(getState());
         if (!actual || actual.userKey !== target?.userKey || !['global','chat'].includes(target.kind)) throw Error('TARGET_UNAVAILABLE');
         if (!Array.isArray(state?.names) || !Array.isArray(state?.global) || state.names.length > 512 || state.global.length > 512 || new Set(state.names).size !== state.names.length || state.names.some(n => typeof n !== 'string' || !n.trim() || n.length > 200) || state.global.some(n => typeof n !== 'string')) throw Error('UNSUPPORTED_WORLD_BOOK');
         return copyJson({target:actual,chatTarget:getChatTarget?.() || null,names:state.names,global:state.global,chat:typeof state.chat === 'string' ? state.chat : ''});
@@ -28,7 +29,7 @@ export function createWorldBookControls({ getTarget, getChatTarget, getState, ge
                 if (!/^book:(0|[1-9]\d{0,2})$/.test(args.selector) || Object.keys(args.changes).length || typeof refresh !== 'function' || typeof remove !== 'function') throw Error('INVALID_WORLD_BOOK_EDIT');
                 const index=Number(args.selector.slice(5));name=state.names[index];if (!name) throw Error('INVALID_WORLD_BOOK_EDIT');
                 references=refs(name);if(references.known)throw Error('WORLD_BOOK_STILL_BOUND');
-                bookData=await load(name);before=copyJson(bookData);after=null;
+                bookData=await load(name);if(isInternalWorldBook(name,bookData))throw Error('INVALID_WORLD_BOOK_EDIT');before=copyJson(bookData);after=null;
                 // Editor passes the exact existing book revision only after capturing the whole book.
                 if (JSON.stringify(bookData)!==args.bookBaseline) throw Error('STALE_WORLD_BOOK_EDIT');
             } else {
@@ -42,6 +43,10 @@ export function createWorldBookControls({ getTarget, getChatTarget, getState, ge
                     before=state.chat;after=args.changes.name;
                 } else throw Error('INVALID_WORLD_BOOK_EDIT');
                 if(equal(before,after))throw Error('EMPTY_CHANGES');
+                // A manually renamed archive still carries its data marker.
+                if(typeof load==='function')for(const selected of (Array.isArray(after)?after:after?[after]:[])){
+                    if(isInternalWorldBook(selected,await load(selected)))throw Error('INVALID_WORLD_BOOK_EDIT');
+                }
             }
             if(epoch!==expectedEpoch || !equal(snapshot(target),state))throw Error('STALE_WORLD_BOOK_EDIT');
             const content=copyJson({module:'worldbook-editor',ticket:'worldbook-control:'+randomUUID(),target:state.target,name:name||'World-book binding',selector:args.selector,operation:args.operation,before,after,warnings:[
@@ -71,7 +76,7 @@ export function createWorldBookControls({ getTarget, getChatTarget, getState, ge
                 }
                 if(content.operation==='set_global_binding')await setGlobal(copyJson(content.after));
                 else await setChat(content.after,copyJson(plan.state.chatTarget));
-                const state=getState(),sameTarget=equal(getTarget(),content.target),sameChat=equal(getChatTarget?.()||null,plan.state.chatTarget);
+                const state=visibleWorldBookState(getState()),sameTarget=equal(getTarget(),content.target),sameChat=equal(getChatTarget?.()||null,plan.state.chatTarget);
                 const sameValue=content.operation==='set_global_binding'?equal(state.global,content.after):sameChat&&(state.chat||'')===content.after;
                 return {status:sameTarget&&sameValue?'applied_unconfirmed':'outcome_unknown',resourceSave:'unconfirmed'};
             } catch {return {status:'outcome_unknown',resourceSave:'unknown'};}

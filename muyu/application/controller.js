@@ -23,6 +23,7 @@ import { PERMISSION_DEFAULTS, validatePermissionConfig } from '../permissions/re
 import { RUN_DEFAULTS, validateRunConfig } from '../core/budget.js';
 import { createSessionLibrary } from '../sessions/library.js';
 import { historyScope } from '../sessions/contract.js';
+import { HISTORY_SOURCES, historyTargets } from '../sessions/routed-store.js';
 import { WEB_TOOL, WEB_DEFAULTS } from '../web/contract.js';
 import { importPreview } from '../sessions/exchange.js';
 import { CONTEXT_DEFAULTS, validateContextConfig } from '../context/policy.js';
@@ -50,9 +51,11 @@ export function createMuyuController({ host, createModel = createChatCompletions
     let contextConfig = validateContextConfig(host.contextConfig?.read() || { ...CONTEXT_DEFAULTS }), savingContextConfig = false, compacting = null;
     const omittedViews = new Set();
     const historyGrants = new Map();
+    // Caches never share an owner across controller/account/source lifetimes.
+    let historyCacheScope = randomUUID();
     let historyTransportEpoch = 0;
     const compactionBreaker = createCompactionBreaker();
-    const historyGrantKey = (record, target) => record && record.id + ':' + jsonKey(target);
+    const historyGrantKey = (record, target) => record && historyCacheScope + ':' + record.id + ':' + jsonKey(target);
     // History transport preference is not a grant in the host/tool permission store.
     const missingHistorySources = (record, target, taskId = null) => contextConfig.historyAuthorization === 'auto' ? [] : (record?.required || []).filter(source =>
         !permissions.allows(source, target, taskId) && !historyGrants.get(historyGrantKey(record, target))?.has(source));
@@ -160,8 +163,9 @@ export function createMuyuController({ host, createModel = createChatCompletions
         return { missing, autoHistoryOmitted, historyStart, omitHistory: historyStart > 0 || !continuation && omittedViews.has(key) };
     }
     const selectedId = () => viewedId || sessions.get(scopeKey());
-    const viewKey = () => mode + ':' + jsonKey(targetFor()) + ':' + (selectedId() || '');
-    const library = createSessionLibrary({ port: host.history, changed: emit });
+    const viewKey = () => historyCacheScope + ':' + mode + ':' + jsonKey(targetFor()) + ':' + (selectedId() || '');
+    let library = createSessionLibrary({ port: host.history, changed: emit });
+    const historyContexts = new Map(), historyLibraries = new Set([library]);
     const views = new Map();
     function captureReceipts() {
         for (const action of actionAssembly.list()) {
@@ -345,8 +349,12 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             history: { ...library.snapshot(scopeKey(), id, { ...historyFilters, chatKey: host.currentTarget()?.chatKey }), filters: { ...historyFilters }, restoredStatus: !session ? record?.status : null,
                 missingPermissions: choice.missing,
                 accountStorage: host.history?.accountStorage?.() === true,
-                storageChangePending: typeof host.history?.activeAccountStorage === 'function' && host.history.activeAccountStorage() !== (host.history.accountStorage?.() === true),
-                canChooseStorage: typeof host.history?.setAccountStorage === 'function',
+                storageChoice: host.history?.storageChoice?.() ?? (host.history?.accountStorage?.() === true ? 'account-settings' : 'auto'),
+                storageChangePending: typeof host.history?.activeStorage === 'function' ? host.history.activeStorage() !== host.history.storageChoice() : typeof host.history?.activeAccountStorage === 'function' && host.history.activeAccountStorage() !== (host.history.accountStorage?.() === true),
+                canChooseStorage: typeof host.history?.setStorage === 'function' || typeof host.history?.setAccountStorage === 'function',
+                routing: host.history?.routing?.() || null,
+                worldBookTargetMiB: host.history?.worldBookTargetMiB?.() ?? 8,
+                canSetWorldBookTarget: typeof host.history?.setWorldBookTargetMiB === 'function',
                 omitted: plan.omitted },
             artifacts: isReadOnly || switchedChat ? [] : state?.artifacts.filter(a => a.sessionId === sessionId) || [],
             approvedPlans: isReadOnly || switchedChat ? [] : [...approvedPlans],
@@ -1039,11 +1047,112 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             historyFilters = next; emit();
         },
         setScrollPosition(key, top) { if (!disposed && views.has(key) && Number.isFinite(top)) scrollPositions.set(key, Math.max(0, top)); },
-        refreshHistory: () => library.refresh(),
+        async refreshHistory() {
+            live(); if (resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            resetting = true; emit();
+            try { capture(); await library.flush(); await library.refresh(); }
+            finally { resetting = false; emit(); }
+        },
+        async setHistoryReadSource(source) {
+            live(); if (!HISTORY_SOURCES.includes(source) || !host.history?.setRouting || !host.history?.openSource) throw Error('HISTORY_INVALID');
+            if (resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            const oldSource = library.snapshot(scopeKey()).readSource || host.history.routing().readSource;
+            const writeTargets = host.history.routing().writeTargets;
+            if (source === oldSource) return;
+            resetting = true; selectionEpoch++; emit();
+            const epoch = selectionEpoch;
+            let candidate, fresh = false;
+            try {
+                capture(); await library.flush(); live();
+                const context = historyContexts.get(source);
+                candidate = context?.library;
+                if (!candidate) {
+                    candidate = createSessionLibrary({ port: { enabled: host.history.enabled, setEnabled: host.history.setEnabled, open: () => host.history.openSource(source) }, changed: emit });
+                    fresh = true;
+                }
+                await candidate.ready; await candidate.refresh(); live();
+                if (selectionEpoch !== epoch) throw Error('NOT_READY');
+                await host.history.setRouting({ readSource: source, writeTargets }); live();
+                if (selectionEpoch !== epoch) throw Error('NOT_READY');
+                historyContexts.set(oldSource || 'initial', { library, cacheScope: historyCacheScope, sessions: new Map(sessions), viewedId, pinnedTarget });
+                appUnsubscribe?.(); app?.dispose(); builtins?.dispose(); app = null; builtins = null; running = null;
+                runtimeSessions.clear(); intentions.clear(); continuations.clear(); recordedActions.clear(); actionOwners.clear(); explanations.clear();
+                autoActions.length = autoPlans.length = autoConfigChecks.length = 0;
+                recoveryWorkbench.clear();
+                library = candidate; historyLibraries.add(candidate); historyCacheScope = context?.cacheScope || randomUUID();
+                if (model) assemble(); else { sessions.clear(); viewedId = null; pinnedTarget = null; historyGrants.clear(); historyTransportEpoch++; actionAssembly.clear(); }
+                if (context) { for (const [key, value] of context.sessions) sessions.set(key, value); viewedId = context.viewedId; pinnedTarget = context.pinnedTarget; }
+                historyFilters = { range: 'all', archive: 'active', task: '', query: '' };
+            } catch (error) { if (fresh && candidate && candidate !== library) await candidate.close(); throw error; }
+            finally { resetting = false; emit(); }
+        },
+        async setHistoryVolumeMiB(value) {
+            live();
+            if (!host.history?.setWorldBookTargetMiB || resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            resetting = true; emit();
+            try { capture(); await library.flush(); await host.history.setWorldBookTargetMiB(value); }
+            finally { resetting = false; emit(); }
+        },
+        async setHistoryWriteTargets(values) {
+            live(); const targets = historyTargets(values);
+            if (!host.history?.setRouting || resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            const source = library.snapshot(scopeKey()).readSource || host.history.routing().readSource;
+            if (!source) throw Error('NOT_READY');
+            resetting = true; emit();
+            try { capture(); await library.flush(); await host.history.setRouting({ readSource: source, writeTargets: targets }); }
+            finally { resetting = false; emit(); }
+        },
+        async reloadHistory({ discardLocal = false } = {}) {
+            live(); if (resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            const id = selectedId(); if (!id) throw Error('NOT_READY');
+            const oldKey = viewKey(), epoch = selectionEpoch;
+            let draft = inputs.get(oldKey) || '';
+            resetting = true; emit();
+            try {
+                const next = await library.reload(id, { discardLocal, beforeReplace: () => {
+                    live(); if (selectionEpoch !== epoch || selectedId() !== id) throw Error('NOT_READY');
+                    draft = inputs.get(oldKey) || '';
+                    const runtimeId = runtimeSessions.get(id);
+                    for (const [key, entry] of recordedActions) if (entry.id === id) { recordedActions.delete(key); explanations.delete(key); }
+                    for (const [key, owner] of actionOwners) if (owner === id) actionOwners.delete(key);
+                    runtimeSessions.delete(id);
+                    if (runtimeId) { unloadRuntime(runtimeId); notices.delete(runtimeId); }
+                    compactResults.delete(id); compactionBreaker.reset(id); historyGrants.clear(); historyTransportEpoch++;
+                    autoActions.length = autoPlans.length = autoConfigChecks.length = 0;
+                    actionAssembly.invalidate(); recoveryWorkbench.invalidate();
+                    scrollPositions.delete(oldKey); views.delete(oldKey);
+                } });
+                if (!next) {
+                    for (const [key, selected] of sessions) if (selected === id) sessions.delete(key);
+                    if (viewedId === id) viewedId = null;
+                    inputs.delete(oldKey);
+                }
+                inputs.set(viewKey(), draft);
+                return next;
+            } finally { resetting = false; emit(); }
+        },
+        async copyHistoryFrom(source) {
+            live(); if (resetting || snapshot().busy) throw Error('NOT_READY');
+            resetting = true; emit();
+            try { return await library.copyHistoryFrom(source); }
+            finally { resetting = false; emit(); }
+        },
+        async mergeLegacyHistory(cleanup = false) {
+            live(); if (resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            if (typeof cleanup !== 'boolean') throw Error('HISTORY_INVALID');
+            resetting = true; emit();
+            try { capture(); await library.flush(); return await library.mergeLegacyHistory(cleanup); }
+            finally { resetting = false; emit(); }
+        },
         previewHistoryImport: importPreview,
         async importHistory(text) {
-            live(); if (resetting) throw Error('NOT_READY');
-            const id = library.import(text); historyFilters = { range: 'all', archive: 'active', task: '', query: '' }; await openSession(id); return id;
+            live(); if (resetting || snapshot().busy || snapshot().interaction?.status === 'pending') throw Error('NOT_READY');
+            const epoch = ++selectionEpoch;
+            resetting = true; emit();
+            let id;
+            try { capture(); id = await library.import(text); live(); if (epoch !== selectionEpoch) throw Error('NOT_READY'); }
+            finally { resetting = false; emit(); }
+            historyFilters = { range: 'all', archive: 'all', task: '', query: '' }; await openSession(id); return id;
         },
         async setHistoryEnabled(value) {
             live(); if (resetting || snapshot().busy) throw Error('NOT_READY');
@@ -1054,6 +1163,12 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             live(); if (resetting || snapshot().busy || !host.history?.setAccountStorage) throw Error('NOT_READY');
             resetting = true; emit();
             try { await library.flush(); await host.history.setAccountStorage(value); }
+            finally { resetting = false; emit(); }
+        },
+        async setHistoryStorage(value) {
+            live(); if (resetting || snapshot().busy || !host.history?.setStorage) throw Error('NOT_READY');
+            resetting = true; emit();
+            try { await library.flush(); await host.history.setStorage(value); }
             finally { resetting = false; emit(); }
         },
         retryHistory: () => library.retry(),
@@ -1166,7 +1281,7 @@ function syncTarget(changed = true) { taskStates.retainTarget(host.currentTarget
             try { const a = builtins.revalidate(app, id, revision); emit(); return a; }
             catch { app.validateArtifact(id, revision, { status: 'stale', message: '重新生成预览 / Generate a fresh preview' }); emit(); throw new Error('STALE_DRAFT'); }
         },
-        async dispose() { if (disposed) return; disposed = true; host.stDiagnostics?.dispose(); host.stPromptSnapshots?.dispose(); unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); await library.close(); await recoveryJournal.close(); },
+        async dispose() { if (disposed) return; disposed = true; host.stDiagnostics?.dispose(); host.stPromptSnapshots?.dispose(); unsubscribeHost(); unsubscribeConnection(); noteWorkbench.dispose(); skillWorkbench.dispose(); host.skills?.close(); listeners.clear(); await stopAndDrain(); clear(); inputs.clear(); for (const owned of historyLibraries) await owned.close(); await recoveryJournal.close(); },
     };
     function send({ consent, fields = [], artifactId = null, planArtifactId = null, interactionId = null, permissionDecision = null, explanation = null } = {}) {
             if (hostConnectionCurrent) { try { hostConnectionCurrent(); } catch { invalidateHostConnection(); throw Error('HOST_CONNECTION_CHANGED'); } }

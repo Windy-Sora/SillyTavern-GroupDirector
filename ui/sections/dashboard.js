@@ -1,4 +1,5 @@
 import { registerSection } from './registry.js';
+import { visibleWorldBookNames } from '../../systems/internal-world-books.js';
 import { formatProfileSummary, getProfileSummaryEditValue } from './profile-summary-helpers.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../../../popup.js';
 
@@ -846,7 +847,7 @@ registerSection('dashboard', function (ctx) {
 
     function refreshWorldBookStat() {
         const sel = settings.worldBookSelection || {};
-        const names = ctx.world_names || [];
+        const names = visibleWorldBookNames(ctx.world_names || []);
         const active = new Set(ctx.worldBookScanner?.getSelectedNames?.() || []);
         const checked = (settings.worldBookSourceMode || 'st') === 'st'
             ? names.filter(n => active.has(n)).length
@@ -856,7 +857,7 @@ registerSection('dashboard', function (ctx) {
 
     function renderDashWorldBookList() {
         if (!settings.worldBookSelection) settings.worldBookSelection = {};
-        const names = ctx.world_names || [];
+        const names = visibleWorldBookNames(ctx.world_names || []);
         const sel = settings.worldBookSelection;
         const sourceMode = settings.worldBookSourceMode || 'st';
         const active = new Set(ctx.worldBookScanner?.getSelectedNames?.() || []);

@@ -113,7 +113,7 @@ test('Overflow capture has a bounded exportable recovery without relaxing disk/i
     assert.equal(backup.format, 'muyu-unsaved-recovery'); assert.equal(backup.status, 'succeeded');
     assert.match(backup.messages.at(-1).content, /^RECOVERY_MARKER/);
     assert.match(f.library.export(id, 'markdown'), /UNSAVED RECOVERY/);
-    assert.throws(() => f.library.import(f.library.export(id)), /HISTORY_CAPACITY/);
+    await assert.rejects(f.library.import(f.library.export(id)), /HISTORY_CAPACITY/);
     assert.throws(() => f.library.assertRoom(id), /HISTORY_CAPACITY/);
     f.library.update(id, { contextSummary: null });
     assert.equal(f.library.snapshot(scope, id).recovery, true, 'metadata/summary edits cannot discard an unsaved answer');
